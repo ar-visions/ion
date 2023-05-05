@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../hyperspace"
+		},
+		{
+			"path": "../orbiter"
+		}
+	],
+	"settings": {}
+}
