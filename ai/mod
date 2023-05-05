@@ -1,5 +1,0 @@
-dep(core image tensorflow.tensorflowlite)
-
-if(NOT WIN32)
-    dep(pthread)
-endif()
