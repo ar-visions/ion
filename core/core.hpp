@@ -1665,6 +1665,7 @@ struct rand {
 using arg = pair<mx, mx>;
 using ax  = doubly<arg>;
 using px  = doubly<prop>;
+struct size;
 
 struct mx {
     memory *mem = null; ///type_t  ctx = null; // ctx == mem->type for contextual classes, with schema populated
@@ -1677,7 +1678,7 @@ struct mx {
     inline mx(cstr s)        : mem(memory::cstring(s)) { }
     ///
     inline memory *grab() const { return mem->grab(); }
-    inline size   shape() const { return mem->shape;  }
+    inline size  *shape() const { return mem->shape;  }
     inline void    drop() const { mem->drop();        }
 
     template <typename CL>
@@ -2333,6 +2334,8 @@ struct str:mx {
     cstr data;
 
     using MEM = mem_ptr_token;
+
+    operator std::string() { return std::string(data); }
 
     memory * symbolize() { return mem_symbol(data, typeof(char)); } 
 
@@ -3124,6 +3127,8 @@ struct assigner {
     }
 };
 
+using Map = map<mx>;
+
 template <typename T>
 class has_count {
     using one = char;
@@ -3518,6 +3523,8 @@ struct path:mx {
 
     operator str() { return str(cs(), memory::auto_len); }
 };
+
+using path_t = path;
 
 i64 millis();
 

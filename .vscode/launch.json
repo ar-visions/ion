@@ -1,0 +1,19 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name":             "ai-yt",
+            "type":             "cppdbg",
+            "request":          "launch",
+            "program":          "${workspaceFolder}/ion/build/ai-yt",
+            "args":             [],
+            "stopAtEntry":      false,
+            "cwd":              "${workspaceFolder}/ion/ux/res",
+            "environment":      [],
+            "externalConsole":  true,
+            "MIMode":           "gdb",
+            "preLaunchTask":    "build",
+            "osx": { "MIMode":  "lldb" }
+        } 
+    ]
+}

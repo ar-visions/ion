@@ -262,6 +262,14 @@ macro(get_module_dirs src result)
     set(${result} ${dirlist})
 endmacro()
 
+function(print text)
+    message(STATUS ${text})
+endfunction()
+
+function(error text)
+    message(FATAL_ERROR ${text})
+endfunction()
+
 function(load_project location remote)
     # return right away if this project is not ion-oriented
     set(js ${location}/project.json)
@@ -344,23 +352,24 @@ macro(process_dep d t_name)
         ## must exist in extern:
         string(SUBSTRING  ${d} 0 ${index} project)
         math(EXPR index   "${index}+1")
-        string(SUBSTRING  ${d} ${index} -1 module)
-        set(extern_path   ${CMAKE_BINARY_DIR}/extern/${project})
+        string(SUBSTRING  ${d} ${index} -1 module)        
         set(pkg_path      "")
-        ##
-        if(NOT EXISTS ${extern_path})
-            if(${project_name} STREQUAL ${project})
-                # must assert that this project is a 'peer' directory in its project.json; set a bool for that
-                set(extern_path "${CMAKE_SOURCE_DIR}/../${project}/${module}")
-                set(pkg_path    "${CMAKE_SOURCE_DIR}/../${project}/project.json")
-            endif()
+
+        ## path to source (not pre-built imports) is either itself or a symlink in external (for attempt 1)
+        if (${PROJECT_NAME} STREQUAL ${project})
+            set(extern_path ${CMAKE_SOURCE_DIR})
+            set(pkg_path    ${CMAKE_SOURCE_DIR}/project.json)
+        else()
+            set(extern_path ${CMAKE_BINARY_DIR}/extern/${project}) # projects in externs without versions are peers
+            set(pkg_path    ${CMAKE_BINARY_DIR}/extern/${project}/project.json)
         endif()
 
         # if module source
         if(EXISTS ${pkg_path})
             set(target ${project}-${module})
             target_link_libraries(${t_name} PRIVATE ${target})
-            target_include_directories(${t_name} PRIVATE ${extern_path})
+            message(STATUS "target = ${project}-${module}")
+            target_include_directories(${t_name} PUBLIC ${extern_path})
         else()
             set(found FALSE)
             foreach (import ${imports})
@@ -381,7 +390,7 @@ macro(process_dep d t_name)
                 endif()
             endforeach()
             if (NOT found)
-                message(FATAL_ERROR "external module not found")
+                message(FATAL_ERROR "external module not found: ${project} ${PROJECT_NAME} ${pkg_path}")
             endif()
         endif()
     else()

@@ -124,14 +124,12 @@ function(main)
         elseif(n_entry)
             list(APPEND imports ${n_entry})
             set(import.${n_entry}          ${n_entry} CACHE INTERNAL "")
-            
             set(import.${n_entry}.peer     false CACHE INTERNAL "")
             set(import.${n_entry}.version  ${import_index_${i}.version} CACHE INTERNAL "")
             set(import.${n_entry}.url      ${import_index_${i}.url} CACHE INTERNAL "")
             set(import.${n_entry}.commit   ${import_index_${i}.commit} CACHE INTERNAL "")
             set(import.${n_entry}.includes "" CACHE INTERNAL "")
             set(import.${n_entry}.libs     "" CACHE INTERNAL "")
-
             set(import.${n_entry}.extern   ${CMAKE_BINARY_DIR}/extern/${n_entry}-${import_index_${i}.version} CACHE INTERNAL "")
 
             # add include paths
@@ -176,7 +174,7 @@ function(main)
     # proj:module -> build-release/extern/proj/module
     foreach(import ${imports})
         if(import.${import}.peer)
-            load_project(${import.${import}.extern} "")
+            load_project(${import.${import}.extern} ${import})
         endif()
     endforeach()
 

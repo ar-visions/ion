@@ -56,7 +56,7 @@
             "commit":   "7482de6",
             "url":      "https://github.com/glfw/glfw",
             "includes": ["./include"],
-            "libs":     ["./_build/src"]
+            "libs":     ["./ion-build/src"]
         },
         {
             "name":     "wolf",
@@ -64,7 +64,7 @@
             "commit":   "e0e590f126bd7d947ce3dfbea5ea1405bb646374",
             "url":      "https://github.com/wolfSSL/wolfssl",
             "includes": ["./"],
-            "libs":     ["./_build"]
+            "libs":     ["./ion-build"]
         },
         {
             "name":     "vkvg",
@@ -72,7 +72,7 @@
             "commit":   "84cf72ddbeb6a38175ec04a1afc948373518086b",
             "url":      "https://github.com/jpbruyere/vkvg.git",
             "includes": ["./include","./vkh/include"],
-            "libs":     ["./_build","./_build/vkh","./_build/external/glutess"],
+            "libs":     ["./ion-build","./ion-build/vkh","./ion-build/external/glutess"],
             "cmake":    {"args": ["-DVKVG_USE_GLUTESS=true"]},
             "diff":     "vkvg.diff"
         }

@@ -159,8 +159,8 @@ def prepare_project(src_dir):
         ## now prep gen and build
         prefix_path = ''
         for fields in import_list:
-            name = fields['name']
             if not isinstance(fields, str):
+                name  = fields['name']
                 cmake = fields.get('cmake')
                 cmake_script_root = '.'
                 cmake_args = []

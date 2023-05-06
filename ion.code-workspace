@@ -10,5 +10,10 @@
 			"path": "../orbiter"
 		}
 	],
-	"settings": {}
+	"settings": {
+		"files.associations": {
+			"algorithm": "cpp",
+			"cmath": "cpp"
+		}
+	}
 }
