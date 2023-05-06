@@ -128,8 +128,6 @@ constexpr int num_occurances(const char* cs, char c) {
 
 #define num_args(...) (num_occurances(#__VA_ARGS__, ',') + 1)
 
-/// todo: check why its calling convert on startup that shouldnt be the case
-
 #define enums(C,D,S,...)\
     struct C:ex {\
         inline static bool init;\
@@ -1674,12 +1672,13 @@ struct mx {
     using CL  = mx;
     using DC  = none;
     using MEM = mem_embed_token;
-
+    ///
     inline mx(std::string s) : mem(memory::string(s)) { }
     inline mx(cstr s)        : mem(memory::cstring(s)) { }
-
+    ///
     inline memory *grab() const { return mem->grab(); }
-    inline void    drop() const { mem->drop(); }
+    inline size   shape() const { return mem->shape;  }
+    inline void    drop() const { mem->drop();        }
 
     template <typename CL>
     static memory *alloc(CL *src = null, size_t count = 1, size_t reserve = 0, bool call_ctr = true) {

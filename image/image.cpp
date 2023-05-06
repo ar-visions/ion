@@ -22,7 +22,6 @@ bool image::save(path p) const {
     return stbi_write_png(p.cs(), w, h, 4, elements, w * 4);
 }
 
-
 /// load an image into 32bit rgba format
 image::image(path p) : array() {
     int w = 0, h = 0, c = 0;
