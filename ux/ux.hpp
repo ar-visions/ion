@@ -1068,18 +1068,14 @@ struct Vertex {
     v2f uv;   // texture uv coordinate
     v4f clr;  // color
     v3f ta;   // tangent
-    v3f bt;   // bi-tangent, we need an arb in here, or two. or ten.
+    v3f bt;   // bi-tangent
     
     /// VkAttribs (array of VkAttribute) [data] from VAttribs (state flags) [model]
     static void attribs(VAttribs attr, void *vk_attr_res);
-    
     Vertex() { }
-    ///
     Vertex(vec3f pos, vec3f norm, vec2f uv, vec4f clr, vec3f ta = {}, vec3f bt = {}):
            pos  (pos.data), norm (norm.data), uv   (uv.data),
            clr  (clr.data), ta   (ta.data),   bt   (bt.data) { }
-    
-    ///
     Vertex(vec3f &pos, vec3f &norm, vec2f &uv, vec4f &clr, vec3f &ta, vec3f &bt):
            pos  (pos.data), norm (norm.data), uv   (uv.data),
            clr  (clr.data), ta   (ta.data),   bt   (bt.data) { }
@@ -1093,6 +1089,7 @@ struct Vertex {
             Vertex {{-0.5f,  0.5f, 0.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 1.0f}, v_clr}
         };
     }
+    void calculate_tangents(Vertex *vertices, const std::vector<Face>& faces);
 };
 
 template <typename V>
