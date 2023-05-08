@@ -444,7 +444,7 @@ symbol message::code_symbol(int code) {
 ///  code is in headers.
 bool message::write_headers(sock sc) {
     mx status = "Status";
-    int  code = m.headers.count(status) ? int(m.headers[status]) : int(m.code ? m.code : 200);
+    int  code = m.headers.count(status) ? int(m.headers[status]) : (m.code ? int(m.code) : int(200));
     ///
     sc.write("HTTP/1.1 {0} {1}\r\n", { code, code_symbol(code) }); /// needs alias for code
     ///
@@ -566,7 +566,7 @@ async service(uri bind, lambda<message(message)> fn_process) {
 }
 
 /// useful utility function here for general web requests; driven by the future
-future request(uri url, map<mx> args) {
+future request1(uri url, map<mx> args) {
     return async(1, [url, args](auto p, int i) -> mx {
         map<mx> st_headers;
         mx      null_content;                   /// consider null static on var, assertions on its write by sequence on debug
@@ -615,7 +615,7 @@ future json(uri addr, map<mx> args, map<mx> headers) {
     lambda<void(mx)> success, failure;
     completer c  = { success, failure };
     ///
-    request(addr, headers).then([ success, failure ](mx d) {
+    request1(addr, headers).then([ success, failure ](mx d) {
         (d.type() == typeof(map<mx>)) ?
             success(d) : failure(d);
         ///

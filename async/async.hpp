@@ -2,7 +2,7 @@
 
 ///
 struct customer:mx {
-    customer(lambda<void(mx)> fn = lambda<void(mx)>()) : mx(alloc(&fn)) { }
+    customer(FnFuture fn = FnFuture()) : mx(alloc(&fn)) { }
     customer(const customer  &c) : mx(c.mem->grab()) { }
 };
 
@@ -23,7 +23,7 @@ struct completer:mx {
             auto &cd = ref<completer::cdata>();
             cd.completed = true;
             for (customer &s: cd.l_success)
-                s.ref<FnFuture>()(d);
+                s.ref<FnFuture>()(d);/// referencing a lambda type seems to produce a faulty F type in callable_impl heap
         };
         fn_failure   = [&](mx d) {
             auto &cd = ref<completer::cdata>();
@@ -45,9 +45,10 @@ struct future:mx {
         mutex mtx;
         if (!cd.completed) {
             mtx.lock();
-            FnFuture fn   = [mtx=&mtx] (mx) { mtx->unlock(); };
-            cd.l_success += fn;
-            cd.l_failure += fn;
+            FnFuture fn  = [mtx=&mtx] (mx) { mtx->unlock(); };
+            customer cust = fn;
+            cd.l_success.push(cust);
+            cd.l_failure.push(cust);
         }
         cd.mtx.unlock();
         mtx.lock();

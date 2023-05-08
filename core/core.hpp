@@ -38,6 +38,7 @@
 #include <vector>
 #include <unordered_map>
 #include <algorithm>
+
 #include <iterator>
 #include <new>
 #include <array>
@@ -170,7 +171,7 @@ constexpr int num_occurances(const char* cs, char c) {
         C(enum etype t =        etype::D) :ex(t, this), value(ref<enum etype>()) { if (!init) initialize(); }\
         C(str raw):C(C::convert(raw)) { }\
         C(mx  raw):C(C::convert(raw)) { }\
-        inline  operator        etype() { return value; }\
+        inline  operator etype() { return value; }\
         static doubly<memory*> &symbols() {\
             if (!init) initialize();\
             return typeof(C)->symbols->list;\
@@ -256,10 +257,10 @@ static void breakp() {
     ctr(C, B, T, A) \
     inline C(initial<arg> args) : B(typeof(C), args), A(defaults<T>()) { }
 
-#define operators(C, A) \
+#define interops(C) \
     template <typename X>\
     operator X &() {\
-        return (X &)A;\
+        return (X &)mx::data<typename C::DC>();\
     }\
 
 struct mem_ptr_token   { };
@@ -379,8 +380,7 @@ template <typename T> constexpr bool is_realistic() { return std::is_floating_po
 template <typename T> constexpr bool is_integral()  { return std::is_integral<T>(); }
 template <typename T> constexpr bool is_numeric()   {
     return std::is_integral<T>()       ||
-           std::is_floating_point<T>() ||
-           std::is_arithmetic<T>();
+           std::is_floating_point<T>();
 }
 
 template <typename A, typename B>
@@ -1270,11 +1270,15 @@ struct context_bind {
 memory *wrap_alloc(raw_t m, size_t sz);
 memory* raw_alloc(type_t ty, size_t sz);
 
+
+
+
+
 template <typename T>
-class lambda;
+class funct;
 
 template <typename R, typename... Args>
-class lambda<R(Args...)> : public shared {
+class funct<R(Args...)> : public shared {
     struct callable_base {
         virtual ~callable_base() = default;
         virtual R invoke(Args... args) const = 0;
@@ -1293,36 +1297,75 @@ class lambda<R(Args...)> : public shared {
     };
 
 public:
+    funct()                 : shared() { }
+    funct(std::nullptr_t n) : shared() { }
+    template <typename F, typename = std::enable_if_t<!std::is_same_v<std::decay_t<F>, funct>>>
+    funct(F&& f) : shared(new callable_impl<std::decay_t<F>>(std::decay_t<F>(f))) { }
+
+    R operator()(Args... args) const;
+    operator bool() const { return mem; }
+};
+
+
+template <typename T>
+class lambda;
+
+template <typename R, typename... Args>
+class lambda<R(Args...)> : public shared {
+    struct callable_base {
+        virtual ~callable_base() = default;
+        virtual R invoke(Args... args) const = 0;
+    };
+    ///
+    template <typename F>
+    class callable_impl : public callable_base {
+    private:
+        F fn;
+    public:
+        explicit callable_impl(F&& fn) : fn(std::forward<F>(fn)) { }
+        //R invoke(Args... args) const override {
+        //    return fn(std::forward<Args>(args)...); /// Called object type 'memory *' is not a function or function pointer
+        //}
+        R invoke(Args... args) const override {
+            return std::apply(fn, std::forward_as_tuple(std::forward<Args>(args)...));
+        }
+    };
+    ///
+public:
     lambda()                 : shared() { }
     lambda(std::nullptr_t n) : shared() { }
-
+    ///
     template <typename F, typename = std::enable_if_t<!std::is_same_v<std::decay_t<F>, lambda>>>
     lambda(F&& f) : shared(new callable_impl<std::decay_t<F>>(std::decay_t<F>(f))) { }
-
-    /// invoke subclassed allocation 
-    /// (a decay'd F which gets the individual identity out of lambda and makes it prototype-based)
+    
     R operator()(Args... args) const;
-
+    
     operator bool() const { return mem; }
 };
 
 template <typename T>
-struct is_lambda : std::false_type {};
+struct is_lambda : std::false_type { };
 
 template <typename R, typename... Args>
-struct is_lambda<lambda<R(Args...)>> : std::true_type {};
+struct is_lambda<lambda<R(Args...)>> : std::true_type { };
+
+template <typename T>
+struct is_functor : std::false_type { };
+
+template <typename R, typename... Args>
+struct is_functor<funct<R(Args...)>> : std::true_type { };
 
 struct lambda_table {
-    lambda<   void(type_t,void*,size_t,size_t)>       construct; /// construct over vector
-    lambda<   void(type_t,void*,size_t,size_t)>       dtr;       /// destruct over vector
-    lambda<   void(type_t,void*,void*,size_t,size_t)> cp;        /// copy-construct over vector
-    lambda<   void(void*,memory*)>        assign_mx;  /// assign operation [ destruct mx inst, re-construct with memory pointer ]
-    lambda<   void(void*,void*,bool)>     assign_tr;  /// assign operation [ destruct trivial, re-construct with src pointer ]
-    lambda<   bool(memory*)>              boolean;    /// boolean-op; if the type has no op specified, boolean this is not set.
-    lambda<    int(void*,void*)>          compare;    /// memory is always the same type, operator== in mx requires that
-    lambda<memory*(memory*)>              from_mstr;  /// 
-    lambda<memory*(memory*)>              to_mstr;    ///
-    lambda<    u64(memory*)>              hash;
+    funct<   void(type_t,void*,size_t,size_t)>       construct;  /// construct over vector
+    funct<   void(type_t,void*,size_t,size_t)>       dtr;        /// destruct over vector
+    funct<   void(type_t,void*,void*,size_t,size_t)> cp;         /// copy-construct over vector
+    funct<   void(void*,memory*)>                    assign_mx;  /// assign operation [ destruct mx inst, re-construct with memory pointer ]
+    funct<   void(void*,void*,bool)>                 assign_tr;  /// assign operation [ destruct trivial, re-construct with src pointer ]
+    funct<   bool(memory*)>                          boolean;    /// boolean-op; if the type has no op specified, boolean this is not set.
+    funct<    int(void*,void*)>                      compare;    /// memory is always the same type, operator== in mx requires that
+    funct<memory*(memory*)>                          from_mstr;  ///
+    funct<memory*(memory*)>                          to_mstr;    ///
+    funct<    u64(memory*)>                          hash;
 
     template <typename T>
     static lambda_table *set_lambdas(type_t ty);
@@ -1768,6 +1811,9 @@ struct mx {
         return mem->type == typeof(char) || (mem->type->schema && mem->type->schema->bind->data == typeof(char));
     }
 
+    /// break in here and verify the stack from time to time.
+    /// without this, you have issues with enum mx types casting to their etype.
+    /// there are many other issues too so its best to remain explicit on generic bool operator
     explicit operator bool() const {
         if (is_string())
             return (mem != null) && (mem->origin && char(*(char*)mem->origin) != 0);
@@ -4047,7 +4093,7 @@ idata *ident::for_type() {
 
     if (!type) {
         ///
-        if constexpr (type_complete<T> && is_lambda<T>()) {
+        if constexpr (type_complete<T> && is_functor<T>()) {
             memory         *mem = raw_alloc(null, sizeof(idata));
             type                = (idata*)mem_origin(mem);
             type->src           = type;
@@ -4291,8 +4337,12 @@ lambda_table *lambda_table::set_lambdas(type_t ty) {
         };
     }
     
-    if constexpr (has_operator<T, bool>() || is_primitive<T>())
-        gen.boolean = [](void* a) -> bool { return bool(*(T*)a); };
+    if constexpr (has_operator<T, bool>() || is_primitive<T>()) {
+        if constexpr (inherits<mx, T>())
+            gen.boolean = [](void* a) -> bool { return bool(*(mx*)a); };
+        else
+            gen.boolean = [](void* a) -> bool { return bool(*(T *)a); };
+    }
     
     return &gen;
 }

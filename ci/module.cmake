@@ -182,6 +182,7 @@ macro(var_finish)
     set(h_list "")
     foreach(n ${headers})
         list(APPEND h_list "${p}/${n}")
+        list(APPEND full_src "${p}/${n}")
     endforeach()
     
     set(full_includes "")
@@ -446,7 +447,7 @@ macro(create_module_targets)
                 #        BASE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/${mod}"
                 #        FILES ${h_list})
             else()
-                target_sources(${t_name} PRIVATE ${full_src})
+                target_sources(${t_name} PRIVATE ${full_src} ${h_list})
             endif()
 
         else()
@@ -487,9 +488,24 @@ macro(create_module_targets)
 
     set_target_properties(${t_name} PROPERTIES LINKER_LANGUAGE CXX)
 
+
+    if (${t_name} STREQUAL "ion-core")
+        file(GLOB cm ${p}/../ci/*.cmake)
+        add_custom_target(cmake_source SOURCES ${cm})
+    endif()
+    
     # app products
     # ------------------------
     set_compilation(${t_name} ${mod})
+
+    # accumulate resources in binary based on targets post-built
+    # ------------------------
+    if(EXISTS ${p}/res)
+        add_custom_command(
+            TARGET ${t_name} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${p}/res ${CMAKE_BINARY_DIR}/res)
+    endif()
 
     # test products
     # ------------------------

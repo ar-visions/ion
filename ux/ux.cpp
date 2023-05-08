@@ -2800,84 +2800,6 @@ str      gfx::ansi_color(rgba &c, bool text) { return str(); }
     return ::image(sz, (rgba::data*)pixels, scanline);
 }
 
-void Vertex::calculate_tangents(Vertex *vertices, const std::vector<Face>& faces) {
-    for (const auto& face : faces) {
-        size_t vertexCount = face.indices.size();
-
-        if (vertexCount < 3) {
-            continue; // Skip invalid faces
-        }
-
-        // Calculate tangent and bitangent for the first triangle in the face
-        Vertex& v0 = vertices[face.indices[0]];
-        Vertex& v1 = vertices[face.indices[1]];
-        Vertex& v2 = vertices[face.indices[2]];
-
-        glm::vec3 edge1 = v1.position - v0.position;
-        glm::vec3 edge2 = v2.position - v0.position;
-        glm::vec2 deltaUV1 = v1.uv - v0.uv;
-        glm::vec2 deltaUV2 = v2.uv - v0.uv;
-
-        float f = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y);
-
-        glm::vec3 tangent;
-        tangent.x = f * (deltaUV2.y * edge1.x - deltaUV1.y * edge2.x);
-        tangent.y = f * (deltaUV2.y * edge1.y - deltaUV1.y * edge2.y);
-        tangent.z = f * (deltaUV2.y * edge1.z - deltaUV1.y * edge2.z);
-        tangent = glm::normalize(tangent);
-
-        glm::vec3 bitangent;
-        bitangent.x = f * (-deltaUV2.x * edge1.x + deltaUV1.x * edge2.x);
-        bitangent.y = f * (-deltaUV2.x * edge1.y + deltaUV1.x * edge2.y);
-        bitangent.z = f * (-deltaUV2.x * edge1.z + deltaUV1.x * edge2.z);
-        bitangent = glm::normalize(bitangent);
-
-        v0.tangent += tangent;
-        v1.tangent += tangent;
-        v2.tangent += tangent;
-
-        v0.bitangent += bitangent;
-        v1.bitangent += bitangent;
-        v2.bitangent += bitangent;
-
-        // If the face is a quad, calculate tangent and bitangent for the second triangle
-        if (vertexCount == 4) {
-            Vertex& v3 = vertices[face.indices[3]];
-
-            edge1 = v2.position - v0.position;
-            edge2 = v3.position - v0.position;
-            deltaUV1 = v2.uv - v0.uv;
-            deltaUV2 = v3.uv - v0.uv;
-
-            f = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y);
-
-            tangent.x = f * (deltaUV2.y * edge1.x - deltaUV1.y * edge2.x);
-            tangent.y = f * (deltaUV2.y * edge1.y - deltaUV1.y * edge2.y);
-            tangent.z = f * (deltaUV2.y * edge1.z - deltaUV1.y * edge2.z);
-            tangent = glm::normalize(tangent);
-
-            bitangent.x = f * (-deltaUV2.x * edge1.x + deltaUV1.x * edge2.x);
-            bitangent.y = f * (-deltaUV2.x * edge1.y + deltaUV1.x * edge2.y);
-            bitangent.z = f * (-deltaUV2.x * edge1.z + deltaUV1.x * edge
-
-            bitangent = glm::normalize(bitangent);
-
-            v0.tangent += tangent;
-            v2.tangent += tangent;
-            v3.tangent += tangent;
-
-            v0.bitangent += bitangent;
-            v2.bitangent += bitangent;
-            v3.bitangent += bitangent;
-        }
-    }
-
-    for (auto& vertex : vertices) {
-        vertex.tangent = glm::normalize(vertex.tangent);
-        vertex.bitangent = glm::normalize(vertex.bitangent);
-    }
-}
-
 int app::run() {
     /// this was debugging a memory issue
     for (size_t i = 0; i < 100; i++) {
@@ -3195,80 +3117,47 @@ style style::for_class(symbol class_name) {
     return load(p);
 }
 
-void Vertex::calculate_tangents(Vertex *vertices, const std::vector<Face>& faces) {
-    for (const auto& face : faces) {
-        size_t vertexCount = face.indices.size();
 
-        if (vertexCount < 3) {
-            continue; // Skip invalid faces
-        }
 
-        // Calculate tangent and bitangent for the first triangle in the face
-        Vertex& v0 = vertices[face.indices[0]];
-        Vertex& v1 = vertices[face.indices[1]];
-        Vertex& v2 = vertices[face.indices[2]];
+//void Vertex::calculate_tangents(Vertices &verts, array<ngon> &faces)
 
-        glm::vec3 edge1 = v1.position - v0.position;
-        glm::vec3 edge2 = v2.position - v0.position;
-        glm::vec2 deltaUV1 = v1.uv - v0.uv;
-        glm::vec2 deltaUV2 = v2.uv - v0.uv;
+///
+void Vertex::calculate_tangents(Vertices& verts, mesh& input_mesh) {
+    for (ngon& f: input_mesh) {
+        for (u32 i = 0; i < f.size; i++) {
+            /// indices for 3 verts from face
+            u32 index1    = f.indices[i];
+            u32 index2    = f.indices[(i + 1) % f.size];
+            u32 index3    = f.indices[(i + 2) % f.size];
+            ///
+            v3f deltaPos1 = verts[index2].pos - verts[index1].pos;
+            v3f deltaPos2 = verts[index3].pos - verts[index1].pos;
+            v2f deltaUV1  = verts[index2].uv  - verts[index1].uv;
+            v2f deltaUV2  = verts[index3].uv  - verts[index1].uv;
 
-        float f = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y);
-
-        glm::vec3 tangent;
-        tangent.x = f * (deltaUV2.y * edge1.x - deltaUV1.y * edge2.x);
-        tangent.y = f * (deltaUV2.y * edge1.y - deltaUV1.y * edge2.y);
-        tangent.z = f * (deltaUV2.y * edge1.z - deltaUV1.y * edge2.z);
-        tangent = glm::normalize(tangent);
-
-        glm::vec3 bitangent;
-        bitangent.x = f * (-deltaUV2.x * edge1.x + deltaUV1.x * edge2.x);
-        bitangent.y = f * (-deltaUV2.x * edge1.y + deltaUV1.x * edge2.y);
-        bitangent.z = f * (-deltaUV2.x * edge1.z + deltaUV1.x * edge2.z);
-        bitangent = glm::normalize(bitangent);
-
-        v0.tangent += tangent;
-        v1.tangent += tangent;
-        v2.tangent += tangent;
-
-        v0.bitangent += bitangent;
-        v1.bitangent += bitangent;
-        v2.bitangent += bitangent;
-
-        // If the face is a quad, calculate tangent and bitangent for the second triangle
-        if (vertexCount == 4) {
-            Vertex& v3 = vertices[face.indices[3]];
-
-            edge1 = v2.position - v0.position;
-            edge2 = v3.position - v0.position;
-            deltaUV1 = v2.uv - v0.uv;
-            deltaUV2 = v3.uv - v0.uv;
-
-            f = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y);
-
-            tangent.x = f * (deltaUV2.y * edge1.x - deltaUV1.y * edge2.x);
-            tangent.y = f * (deltaUV2.y * edge1.y - deltaUV1.y * edge2.y);
-            tangent.z = f * (deltaUV2.y * edge1.z - deltaUV1.y * edge2.z);
-            tangent = glm::normalize(tangent);
-
-            bitangent.x = f * (-deltaUV2.x * edge1.x + deltaUV1.x * edge2.x);
-            bitangent.y = f * (-deltaUV2.x * edge1.y + deltaUV1.x * edge2.y);
-            bitangent.z = f * (-deltaUV2.x * edge1.z + deltaUV1.x * edge
-
-            bitangent = glm::normalize(bitangent);
-
-            v0.tangent += tangent;
-            v2.tangent += tangent;
-            v3.tangent += tangent;
-
-            v0.bitangent += bitangent;
-            v2.bitangent += bitangent;
-            v3.bitangent += bitangent;
+            /// set uv-weight
+            float uv_weight = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y);
+            
+            /// calc tangent and bi-tangent
+            v3f   ta {(deltaPos1 *  deltaUV2.y - deltaPos2 * deltaUV1.y) * uv_weight},
+                  bt {(deltaPos1 * -deltaUV2.x + deltaPos2 * deltaUV1.x) * uv_weight};
+            
+            /// normalize as n_ta and n_bt
+            v3f n_ta = ta.normalize();
+            v3f n_bt = bt.normalize();
+            
+            /// accumulate n_ta and n_bt across 3 verts
+            verts[index1].ta += n_ta;
+            verts[index2].ta += n_ta;
+            verts[index3].ta += n_ta;
+            verts[index1].bt += n_bt;
+            verts[index2].bt += n_bt;
+            verts[index3].bt += n_bt;
         }
     }
-
-    for (auto& vertex : vertices) {
-        vertex.tangent = glm::normalize(vertex.tangent);
-        vertex.bitangent = glm::normalize(vertex.bitangent);
+    /// compute final product
+    for (Vertex &v: verts) {
+        v.ta = v.ta.normalize();
+        v.bt = v.bt.normalize();
     }
 }

@@ -183,12 +183,6 @@ void memory::drop() {
 
 /// now we start allocating the total_size (or type->base_sz if not schema-bound (mx classes accept schema.  they say, icanfly.. imapilot))
 memory *memory::alloc(type_t type, size_t type_sz, size_t count, size_t reserve, raw_t src_origin, bool call_ctr) {
-    static int abc = 0; abc++;
-    // build times can be tracked with metrics
-    if (abc == 42) { // type_sz should not be sizeof(MX) it needs to remain typesize()
-        int test = 0;
-        test++;
-    }
     /// must specify a type_sz if there is a copy operation
     assert(!src_origin || type_sz);
 

@@ -354,6 +354,6 @@ struct message:mx {
 async service(uri bind, lambda<message(message)> fn_process);
 
 /// useful utility function here for general web requests; driven by the future
-future request(uri url, map<mx> args);
+future request1(uri url, map<mx> args);
 
 future json(uri addr, map<mx> args, map<mx> headers);

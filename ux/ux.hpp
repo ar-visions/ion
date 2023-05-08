@@ -3,6 +3,7 @@
 #include <core/core.hpp>
 #include <math/math.hpp>
 #include <async/async.hpp>
+#include <audio/audio.hpp>
 #include <image/image.hpp>
 
 struct Device;
@@ -17,6 +18,13 @@ using Image   = image;
 using strings = array<str>;
 using Assets  = map<Texture *>;
 
+/// never support 16bit indices for obvious reasons.  you do 1 cmclark section too many and there it goes
+struct ngon {
+    size_t size;
+    u32   *indices;
+};
+
+using mesh = array<ngon>;
 
 struct text_metrics:mx {
     struct data {
@@ -523,7 +531,7 @@ struct region:mx {
     
     ///
     r4<real> rect(r4<real> &win) {
-        return { m.tl.plot(win), m.br.plot(win) };
+        return r4<real> { real(m.tl.plot(win)), real(m.br.plot(win)) };
     }
 };
 
@@ -1089,8 +1097,12 @@ struct Vertex {
             Vertex {{-0.5f,  0.5f, 0.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 1.0f}, v_clr}
         };
     }
-    void calculate_tangents(Vertex *vertices, const std::vector<Face>& faces);
+    
+    void calculate_tangents(array<Vertex> &verts, array<ngon> &faces);
 };
+
+/// use this for building up data, and then it is handed to VertexBuffer
+using Vertices = array<Vertex>;
 
 template <typename V>
 struct VertexBuffer:VertexData {
@@ -1099,6 +1111,8 @@ struct VertexBuffer:VertexData {
             device, v, Buffer::Usage::Src },
             [attr=attr](void *vk_attr_res) { return V::attribs(attr, vk_attr_res); }) { }
 };
+
+mesh subdiv(const mesh& input_mesh, const array<v3f>& verts);
 
 ///
 struct Shaders {
@@ -1648,7 +1662,7 @@ struct style:mx {
 
         inline real pos(real tf) const {
             real x = math::clamp<real>(tf, 0.0, 1.0);
-            switch (data.ct) {
+            switch (style::transition::curve::etype(data.ct)) {
                 case curve::none:      x = 1.0;                    break;
                 case curve::linear:                                break; // /*x = x*/  
                 case curve::ease_in:   x = x * x * x;              break;
@@ -2074,10 +2088,6 @@ struct list_view:node {
 
 
 #pragma once
-
-#if !defined(NDEBUG)
-#include <dx/watch.hpp>
-#endif
 
 struct composer:mx {
     ///

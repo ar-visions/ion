@@ -5,15 +5,20 @@
             "name":             "ai-yt",
             "type":             "cppdbg",
             "request":          "launch",
-            "program":          "${workspaceFolder}/ion/build/ai-yt",
+            "program":          "${workspaceFolder}/../hyperspace/build/ai-yt",
             "args":             [],
             "stopAtEntry":      false,
-            "cwd":              "${workspaceFolder}/ion/ux/res",
+            "cwd":              "${workspaceFolder}/../ion/ux/res",
             "environment":      [],
             "externalConsole":  true,
             "MIMode":           "gdb",
+            "presentation": {
+                "hidden": false,
+                "group": "",
+                "order": 1,
+            },
             "preLaunchTask":    "build",
             "osx": { "MIMode":  "lldb" }
-        } 
+        }
     ]
 }

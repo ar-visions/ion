@@ -18,7 +18,7 @@
             "url":      "https://github.com/ampl/gsl",
             "commit":   "47862078af4a204c4220f028656a19ddd3922144",
             "includes": ["./"],
-            "libs":     ["./"],
+            "libs":     ["./ion-build"],
             "diff":     "gsl.diff"
         },
         {
@@ -27,7 +27,7 @@
             "url":      "https://github.com/alex85k/sqlite3-cmake",
             "commit":   "121e7d273436c5de88956f559b940b8d69cadfbe",
             "includes": ["./include"],
-            "libs":     ["./"]
+            "libs":     ["./ion-build"]
         },
         {
             "name":     "opus",
@@ -39,7 +39,7 @@
                 "path": "."
             },
             "includes": ["./include"],
-            "libs":     ["./"]
+            "libs":     ["./ion-build"]
         },
         {
             "name":     "vulkansdk",

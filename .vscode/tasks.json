@@ -8,7 +8,8 @@
 		"command": "make -j10 ai-yt",
 		"presentation": {
 		  "reveal": "silent",
-		  "panel":  "shared"
+		  "panel": "shared",
+		  "clear": true
 		}
 	  }
 	]

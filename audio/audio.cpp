@@ -17,6 +17,9 @@ struct iaudio {
     ~iaudio() { delete[] buf; }
 };
 
+/// use this to hide away the data and isolate its dependency
+ptr_impl(audio, mx, iaudio, p);
+
 audio::audio(path res, bool force_mono, int pos, size_t sz) : audio() {
     if (!p->init) {
         mp3dec_init(&p->dec);
