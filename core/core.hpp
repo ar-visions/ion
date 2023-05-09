@@ -1471,9 +1471,9 @@ public:
     static inline const size_t auto_len = UINT64_MAX;
 
     static memory *stringify(cstr cs, size_t len = auto_len, size_t rsv = 0, bool constant = false, type_t ctype = typeof(char), i64 id = 0);
-    static memory *string (std::string s);
-    static memory *cstring(cstr        s);
-    static memory *symbol (::symbol    s, type_t ty = typeof(char), i64 id = 0);
+    static memory *string   (std::string s);
+    static memory *cstring  (cstr        s);
+    static memory *symbol   (::symbol    s, type_t ty = typeof(char), i64 id = 0);
     
     ::symbol symbol() {
         return ::symbol(origin);
@@ -1864,25 +1864,44 @@ struct vec:mx {
 template <typename T>
 struct lambda;
 
+template <typename> struct is_lambda : false_type { };
+
 template <typename R, typename... Args>
 struct lambda<R(Args...)>:mx {
     using fdata = std::function<R(Args...)>;
-    fdata &fn;
     
-    ctr(lambda, mx, fdata, fn);
+    /// just so we can set it in construction
+    struct container {
+        fdata *fn;
+        ~container() {
+            delete fn;
+        }
+    } *c;
     
-    //lambda(null_t n) : lambda(fdata(null)) { }
+    ptr(lambda, mx, container, c);
     
     template <typename F>
-    lambda(F&& fn) : lambda(fdata(std::forward<F>(fn))) { }
+    lambda(F&& fn);
     
     R operator()(Args... args) const {
-        return fn(std::forward<Args>(args)...);
+        return (*c->fn)(std::forward<Args>(args)...);
     }
 };
 
-template <typename>   struct is_lambda            : false_type { };
 template <typename T> struct is_lambda<lambda<T>> : true_type  { };
+
+template <typename R, typename... Args>
+template <typename F>
+lambda<R(Args...)>::lambda(F&& fn) : mx() {
+    if constexpr (is_lambda<F>()) {
+        mx::mem = fn.mem->grab();
+        c       = (container*)mem->origin;
+    } else {
+        mx::mem = mx::alloc<container>();
+        c       = (container*)mem->origin;
+        c->fn   = new fdata(std::forward<F>(fn));
+    }
+}
 
 template <typename T>
 inline void vset(T *data, u8 bv, size_t c) {
@@ -4211,32 +4230,32 @@ lambda_table *lambda_table::set_lambdas(type_t ty) {
     } else {
         /// do this with one generic?
         if constexpr (identical<T, std::filesystem::path>()) { 
-            gen.from_mstr = lambda<memory*(memory*)>([](memory *in) -> memory* {
+            gen.from_mstr = [](memory *in) -> memory* {
                 std::filesystem::path path(symbol(in->origin));
                 return memory::alloc(typeof(std::filesystem::path), typesize(std::filesystem::path), 1, 0, &path);
-            });
-            gen.to_mstr = lambda<memory*(memory*)>([](memory* in) -> memory* {
+            };
+            gen.to_mstr = [](memory* in) -> memory* {
                 T &ref = *(T *)in;
                 std::string str = ref.string();
                 return memory::symbol(str.c_str()); /// constant!
-            });
+            };
         } else {
             constexpr bool converts_from_cstr = is_convertible<cstr, T>();
             if constexpr  (converts_from_cstr) {
                 if constexpr (is_convertible<T, memory*>()) {
-                    gen.from_mstr = lambda<memory*(memory*)>([](memory *in) -> memory* {
+                    gen.from_mstr = [](memory *in) -> memory* {
                         if constexpr (is_convertible<symbol, T>()) {
                             T     out = T(symbol(in->origin));
                             memory *m = (memory*)out;
                             return  m->grab();
                         }
                         return null;
-                    });
+                    };
                 }
             }
             constexpr bool converts_to_cstr = has_string<T>::value;//  requires(const T& t) { (memory*)t.string(); };
             if constexpr (converts_to_cstr) {
-                gen.to_mstr = lambda<memory*(memory*)>([](memory* in) -> memory* {
+                gen.to_mstr = [](memory* in) -> memory* {
                     if constexpr (inherits<mx, T>()) {
                         T   i = T(in);
                         return (memory*)i.string();
@@ -4250,7 +4269,7 @@ lambda_table *lambda_table::set_lambdas(type_t ty) {
                         }
                         return (memory*)null;
                     }
-                });
+                };
             }
         }
     }
