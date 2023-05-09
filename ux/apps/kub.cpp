@@ -6,6 +6,8 @@
 
 #define BUFFER_SIZE 1024
 
+using namespace ion;
+
 int main(void) {
     // Initialize wolfSSL
     if (wolfSSL_Init() != WOLFSSL_SUCCESS) {

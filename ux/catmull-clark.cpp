@@ -9,6 +9,8 @@
 #include <unordered_map>
 //#include <glm/glm.hpp>
 
+namespace ion {
+
 using u32   = uint32_t;
 using vpair = std::pair<int, int>;
 using face  = ngon;
@@ -150,4 +152,5 @@ int main() {
 
     mesh sdiv_mesh = subdiv(input_mesh, verts);
     // ...
+}
 }

@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <sqlite3.h>
 
+namespace ion {
 typedef int (*sql_rowfn)(void *, int, char **, char **);
 
 var SQLite::lookup(var &view, int64_t primary_key) {
@@ -298,3 +299,4 @@ void SQLite::fetch() {
         observe(model_name);
 }
 
+}

@@ -2,6 +2,8 @@
 
 #include <core/core.hpp>
 
+namespace ion {
+
 template <typename T>
 struct vector2:mx {
     using v2 = v2<T>;
@@ -455,3 +457,4 @@ using r4r   =      r4 <real>;
 using r4i   =      r4 <i32>;
 using r4d   =      r4 <r64>;
 using r4f   =      r4 <r32>;
+}

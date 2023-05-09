@@ -6,6 +6,8 @@
 #include <math/math.hpp>
 #include <image/image.hpp>
 
+namespace ion {
+
 /// load an image into 32bit rgba format
 image::image(size sz, rgba::data *px, int scanline) : array() {
     mem->shape  = new size(sz);
@@ -17,8 +19,8 @@ image::image(size sz, rgba::data *px, int scanline) : array() {
 /// save image, just png out but it could look at extensions too
 bool image::save(path p) const {
     assert(mem->shape && mem->shape->dims() == 2);
-    int w = int(width()), 
-        h = int(height());
+    int w = int(width()),
+    h = int(height());
     return stbi_write_png(p.cs(), w, h, 4, elements, w * 4);
 }
 
@@ -33,4 +35,5 @@ image::image(path p) : array() {
         mem->origin = data; /// you can set whatever you want here; its freed at end of life-cycle for memory
         elements    = data;
     }
+}
 }

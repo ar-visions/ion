@@ -4,16 +4,18 @@
 struct mp3dec_ex_t;
 #endif
 
+namespace ion {
 struct audio:mx {
 protected:
     struct iaudio *p;
 public:
     ptr_decl(audio, mx, iaudio, p);
     audio(path res, bool force_mono = false, int pos = -1, size_t sz = 0);
-    array<short>  pcm_data(); 
+    array<short>  pcm_data();
     int           channels();
     operator          bool();
     bool         operator!();
     size_t            size();
     size_t       mono_size();
 };
+}

@@ -1,11 +1,12 @@
 #include <core/core.hpp>
 
+namespace ion {
 logger console;
 
 ///
 int str::index_of(MatchType ct, symbol mp) const {
     int index = 0;
-
+    
     using Fn = func<bool(const char &)>;
     static umap<MatchType, Fn> match_table {
         { Alpha,     Fn([&](const char &c) -> bool { return  isalpha (c); }) },
@@ -15,7 +16,7 @@ int str::index_of(MatchType ct, symbol mp) const {
         { String,    Fn([&](const char &c) -> bool { return  strcmp  (&c, mp) == 0; }) },
         { CIString,  Fn([&](const char &c) -> bool { return  strcmp  (&c, mp) == 0; }) }
     };
-
+    
     /// msvc thinks its ambiguous, so i am removing this iterator from str atm.
     cstr pc = data;
     for (;;) {
@@ -33,13 +34,13 @@ int snprintf(char *str, size_t size, const char *format, ...) {
     int n;
     va_list args;
     va_start(args, format);
-
+    
 #ifdef _MSC_VER
     n = _vsnprintf_s(str, size, _TRUNCATE, format, args);
 #else
     n = vsnprintf(str, size, format, args);
 #endif
-
+    
     va_end(args);
     if (n < 0 || n >= (int)size) {
         // handle error here
@@ -63,7 +64,7 @@ i64 integer_value(memory *mem) {
 }
 
 memory *drop(memory *mem) {
-    if (mem) mem->drop(); 
+    if (mem) mem->drop();
     return mem;
 }
 
@@ -74,20 +75,20 @@ memory *grab(memory *mem) {
 
 i64 millis() {
     return i64(
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count()
-    );
+               std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                                     std::chrono::system_clock::now().time_since_epoch()).count()
+               );
 }
 
 /// attach arbs to memory (uses a pointer)
-attachment *memory::attach(::symbol id, void *data, func<void()> release) {
+attachment *memory::attach(ion::symbol id, void *data, func<void()> release) {
     if (!atts)
         atts = new doubly<attachment>();
     atts->push(attachment {id, data, release});
     return &atts->last();
 }
 
-attachment *memory::find_attachment(::symbol id) {
+attachment *memory::find_attachment(ion::symbol id) {
     if (!atts) return nullptr;
     /// const char * symbol should work fine for the cases used
     for (attachment &att:*atts)
@@ -97,7 +98,7 @@ attachment *memory::find_attachment(::symbol id) {
 }
 
 memory *memory::stringify(cstr cs, size_t len, size_t rsv, bool constant, type_t ctype, i64 id) {
-    ::symbol sym = (::symbol)(cs ? cs : "");
+    ion::symbol sym = (ion::symbol)(cs ? cs : "");
     if (constant) {
         if(!ctype->symbols)
             ctype->symbols = new symbol_data { };
@@ -118,14 +119,14 @@ memory *memory::stringify(cstr cs, size_t len, size_t rsv, bool constant, type_t
         memory*   mem = memory::alloc(typeof(char), typesize(char), ln, al, raw_t(sym));
         cstr  start   = mem->data<char>(0);
         start[ln]     = 0;
-        return mem; 
+        return mem;
     }
 }
 
 memory *memory::string (std::string s) { return stringify(cstr(s.c_str()), s.length(), 0, false, typeof(char), 0); }
 memory *memory::cstring(cstr s)        { return stringify(cstr(s),         strlen(s),  0, false, typeof(char), 0); }
 
-memory *memory::symbol (::symbol s, type_t ty, i64 id) {
+memory *memory::symbol (ion::symbol s, type_t ty, i64 id) {
     return stringify(cstr(s), strlen(s), 0, true, ty, id);
 }
 
@@ -185,18 +186,18 @@ void memory::drop() {
 memory *memory::alloc(type_t type, size_t type_sz, size_t count, size_t reserve, raw_t src_origin, bool call_ctr) {
     /// must specify a type_sz if there is a copy operation
     assert(!src_origin || type_sz);
-
+    
     /// requirement: array of mx is just array of memory*
     /// mx = memory* size
     if (type_sz == 0)
         type_sz = type->schema ? type->schema->total_bytes : type->base_sz;
     
     memory  *mem  = null;
-
+    
     /// singletons are fun as 1:1 class-instanced data
     bool singleton = type->traits & traits::singleton;
     if  (singleton && type->singleton) return type->singleton->grab();
-
+    
     /// memory::alloc with a type of mx has no data-type payload
     /// when doing default allocation of mx, this mx type arg is passed and routes to m_null
     /// there isnt much of a point to allocate multiple stateless objects however there could be attrib differences
@@ -207,7 +208,7 @@ memory *memory::alloc(type_t type, size_t type_sz, size_t count, size_t reserve,
     } else {
         mem = raw_alloc(type, type_sz, count, reserve);
     }
-
+    
     /// if allocating a schema-based object (mx being first user of this)
     if (type->schema && type->schema->total_bytes) {
         assert(type_sz == type->schema->total_bytes);
@@ -259,15 +260,15 @@ size &size::operator=(const size b) {
 
 
 void chdir(std::string c) {
-    #if defined(_WIN32)
+#if defined(_WIN32)
     // replace w global for both cases; its not worth it
     //SetCurrentDirectory(c.c_str());
-    #else
+#else
     ::chdir(c.c_str());
-    #endif
+#endif
 }
 
-memory* mem_symbol(::symbol cs, type_t ty, i64 id) {
+memory* mem_symbol(ion::symbol cs, type_t ty, i64 id) {
     return memory::symbol(cs, ty, id);
 }
 
@@ -299,3 +300,4 @@ shared::~shared() {
 }
 
 shared::shared(const shared &ref) : ident(((shared &)ref).grab()) { }
+}

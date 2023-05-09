@@ -1,5 +1,12 @@
 #pragma once
 
+struct WOLFSSL_CTX;
+struct WOLFSSL;
+struct WOLFSSL_METHOD;
+struct sockaddr_in;
+
+namespace ion {
+
 enums(method, undefined, 
    "undefined, response, get, post, put, delete",
     undefined, response, get, post, put, del);
@@ -204,11 +211,6 @@ public:
     }
 };
 
-struct WOLFSSL_CTX;
-struct WOLFSSL;
-struct WOLFSSL_METHOD;
-struct sockaddr_in;
-
 struct sock:mx {
     ///
     struct intern_t {
@@ -354,6 +356,7 @@ struct message:mx {
 async service(uri bind, lambda<message(message)> fn_process);
 
 /// useful utility function here for general web requests; driven by the future
-future request1(uri url, map<mx> args);
+future request(uri url, map<mx> args);
 
 future json(uri addr, map<mx> args, map<mx> headers);
+}

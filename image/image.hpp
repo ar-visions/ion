@@ -1,5 +1,7 @@
 #pragma once
 
+namespace ion {
+
 template <typename T>
 struct color:vec<T, 4> {
     using  base = vec<T,4>;
@@ -157,3 +159,4 @@ struct image:array<rgba::data> {
         return elements[index];
     }
 };
+}

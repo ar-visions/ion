@@ -15,6 +15,8 @@
 ///
 #include <errno.h>
 
+namespace ion {
+
 sock::sock(role r, uri bind) : sock() {
     /// if its release it must be secure
     symbol pers = "mx:net";
@@ -29,13 +31,13 @@ sock::sock(role r, uri bind) : sock() {
         }
 #endif
         wolf = true; /// wolves should always be true
-        wolfSSL_Init(); 
+        wolfSSL_Init();
     }
-
+    
     /// set method based on role
     const bool is_server = (r == role::server);
     i.method = is_server ? wolfTLSv1_2_server_method() : wolfTLSv1_2_client_method();
-
+    
     /// create ctx based on method
     if ((i.ctx = wolfSSL_CTX_new(i.method)) == NULL)
         err_sys("wolfSSL_CTX_new error");
@@ -44,14 +46,14 @@ sock::sock(role r, uri bind) : sock() {
     str rtype = is_server ? "server" : "client";
     str cert  = str::format("certs/{0}-cert.pem", { rtype });
     str key   = str::format("certs/{0}-key.pem",  { rtype });
-
+    
     /// load cert (public)
     if (wolfSSL_CTX_use_certificate_file(i.ctx, cert.cs(), SSL_FILETYPE_PEM) != SSL_SUCCESS)
         console.fault("error loading {0}", { cert });
     /// load key (private)
     if (wolfSSL_CTX_use_PrivateKey_file (i.ctx, key.cs(),  SSL_FILETYPE_PEM) != SSL_SUCCESS)
         console.fault("error loading {0}", { key });
-
+    
     size_t addr_sz       = sizeof(sockaddr_in);
     uint16_t  port       = (uint16_t)bind.port();
     str   &ip_addr       = bind.host(); /// todo: convert if not address
@@ -60,9 +62,9 @@ sock::sock(role r, uri bind) : sock() {
     i.bound              = (sockaddr_in*)calloc(1, sizeof(sockaddr_in));
     i.bound->sin_family  = AF_INET;
     i.bound->sin_port    = htons(port);
-   //i.bound->sin_len    = 4;
+    //i.bound->sin_len    = 4;
     inet_pton(AF_INET, ip_addr.cs(), &i.bound->sin_addr);
-
+    
     /// if this is a server, block until a new connection arrives
     if (is_server) {
         printf("listening on %d\n", int(port));
@@ -89,14 +91,14 @@ void sock::set_timeout(i64 t) {
 
 sock sock::accept() {
     sock      sc = i;
-
+    
 #ifdef _WIN32
     using socklen_t = int;
     sc.i.bound->sin_addr.S_un.S_addr = INADDR_ANY;
 #else
     sc.i.bound->sin_addr.s_addr = INADDR_ANY;
 #endif
-
+    
     socklen_t addr_sz = sizeof(sockaddr_in);
     sc.i.sock_fd = ::accept(i.sock_fd, (sockaddr*)&sc.i.bound, &addr_sz);
     printf("accepted: %i\n", sc.i.sock_fd);
@@ -109,7 +111,7 @@ sock &sock::establish() {
         /// create wolf-ssl object
         if ((i.ssl = wolfSSL_new(i.ctx)) == NULL)
             err_sys("wolfSSL_new error");
-
+        
         wolfSSL_set_fd(i.ssl, i.sock_fd);
         i.connected = true;
     } else {
@@ -205,15 +207,15 @@ sock sock::connect(uri u) {
 async sock::listen(uri url, lambda<bool(sock&)> fn) {
     return async(1, [&, url, fn](runtime &rt, int i) -> mx {
         uri bind = url.methodize(method::get);
-
+        
         /// proceed if https; that is our protocol and we know nothing else
         assert(bind.proto() == "https");
-
+        
         int      port = bind.port();
         str host_name = bind.host();
         console.log("(net) listen on: {0}:{1}", { host_name, port });
         sock server { role::server, bind };
-
+        
         /// loop around grabbing anyone who comes-a-waltzing
         while (sock client = server.accept()) {
             /// spawn thread for the given callback -- this lets us accept again right away, on this thread
@@ -392,13 +394,13 @@ bool message::read_content(sock sc) {
 message message::query(uri server, map<mx> headers, mx content) {
     /// default state
     message m;
-
+    
     /// acquire members, and set
     message::members& q = m;
     q.query   = { server, method::get };
     q.headers = headers;
     q.content = content;
-
+    
     /// return state
     return m;
 }
@@ -418,8 +420,8 @@ message::operator bool() {
     type_t ct = m.code.type();
     assert(ct == typeof(i32) || ct == typeof(str));
     return (m.query.mtype() != method::undefined) &&
-            ((ct == typeof(i32) && int(m.code) >= 200 && int(m.code) < 300) ||
-                (ct == typeof(str) && m.code.byte_len()));
+    ((ct == typeof(i32) && int(m.code) >= 200 && int(m.code) < 300) ||
+     (ct == typeof(str) && m.code.byte_len()));
 }
 
 bool message::operator!() { return !(operator bool()); }
@@ -449,14 +451,14 @@ bool message::write_headers(sock sc) {
     sc.write("HTTP/1.1 {0} {1}\r\n", { code, code_symbol(code) }); /// needs alias for code
     ///
     for (auto &[v, k]: m.headers) { /// mx key, mx value
-        /// check if header is valid data; holding ref to mx 
-        /// requires one to defer valid population of a 
+        /// check if header is valid data; holding ref to mx
+        /// requires one to defer valid population of a
         /// resulting header injected by query
         if (k == "Status" || !printable_value(v))
             continue;
-
+        
         console.log("{0}: {1}", { k, v });
-
+        
         ///
         if (!sc.write("{0}: {1}", { k, v }))
             return false;
@@ -474,11 +476,11 @@ bool message::write(sock sc) {
     if (m.content) {
         type_t ct = m.content.type();
         /// map of mx must be json compatible, or be structured in that process
-        if (!m.headers.count("Content-Type") && (ct == typeof(map<mx>) || ct == typeof(array<mx>))) 
+        if (!m.headers.count("Content-Type") && (ct == typeof(map<mx>) || ct == typeof(array<mx>)))
             m.headers["Content-Type"] = "application/json";
         ///
         m.headers["Connection"] = "keep-alive";
-
+        
         /// do different things based on type
         if (m.headers.count("Content-Type") && m.headers["Content-Type"] == "application/json") {
             /// json transfer; content can be anything, its just mx..
@@ -551,7 +553,7 @@ async service(uri bind, lambda<message(message)> fn_process) {
             if (!msg) break;
             
             /// its 2 chars off because read_until stops at the phrase
-            uri req_uri = uri::parse(str(msg.data(), int(msg.len() - 2))); 
+            uri req_uri = uri::parse(str(msg.data(), int(msg.len() - 2)));
             ///
             if (req_uri) {
                 console.log("request: {0}", { req_uri.resource() });
@@ -566,7 +568,7 @@ async service(uri bind, lambda<message(message)> fn_process) {
 }
 
 /// useful utility function here for general web requests; driven by the future
-future request1(uri url, map<mx> args) {
+future request(uri url, map<mx> args) {
     return async(1, [url, args](auto p, int i) -> mx {
         map<mx> st_headers;
         mx      null_content;                   /// consider null static on var, assertions on its write by sequence on debug
@@ -581,7 +583,7 @@ future request1(uri url, map<mx> args) {
         console.log("(net) request: {0}", { query.string() });
         sock client = sock { sock::client, query };
         if (!client) return { };
-
+        
         /// start request
         client.write("{0} {1} HTTP/1.1\r\n", {
             query.mtype().name(), client.query().string() });
@@ -597,7 +599,7 @@ future request1(uri url, map<mx> args) {
         
         for (auto &d: defs)
             if (!headers(d.key))
-                 headers[d.key] = d.value;
+                headers[d.key] = d.value;
         
         message request { query, headers, content }; /// best to handle post creation within message
         request.write(client);
@@ -615,9 +617,9 @@ future json(uri addr, map<mx> args, map<mx> headers) {
     lambda<void(mx)> success, failure;
     completer c  = { success, failure };
     ///
-    request1(addr, headers).then([ success, failure ](mx d) {
+    request(addr, headers).then([ success, failure ](mx d) {
         (d.type() == typeof(map<mx>)) ?
-            success(d) : failure(d);
+        success(d) : failure(d);
         ///
     }).except([ failure ](mx d) {
         failure(d);
@@ -626,15 +628,4 @@ future json(uri addr, map<mx> args, map<mx> headers) {
     return future(c);
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
+}

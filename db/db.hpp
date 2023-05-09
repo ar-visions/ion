@@ -1,5 +1,7 @@
 #pragma once
 
+namespace ion {
+
 typedef map<str, var> Schema;
 typedef map<str, var> SMap;
 typedef array<var>     Table;
@@ -80,3 +82,4 @@ struct SQLite:Adapter {
     void resolve(str table_name);
     void observe(str table_name);
 };
+}

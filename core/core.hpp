@@ -1,7 +1,5 @@
 #pragma once
 
-/// pch info here:
-/// --------------------------
 #pragma warning(disable:4005) /// skia
 #pragma warning(disable:4566) /// escape sequences in canvas
 #pragma warning(disable:5050) ///
@@ -38,7 +36,6 @@
 #include <vector>
 #include <unordered_map>
 #include <algorithm>
-
 #include <iterator>
 #include <new>
 #include <array>
@@ -48,7 +45,13 @@
 #include <utility>
 #include <type_traits>
 
+#ifdef __APPLE__
+#include <unistd.h>
+#endif
+
 #include <assert.h>
+
+namespace ion {
 
 struct idata;
 struct mx;
@@ -430,28 +433,26 @@ constexpr bool is_mx() {
 ///
 memory*       grab(memory *mem);
 memory*       drop(memory *mem);
-memory* mem_symbol(::symbol cs, type_t ty, i64 id);
+memory* mem_symbol(symbol cs, type_t ty, i64 id);
 memory*  raw_alloc(idata *ty, size_t sz);
 void*   mem_origin(memory *mem);
 memory*    cstring(cstr cs, size_t len, size_t reserve, bool is_constant);
 
 static inline void yield() {
 #ifdef _WIN32
-    Sleep(0);
+    SwitchToThread(); // turns out you can. lol.
 #else
     sched_yield();
 #endif
 }
 
-static inline void usleep(u64 u) {
+static inline void sleep(u64 u) {
     #ifdef _WIN32
-        Sleep(u / 1000); 
+        Sleep(u);
     #else
-        ::usleep(u);
+        usleep(useconds_t(u));
     #endif
 }
-
-void usleep(u64 u);
 
 struct traits {
     enum bit {
@@ -1180,7 +1181,7 @@ struct shared:ident {
 
 using any = shared;
 
-memory *mem_symbol(::symbol cs, type_t ty = typeof(char), i64 id = 0);
+memory *mem_symbol(symbol cs, type_t ty = typeof(char), i64 id = 0);
 
 /// now that we have allowed for any, make entry for meta description
 struct prop {
@@ -1473,10 +1474,10 @@ public:
     static memory *stringify(cstr cs, size_t len = auto_len, size_t rsv = 0, bool constant = false, type_t ctype = typeof(char), i64 id = 0);
     static memory *string   (std::string s);
     static memory *cstring  (cstr        s);
-    static memory *symbol   (::symbol    s, type_t ty = typeof(char), i64 id = 0);
+    static memory *symbol   (ion::symbol s, type_t ty = typeof(char), i64 id = 0);
     
-    ::symbol symbol() {
-        return ::symbol(origin);
+    ion::symbol symbol() {
+        return ion::symbol(origin);
     }
 
     /// src is assumed to be same sz & count
@@ -1484,9 +1485,9 @@ public:
 
     memory();
 
-    operator ::symbol &() {
+    operator ion::symbol &() {
         assert(attrs & constant);
-        return *(::symbol*)&origin;
+        return *(ion::symbol*)&origin;
     }
 
     memory *copy(size_t reserve = 0);
@@ -1604,7 +1605,7 @@ struct rand {
 
 using arg = pair<mx, mx>;
 using ax  = doubly<arg>;
-using px  = doubly<prop>;
+
 struct size;
 
 struct mx {
@@ -1636,7 +1637,8 @@ struct mx {
         return mem->attach(id, data, release);
     }
 
-    px       meta()       { return { }; }
+    doubly<prop> meta() { return { }; }
+    
     bool is_const() const { return mem->attrs & memory::constant; }
 
     prop *lookup(cstr cs) { return lookup(mx(mem_symbol(cs))); }
@@ -1886,6 +1888,10 @@ struct lambda<R(Args...)>:mx {
     R operator()(Args... args) const {
         return (*c->fn)(std::forward<Args>(args)...);
     }
+    
+    operator bool() {
+        return c && c->fn && *c->fn;
+    }
 };
 
 template <typename T> struct is_lambda<lambda<T>> : true_type  { };
@@ -1893,7 +1899,7 @@ template <typename T> struct is_lambda<lambda<T>> : true_type  { };
 template <typename R, typename... Args>
 template <typename F>
 lambda<R(Args...)>::lambda(F&& fn) : mx() {
-    if constexpr (is_lambda<F>()) {
+    if constexpr (is_lambda<std::remove_reference_t<F>>::value) {
         mx::mem = fn.mem->grab();
         c       = (container*)mem->origin;
     } else {
@@ -2781,12 +2787,12 @@ struct str:mx {
     int index_of(MatchType ct, symbol mp = null) const;
 
     i64 integer_value() const {
-        return ::integer_value(mx::mem);
+        return ion::integer_value(mx::mem);
     }
 
     template <typename T>
     T real_value() const {
-        return T(::real_value<T>(mx::mem));
+        return T(ion::real_value<T>(mx::mem));
     }
 
     bool has_prefix(str i) const {
@@ -4011,7 +4017,7 @@ struct sp:mx {
 };
 
 void chdir(std::string c);
-memory* mem_symbol(::symbol cs, type_t ty, i64 id);
+memory* mem_symbol(ion::symbol cs, type_t ty, i64 id);
 memory* raw_alloc(idata *ty, size_t sz);
 void *mem_origin(memory *mem);
 memory *cstring(cstr cs, size_t len, size_t reserve, bool is_constant);
@@ -4055,7 +4061,7 @@ idata *ident::for_type() {
             type->base_sz       = sizeof(T);
             type->lambdas       = lambda_table::set_lambdas<T>(type);
         } else {
-            bool is_mx = ::is_mx<T>();
+            bool is_mx = ion::is_mx<T>();
             ///
                  if constexpr (std::is_const    <T>::value) return ident::for_type<std::remove_const_t    <T>>();
             else if constexpr (std::is_reference<T>::value) return ident::for_type<std::remove_reference_t<T>>();
@@ -4076,7 +4082,7 @@ idata *ident::for_type() {
                 //type->defaults = memory::alloc(type);
                 /// including mx in vector because schema could be used by other bases
                 /// would be nice to implement in mx::read_schema<T>(type, (T*)null)
-                if constexpr (inherits<::mx, T>()) {
+                if constexpr (inherits<ion::mx, T>()) {
                     type->schema = (alloc_schema*)calloc(1, sizeof(alloc_schema) * 16);
                     alloc_schema &schema = *type->schema;
                     
@@ -4276,12 +4282,12 @@ lambda_table *lambda_table::set_lambdas(type_t ty) {
 
     ///
     if constexpr (!is_opaque<T>()) {
-        if constexpr (is_convertible<T, ::hash>()) {
-            gen.hash = [](memory* in) -> ::hash {
+        if constexpr (is_convertible<T, ion::hash>()) {
+            gen.hash = [](memory* in) -> ion::hash {
                 return u64(in->ref<T>());
             };
         } else if constexpr (identical<T, char>()) {
-            gen.hash = [](memory* in) -> ::hash {
+            gen.hash = [](memory* in) -> ion::hash {
                 return djb2(in->data<char>(0));
             };
         }
@@ -4465,3 +4471,4 @@ T *shared::operator=(T *ptr) {
 template <typename T>
 T *shared::get() { return (T *)mem->origin; }
 
+}

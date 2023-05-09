@@ -10,6 +10,8 @@
 #define SAMPLE_RATE          48000
 #define CHANNELS             2
 
+using namespace ion;
+
 ///
 int main(int argc, cstr argv[]) {
     if (argc != 2) {

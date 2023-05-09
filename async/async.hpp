@@ -1,5 +1,6 @@
 #pragma once
 
+namespace ion {
 ///
 struct customer:mx {
     customer(FnFuture fn = FnFuture()) : mx(alloc(&fn)) { }
@@ -174,7 +175,7 @@ public:
 
         /// wait for job set to complete
         for (; state.done != state.count;)
-            usleep(1);
+            yield();
     }
 
     ///
@@ -229,3 +230,4 @@ struct sync:async {
     operator array<T>() { return     async::sync();     }
     operator      int() { return int(async::sync()[0]); }
 };
+}

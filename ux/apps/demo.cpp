@@ -4,6 +4,8 @@
 #include <async/async.hpp>
 #include <ux/ux.hpp>
 
+using namespace ion;
+
 struct view:node {
     struct props {
         int sample;

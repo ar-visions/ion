@@ -8,6 +8,7 @@
 #include <core/core.hpp>
 #include <audio/audio.hpp>
 
+namespace ion {
 struct iaudio {
     bool           init;
     mp3dec_t       dec;
@@ -65,3 +66,4 @@ audio::operator          bool() { return  p->sz; }
 bool         audio::operator!() { return !p->sz; }
 size_t            audio::size() { return  p->sz; }
 size_t       audio::mono_size() { return  p->sz / p->api.info.channels; }
+}

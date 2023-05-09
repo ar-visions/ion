@@ -1,18 +1,19 @@
 #include <core/core.hpp>
 #include <async/async.hpp>
 
+namespace ion {
 async::async() { }
 
 ///
 async::async(size_t count, FnProcess fn) : async() {
     ///
     std::unique_lock<std::mutex> lock(process::mtx_list);
-
+    
     /// create empty results [dynamic] vector [we need to couple the count into process, or perhaps bring it into async]
     d.proc      = process { count, fn };
     runtime &ps = d.proc.state;
     ps.handle   = d.proc.mem->grab();
-
+    
     /// measure d.proc.rt address here
     if (count <= 0) {
         lock.unlock();
@@ -37,7 +38,7 @@ async::async(size_t count, FnProcess fn) : async() {
 async::async(path exec) : async(1, [&](runtime &proc, int i) -> mx {
     return int(std::system(exec.cs()));
 }) { }
-    
+
 async::async(lambda<mx(runtime &, int)> fn) : async(1, fn) {}
 
 array<mx> &async::sync() {
@@ -49,7 +50,7 @@ array<mx> &async::sync() {
             break;
         }
         d.mtx.unlock();
-        usleep(10);
+        yield();
     }
     d.results = d.proc.state.results;
     return d.results;
@@ -60,11 +61,11 @@ int async::await() {
     for (;;) {
         process::mtx_global.lock();
         if (!process::procs.len()) {
-                process::mtx_global.unlock();
-                break;
+            process::mtx_global.unlock();
+            break;
         }
         process::mtx_global.unlock();
-        usleep(1000);
+        sleep(u64(1000));
     }
     process::th_manager.join();
     return process::exit_code;
@@ -79,4 +80,5 @@ async::operator future() {
     d.proc.state.on_done     = [s, f](mx v) { s(v); };
     d.proc.state.on_failure  = [s, f](mx v) { f(v); };
     return future(c);
+}
 }

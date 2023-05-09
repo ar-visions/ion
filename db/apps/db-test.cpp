@@ -1,5 +1,7 @@
 #include <db/db.hpp>
 
+using namespace ion;
+
 /// implicit data-binding used here
 int main(int argc, char **argv) {
     /// define models

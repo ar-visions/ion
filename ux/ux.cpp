@@ -17,6 +17,7 @@
 #include <vkh.h>
 #include <vulkan/vulkan.h>
 
+namespace ion {
 
 template <> struct is_opaque<VkImageView>       : true_type { };
 template <> struct is_opaque<VkPhysicalDevice>  : true_type { };
@@ -213,7 +214,7 @@ void window::repaint() {
 
 }
 
-::size window::size() { return w->sz; }
+size window::size() { return w->sz; }
 
 vec2 window::cursor() {
     v2<real> result { 0, 0 };
@@ -753,7 +754,7 @@ void terminal::draw_state_change(draw_state &ds, cbase::state_change type) {
     }
 }
 
-terminal::terminal(::size sz) : terminal()  {
+terminal::terminal(ion::size sz) : terminal()  {
     m.size    = sz;
     m.pixel_t = typeof(char);  
     size_t n_chars = sz.area();
@@ -766,7 +767,7 @@ void *terminal::data() { return t.glyphs.data(); }
 
 void terminal::set_char(int x, int y, glyph gl) {
     draw_state &ds = *t.ds;
-    ::size sz = cbase::size();
+    ion::size sz = cbase::size();
     if (x < 0 || x >= sz[1]) return;
     if (y < 0 || y >= sz[0]) return;
     //assert(!ds.clip || sk_vshape_is_rect(ds.clip));
@@ -793,7 +794,7 @@ void terminal::set_char(int x, int y, glyph gl) {
 // gets the effective character, including bordering
 str terminal::get_char(int x, int y) {
     cbase::draw_state &ds = *t.ds;
-    ::size        &sz = m.size;
+    ion::size   &sz = m.size;
     size_t       ix = math::clamp<size_t>(x, 0, sz[1] - 1);
     size_t       iy = math::clamp<size_t>(y, 0, sz[0] - 1);
     str       blank = " ";
@@ -837,7 +838,7 @@ str terminal::get_char(int x, int y) {
 
 void terminal::text(str s, graphics::shape vrect, alignment::data &align, vec2 voffset, bool ellip) {
     r4<real>    rect   =  vrect.bounds();
-    ::size       &sz   =  cbase::size();
+    ion::size    &sz   =  cbase::size();
     v2<real>   &offset =  voffset;
     draw_state &ds     = *t.ds;
     int         len    =  int(s.len());
@@ -906,7 +907,7 @@ void terminal::outline(graphics::shape sh) {
 
 void terminal::fill(graphics::shape sh) {
     draw_state &ds = *t.ds;
-    ::size       &sz = cbase::size();
+    ion::size  &sz = cbase::size();
     int         sx = sz[1];
     int         sy = sz[0];
     if (ds.color) {
@@ -2307,7 +2308,7 @@ Internal &Internal::bootstrap() {
 
 /// cleaning up the vk_instance / internal stuff now
 Texture &window::texture() { return *w->tx_skia; }
-Texture &window::texture(::size sz) {
+Texture &window::texture(ion::size sz) {
     if (w->tx_skia) {
         delete w->tx_skia;
     }
@@ -2486,7 +2487,7 @@ struct gfx_memory {
 
 ptr_impl(gfx, cbase, gfx_memory, g);
 
-gfx::gfx(::window &win) : gfx(new gfx_memory { }) {
+gfx::gfx(ion::window &win) : gfx(new gfx_memory { }) {
     vk_interface vk; /// verify vulkan instanced prior
     g->win = &win;    /// should just set window without pointer
     m.size = win.w->sz;
@@ -2509,7 +2510,7 @@ gfx::gfx(::window &win) : gfx(new gfx_memory { }) {
         vk_inst, *device, *device,
         family_index, queue_index, VK_SAMPLE_COUNT_8_BIT, false);
     g->vkh_device      = vkh_device_import(vk.instance(), *device, *device); // use win instead of vk.
-    g->vkh_image       = vkh_image_import(g->vkh_device, tmem->vk_image, tmem->format, tmem->sz[1], tmem->sz[0]);
+    g->vkh_image       = vkh_image_import(g->vkh_device, tmem->vk_image, tmem->format, u32(tmem->sz[1]), u32(tmem->sz[0]));
 
     vkh_image_create_view(g->vkh_image, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT); // VK_IMAGE_ASPECT_COLOR_BIT questionable bit
     g->vg_surface       = vkvg_surface_create_for_VkhImage(g->vg_device, (void*)g->vkh_image);
@@ -2518,7 +2519,7 @@ gfx::gfx(::window &win) : gfx(new gfx_memory { }) {
     defaults();
 }
 
-window::window(::size sz, mode::etype wmode, memory *control) : window() {
+window::window(ion::size sz, mode::etype wmode, memory *control) : window() {
     /*
     static bool is_init = false;
     if(!is_init) {
@@ -2596,8 +2597,8 @@ void vkvg_path(VkvgContext ctx, memory *mem) {
     }
 }
 
-::window &gfx::window() { return *g->win; }
-Device   &gfx::device() { return *g->win->w->dev; }
+window &gfx::window() { return *g->win; }
+Device &gfx::device() { return *g->win->w->dev; }
 
 /// Quake2: { computer. updated. }
 void gfx::draw_state_change(draw_state *ds, cbase::state_change type) {
@@ -2658,7 +2659,7 @@ void gfx::draw_ellipsis(str text, real w) {
         vkvg_show_text(g->ctx, (symbol)draw.cs());
 }
 
-void gfx::image(::image img, graphics::shape sh, vec2 align, vec2 offset, vec2 source) {
+void gfx::image(ion::image img, graphics::shape sh, vec2 align, vec2 offset, vec2 source) {
     attachment *att = img.find_attachment("vg-surf");
     if (!att) {
         VkvgSurface surf = vkvg_surface_create_from_bitmap(
@@ -2670,7 +2671,7 @@ void gfx::image(::image img, graphics::shape sh, vec2 align, vec2 offset, vec2 s
     }
     VkvgSurface surf = (VkvgSurface)att->data;
     draw_state   &ds = *g->ds;
-    ::size        sz = img.shape();
+    ion::size     sz = img.shape();
     r4r           &r = sh.rect();
     assert(surf);
     vkvg_set_source_rgba(g->ctx,
@@ -2767,7 +2768,7 @@ void gfx::clear(rgba c) {
     vkvg_restore        (g->ctx);
 }
 
-void gfx::font(::font f) {
+void gfx::font(ion::font f) {
     vkvg_select_font_face(g->ctx, f->alias.cs());
     vkvg_set_font_size   (g->ctx, f->sz);
 }
@@ -2794,10 +2795,10 @@ void*    gfx::data      ()                   { return null; }
 str      gfx::get_char  (int x, int y)       { return str(); }
 str      gfx::ansi_color(rgba &c, bool text) { return str(); }
 
-::image  gfx::resample  (::size sz, real deg, graphics::shape view, vec2 axis) {
+ion::image gfx::resample(ion::size sz, real deg, graphics::shape view, vec2 axis) {
     c4<u8> *pixels = null;
     int scanline = 0;
-    return ::image(sz, (rgba::data*)pixels, scanline);
+    return ion::image(sz, (rgba::data*)pixels, scanline);
 }
 
 int app::run() {
@@ -3160,4 +3161,5 @@ void Vertex::calculate_tangents(Vertices& verts, mesh& input_mesh) {
         v.ta = v.ta.normalize();
         v.bt = v.bt.normalize();
     }
+}
 }

@@ -6,9 +6,14 @@
 #include <audio/audio.hpp>
 #include <image/image.hpp>
 
+struct GLFWwindow;
+struct VkWriteDescriptorSet;
+//struct VkDescriptorSet;
+
+namespace ion {
+
 struct Device;
 struct Texture;
-struct GLFWwindow;
 struct Texture;
 struct BufferMemory;
 struct GPU;
@@ -808,7 +813,7 @@ struct window:mx {
 
     Device   *device();
     Texture  &texture();
-    Texture  &texture(::size sz);
+    Texture  &texture(size sz);
     
     void loop(lambda<void()> fn);
 
@@ -825,7 +830,7 @@ struct window:mx {
     void show();
     void hide();
     void start();
-  ::size size();
+    size size();
     void repaint();
     operator bool();
 };
@@ -898,9 +903,6 @@ enums(VA, Position,
      Position, Normal, UV, Color, Tangent, BiTangent);
 
 using VAttribs = states<VA>;
-
-struct VkWriteDescriptorSet;
-//struct VkDescriptorSet;
 
 struct TextureMemory;
 struct StageData;
@@ -1167,7 +1169,7 @@ extern Assets cache_assets(str model, str skin, states<Asset> &atypes);
 template <typename V>
 struct Model:Pipes {
     struct Polys {
-        ::map<array<int32_t>> groups;
+        ion::map<array<int32_t>> groups;
         array<V> verts;
     };
     
@@ -1285,7 +1287,7 @@ struct cbase:mx {
     }
 
     public:
-  ::size &size() { return m.size; }
+    size &size() { return m.size; }
 
     virtual void    outline(graphics::shape) { }
     virtual void       fill(graphics::shape) { }
@@ -1295,16 +1297,16 @@ struct cbase:mx {
     }
 
     virtual void      flush() { }
-    virtual void       text(str, graphics::shape, vec2, vec2, bool) { }
-    virtual void      image(::image, graphics::shape, vec2, vec2)   { }
-    virtual void    texture(::image)           { }
+    virtual void       text(str, graphics::shape, vec2, vec2, bool)  { }
+    virtual void      image(ion::image, graphics::shape, vec2, vec2) { }
+    virtual void    texture(ion::image)        { }
     virtual void      clear()                  { }
     virtual void      clear(rgba)              { }
     virtual tm_t    measure(str s)               { assert(false); return {}; }
     virtual void        cap(graphics::cap   cap) { cur().cap     = cap;      }
     virtual void       join(graphics::join join) { cur().join    = join;     }
     virtual void    opacity(real        opacity) { cur().opacity = opacity;  }
-    virtual void       font(::font f)          { }
+    virtual void       font(font f)            { }
     virtual void      color(rgba)              { }
     virtual void   gaussian(vec2, graphics::shape) { }
     virtual void      scale(vec2)              { }
@@ -1313,7 +1315,7 @@ struct cbase:mx {
     virtual void   set_char(int, int, glyph)   { } /// this needs to be tied to pixel unit (cbase 2nd T arg)
     virtual str    get_char(int, int)          { return "";    }
     virtual str  ansi_color(rgba &c, bool text) { return null;  }
-    virtual ::image  resample(::size sz, real deg = 0.0f, graphics::rect view = null, vec2 rc = null) {
+    virtual ion::image  resample(ion::size sz, real deg = 0.0f, graphics::rect view = null, vec2 rc = null) {
         return null;
     }
 
@@ -1358,18 +1360,18 @@ struct gfx:cbase {
     gfx_memory* g;
     
     /// create with a window (indicated by a name given first)
-    gfx(::window &w);
+    gfx(ion::window &w);
 
     /// data is single instanced on this cbase, and the draw_state is passed in as type for the cbase, which atleast makes it type-unique
     ptr_decl(gfx, cbase, gfx_memory, g);
 
-    ::window       &window();
+    ion::window    &window();
     Device         &device();
     void draw_state_change(draw_state *ds, cbase::state_change type);
     text_metrics   measure(str text);
     str    format_ellipsis(str text, real w, text_metrics &tm_result);
     void     draw_ellipsis(str text, real w);
-    void             image(::image img, graphics::shape sh, vec2 align, vec2 offset, vec2 source);
+    void             image(ion::image img, graphics::shape sh, vec2 align, vec2 offset, vec2 source);
     void              push();
     void               pop();
     void              text(str text, graphics::rect rect, alignment align, vec2 offset, bool ellip);
@@ -1377,7 +1379,7 @@ struct gfx:cbase {
     Texture        texture();
     void             flush();
     void             clear(rgba c);
-    void              font(::font f);
+    void              font(ion::font f);
     void               cap(graphics::cap   c);
     void              join(graphics::join  j);
     void         translate(vec2       tr);
@@ -1390,7 +1392,7 @@ struct gfx:cbase {
     void*             data();
     str           get_char(int x, int y);
     str         ansi_color(rgba &c, bool text);
-    ::image       resample(::size sz, real deg, graphics::shape view, vec2 axis);
+    ion::image    resample(ion::size sz, real deg, graphics::shape view, vec2 axis);
 };
 
 struct terminal:cbase {
@@ -1404,7 +1406,7 @@ struct terminal:cbase {
 
     public:
 
-    terminal(::size sz);
+    terminal(ion::size sz);
     ctr(terminal, cbase, tdata, t);
 
     void draw_state_change(draw_state &ds, cbase::state_change type);
@@ -2150,3 +2152,4 @@ struct app:composer {
 };
 
 using AppFn = lambda<Element(app&)>;
+}
