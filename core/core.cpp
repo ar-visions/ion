@@ -80,7 +80,7 @@ i64 millis() {
 }
 
 /// attach arbs to memory (uses a pointer)
-attachment *memory::attach(::symbol id, void *data, lambda<void()> release) {
+attachment *memory::attach(::symbol id, void *data, func<void()> release) {
     if (!atts)
         atts = new doubly<attachment>();
     atts->push(attachment {id, data, release});

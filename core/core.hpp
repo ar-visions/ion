@@ -1270,102 +1270,17 @@ struct context_bind {
 memory *wrap_alloc(raw_t m, size_t sz);
 memory* raw_alloc(type_t ty, size_t sz);
 
-
-
-
-
-template <typename T>
-class funct;
-
-template <typename R, typename... Args>
-class funct<R(Args...)> : public shared {
-    struct callable_base {
-        virtual ~callable_base() = default;
-        virtual R invoke(Args... args) const = 0;
-    };
-
-    template <typename F>
-    class callable_impl : public callable_base {
-    private:
-        F functor;
-    public:
-        explicit callable_impl(F&& functor) : functor(std::forward<F>(functor)) { }
-
-        R invoke(Args... args) const override {
-            return functor(std::forward<Args>(args)...);
-        }
-    };
-
-public:
-    funct()                 : shared() { }
-    funct(std::nullptr_t n) : shared() { }
-    template <typename F, typename = std::enable_if_t<!std::is_same_v<std::decay_t<F>, funct>>>
-    funct(F&& f) : shared(new callable_impl<std::decay_t<F>>(std::decay_t<F>(f))) { }
-
-    R operator()(Args... args) const;
-    operator bool() const { return mem; }
-};
-
-
-template <typename T>
-class lambda;
-
-template <typename R, typename... Args>
-class lambda<R(Args...)> : public shared {
-    struct callable_base {
-        virtual ~callable_base() = default;
-        virtual R invoke(Args... args) const = 0;
-    };
-    ///
-    template <typename F>
-    class callable_impl : public callable_base {
-    private:
-        F fn;
-    public:
-        explicit callable_impl(F&& fn) : fn(std::forward<F>(fn)) { }
-        //R invoke(Args... args) const override {
-        //    return fn(std::forward<Args>(args)...); /// Called object type 'memory *' is not a function or function pointer
-        //}
-        R invoke(Args... args) const override {
-            return std::apply(fn, std::forward_as_tuple(std::forward<Args>(args)...));
-        }
-    };
-    ///
-public:
-    lambda()                 : shared() { }
-    lambda(std::nullptr_t n) : shared() { }
-    ///
-    template <typename F, typename = std::enable_if_t<!std::is_same_v<std::decay_t<F>, lambda>>>
-    lambda(F&& f) : shared(new callable_impl<std::decay_t<F>>(std::decay_t<F>(f))) { }
-    
-    R operator()(Args... args) const;
-    
-    operator bool() const { return mem; }
-};
-
-template <typename T>
-struct is_lambda : std::false_type { };
-
-template <typename R, typename... Args>
-struct is_lambda<lambda<R(Args...)>> : std::true_type { };
-
-template <typename T>
-struct is_functor : std::false_type { };
-
-template <typename R, typename... Args>
-struct is_functor<funct<R(Args...)>> : std::true_type { };
-
 struct lambda_table {
-    funct<   void(type_t,void*,size_t,size_t)>       construct;  /// construct over vector
-    funct<   void(type_t,void*,size_t,size_t)>       dtr;        /// destruct over vector
-    funct<   void(type_t,void*,void*,size_t,size_t)> cp;         /// copy-construct over vector
-    funct<   void(void*,memory*)>                    assign_mx;  /// assign operation [ destruct mx inst, re-construct with memory pointer ]
-    funct<   void(void*,void*,bool)>                 assign_tr;  /// assign operation [ destruct trivial, re-construct with src pointer ]
-    funct<   bool(memory*)>                          boolean;    /// boolean-op; if the type has no op specified, boolean this is not set.
-    funct<    int(void*,void*)>                      compare;    /// memory is always the same type, operator== in mx requires that
-    funct<memory*(memory*)>                          from_mstr;  ///
-    funct<memory*(memory*)>                          to_mstr;    ///
-    funct<    u64(memory*)>                          hash;
+    func <   void(type_t,void*,size_t,size_t)>       construct;  /// construct over vector
+    func <   void(type_t,void*,size_t,size_t)>       dtr;        /// destruct over vector
+    func <   void(type_t,void*,void*,size_t,size_t)> cp;         /// copy-construct over vector
+    func <   void(void*,memory*)>                    assign_mx;  /// assign operation [ destruct mx inst, re-construct with memory pointer ]
+    func <   void(void*,void*,bool)>                 assign_tr;  /// assign operation [ destruct trivial, re-construct with src pointer ]
+    func <   bool(memory*)>                          boolean;    /// boolean-op; if the type has no op specified, boolean this is not set.
+    func <    int(void*,void*)>                      compare;    /// memory is always the same type, operator== in mx requires that
+    func <memory*(memory*)>                          from_mstr;  ///
+    func <memory*(memory*)>                          to_mstr;    ///
+    func <    u64(memory*)>                          hash;
 
     template <typename T>
     static lambda_table *set_lambdas(type_t ty);
@@ -1471,7 +1386,7 @@ inline bool vequals(T* b, size_t c, T v) {
 struct attachment {
     const char    *id;
     void          *data;
-    lambda<void()> release;
+    func<void()>   release;
 };
 
 struct mutex;
@@ -1550,7 +1465,7 @@ public:
     }
 
     void drop();
-    attachment *attach(symbol id, void *data, lambda<void()> release);
+    attachment *attach(symbol id, void *data, func<void()> release);
     attachment *find_attachment(symbol id);
 
     static inline const size_t auto_len = UINT64_MAX;
@@ -1588,25 +1503,7 @@ public:
     /// now it has a schema with types to each data structure, their offset in allocation, and the total allocation bytes
     /// also supports the primative store, non-mx
     template <typename T>
-    T *data(size_t index) const {
-        type_t queried_type = typeof(T);
-        size_t mxc = math::max(reserve, count);
-        if (queried_type == type) {
-            return (T *)origin;
-        } else {
-            alloc_schema *schema = type->schema;
-            if (schema) {
-                size_t offset = 0;
-                for (size_t i = 0; i < schema->count; i++) {
-                    context_bind &c = schema->composition[i];
-                    if (c.data == queried_type)
-                        return (T*)&cstr(origin)[c.offset * mxc + c.data->base_sz * index];
-                }
-            }
-        }
-        assert(false);
-        return (T*)null;
-    }
+    T *data(size_t index) const;
 
     template <typename T>
     T &ref() const { return *data<T>(0); }
@@ -1666,7 +1563,7 @@ inline T &assign_tr(T &a, const T &b, bool call_dtr) {
 memory *cstring(cstr cs, size_t len = memory::auto_len, size_t reserve = 0, bool sym = false);
 
 
-using fn_t = lambda<void()>;
+using fn_t = func<void()>;
 
 struct rand {
     struct seq {
@@ -1735,7 +1632,7 @@ struct mx {
         return mem->find_attachment(id);
     }
 
-    inline attachment *attach(symbol id, void *data, lambda<void()> release) {
+    inline attachment *attach(symbol id, void *data, func<void()> release) {
         return mem->attach(id, data, release);
     }
 
@@ -1811,7 +1708,6 @@ struct mx {
         return mem->type == typeof(char) || (mem->type->schema && mem->type->schema->bind->data == typeof(char));
     }
 
-    /// break in here and verify the stack from time to time.
     /// without this, you have issues with enum mx types casting to their etype.
     /// there are many other issues too so its best to remain explicit on generic bool operator
     explicit operator bool() const {
@@ -1893,7 +1789,10 @@ struct mx {
         return *this;
     }
 
-    inline bool operator!() const { return !mem || (mem->type->lambdas->boolean && !mem->type->lambdas->boolean(mem)); }
+    inline bool operator!() const {
+        return !mem || (mem->type->lambdas->boolean &&
+                       !mem->type->lambdas->boolean(mem));
+    }
 
     ///
     explicit operator   i8()      { return mem->ref<i8>();  }
@@ -1961,6 +1860,29 @@ struct vec:mx {
     inline T &operator[](size_t i) const { return data[i]; }
     inline T &       get(size_t i) const { return data[i]; }
 };
+
+template <typename T>
+struct lambda;
+
+template <typename R, typename... Args>
+struct lambda<R(Args...)>:mx {
+    using fdata = std::function<R(Args...)>;
+    fdata &fn;
+    
+    ctr(lambda, mx, fdata, fn);
+    
+    //lambda(null_t n) : lambda(fdata(null)) { }
+    
+    template <typename F>
+    lambda(F&& fn) : lambda(fdata(std::forward<F>(fn))) { }
+    
+    R operator()(Args... args) const {
+        return fn(std::forward<Args>(args)...);
+    }
+};
+
+template <typename>   struct is_lambda            : false_type { };
+template <typename T> struct is_lambda<lambda<T>> : true_type  { };
 
 template <typename T>
 inline void vset(T *data, u8 bv, size_t c) {
@@ -2303,6 +2225,9 @@ public:
 };
 
 using ichar = int;
+
+static lambda<void(u32)> fn = {};
+
 
 /// UTF8 :: Bjoern Hoehrmann <bjoern@hoehrmann.de>
 /// https://bjoern.hoehrmann.de/utf-8/decoder/dfa/
@@ -2860,7 +2785,7 @@ struct str:mx {
         lambda<bool(cstr, cstr)> fn;
         str&  a = (str &)*this;
         str&  b = input;
-             fn = [&](cstr  s, cstr  p) -> bool {
+             fn = [&](cstr s, cstr p) -> bool {
                 return (p &&  *p == '*') ? ((*s && fn(&s[1], &p[0])) || fn(&s[0], &p[1])) :
                       (!p || (*p == *s && fn(&s[1],   &p[1])));
         };
@@ -4035,6 +3960,9 @@ protected:
 
 using FnFuture = lambda<void(mx)>;
 
+using FnFuture2 = lambda<void()>;
+
+
 /// required for hash-map and multi-threaded list
 struct mutex:mx {
     struct data {
@@ -4093,13 +4021,13 @@ idata *ident::for_type() {
 
     if (!type) {
         ///
-        if constexpr (type_complete<T> && is_functor<T>()) {
+        if constexpr (std::is_function_v<T>) {
             memory         *mem = raw_alloc(null, sizeof(idata));
             type                = (idata*)mem_origin(mem);
             type->src           = type;
             type->name          = parse_fn(__PRETTY_FUNCTION__);
             type->base_sz       = sizeof(T);
-        } else if constexpr (type_complete<T> && is_opaque<T>()) {
+        } else if constexpr (is_opaque<T>()) {
             /// minimal processing on 'opaque'; certain std design-time calls blow up the vulkan types
             memory         *mem = raw_alloc(null, sizeof(idata));
             type                = (idata*)mem_origin(mem);
@@ -4155,6 +4083,27 @@ idata *ident::for_type() {
 }
 
 template <typename T>
+T *memory::data(size_t index) const {
+    type_t queried_type = ident::for_type<T>();
+    size_t mxc = math::max(reserve, count);
+    if (queried_type == type) {
+        return (T *)origin;
+    } else {
+        alloc_schema *schema = type->schema;
+        if (schema) {
+            size_t offset = 0;
+            for (size_t i = 0; i < schema->count; i++) {
+                context_bind &c = schema->composition[i];
+                if (c.data == queried_type)
+                    return (T*)&cstr(origin)[c.offset * mxc + c.data->base_sz * index];
+            }
+        }
+    }
+    assert(false);
+    return (T*)null;
+}
+
+template <typename T>
 size_t ident::type_size() {
     static type_t type    = typeof(T);
     static size_t type_sz = std::is_pointer<T>::value ? sizeof(T) : 
@@ -4162,6 +4111,18 @@ size_t ident::type_size() {
             ? type->schema->total_bytes : type->base_sz;
     return type_sz;
 }
+
+// Helper to detect a bool conversion operator
+template <typename T, typename = std::void_t<>>
+struct has_bool_op: std::false_type {};
+
+template <typename T>
+struct has_bool_op<T, std::void_t<decltype(static_cast<bool>(std::declval<T>()))>> : std::true_type {};
+
+// A utility function to use the custom type trait
+template <typename T>
+constexpr bool has_bool = has_bool_op<T>::value;
+
 
 template <typename T>
 lambda_table *lambda_table::set_lambdas(type_t ty) {
@@ -4337,13 +4298,24 @@ lambda_table *lambda_table::set_lambdas(type_t ty) {
         };
     }
     
+    ///
     if constexpr (has_operator<T, bool>() || is_primitive<T>()) {
-        if constexpr (inherits<mx, T>())
-            gen.boolean = [](void* a) -> bool { return bool(*(mx*)a); };
-        else
-            gen.boolean = [](void* a) -> bool { return bool(*(T *)a); };
+        if constexpr (inherits<mx, T>()) {
+            gen.boolean = [ty](memory* mem) -> bool {
+                if constexpr (identical<typename T::DC, none>()) {
+                    return false;
+                } else {
+                    if constexpr (has_bool<typename T::DC>)
+                        return bool(*(typename T::DC *)mem->origin);
+                    else
+                        return false;
+                }
+            };
+        } else
+            gen.boolean = [](memory* mem) -> bool {
+                return bool(*(T *)mem->origin); /// otherwise T
+            };
     }
-    
     return &gen;
 }
 
@@ -4474,12 +4446,3 @@ T *shared::operator=(T *ptr) {
 template <typename T>
 T *shared::get() { return (T *)mem->origin; }
 
-template <typename R, typename... Args>
-R lambda<R(Args...)>::operator()(Args... args) const {
-    if (ident::mem) {
-        const callable_base *cb = (callable_base *)ident::mem->origin;
-        return cb->invoke(std::forward<Args>(args)...);
-    } else {
-        throw std::bad_function_call();
-    }
-}
