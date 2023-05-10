@@ -19,7 +19,7 @@ namespace ion {
 
 sock::sock(role r, uri bind) : sock() {
     /// if its release it must be secure
-    symbol pers = "mx:net";
+    symbol pers = "ion:net";
     static bool wolf;
     if (!wolf) {
 #ifdef _WIN32
@@ -44,15 +44,24 @@ sock::sock(role r, uri bind) : sock() {
     
     /// load cert and key based on role
     str rtype = is_server ? "server" : "client";
-    str cert  = str::format("certs/{0}-cert.pem", { rtype });
-    str key   = str::format("certs/{0}-key.pem",  { rtype });
     
-    /// load cert (public)
-    if (wolfSSL_CTX_use_certificate_file(i.ctx, cert.cs(), SSL_FILETYPE_PEM) != SSL_SUCCESS)
-        console.fault("error loading {0}", { cert });
-    /// load key (private)
-    if (wolfSSL_CTX_use_PrivateKey_file (i.ctx, key.cs(),  SSL_FILETYPE_PEM) != SSL_SUCCESS)
-        console.fault("error loading {0}", { key });
+    if (is_server) {
+        /// developer must provide public/private (git-ignored)
+        str cert  = str::format("certs/{0}-cert.pem", { rtype });
+        str key   = str::format("certs/{0}-key.pem",  { rtype });
+        
+        /// load cert (public)
+        if (wolfSSL_CTX_use_certificate_file(i.ctx, cert.cs(), SSL_FILETYPE_PEM) != SSL_SUCCESS)
+            console.fault("error loading cert {0}", { cert });
+        /// load key (private)
+        if (wolfSSL_CTX_use_PrivateKey_file (i.ctx, key.cs(),  SSL_FILETYPE_PEM) != SSL_SUCCESS)
+            console.fault("error loading key {0}", { key });
+    } else {
+        /// host just has a file binding
+        path p = fmt { "trust/{0}.pem", { bind.host() }};
+        if (wolfSSL_CTX_load_verify_locations(i.ctx, p.cs(), null) != SSL_SUCCESS)
+            console.fault("trust not found: {0}", { str(p) });
+    }
     
     size_t addr_sz       = sizeof(sockaddr_in);
     uint16_t  port       = (uint16_t)bind.port();
@@ -123,6 +132,12 @@ sock &sock::establish() {
 int sock::read(u8 *v, size_t sz) {
     int    len = int(sz);
     int    rcv = wolfSSL_read(i.ssl, v, len);
+    printf("<-----------------------------\n");
+    printf("reading %d bytes:\n", int(len));
+    for (size_t i = 0; i < size_t(len); i++) {
+        printf("%c", v[i]);
+    }
+    printf("\n");
     return rcv;
 }
 
@@ -159,6 +174,13 @@ array<char> sock::read_until(str s, int max_len) {
 bool sock::write(u8 *v, size_t sz) {
     assert(sz > 0);
     int      len = int(sz);
+    printf("----------------------------->\n");
+    printf("writing %d bytes:\n", int(len));
+    for (size_t i = 0; i < size_t(len); i++) {
+        printf("%c", v[i]);
+    }
+    printf("\n");
+    
     int     wlen = wolfSSL_write(i.ssl, v, len);
     return (wlen == sz);
 }
@@ -302,6 +324,7 @@ bool message::read_headers(sock sc) {
                 if (rbytes[i] == ':') {
                     str k = str(&rbytes[0], int(i));
                     str v = str(&rbytes[i + 2], int(sz) - int(k.len()) - 2 - 2);
+                    console.log("reading header: {0}, {1}", { k, v });
                     m.headers[k] = v;
                     break;
                 }
@@ -440,15 +463,19 @@ symbol message::code_symbol(int code) {
         {403, "Forbidden"}, {404, "Not Found"}, {500, "Internal Server Error"},
         {0,   "Unknown"}
     };
-    return symbols.count(code) ? symbols[code] : symbols[0];
+    size_t count  = symbols.count(code);
+    symbol result = count ? symbols[code] : symbols[0]; /// map doesnt work.
+    return result;
+}
+
+bool message::write_status(sock sc) {
+    mx status = "Status";
+    int  code = m.headers.count(status) ? int(m.headers[status]) : (m.code ? int(m.code) : int(200));
+    return sc.write("HTTP/1.1 {0} {1}\r\n", { code, code_symbol(code) });
 }
 
 ///  code is in headers.
 bool message::write_headers(sock sc) {
-    mx status = "Status";
-    int  code = m.headers.count(status) ? int(m.headers[status]) : (m.code ? int(m.code) : int(200));
-    ///
-    sc.write("HTTP/1.1 {0} {1}\r\n", { code, code_symbol(code) }); /// needs alias for code
     ///
     for (auto &[v, k]: m.headers) { /// mx key, mx value
         /// check if header is valid data; holding ref to mx
@@ -501,6 +528,13 @@ bool message::write(sock sc) {
             /// binary transfer
             m.headers["Content-Length"] = str::from_integer(m.content.byte_len()); /// size() is part of mx object, should always return it size in its own unit, but a byte_size is there too
             return sc.write(m.content);
+            ///
+        } else if (ct == typeof(null_t)) {
+            /// can be null_t
+            m.headers["Content-Length"] = str("0");
+            console.log("sending Content-Length of {0}", { m.headers["Content-Length"] });
+            return write_headers(sc);
+            ///
         } else {
             /// cstring
             assert(ct == typeof(char));
@@ -567,11 +601,12 @@ async service(uri bind, lambda<message(message)> fn_process) {
     });
 }
 
-/// useful utility function here for general web requests; driven by the future
+/// utility function for web requests
+/// uri is copied as a methodized uri based on the type given
 future request(uri url, map<mx> args) {
     return async(1, [url, args](auto p, int i) -> mx {
         map<mx> st_headers;
-        mx      null_content;                   /// consider null static on var, assertions on its write by sequence on debug
+        mx    null_content; /// consider null static on var, assertions on its write by sequence on debug
         map<mx>         &a = *(map<mx> *)&args; /// so lame.  stop pretending that this cant change C++
         map<mx>    headers = a.count("headers") ? map<mx>(a["headers"]) : st_headers;
         mx         content = a.count("content") ?         a["content"]  : null_content;
@@ -590,7 +625,7 @@ future request(uri url, map<mx> args) {
         
         /// default headers
         array<field<mx>> defs = {
-            { "User-Agent",      "core:net"             },
+            { "User-Agent",      "ion:net"              },
             { "Host",             client.query().host() },
             { "Accept-Language", "en-us"                },
             { "Accept-Encoding", "gzip, deflate, br"    },
@@ -599,9 +634,11 @@ future request(uri url, map<mx> args) {
         
         for (auto &d: defs)
             if (!headers(d.key))
-                headers[d.key] = d.value;
+                 headers[d.key] = d.value;
         
-        message request { query, headers, content }; /// best to handle post creation within message
+        uri::components *comp = query.get<uri::components>(0);
+        
+        message request { content, headers, query }; /// best to handle post creation within message
         request.write(client);
         
         /// read response, this is a message which constructs with a sock; does not store

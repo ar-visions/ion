@@ -1,11 +1,6 @@
 #pragma once
 
 namespace ion {
-///
-struct customer:mx {
-    customer(FnFuture fn = FnFuture()) : mx(alloc(&fn)) { }
-    customer(const customer  &c) : mx(c.mem->grab()) { }
-};
 
 /// 
 struct completer:mx {
@@ -13,24 +8,30 @@ struct completer:mx {
         mx              vdata;
         mutex           mtx;
         bool            completed;
-        array<customer> l_success;
-        array<customer> l_failure;
+        array<mx>       l_success;
+        array<mx>       l_failure;
     } &cd;
 
     completer() : mx(alloc<cdata>()), cd(ref<cdata>()) { }
     completer(lambda<void(mx)>& fn_success,
               lambda<void(mx)>& fn_failure) : completer() {
-        fn_success   = [&](mx d) {
-            auto &cd = ref<completer::cdata>();
+        
+        completer::cdata &cd = ref<completer::cdata>();
+        
+        fn_success = [&cd](mx d) { /// should not need a grab and drop; if
             cd.completed = true;
-            for (customer &s: cd.l_success)
-                s.ref<FnFuture>()(d);/// referencing a lambda type seems to produce a faulty F type in callable_impl heap
+            for (mx &s: cd.l_success) {
+                FnFuture lambda = s.mem->grab();
+                lambda(d);
+            }
         };
-        fn_failure   = [&](mx d) {
-            auto &cd = ref<completer::cdata>();
+        
+        fn_failure = [&cd](mx d) {
             cd.completed = true;
-            for (customer &f: cd.l_failure)
-                f.ref<FnFuture>()(d);
+            for (mx &f: cd.l_failure) {
+                FnFuture lambda = f.mem->grab();
+                lambda(d);
+            }
         };
     }
 };
@@ -46,10 +47,10 @@ struct future:mx {
         mutex mtx;
         if (!cd.completed) {
             mtx.lock();
-            FnFuture fn  = [mtx=&mtx] (mx) { mtx->unlock(); };
-            customer cust = fn;
-            cd.l_success.push(cust);
-            cd.l_failure.push(cust);
+            FnFuture fn = [mtx=&mtx] (mx) { mtx->unlock(); };
+            mx mx_fn = fn.mem->grab();
+            cd.l_success.push(mx_fn);
+            cd.l_failure.push(mx_fn);
         }
         cd.mtx.unlock();
         mtx.lock();
@@ -59,7 +60,7 @@ struct future:mx {
     ///
     future& then(FnFuture fn) {
         cd.mtx.lock();
-        cd.l_success += customer(fn);
+        cd.l_success += fn.mem->grab();
         cd.mtx.unlock();
         return *this;
     }
@@ -67,7 +68,7 @@ struct future:mx {
     ///
     future& except(FnFuture fn) {
         cd.mtx.lock();
-        cd.l_failure += customer(fn);
+        cd.l_failure += fn.mem->grab();
         cd.mtx.unlock();
         return *this;
     }
@@ -80,11 +81,11 @@ typedef std::condition_variable ConditionV;
 struct runtime {
     memory                    *handle;   /// handle on rt memory
     mutex                      mtx_self; /// output the memory address of this mtx.
-    lambda<void(array<mx>&)>   on_done;  /// not the same prototype as FnFuture, just as a slight distinguisher we dont need to do a needless non-conversion copy
-    lambda<void(array<mx>&)>   on_failure;
+    lambda<void(mx)>           on_done;  /// not the same prototype as FnFuture, just as a slight distinguisher we dont need to do a needless non-conversion copy
+    lambda<void(mx)>           on_fail;
     size_t                     count;
     FnProcess				   fn;
-    array<mx>                  results;
+    mx                         results;
     std::vector<std::thread>  *threads;       /// todo: unstd when it lifts off ground. experiment complete time to crash and blast in favor of new matrix.
     int                        done      = 0; /// 
     bool                       failure   = false;
@@ -101,7 +102,7 @@ public:
     inline static std::thread      th_manager;
     inline static std::mutex       mtx_global;
     inline static std::mutex       mtx_list;
-    inline static doubly<runtime*>   procs;
+    inline static doubly<runtime*> procs;
     inline static int              exit_code = 0;
 
     static inline void manager() {
@@ -154,9 +155,17 @@ public:
         mx r = state.fn(state, w);
         state.mtx_self.lock();
 
-        state.failure   |= !r;
-        state.results[w] =  r; /// set results at worker index w
-
+        state.failure |= !r;
+        
+        /// if this is a singleton, reduce results
+        if (state.count == 1)
+            state.results = r;
+        else {
+            /// simple casting
+            array<mx> arr = state.results;
+            arr[w] =  r;
+        }
+        
         /// wait for completion of one (we coudl combine c check inside but not willing to stress test that atm)
         mtx_global.lock();
         bool im_last = (++state.done == state.count);
@@ -164,8 +173,12 @@ public:
 
         /// if all complete, notify condition var after calling completer/failure methods
         if (im_last) {
-            if (state.on_done)
-                !state.failure ? state.on_done(state.results) : state.on_failure(state.results);
+            if (state.on_done) {
+                if (state.failure)
+                    state.on_fail(state.results);
+                else
+                    state.on_done(state.results);
+            }
 
             mtx_global.lock();
             cv_cleanup.notify_all();
@@ -188,7 +201,7 @@ public:
        state.fn       = fn;
        state.count    = count;
        if (count)
-            state.results  = array<mx> { count, count, [](num) -> mx { return mx(); } };
+          state.results  = (count > 1) ? array<mx> { count, count, [](num) -> mx { return mx(); } } : mx(null);
     }
 
     inline bool joining() const { return state.join; }

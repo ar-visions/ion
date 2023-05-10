@@ -8,9 +8,9 @@
             "program":          "${workspaceFolder}/../hyperspace/build/ai-yt",
             "args":             [],
             "stopAtEntry":      false,
-            "cwd":              "${workspaceFolder}/../ion/ux/res",
+            "cwd":              "${workspaceFolder}/../hyperspace/build/res",
             "environment":      [],
-            "externalConsole":  true,
+            "externalConsole":  false,
             "MIMode":           "gdb",
             "presentation": {
                 "hidden": false,

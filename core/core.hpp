@@ -236,7 +236,7 @@ static void breakp() {
             if (o.mem && o_type != d_type)\
                 return (memory *)CC::convert(o.mem);\
         if (o_type == d_type)\
-            return o.mem->grab();\
+            return ion::grab(o.mem);\
         else if (!o.mem)\
             printf("null memory: %s\n", #C);\
         else\
@@ -752,6 +752,10 @@ struct memory;
 
 template <typename> struct is_opaque    : false_type { };
 template <typename> struct is_singleton : false_type { };
+
+/// just one of those associated to the type; nobody would ever write to this
+template <> struct is_singleton<null_t> : true_type { };
+
 
 template <typename A, typename B, typename = void>
 struct has_operator : false_type { };
@@ -1653,9 +1657,12 @@ struct mx {
     }
 
     inline ~mx() { if (mem) mem->drop(); }
+    
+    
 
     /// interop with shared; needs just base type functionality for lambda
-    inline mx(memory *mem = null) : mem(mem) { }
+    inline mx(null_t n = null): mem(mx::alloc<null_t>()) { }
+    inline mx(memory *mem)    : mem(mem) { }
     inline mx(symbol ccs, type_t type = typeof(char)) : mx(mem_symbol(ccs, type)) { }
     inline mx(  cstr  cs, type_t type = typeof(char)) : mx(memory::stringify(cs, memory::auto_len, 0, false, type)) { }
     inline mx(const shared &sh) : mem(sh.mem ? sh.mem->grab() : (memory*)null) { }
@@ -1734,8 +1741,8 @@ struct mx {
         return ref<T>();
     }
 
-    size_t count() const { return mem->count; }
-    type_t  type() const { return mem->type;  }
+    size_t count() const { return mem ? mem->count : 0;    }
+    type_t  type() const { return mem ? mem->type  : null; }
 
     memory  *to_string() const {
         if      (mem->type == typeof(i8) ) return memory::string(std::to_string(mem->ref<i8 > ()));
@@ -1766,13 +1773,14 @@ struct mx {
     }
 
     inline bool operator==(mx &b) const {
-        if (type() == b.type()) {
-            assert(  mem && b.mem);
-            assert(  mem <    mem->origin);
-            assert(b.mem <  b.mem->origin);
+        if (mem && type() == b.type() && mem->count == b.mem->count) {
             type_t ty = mem->type;
-            if (ty->lambdas->compare)
-                return ty->lambdas->compare(raw_t(this), raw_t(&b)) == 0;
+            size_t cn = mem->count;
+            ///
+            if (ty->traits & traits::primitive)
+                return memcmp(mem->origin, b.mem->origin, ty->base_sz * cn) == 0;
+            else if (ty->lambdas->compare)
+                return ty->lambdas->compare(raw_t(mem->origin), raw_t(b.mem->origin)); /// must pass this in; dont change to memory* type, deprecate those
         }
         return false;
     }
@@ -2395,7 +2403,7 @@ struct str:mx {
         return *sc;
     }
 
-    str(memory        *mem) :  mx(mem), data(&mx::ref<char>())   { }
+    str(memory        *mem) :  mx(mem->type == typeof(null_t) ? alloc<char>(null, 0, 16) : mem), data(&mx::ref<char>()) { }
     str(nullptr_t n = null) : str(alloc<char>(null, 0, 16))      { }
     str(symbol         ccs) : str(mem_symbol(ccs, typeof(char))) { }
     str(char            ch) : str(alloc<char>(null, 1, 2))       { *data = ch; }
@@ -4316,11 +4324,12 @@ lambda_table *lambda_table::set_lambdas(type_t ty) {
         if constexpr  (has_cmp && !identical<T, fs::path>())
             gen.compare = [](T *a, T *b) -> int { return a->compare(b); };
     } else if constexpr (is_primitive<T>()) {
-        gen.compare = [](void* a, void *b) -> int {
+        /// these are not required for primitives since its not optimal for vector comparison
+        /*gen.compare = [](void* a, void *b) -> int {
             if constexpr (identical<T, char>())
                 return strcmp((const char *)a, (const char *)b);
             return int(*(T*)a - *(T*)b);
-        };
+        };*/
     }
     
     ///

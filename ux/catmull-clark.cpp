@@ -99,7 +99,7 @@ mesh subdiv(mesh& input_mesh, array<v3f>& verts) {
     return sdiv_mesh;
 }
 
-int main() {
+mesh subdiv_cube() {
     array<v3f> verts = {
         // Front face
         { -0.5f, -0.5f,  0.5f },
@@ -141,16 +141,15 @@ int main() {
     mesh input_mesh = {
         /* Size: */ 24,
         /* Indices: */ {
-            0, 1, 2, 0, 2, 3,       // Front face
-            4, 5, 6, 4, 6, 7,       // Back face
-            8, 9, 10, 8, 10, 11,    // Top face
+            0,  1,  2,  0,  2,  3,  // Front face
+            4,  5,  6,  4,  6,  7,  // Back face
+            8,  9,  10, 8,  10, 11, // Top face
             12, 13, 14, 12, 14, 15, // Bottom face
             16, 17, 18, 16, 18, 19, // Right face
             20, 21, 22, 20, 22, 23  // Left face
         }
     };
 
-    mesh sdiv_mesh = subdiv(input_mesh, verts);
-    // ...
+    return subdiv(input_mesh, verts);
 }
 }

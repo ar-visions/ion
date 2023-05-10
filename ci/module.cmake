@@ -14,7 +14,7 @@ macro(cpp ver)
 endmacro()
 
 #set_property(GLOBAL PROPERTY GLOBAL_DEPENDS_DEBUG_MODE 1)
-
+ 
 # generate some C source for version
 function(set_version_source p_name p_version)
     set(v_src ${CMAKE_BINARY_DIR}/${p_name}-version.cpp)

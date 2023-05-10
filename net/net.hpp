@@ -12,7 +12,6 @@ enums(method, undefined,
     undefined, response, get, post, put, del);
 
 struct uri:mx {
-protected:
     struct components {
         method  mtype; /// good to know where the uri comes from, in what context 
         str     proto; /// (what method, this is part of uri because method is 
@@ -25,8 +24,6 @@ protected:
     };
     ///
     components& a;
-
-public:
     /// singular container type used for 'enumeration' and containment of value: method
     /// enum = method::mtype
     /// default = undefined, then the arg list
@@ -284,7 +281,6 @@ struct sock:mx {
 };
 
 struct message:mx {
-
     struct members {
         uri     query;
         mx      code = int(0);
@@ -299,25 +295,16 @@ struct message:mx {
     ctr(message, mx, members, m);
 
     message(int server_code);
-
     message(symbol text);
-
     message(str text);
-
     message(path p, mx modified_since = {});
-
     message(mx content, map<mx> headers = {}, uri query = {});
-
     message(uri url, map<mx> headers = {});
-
-    /// important to note we do not keep holding onto this socket
     message(sock sc);
 
     uri query();
 
     bool read_headers(sock sc);
-
-    ///
     bool read_content(sock sc);
 
     /// query/request construction
@@ -335,17 +322,14 @@ struct message:mx {
     static symbol code_symbol(int code);
 
     ///  code is in headers.
+    bool write_status(sock sc);
     bool write_headers(sock sc);
-
     bool write(sock sc);
-
-    str text();
+    str  text();
 
     /// structure cookies into usable format
     map<str> cookies();
-
     mx &operator[](symbol key);
-    
     mx &header(mx key);
 };
 
