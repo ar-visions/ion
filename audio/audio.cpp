@@ -21,8 +21,6 @@ struct iaudio {
     mp3dec_t         dec;
     mp3dec_ex_t      api;
     i16             *samples;
-    u64              sz;
-    u64              sz_alloc;
     ogg_sync_state   oy;
     ogg_stream_state os;
     ogg_page         og;
@@ -72,6 +70,7 @@ audio::audio(path res, bool force_mono) : audio() {
             // extract pages and add to stream state
             while (ogg_sync_pageout(&oy, &og) == 1) {
                 ogg_stream_pagein(&os, &og);
+
                 // extract packets and decode
                 while (ogg_stream_packetout(&os, &op) == 1) {
                     if (first) {
@@ -81,9 +80,9 @@ audio::audio(path res, bool force_mono) : audio() {
                         channels        = ((u8 *)op.packet)[9];
                         first           = false;
                     }
+
                     // samples doesnt take into account channels, stride by channel in copying
                     int samples = opus_decode(decoder, op.packet, op.bytes, pcm, pcm_max_samples, 0);
-
                     if ((total_samples + samples) > alloc_samples) {
                         while (total_samples + samples > alloc_samples)
                             alloc_samples *= 2;
