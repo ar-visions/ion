@@ -78,10 +78,11 @@ async::operator future() {
     assert( d.proc);
     assert(!d.proc.state.on_done);
     d.proc.state.on_done = [s, f](mx v) {
-        mx &another_test = v;
         s(v);
     };
-    d.proc.state.on_fail = [s, f](mx v) { f(v); };
+    d.proc.state.on_fail = [s, f](mx v) {
+        f(v);
+    };
     return future(c);
 }
 }

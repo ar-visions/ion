@@ -40,14 +40,14 @@ struct uri:mx {
     ///
     static str encode_fields(map<mx> fields) {
         method m;
-        str post(size_t(1024)); /// would be interesting to keep track of the data size in a map, thats sort of a busy-work routine for N users and the container struct wouldnt be conflicted with the data
+        str post(size_t(1024));
         if (fields) {
             for (auto& [val, key] : fields) {
                 str s_key = key.grab();
                 str s_val = val.grab();
                 if (post)
                     post += "&";
-                post += str::format("{0}={1}", {uri::encode(s_key), "=", uri::encode(s_val)});
+                post += str::format("{0}={1}", {uri::encode(s_key), uri::encode(s_val)});
             }
         }
         return post;
@@ -75,9 +75,6 @@ struct uri:mx {
 
         str      s_port   = !is_def ? str::format(":{0}", { a.port })                : "";
         str      s_fields =  a.args ? str::format("?{0}", { encode_fields(a.args) }) : "";
-
-        if (a.args) /// if there is query str, append ?{encoded}
-            s_fields      = str::format("?{0}", { encode_fields(a.args) });
         
         /// return string uri
         return str::format("{0}://{1}{2}{3}{4}", { a.proto, a.host, s_port, a.query, s_fields });
@@ -133,12 +130,14 @@ struct uri:mx {
         if (iq > 0) {
             ra.resource  = decode(u.mid(0, iq));
             str        q = decode(u.mid(iq + 1));
-            array<str> a = q.split(",");
+            array<str> a = q.split("&");
             ra.args      = map<mx>();
             for (str &kv:  a) {
-                array<str> a = kv.split("=");
-                mx    &k = a[0];
-                mx    &v = a.len() > 1 ? a[1] : k;
+                array<str> sp = kv.split("=");
+                mx    &k = sp[0];
+                mx    &v = sp.len() > 1 ? sp[1] : k;
+                char *sk = k.data<char>();
+                char *sv = v.data<char>();
                 ra.args[k] = v;
             }
         } else
@@ -210,23 +209,9 @@ struct uri:mx {
 
 struct sock:mx {
     ///
-    struct intern_t {
-        uri                      query;
-        i64                      timeout_ms;
-        bool                     connected;
+    struct isock *i;
 
-        int                      listen_fd, sock_fd;
-        WOLFSSL_CTX*             ctx;
-        WOLFSSL*                 ssl;
-        WOLFSSL_METHOD*          method;
-        sockaddr_in*             bound;
-
-        ~intern_t() {
-            free(bound);
-        }
-    } &i;
-
-    ctr(sock, mx, intern_t, i);
+    ptr_decl(sock, mx, isock, i);
 
     ///
     uri       query() const;
@@ -234,6 +219,9 @@ struct sock:mx {
     bool  connected() const;
     bool  operator!() const;
     operator   bool() const;
+    
+    static int send_wrapper(void *ctx, const u8 *buf, size_t len);
+    static int recv_wrapper(void *ctx, u8 *buf, size_t len);
 
     ///
     enum role {
@@ -280,6 +268,7 @@ struct sock:mx {
     static async listen(uri url, lambda<bool(sock&)> fn);
 };
 
+struct Socket;
 struct message:mx {
     struct members {
         uri     query;
@@ -300,12 +289,12 @@ struct message:mx {
     message(path p, mx modified_since = {});
     message(mx content, map<mx> headers = {}, uri query = {});
     message(uri url, map<mx> headers = {});
-    message(sock sc);
+    message(Socket *psc);
 
     uri query();
 
-    bool read_headers(sock sc);
-    bool read_content(sock sc);
+    bool read_headers(Socket *psc);
+    bool read_content(Socket *psc);
 
     /// query/request construction
     static message query(uri server, map<mx> headers, mx content);
@@ -323,8 +312,8 @@ struct message:mx {
 
     ///  code is in headers.
     bool write_status(sock sc);
-    bool write_headers(sock sc);
-    bool write(sock sc);
+    bool write_headers(Socket *psc);
+    bool write(Socket *sc);
     str  text();
 
     /// structure cookies into usable format
@@ -333,6 +322,8 @@ struct message:mx {
     mx &header(mx key);
 };
 
+//void test_wolf();
+bool test_mbed();
 ///
 /// high level server method (on top of listen)
 /// you receive messages from clients through lambda; supports https

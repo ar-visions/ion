@@ -1717,16 +1717,6 @@ struct mx {
         return mem->type == typeof(char) || (mem->type->schema && mem->type->schema->bind->data == typeof(char));
     }
 
-    /// without this, you have issues with enum mx types casting to their etype.
-    /// there are many other issues too so its best to remain explicit on generic bool operator
-    explicit operator bool() const {
-        if (is_string())
-            return (mem != null) && (mem->origin && char(*(char*)mem->origin) != 0);
-        
-        return (mem && mem->type->lambdas->boolean) ?
-            mem->type->lambdas->boolean(mem) : (mem != null);
-    }
-
     void set(memory *m) {
         if (m != mem) {
             if (mem) mem->drop();
@@ -1773,10 +1763,12 @@ struct mx {
     }
 
     inline bool operator==(mx &b) const {
+        if (mem == b.mem)
+            return true;
+    
         if (mem && type() == b.type() && mem->count == b.mem->count) {
             type_t ty = mem->type;
             size_t cn = mem->count;
-            ///
             if (ty->traits & traits::primitive)
                 return memcmp(mem->origin, b.mem->origin, ty->base_sz * cn) == 0;
             else if (ty->lambdas->compare)
@@ -1786,7 +1778,17 @@ struct mx {
     }
 
     inline bool operator!=(mx &b)    const { return !operator==(b); }
-    inline bool operator==(symbol b) const { return mem == mem_symbol(b); } /// now its like vb.
+    
+    inline bool operator==(symbol b) const {
+        if (mem) {
+            if (mem->attrs & memory::attr::constant) {
+                return mem == mem_symbol(b);
+            } else {
+                return strcmp(b, mem->data<char>(0)) == 0;
+            }
+        }
+        return false;
+    }
     inline bool operator!=(symbol b) const { return !operator==(b); }
 
     mx &operator=(const mx &b) {
@@ -1799,9 +1801,27 @@ struct mx {
         return *this;
     }
 
+    /// without this as explicit, there are issues with enum mx types casting to their etype.
+    explicit operator bool() const {
+        if (mem) {
+            type_t ty = mem->type;
+            
+            if (is_string())
+                return mem->origin && *(char*)mem->origin != 0;
+            
+            if (ty == typeof(null_t)) /// when constructing nulls its best to set its count to 0, that way its null on other rules without disturbing integrity.. quirk maybe
+                return false;
+            
+            if (ty->lambdas->boolean)
+                return ty->lambdas->boolean(mem);
+            
+            return mem->count > 0;
+        } else
+            return false;
+    }
+    
     inline bool operator!() const {
-        return !mem || (mem->type->lambdas->boolean &&
-                       !mem->type->lambdas->boolean(mem));
+        return !(operator bool());
     }
 
     ///
@@ -1815,7 +1835,7 @@ struct mx {
     explicit operator  u64()      { return mem->ref<u64>(); }
     explicit operator  r32()      { return mem->ref<r32>(); }
     explicit operator  r64()      { return mem->ref<r64>(); }
-    explicit operator  memory*()  { printf("grabbing memory\n"); return mem->grab(); } /// trace its uses
+    explicit operator  memory*()  { return mem->grab(); } /// trace its uses
 
     explicit operator symbol()    { assert(mem->attrs & memory::constant); return mem->ref<symbol>(); }
 };
@@ -1902,6 +1922,40 @@ struct lambda<R(Args...)>:mx {
     }
 };
 
+template <typename T>
+struct lambda_traits;
+
+// function pointer
+template <typename R, typename... Args>
+struct lambda_traits<R(*)(Args...)> : public lambda_traits<R(Args...)> {};
+
+// member function pointer
+template <typename C, typename R, typename... Args>
+struct lambda_traits<R(C::*)(Args...)> : public lambda_traits<R(Args...)> {};
+
+// const member function pointer
+template <typename C, typename R, typename... Args>
+struct lambda_traits<R(C::*)(Args...) const> : public lambda_traits<R(Args...)> {};
+
+// member object pointer
+template <typename C, typename R>
+struct lambda_traits<R(C::*)> : public lambda_traits<R()> {};
+
+// functor / lambda function
+template <typename F>
+struct lambda_traits {
+private:
+    using call_type = lambda_traits<decltype(&F::operator())>;
+public:
+    using args_tuple = typename call_type::args_tuple;
+};
+
+template <typename R, typename... Args>
+struct lambda_traits<R(Args...)> {
+    using args_tuple = std::tuple<Args...>;
+};
+
+
 template <typename T> struct is_lambda<lambda<T>> : true_type  { };
 
 template <typename R, typename... Args>
@@ -1911,9 +1965,13 @@ lambda<R(Args...)>::lambda(F&& fn) : mx() {
         mx::mem = fn.mem->grab();
         c       = (container*)mem->origin;
     } else {
-        mx::mem = mx::alloc<container>();
-        c       = (container*)mem->origin;
-        c->fn   = new fdata(std::forward<F>(fn));
+        if constexpr (std::is_invocable_r_v<R, F, Args...>) {
+            mx::mem = mx::alloc<container>();
+            c       = (container*)mem->origin;
+            c->fn   = new fdata(std::forward<F>(fn));
+        } else {
+            static_assert("args conversion not supported");
+        }
     }
 }
 
@@ -1960,7 +2018,7 @@ public:
     T &push() {
         size_t csz = mem->count;
         if (csz + 1 > alloc_size())
-            mem->realloc<T>(csz + 1, false);
+            elements = mem->realloc<T>(csz + 1, false);
 
         new (&elements[csz]) T();
         mem->count++;
@@ -1974,7 +2032,7 @@ public:
         size_t rsv = size_t(mem->reserve);
 
         if (usz + push_count > rsv)
-            mem->realloc<T>(usz + push_count, false);
+            elements = mem->realloc<T>(usz + push_count, false);
         
         if constexpr (is_primitive<T>()) {
             memcpy(&elements[usz], pv, sizeof(T) * push_count);
@@ -2034,7 +2092,7 @@ public:
 
     inline array(memory*      mem) : mx(mem), elements(&mx::ref<T>()) { }\
     inline array(mx             o) : array(o.mem->grab()) { }\
-    inline array(null_t =    null) : array(mx::alloc<array>(null, 0, 1, false)) { }\
+    inline array(null_t =    null) : array(mx::alloc<T>(null, 0, 1, false)) { }\
     
     inline operator T *() { return elements; }\
     array &operator=   (const array b) { return (array &)assign_mx(*this, b); }
@@ -2698,11 +2756,7 @@ struct str:mx {
             ///
             if (len() > 0) {
                 while ((end = index_of(delim, int(start))) != -1) {
-                    str mm = mid(start, int(end - start));
-
-                    printf("result mem: %p, refs: %d count: %d, %p\n",
-                        result.mem, int(result.mem->refs), int(result.mem->count), result.mem->origin);
-                    
+                    str  mm = mid(start, int(end - start));
                     result += mm;
                     start   = end + delim_len;
                 }
@@ -2915,7 +2969,7 @@ struct map:mx {
         size_t    count(mx k) {
             type_t tk = k.type();
             memory *b = k.mem;
-            if (!(k.mem->attrs & memory::constant) && (tk->traits & traits::primitive)) {
+            if (true || (!(k.mem->attrs & memory::constant) && (tk->traits & traits::primitive))) {
                 size_t res = 0;
                 for (field<V> &f:fields) {
                     memory *a = f.key.mem;
@@ -2925,6 +2979,7 @@ struct map:mx {
                 }
                 return res;
             } else {
+                /// cstring symbol identity not working atm, i think they are not registered in all cases in mx
                 size_t res = 0;
                 for (field<V> &f:fields)
                     if (f.key.mem == b)
@@ -2980,6 +3035,8 @@ struct map:mx {
         operator bool() { return ((hash_map && hash_map->len() > 0) || (fields.len() > 0)); }
 
     } &m;
+    
+    void print();
 
     /// props bypass dependency with this operator returning a list of field, which is supported by mx (map would not be)
     operator doubly<field<V>> &() { return m.fields; }
@@ -3339,12 +3396,12 @@ struct path:mx {
     path            link() const {                              return fs::is_symlink(p) ? path(p) : path(null);           }
     bool         is_file() const {                              return !fs::is_directory(p) && fs::is_regular_file(p);     }
     char             *cs() const {
-        static std::string static_thing = p.string();
+        static std::string static_thing;
+        static_thing = p.string();
         return (char*)static_thing.c_str();
     }
     operator cstr() const {
-        static std::string static_thing = p.string();
-        return cstr(static_thing.c_str());
+        return cstr(cs());
     }
     str             ext () const { return str(p.extension().string()).mid(1); }
     str             ext4() const { return p.extension().string(); }
@@ -3840,7 +3897,7 @@ protected:
                     res += "\"";
                 } else if (vt == typeof(int))
                     res += smem;
-                else if (vt == typeof(array<mx>) || vt == typeof(map<mx>))
+                else if (vt == typeof(mx) || vt == typeof(map<mx>))
                     res += fn(e);
                 else
                     assert(false);
@@ -3862,7 +3919,7 @@ protected:
                     ar += format_v(fx.value, n_fields++);
                 }
                 ar += "}";
-            } else if (i.type() == typeof(array<mx>)) {
+            } else if (i.type() == typeof(mx)) {
                 mx *mx_p = i.mem->data<mx>(0);
                 ar += "[";
                 for (size_t ii = 0; ii < i.count(); ii++) {
@@ -3901,7 +3958,7 @@ protected:
             mx skey = mx(key);
             return *(var*)&dref[skey];
         } else if (kt->traits & traits::integral) {    
-            assert(data_type == typeof(array<mx>));
+            assert(data_type == typeof(mx)); // array<mx> or mx
             mx *dref = mx::mem->data<mx>(0);
             assert(dref);
             size_t ix;
@@ -3920,9 +3977,19 @@ protected:
     }
 
     static var json(mx i) {
-        var res = {};
-        /// todo.
-        return res;
+        type_t ty = i.type();
+        cstr   cs = null;
+        if (ty == typeof(u8))
+            cs = cstr(i.data<u8>());
+        else if (ty == typeof(i8))
+            cs = cstr(i.data<i8>());
+        else if (ty == typeof(char))
+            cs = cstr(i.data<char>());
+        else {
+            console.fault("unsupported type: {0}", { str(ty->name) });
+            return null;
+        }
+        return parse(cs);
     }
 
     memory *string() {
@@ -4351,6 +4418,15 @@ lambda_table *lambda_table::set_lambdas(type_t ty) {
             };
     }
     return &gen;
+}
+
+template <typename V>
+void map<V>::print() {
+    for (field<V> &f: *this) {
+        str k = str(f.key.grab());
+        str v = str(f.value.grab());
+        console.log("key: {0}, value: {1}", { k, v });
+    }
 }
 
 template <typename K, typename V>

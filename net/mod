@@ -1,2 +1,2 @@
-dep(ion.core ion.async wolf.wolfssl)
+dep(ion.core ion.async ion.image mbedtls.mbedtls mbedtls.mbedx509 mbedtls.mbedcrypto)
 cpp(17)

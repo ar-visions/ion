@@ -43,11 +43,13 @@ def    git(*args): return subprocess.run(['git']   + list(args), stdout=subproce
 def  cmake(*args): return subprocess.run(['cmake'] + list(args), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
 def   build(type): return cmake('--build', cm_build)
 def     gen(type, cmake_script_root, prefix_path, extra=None):
+    build_type = type[0].upper() + type[1:].lower()
+    print(f'build type: {build_type}')
     args = ['-S', cmake_script_root,
             '-B', cm_build, 
            f'-DCMAKE_PREFIX_PATH="{prefix_path}"'
             '-DCMAKE_VERBOSE_MAKEFILE:BOOL=ON',
-           f'-DCMAKE_BUILD_TYPE={type[0].upper() + type[1:].lower()}']
+           f'-DCMAKE_BUILD_TYPE={build_type}']
     if extra:
         args.extend(extra)
     return cmake(*args)

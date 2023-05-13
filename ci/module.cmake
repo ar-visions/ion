@@ -493,6 +493,13 @@ macro(create_module_targets)
         file(GLOB cm ${p}/../ci/*.cmake)
         add_custom_target(cmake_source SOURCES ${cm})
     endif()
+
+    # Set the property to mark them as resources
+    set_source_files_properties(${module_file} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+
+    # Optional: organize the files in a folder structure in Xcode
+    #source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${RES_FILES})
+
     
     # app products
     # ------------------------

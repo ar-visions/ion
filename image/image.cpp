@@ -1,7 +1,9 @@
 #define _CRT_SECURE_NO_WARNINGS
-#include "stb-image-read.h"
-#include "stb-image-write.h"
-
+#include <zlib.h>
+#define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <image/stb-image-read.h>
+#include <image/stb-image-write.h>
 #include <core/core.hpp>
 #include <math/math.hpp>
 #include <image/image.hpp>
@@ -36,4 +38,51 @@ image::image(path p) : array() {
         elements    = data;
     }
 }
+
+/// inflate
+mx inflate(mx input) {
+    size_t sz = input.byte_len();
+    array<char> out(sz * 4);
+    
+    // setup zlib inflate stream
+    z_stream stream {
+        .zalloc   = Z_NULL,
+        .zfree    = Z_NULL,
+        .opaque   = Z_NULL,
+        .avail_in = 0,
+        .next_in  = Z_NULL
+    };
+
+    if (::inflateInit2(&stream, 16 + MAX_WBITS) != Z_OK) {
+        console.fault("inflate failure: init");
+        return {};
+    }
+
+    u8 *src = input.data<u8>();
+    stream.avail_in = u32(sz);
+    stream.next_in  = src;
+    const size_t CHUNK_SIZE = 1024;
+    char buf[CHUNK_SIZE];
+    do {
+        stream.avail_out = CHUNK_SIZE;
+        stream.next_out  = (Bytef*)buf;
+        int res = ::inflate(&stream, Z_NO_FLUSH);  // inflate the data
+        ///
+        if (res == Z_NEED_DICT  ||
+            res == Z_DATA_ERROR ||
+            res == Z_MEM_ERROR) {
+            ::inflateEnd(&stream);
+            console.fault("inflate failure: {0}", int(res));
+            return {};
+        }
+        ///
+        size_t inflated_sz = CHUNK_SIZE - stream.avail_out;
+        out.push(buf, inflated_sz);
+        ///
+    } while (stream.avail_out == 0);
+    ///
+    ::inflateEnd(&stream);
+    return out;
+}
+
 }

@@ -59,10 +59,18 @@
             "libs":     ["./ion-build/src"]
         },
         {
-            "name":     "wolf",
-            "version":  "5.5.4",
-            "commit":   "e0e590f126bd7d947ce3dfbea5ea1405bb646374",
-            "url":      "https://github.com/wolfSSL/wolfssl",
+            "name":     "mbedtls",
+            "version":  "3.4.0",
+            "commit":   "1873d3b",
+            "url":      "https://github.com/Mbed-TLS/mbedtls",
+            "includes": ["./include"],
+            "libs":     ["./ion-build/library"]
+        },
+        {
+            "name":     "zlib",
+            "version":  "1.2.13",
+            "commit":   "04f42ce",
+            "url":      "https://github.com/madler/zlib",
             "includes": ["./"],
             "libs":     ["./ion-build"]
         },

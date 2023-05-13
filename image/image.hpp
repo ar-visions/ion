@@ -159,4 +159,6 @@ struct image:array<rgba::data> {
         return elements[index];
     }
 };
+
+mx inflate(mx);
 }
