@@ -1,1 +1,1 @@
-dep(ion.core gsl.gsl opus.opus)
+dep(ion.core gsl.gsl opus.opus ogg.ogg)
