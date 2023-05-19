@@ -90,7 +90,12 @@ function(main)
     set(ENV{CMAKE_SOURCE_DIR}   ${CMAKE_SOURCE_DIR})
     set(ENV{CMAKE_BINARY_DIR}   ${CMAKE_BINARY_DIR})
     set(ENV{CMAKE_BUILD_TYPE}   ${CMAKE_BUILD_TYPE})
-    set(ENV{JSON_IMPORT_INDEX} "${CMAKE_BINARY_DIR}/import.json")
+    set(ENV{JSON_IMPORT_INDEX}  ${CMAKE_BINARY_DIR}/import.json)
+
+    print("CMAKE_SOURCE_DIR:  $ENV{CMAKE_SOURCE_DIR}")
+    print("CMAKE_BINARY_DIR:  $ENV{CMAKE_BINARY_DIR}")
+    print("CMAKE_BUILD_TYPE:  $ENV{CMAKE_BUILD_TYPE}")
+    print("JSON_IMPORT_INDEX: $ENV{JSON_IMPORT_INDEX}")
 
     # bootstrap python with pip packages
     bootstrap_python(requests)
@@ -100,6 +105,7 @@ function(main)
         COMMAND ${PYTHON} "${CMAKE_SOURCE_DIR}/../ion/ci/prepare.py"
         RESULT_VARIABLE import_result)
 
+    # its written to and valid if this import_result equals 0, no need to delete
     if (NOT (import_result EQUAL "0"))
         message(FATAL_ERROR "could not import dependencies for project ${r_path} (code: ${import_result})")
     endif()

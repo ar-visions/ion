@@ -1,1 +1,1 @@
-dep(ion.core gsl.gsl opus.opus ogg.ogg)
+dep(ion.core gsl.gsl opus.opus ogg.ogg opusenc.opusenc opusfile.opusfile speexdsp.speexdsp shine.shine)

@@ -1,9 +1,13 @@
+/// wav, mp3, opus support; needs a wav out is all.
+
 #define  MINIMP3_ONLY_MP3
 #define  MINIMP3_ONLY_SIMD
 //#define  MINIMP3_FLOAT_OUTPUT
 #define  MINIMP3_IMPLEMENTATION
-
 #include "minimp3_ex.h"
+
+#define DR_WAV_IMPLEMENTATION
+#include <audio/dr_wav.h>
 
 #include <core/core.hpp>
 #include <audio/audio.hpp>
@@ -12,200 +16,289 @@
 #include <stdlib.h>
 #include <string.h>
 #include <gsl/gsl_fft_real.h>
-#include <opus/opus.h>
 #include <ogg/ogg.h>
+#include <opus.h>
+#include <opusenc.h>
+#include <opusfile.h>
+extern "C" {
+#include <shine/layer3.h>
+};
 
 namespace ion {
 struct iaudio {
-    bool             init;
-    mp3dec_t         dec;
-    mp3dec_ex_t      api;
-    i16             *samples;
-    ogg_sync_state   oy;
-    ogg_stream_state os;
-    ogg_page         og;
-    ogg_packet       op;
-    OpusDecoder     *decoder;
-    int              version;
-    int              channels;
-    int              total_samples;
-
-    ~iaudio() { delete[] buf; }
+    i32    sample_rate; /// hz
+    i16   *samples;
+    i8     channels;
+    i64    total_samples;
+    str    artist;
+    str    title;
+    ~iaudio() { delete[] samples; }
 };
+
+/// utility for setting artist and title on mp3 files only
+static bool mp3_set_id3(path p, str artist, str title) {
+    cstr  s_path = p.cs();
+    FILE* mp3f   = fopen(s_path, "r+b");
+    if (mp3f == NULL) {
+        console.fault("mp3_set_idv3v2: failed to open {0}", { str(s_path) });
+        return false;
+    }
+
+    // calculate the total size of the artist and song fields
+    size_t artist_sz = artist.len() + 1;
+    size_t  title_sz = title.len()  + 1;
+
+    // create the artist and song metadata frames
+    u8 artistFrame[10 + artist_sz];  // Frame ID (4 bytes) + Frame Size (4 bytes) + Flags (2 bytes) + Artist field value
+    u8 titleFrame [10 +  title_sz]; // Frame ID (4 bytes) + Frame Size (4 bytes) + Flags (2 bytes) + Song field value
+
+    memcpy(artistFrame, "TPE1", 4);  // Frame ID: TPE1 (artist)
+    memcpy(titleFrame,  "TIT2", 4);    // Frame ID: TIT2 (song)
+
+    // set the frame sizes (excluding the frame ID and frame size fields)
+    artistFrame[4] = (artist_sz >> 24) & 0xFF;
+    artistFrame[5] = (artist_sz >> 16) & 0xFF;
+    artistFrame[6] = (artist_sz >> 8)  & 0xFF;
+    artistFrame[7] =  artist_sz & 0xFF;
+
+    titleFrame[4] = (title_sz >> 24) & 0xFF;
+    titleFrame[5] = (title_sz >> 16) & 0xFF;
+    titleFrame[6] = (title_sz >> 8)  & 0xFF;
+    titleFrame[7] =  title_sz & 0xFF;
+
+    // write the artist and song fields to the frames
+    memcpy(artistFrame + 10, artist.cs(), artist_sz);
+    memcpy(titleFrame  + 10,  title.cs(),  title_sz);
+
+    // move the file position indicator to the beginning of the file
+    fseek(mp3f, 0, SEEK_SET);
+
+    // check if an ID3v2 tag exists
+    unsigned char id3Header[10];
+    fread(id3Header, 1, 10, mp3f);
+
+    if (memcmp(id3Header, "ID3", 3) == 0) {
+        // ID3v2 tag exists, so overwrite the existing tag with the new frames
+        fwrite(id3Header, 1, 10, mp3f);  // Write the existing ID3v2 header
+        size_t tagSize = ((id3Header[6] & 0x7F) << 21) | ((id3Header[7] & 0x7F) << 14) | ((id3Header[8] & 0x7F) << 7) | (id3Header[9] & 0x7F);
+        fseek(mp3f, tagSize, SEEK_CUR);  // Skip the existing tag
+
+        // write the new artist and song frames
+        fwrite(artistFrame, 1, sizeof(artistFrame), mp3f);
+        fwrite(titleFrame,  1, sizeof(titleFrame),  mp3f);
+    } else {
+        // no ID3v2 tag exists, so create a new one
+        const char id3Header[] = "ID3\x03\x00\x00\x00\x00\x00";
+        fwrite(id3Header, 1, sizeof(id3Header), mp3f);
+
+        // Write the new artist and song frames
+        fwrite(artistFrame, 1, sizeof(artistFrame), mp3f);
+        fwrite(titleFrame,  1, sizeof(titleFrame),  mp3f);
+    }
+    
+    fclose(mp3f);
+}
 
 /// use this to hide away the data and isolate its dependency
 ptr_impl(audio, mx, iaudio, p);
 
-audio::audio(path res, bool force_mono) : audio() {
-    str ext = res.ext();
-
-    if (!p->init) {
-        mp3dec_init(&p->dec); /// see how often this needs to be done?
-        p->init = true;
+void audio::convert_mono() {
+    if (p->channels == 1)
+        return;
+    i16   *n_samples = new short[p->total_samples]; /// now its 1:1 with total_samples because new channels = 1
+    for (int       i = 0; i < p->total_samples; i++) {
+        float    sum = 0;
+        for (int   c = 0; c < p->channels; c++)
+                sum += p->samples[i * p->channels + c];
+        n_samples[i] = sum / p->channels;
     }
-    int channels = p->api.info.channels;
-    cstr  s_path = res.cs();
+    delete[]     p->samples;  /// delete previous data
+    p->samples  = n_samples; /// set new data
+    p->channels = 1;        /// set to 1 channel
+}
 
+/// save / export to destination format (.mp3 .opus .wav support)
+bool audio::save(path dest, i64 bitrate) {
+    str  ext    = dest.ext();
+    cstr s_path = dest.cs();
+    
+    /// conversion to opus
     if (ext == ".opus") {
+        const i64        latency    = 20; /// compute 20ms frame size
+        const i64        frame_size = p->sample_rate / (1000 / latency);
+        OggOpusEnc      *enc;
+        OggOpusComments *comments;
+        int              error;
         
-        /// read packets from pages from ogg frame
-        FILE     *f                = fopen(s_path, "rb");
-        bool      first            = true;
-        int       version          = 0;
-        int       channels         = 0;
-        const int buffer_size      = 1024 * 16; /// should handle a 60ms pcm as well as the encoded buffer, prior case, multiplied by channels read
-        int       pcm_max_samples  = 1024 * 32;
-        int       alloc_samples    = pcm_max_samples * channels;
-        int       total_samples    = 0;
-        i16      *pcm              = new i16[pcm_max_samples * channels];
-        i16      *result           = new i16[alloc_samples]; /// start it the same and it will adjust 
-
-        // main loop
-        while (!feof(f)) {
-            // read data from file and add to sync state
-            i8    *buffer = ogg_sync_buffer(&oy, buffer_size);
-            size_t bytes  = fread(buffer, 1, buffer_size, f);
-            ogg_sync_wrote(&oy, bytes);
-
-            // extract pages and add to stream state
-            while (ogg_sync_pageout(&oy, &og) == 1) {
-                ogg_stream_pagein(&os, &og);
-
-                // extract packets and decode
-                while (ogg_stream_packetout(&os, &op) == 1) {
-                    if (first) {
-                        /// find the head of opus
-                        assert(op.bytes >= 9 && memcmp(op.packet, "OpusHead", 8) == 0);
-                        version         = ((u8 *)op.packet)[8];
-                        channels        = ((u8 *)op.packet)[9];
-                        first           = false;
-                    }
-
-                    // samples doesnt take into account channels, stride by channel in copying
-                    int samples = opus_decode(decoder, op.packet, op.bytes, pcm, pcm_max_samples, 0);
-                    if ((total_samples + samples) > alloc_samples) {
-                        while (total_samples + samples > alloc_samples)
-                            alloc_samples *= 2;
-                        i16    *n_result = new i16[alloc_samples];
-                        size_t   n_bytes = total_samples * channels * sizeof(i16);
-                        memcpy(n_result, result, n_bytes);
-                        delete[] result;
-                        result = n_result;
-                    }
-
-                    size_t n_bytes = samples * channels * sizeof(i16);
-                    memcpy(&result[total_samples * channels], result, n_bytes);
-                    total_samples += samples;
-                }
-            }
+        comments = ope_comments_create();
+        ope_comments_add(comments, "ARTIST", p->artist.cs());
+        ope_comments_add(comments, "TITLE",  p->title.cs());
+        enc = ope_encoder_create_file(s_path, comments, p->sample_rate, p->channels, 0, &error);
+        ope_encoder_ctl(enc, OPUS_SET_BITRATE(bitrate));
+        
+        if (!enc) {
+            console.fault("error encoding to file {0}: {1}", { str(s_path), error });
+            ope_comments_destroy(comments);
+            return false;
         }
-        fclose(f);
-
-        p->total_samples = total_samples;
-        p->samples = result;
-
+        
+        for (i64 i = 0; i < p->total_samples; i += frame_size) {
+            i64 remain = p->total_samples - i;
+            ope_encoder_write(enc, &p->samples[i * p->channels], int(math::min(remain, frame_size))); // number of frames to write
+        }
+        ope_encoder_drain(enc); /// drain? flush!
+        ope_encoder_destroy(enc);
+        ope_comments_destroy(comments);
+        
     } else if (ext == ".mp3") {
-        assert(!mp3dec_ex_open(&p->api, s_path, MP3D_SEEK_TO_SAMPLE));
-        p->total_samples = p->api.samples;
-        assert(p->total_samples > 0);
-        p->samples = new short[p->total_samples];
-        assert(mp3dec_ex_read(&p->api, p->samples, p->api.samples) == p->total_samples);
-    }
+        FILE          *mp3_file = fopen(s_path, "wb");
+        shine_config_t config;
+        shine_t        s;
 
-    /// convert to mono if we feel like it.
-    const int   channels = p->api.info.channels;
-    if (channels > 1 && force_mono) {
-        size_t      n_sz = p->sz / channels;
-        short     *n_buf = new short[n_sz];
-        for (int       i = 0; i < p->sz; i += channels) {
-            float    sum = 0;
-            for (int   c = 0; c < channels; c++)
-                    sum += p->buf[i + c];
-            n_buf[i / channels] = sum / channels;
+        /// set defaults
+        shine_set_config_mpeg_defaults(&config.mpeg);
+        config.wave.channels   = (enum channels)p->channels;
+        config.wave.samplerate = p->sample_rate;
+        config.mpeg.bitr       = int(bitrate / 1000);
+        config.mpeg.emph       = NONE; /// no emphasis
+        config.mpeg.original   = 1;    /// original
+        config.mpeg.mode       = p->channels == 2 ? STEREO : MONO;
+        
+        /// init shine
+        if (!(s = shine_initialise(&config))) console.fault("cannot init shine");
+
+        /// read pcm into shine, encode and write to output
+        const size_t samples_per_frame = 1152;
+        for (i64 i = 0; i < p->total_samples; i += samples_per_frame) {
+            int n_bytes = 0;
+            u8 *encoded = shine_encode_buffer_interleaved(
+                s, &p->samples[i * p->channels], &n_bytes);
+            fwrite(encoded, sizeof(u8), n_bytes, mp3_file);
         }
-        delete[] p->buf; /// delete previous data
-        p->buf = n_buf; /// set new data 
-        p->sz  = n_sz; /// set new size
-        p->api.info.channels = 1; /// set to 1 channel
+        /// cleanup
+        shine_close(s);
+        fclose(mp3_file);
+        
+        /// set id3 info separate
+        mp3_set_id3(s_path, p->artist, p->title);
+        ///
+    } else if (ext == ".wav") {
+        /// hiii everybody!
+        /// hiii dr wav!
+        drwav_data_format format {
+            .container      = drwav_container_riff,
+            .format         = DR_WAVE_FORMAT_PCM,
+            .channels       = u32(p->channels),
+            .sampleRate     = u32(p->sample_rate),
+            .bitsPerSample  = 16
+        };
+        drwav wav;
+        if (!drwav_init_file_write(&wav, s_path, &format, null))
+            console.fault("failed to open output wav file for writing.");
+        /// write the PCM frames to the WAV file
+        /// drwav_write_pcm_frames(pWav, frameCount, pSamples)
+        drwav_uint64 w = drwav_write_pcm_frames(&wav, u64(p->total_samples), p->samples);
+        if (w != p->total_samples)
+            console.fault("failed to write all pcm frames to the wav file.");
+        drwav_uninit(&wav);
     }
+    return true;
+}
+
+audio::audio(path res, bool force_mono) : audio(mx::alloc<audio>()) {
+    str  ext = res.ext();
+    cstr s_path = res.cs();
+    int  error;
+    ///
+    if (ext == ".opus") {
+        /// open file
+        OggOpusFile *opus_file = op_open_file(s_path, &error);
+        if (error != 0) console.fault("failed to open file: {0}, error {1}", { error });
+
+       OpusTags* tags = (OpusTags*)op_tags(opus_file, 0);
+        if (tags != NULL) {
+            p->artist = opus_tags_query(tags, "ARTIST", 0);
+            p->title  = opus_tags_query(tags, "TITLE",  0);
+        }
+        
+        /// allocate samples
+        const int buffer_size = 1024;
+        opus_int16 buffer[buffer_size];
+        p->channels = op_channel_count(opus_file, -1);
+        p->total_samples = op_pcm_total(opus_file, -1);
+        p->samples = new i16[p->total_samples * p->channels];
+        const OpusHead *head = op_head(opus_file, -1);
+        if (!head) console.fault("failed to read opus head");
+        p->sample_rate = i32(head->input_sample_rate);
+        
+        /// read samples
+        size_t t = 0;
+        int samples_read = 0;
+        do {
+            samples_read = op_read(opus_file, &p->samples[t], buffer_size, NULL);
+            if (samples_read < 0)
+                console.fault("error reading file: {0}", { samples_read });
+            
+            t += samples_read * p->channels;
+        } while (samples_read != 0);
+        op_free(opus_file);
+        
+        /// this will always result in exactly total_samples read -- or a crash
+        if (t != p->total_samples) console.fault("sample count mismatch: {0}", { str(res) });
+        
+    } else if (ext == ".mp3") {
+        /// open file
+        mp3dec_t         dec;
+        mp3dec_ex_t      api;
+        mp3dec_init(&dec);
+        assert(!mp3dec_ex_open(&api, s_path, MP3D_SEEK_TO_SAMPLE));
+        p->total_samples = api.samples / p->channels;
+        p->channels      = api.info.channels;
+        p->sample_rate   = api.info.hz;
+        
+        /// read samples
+        p->samples       = new short[p->total_samples * p->channels];
+        assert(mp3dec_ex_read(&api, p->samples, api.samples) == p->total_samples * p->channels);
+        mp3dec_ex_close(&api);
+        ///
+    } else if (ext == ".wav") {
+        drwav w;
+        if (!drwav_init_file(&w, s_path, null)) {
+            console.fault("killer wav: {0}", { str(s_path) });
+        }
+        ///
+        p->channels      = w.channels;
+        p->sample_rate   = w.sampleRate;
+        p->total_samples = w.totalPCMFrameCount;
+        p->samples       = new i16[p->total_samples * p->channels];
+        int t = 0;
+
+        /// put faith in dr wav
+        for (;;) {
+            u64 read = drwav_read_pcm_frames_s16(&w, 2048, &p->samples[t]);
+            if (read == 0) break;
+            t += read * p->channels;
+        }
+        /// mirror handed to you.  check mirror
+        console.test(t == (p->total_samples * p->channels), "data integrity error");
+    } else {
+        console.fault("extension not supported: {0}", { ext });
+    }
+    
+    /// convert to mono if we feel like it.
+    if (p && p->channels > 1 && force_mono)
+        convert_mono();
 }
 
 /// obtain short waves from skinny aliens
 array<short> audio::pcm_data() {
-    array<short> res(size_t(p->sz));
-    for (int i = 0; i < p->sz; i++)
-        res += p->buf[i];
-    return res;
+    return memory::wrap<short>(p->samples, p->total_samples * p->channels);
 }
 
-int           audio::channels() { return  p->api.info.channels; }
-audio::operator          bool() { return  p->sz; }
-bool         audio::operator!() { return !p->sz; }
-size_t            audio::size() { return  p->sz; }
-size_t       audio::mono_size() { return  p->sz / p->api.info.channels; }
-
-
-#define FRAME_SIZE 960
-#define SAMPLE_RATE 48000
-#define CHANNELS 2
-
-int opus_fft(path p) {
-    if (argc != 2) {
-        fprintf(stderr, "Usage: %s input.opus\n", argv[0]);
-        exit(EXIT_FAILURE);
-    }
-
-    int err;
-    OpusDecoder *decoder = opus_decoder_create(SAMPLE_RATE, CHANNELS, &err);
-    if (err < 0) {
-        fprintf(stderr, "Failed to create decoder: %s\n", opus_strerror(err));
-        exit(EXIT_FAILURE);
-    }
-
-    FILE *fp = fopen(argv[1], "rb");
-    if (fp == NULL) {
-        perror("fopen");
-        exit(EXIT_FAILURE);
-    }
-
-    int16_t pcm[FRAME_SIZE * CHANNELS];
-    float fft_in[FRAME_SIZE];
-    double fft_out[FRAME_SIZE / 2 + 1];
-
-    gsl_fft_real_wavetable *real = gsl_fft_real_wavetable_alloc(FRAME_SIZE);
-    gsl_fft_real_workspace *work = gsl_fft_real_workspace_alloc(FRAME_SIZE);
-
-    while (1) {
-        unsigned char packet[1275];
-        int packet_size = fread(packet, 1, sizeof(packet), fp);
-        if (packet_size == 0) {
-            break;
-        }
-
-        int frames_decoded = opus_decode(decoder, packet, packet_size, pcm, FRAME_SIZE, 0);
-        if (frames_decoded < 0) {
-            fprintf(stderr, "Failed to decode frame: %s\n", opus_strerror(frames_decoded));
-            exit(EXIT_FAILURE);
-        }
-
-        for (int i = 0; i < FRAME_SIZE; i++) {
-            fft_in[i] = pcm[i * CHANNELS] / 32768.0;
-        }
-
-        gsl_fft_real_transform(fft_in, 1, FRAME_SIZE, real, work);
-        for (int i = 0; i < FRAME_SIZE / 2 + 1; i++) {
-            fft_out[i] = sqrt(fft_in[i * 2] * fft_in[i * 2] + fft_in[i * 2 + 1] * fft_in[i * 2 + 1]);
-        }
-
-        // Do something with the FFT output...
-    }
-
-    fclose(fp);
-    opus_decoder_destroy(decoder);
-    gsl_fft_real_wavetable_free(real);
-    gsl_fft_real_workspace_free(work);
-
-    return 0;
-}
+int           audio::channels() { return  p->channels;                    }
+audio::operator          bool() { return  p->total_samples >  0;          }
+bool         audio::operator!() { return  p->total_samples == 0;          }
+size_t            audio::size() { return  p->total_samples * p->channels; }
+size_t       audio::mono_size() { return  p->total_samples;               }
 
 }

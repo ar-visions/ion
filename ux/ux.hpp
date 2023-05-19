@@ -857,7 +857,7 @@ struct Buffer:mx {
     size_t type_size();
 };
 
-BufferMemory *create_buffer(Device *d, size_t sz, void *bytes, type_t type, Buffer::Usage usage);
+Buffer create_buffer(Device *d, size_t sz, void *bytes, type_t type, Buffer::Usage usage);
 
 struct IndexMemory;
 ///
@@ -877,7 +877,7 @@ struct IndexBuffer:IndexData {
     //    return { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, ds, 0, 0,
     //             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, buffer };
     //}
-    IndexBuffer(std::nullptr_t n = null) : IndexData(n) { }
+    IndexBuffer(std::nullptr_t n = null) : IndexData() { }
     IndexBuffer(Device *device, array<I> &i) : IndexData(device, Buffer {
             device, i, Buffer::Usage::Index }) { }
 };
@@ -1047,7 +1047,7 @@ struct Pipeline:PipelineData {
 struct Pipes:mx {
     struct data {
         Device           *device  = null;
-        VertexData        vbo     = null;
+        VertexData        vbo;
         uint32_t          binding = 0;
       //array<Attrib>     attr    = {};
         map<PipelineData> part;
@@ -1867,7 +1867,7 @@ struct object:node {
             str             skin      = "";
             states<Asset>   assets    = { Asset::Color };
             Shaders         shaders   = { "*=main" };
-            UniformData     ubo       = { null };
+            UniformData     ubo;
             VAttribs        attr      = { VA::Position, VA::UV, VA::Normal };
             rendition       render    = { rendition::shader };
     } &m;

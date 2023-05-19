@@ -17,7 +17,7 @@
             "version":  "2.7",
             "url":      "https://github.com/ampl/gsl",
             "commit":   "47862078af4a204c4220f028656a19ddd3922144",
-            "includes": ["./"],
+            "includes": ["./", "./ion-build"],
             "libs":     ["./ion-build"],
             "diff":     "gsl.diff"
         },
@@ -30,6 +30,14 @@
             "libs":     ["./ion-build"]
         },
         {
+            "name":     "shine",
+            "version":  "1.0.2",
+            "url":      "https://github.com/toots/shine",
+            "commit":   "ab5e3526b64af1a2eaa43aa6f441a7312e013519",
+            "includes": ["../install/include"],
+            "libs":     ["../install/lib"]
+        },
+        {
             "name":     "opus",
             "version":  "1.4",
             "url":      "https://github.com/xiph/opus",
@@ -39,15 +47,51 @@
                 "path": "."
             },
             "includes": ["./include"],
-            "libs":     ["./ion-build"]
+            "libs":     ["./ion-build"],
+            "install":  true
         },
         {
             "name":     "ogg",
             "version":  "1.3.5",
             "url":      "https://github.com/xiph/ogg",
             "commit":   "e1774cd",
-            "includes": ["./ion-build/include"],
-            "libs":     ["./ion-build"]
+            "includes": ["./include", "./ion-build/include"],
+            "libs":     ["./ion-build"],
+            "install":  true
+        },
+        {
+            "name":     "opusfile",
+            "version":  "0.12",
+            "url":      "https://github.com/xiph/opusfile",
+            "commit":   "9d718345ce03b2fad5d7d28e0bcd1cc69ab2b166",
+            "includes": ["./include"],
+            "libs":     ["./ion-build"],
+            "cmake": {
+                "args": ["-DOP_DISABLE_HTTP=Yes","-DOP_DISABLE_DOCS=Yes"],
+                "path": "."
+            },
+            "install":  true
+        },
+        {
+            "name":     "speexdsp",
+            "version":  "1.2.1",
+            "url":      "https://github.com/xiph/speexdsp",
+            "commit":   "1b28a0f",
+            "includes": ["./include"],
+            "libs":     ["../install/lib"]
+        },
+        {
+            "name":     "opusenc",
+            "version":  "0.21",
+            "url":      "https://github.com/xiph/libopusenc",
+            "commit":   "b19e1b14",
+            "includes": ["./include"],
+            "libs":     ["./ion-build"],
+            "cmake": {
+                "args": ["-DOP_DISABLE_HTTP=Yes","-DOP_DISABLE_DOCS=Yes"],
+                "path": "."
+            },
+            "install":  true
         },
         {
             "name":     "vulkansdk",
@@ -63,6 +107,7 @@
             "version":  "3.3.8",
             "commit":   "7482de6",
             "url":      "https://github.com/glfw/glfw",
+            "cmake":    {"args": ["-DCMAKE_C_FLAGS=\"-D_GLFW_VULKAN_LIBRARY=\\\"libMoltenVK.dylib\\\"\""]},
             "includes": ["./include"],
             "libs":     ["./ion-build/src"]
         },

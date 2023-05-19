@@ -207,68 +207,44 @@ struct uri:mx {
     }
 };
 
+struct isock;
+
 struct sock:mx {
-    ///
-    struct isock *i;
-
-    ptr_decl(sock, mx, isock, i);
-
-    ///
-    uri       query() const;
-    bool timeout_ms() const;
-    bool  connected() const;
-    bool  operator!() const;
-    operator   bool() const;
-    
-    static int send_wrapper(void *ctx, const u8 *buf, size_t len);
-    static int recv_wrapper(void *ctx, u8 *buf, size_t len);
-
-    ///
-    enum role {
-        client,
-        server
-    };
-
-    ///
-    void set_timeout(i64 t);
-
-    sock(role r, uri bind);
-
-    sock accept();
-
+private:
+    inline static symbol pers = "ion:net";
+    isock *isc;
+    bool connect(str host, int port);
+    bool bind(str adapter, int port);
     sock &establish();
-
-    int read(u8 *v, size_t sz);
-
-    bool read_sz(u8 *v, size_t sz);
-
-    array<char> read_until(str s, int max_len);
-
-    bool write(u8 *v, size_t sz);
-
-    bool write(array<char> v);
-
-    bool write(str s, array<mx> a);
-
-    bool write(str s);
-
-    /// for already string-like memory; this could do something with the type on mx
-    bool write(mx &v);
-
-    void close() const;
-
-    /// ---------------------------------
-    static void logging(void *ctx, int level, symbol file, int line, symbol str);
+    sock accept();
+    void load_certs(str host);
     
-    /// ---------------------------------
-    static sock connect(uri u);
+public:
+    ptr_decl(sock, mx, isock, isc);
+    
+    enums(role, none,
+          "none, client, server",
+           none, client, server);
 
-    /// listen on https using mbedtls
-    /// ---------------------------------
     static async listen(uri url, lambda<bool(sock&)> fn);
+
+     sock(role r, uri bind);
+    ~sock();
+    
+    operator bool();
+    
+    void set_timeout(i64 t);
+    
+    void close();
+    bool read_sz(u8 *v, size_t sz);
+    array<char> read_until(str s, int max_len);
+    
+    ssize_t recv(unsigned char* buf, size_t len);
+    ssize_t send(const unsigned char* buf, size_t len);
+    ssize_t send(str templ, array<mx> args = { });
+    ssize_t send(mx &v);
 };
 
-struct Socket;
 struct message:mx {
     struct members {
         uri     query;
@@ -289,12 +265,12 @@ struct message:mx {
     message(path p, mx modified_since = {});
     message(mx content, map<mx> headers = {}, uri query = {});
     message(uri url, map<mx> headers = {});
-    message(Socket *psc);
+    message(sock &sc);
 
     uri query();
 
-    bool read_headers(Socket *psc);
-    bool read_content(Socket *psc);
+    bool read_headers(sock &sc);
+    bool read_content(sock &sc);
 
     /// query/request construction
     static message query(uri server, map<mx> headers, mx content);
@@ -303,17 +279,15 @@ struct message:mx {
     static message response(uri query, mx code, mx content, map<mx> headers = null);
 
     explicit operator bool();
-
     bool operator!();
     
     bool printable_value(mx &v);
-
     static symbol code_symbol(int code);
 
     ///  code is in headers.
-    bool write_status(sock sc);
-    bool write_headers(Socket *psc);
-    bool write(Socket *sc);
+    bool write_status(sock &sc);
+    bool write_headers(sock &sc);
+    bool write(sock &sc);
     str  text();
 
     /// structure cookies into usable format

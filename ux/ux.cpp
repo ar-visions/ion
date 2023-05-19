@@ -2108,7 +2108,7 @@ Buffer::Usage buffer_usage(VkBufferUsageFlags usage) {
 IndexData::operator bool () { return (*this)->device != null; }
 bool IndexData::operator!() { return (*this)->device == null; }
 
-BufferMemory *create_buffer(Device *d, size_t sz, void *bytes, type_t type, Buffer::Usage usage) {
+Buffer create_buffer(Device *d, size_t sz, void *bytes, type_t type, Buffer::Usage usage) {
     return new BufferMemory { d, sz, type->base_sz, bytes, buffer_usage(usage) };
 }
 
@@ -2243,9 +2243,9 @@ Internal &Internal::bootstrap() {
 
     const symbol validation_layer   = "VK_LAYER_KHRONOS_validation";
     u32          glfwExtensionCount = 0;
-    symbol*      glfwExtensions     = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+    //symbol*      glfwExtensions     = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
 
-    array<symbol> extensions { &glfwExtensions[0], glfwExtensionCount, glfwExtensionCount + 1 };
+    array<symbol> extensions(32);
 
     extensions += VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
     if constexpr (is_apple())
@@ -2265,13 +2265,16 @@ Internal &Internal::bootstrap() {
                               VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
         .pfnUserCallback    = vk_debug
     };
+    
+    /// null term the list (minus this one below; thisi s for the hint)
+    extensions += symbol(null);
 
     // set the application info
     VkApplicationInfo app_info   = {
         .sType               = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-        .pApplicationName    = "ion",
+        .pApplicationName    = "ion:ux",
         .applicationVersion  = VK_MAKE_API_VERSION(0, 1, 0, 0),
-        .pEngineName         = "ion",
+        .pEngineName         = "ion:ux",
         .engineVersion       = VK_MAKE_API_VERSION(0, 1, 0, 0),
         .apiVersion          = VK_API_VERSION_1_2
     };
@@ -2281,16 +2284,16 @@ Internal &Internal::bootstrap() {
         .pNext                   = &debug,
         .pApplicationInfo        = &app_info,
         .flags                   = VkInstanceCreateFlags(VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR),
-        .enabledLayerCount       = is_debug() ? 1 : 0,
+        .enabledLayerCount       = 0, //is_debug() ? 1 : 0, -- this is broken on M1/M2 due to the use of Molten over VulkanRT/SDK
         .ppEnabledLayerNames     = &validation_layer,
-        .enabledExtensionCount   = u32(extensions.len()),
+        .enabledExtensionCount   = u32(extensions.len() - 1),
         .ppEnabledExtensionNames = extensions.data()
     };
 
     // create the vk instance (MoltenVK does not support validation layer)
     // M2 mac mini reports incompatible driver
     VkResult vk_result = vkCreateInstance(&create_info, null, &vk);
-
+    
     /// if layer not present, attempt to load without
     if (is_debug() && vk_result == VK_ERROR_LAYER_NOT_PRESENT) {
         console.log("warning: validation layer unavailable (VK_ERROR_LAYER_NOT_PRESENT)");
@@ -2299,7 +2302,14 @@ Internal &Internal::bootstrap() {
     }
     /// test for success
     console.test(vk_result == VK_SUCCESS, "vk instance failure");
-
+    str exts(size_t(256));
+    for (symbol e: extensions) {
+        if (exts)
+            exts += ",";
+        exts += e;
+    }
+    //glfwWindowHintString(GLFW_EXTENSIONS, exts.cs());
+    
     /// create the debug messenger
     VkResult dbg_result = CreateDebugUtilsMessengerEXT(vk, &debug, null, &dmsg);
     console.test(dbg_result == VK_SUCCESS, "vk debug messenger failure");
@@ -2520,19 +2530,11 @@ gfx::gfx(ion::window &win) : gfx(new gfx_memory { }) {
 }
 
 window::window(ion::size sz, mode::etype wmode, memory *control) : window() {
-    /*
-    static bool is_init = false;
-    if(!is_init) {
-        is_init = true;
-        glfwInit();
-        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    }
-    */
     VkInstance vk = Internal::handle().vk;
     w->sz          = sz;
     w->headless    = wmode == mode::headless;
     w->control     = control->grab();
-    w->glfw        = glfwCreateWindow(sz[1], sz[0], (symbol)"ux-vk", null, null);
+    w->glfw        = glfwCreateWindow(int(sz[1]), int(sz[0]), (symbol)"ion:ux", null, null);
     w->vk_surface  = 0;
     
     VkResult code = glfwCreateWindowSurface(vk, w->glfw, null, &w->vk_surface);

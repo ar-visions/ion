@@ -17,6 +17,7 @@ build_dir = os.environ.get('CMAKE_BINARY_DIR')
 cfg       = os.environ.get('CMAKE_BUILD_TYPE')
 js_path   = os.environ.get('JSON_IMPORT_INDEX')
 cm_build  = 'ion-build'
+install_prefix = f'{build_dir}/extern/install'
 
 def sha256_file(file_path):
     sha256_hash = hashlib.sha256()
@@ -38,24 +39,35 @@ def check(a):
     assert(a)
     return a
 
-def      parse(f): return f['name'] + '-' + f['version'], f['name'], f['version'], f.get('res'), f.get('sha256'), f.get('url'), f.get('commit'), f.get('diff')
+def      parse(f): return f['name'] + '-' + f['version'], f['name'], f['version'], f.get('res'), f.get('sha256'), f.get('url'), f.get('commit'), f.get('diff'), f.get('install')
 def    git(*args): return subprocess.run(['git']   + list(args), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
-def  cmake(*args): return subprocess.run(['cmake'] + list(args), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
-def   build(type): return cmake('--build', cm_build)
-def     gen(type, cmake_script_root, prefix_path, extra=None):
+
+def  cmake(*args):
+    cmd = ['cmake'] + list(args)
+    print('running: ', ' '.join(cmd))
+    return subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+
+def       build(): return cmake('--build',   cm_build)
+def  cm_install(): return cmake('--install', cm_build)
+def         gen(type, cmake_script_root, prefix_path, extra=None):
     build_type = type[0].upper() + type[1:].lower()
+    print(f'install prefix: {install_prefix}')
+    print(f'prefix path: {prefix_path}')
     print(f'build type: {build_type}')
     args = ['-S', cmake_script_root,
             '-B', cm_build, 
-           f'-DCMAKE_PREFIX_PATH="{prefix_path}"'
-            '-DCMAKE_VERBOSE_MAKEFILE:BOOL=ON',
-           f'-DCMAKE_BUILD_TYPE={build_type}']
+           f'-DCMAKE_INSTALL_PREFIX=\'{install_prefix}\'', 
+           f'-DCMAKE_PREFIX_PATH=\'{prefix_path}\'', 
+            '-DCMAKE_VERBOSE_MAKEFILE:BOOL=ON', 
+           f'-DCMAKE_BUILD_TYPE={build_type}'
+    ]
     if extra:
         args.extend(extra)
     return cmake(*args)
 
 os.chdir(build_dir)
-if not os.path.exists('extern'): os.mkdir('extern');
+if not os.path.exists('extern'):         os.mkdir('extern')
+if not os.path.exists('extern/install'): os.mkdir('extern/install')
 
 def latest_file(root_path, avoid = None):
     t_latest = 0
@@ -103,7 +115,7 @@ def is_cached(this_src_dir, vname):
     
 ## prepare an { object } of external repo
 def prepare_build(this_src_dir, fields):
-    vname, name, version, res, sha256, url, commit, diff = parse(fields);
+    vname, name, version, res, sha256, url, commit, diff, install = parse(fields)
     dst = f'{build_dir}/extern/{vname}'
     dst_build, timestamp, cached = is_cached(dst, vname)
 
@@ -136,7 +148,7 @@ def prepare_build(this_src_dir, fields):
     else:
         cached = True
     ##
-    return dst, dst_build, timestamp, cached, vname, not res
+    return dst, dst_build, timestamp, cached, vname, not res, install
 
 everything = []
 
@@ -159,7 +171,7 @@ def prepare_project(src_dir):
                 prepare_project(rel_peer) # recurse into project, pulling its things too
 
         ## now prep gen and build
-        prefix_path = ''
+        prefix_path = install_prefix
         for fields in import_list:
             if not isinstance(fields, str):
                 name  = fields['name']
@@ -190,23 +202,28 @@ def prepare_project(src_dir):
                         continue
                 
                 ## check the timestamp here
-                remote_path, remote_build_path, timestamp, cached, vname, is_git = prepare_build(src_dir, fields)
+                remote_path, remote_build_path, timestamp, cached, vname, is_git, install = prepare_build(src_dir, fields)
 
                 ## only building the src git repos; the resources are system specific builds
                 if not cached and is_git:
                     gen(cfg, cmake_script_root, prefix_path, cmake_args)
-                    build(cfg)
+                    build()
+                    if install:
+                        cm_install()
                     
                     ## update timestamp
                     with open(timestamp, 'w') as f:
                         f.write('')
                 
                 ## add prefix path if there is one (so the next build sees all of the prior resources)
-                if os.path.isdir(remote_build_path):
-                    if prefix_path:
-                        prefix_path += f'{prefix_path}:{remote_build_path}'
-                    else:
-                        prefix_path  = remote_build_path
+                ## this is so we can reduce how much we install.
+                ## chaining together the build-dirs in prefix works in 'most' cases
+                #if not install:
+                #    if os.path.isdir(remote_build_path):
+                #        if prefix_path:
+                #            prefix_path += f'{prefix_path};{remote_build_path}'
+                #        else:
+                #            prefix_path  = remote_build_path
 
 # prepare project recursively
 prepare_project(src_dir)

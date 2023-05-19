@@ -289,8 +289,9 @@ struct mem_embed_token { };
     using CL  = C;\
     using DC  = m_type;\
     C(memory*   mem);\
-    C(m_type*     d);\
+    C(m_type*  data);\
     C(mx          o);\
+    C();\
     m_type *operator->() {\
         return m_access;\
     }\
@@ -306,22 +307,25 @@ struct mem_embed_token { };
             return *this;\
         return (X&)*m_access;\
     }\
-    C(null_t = null);\
        operator m_type *();\
     C &operator=(const C b);\
     m_type *operator=(const m_type *b);
 
-/// in the .cpp file
+/// the ptr isolation after cbase is a bit of an insult to matters
+/// it needs to harbor the basic allocation and attach an isolated piece of memory state
+/// would like that without quirks
+
+/// default ctr does not allocate; ptrs are meant to be isolated
 #define ptr_impl(C, B, m_type, m_access) \
-    C::C(memory* mem) : B(mem), m_access(mx::data<m_type>()) { }\
-    C::C(m_type* d) : B(memory::wrap(d, typeof(m_type))), m_access(mx::data<m_type>()) { }\
-    C::C(mx      o) : C(o.mem->grab())  { }\
-    C::C(null_t)    : C(mx::alloc<C>()) { }\
+    C::C(memory* mem)  : B(mem), m_access(mem ? mx::data<m_type>() : null) { }\
+    C::C(mx      o)    : C(o.mem->grab())   { }\
+    C::C()             : C(mx::alloc<C>()) { }\
+    C::C(m_type *data) : C(memory::wrap<m_type>(data, 1)) { }\
     C::operator m_type * () { return m_access; }\
     C &C::operator=(const C b) { return (C &)assign_mx(*this, b); }\
     m_type *C::operator=(const m_type *b) {\
         drop();\
-        mem = memory::wrap(raw_t(b), typeof(m_type));\
+        mem = memory::wrap<m_type>((m_type*)b, 1);\
         m_access = (m_type*)mem->origin;\
         return m_access;\
     }
@@ -1421,7 +1425,7 @@ public:
     static memory *wrap(raw_t m, type_t ty);
 
     template <typename T>
-    static memory *wrap(T *m);
+    static memory *wrap(T *m, size_t count);
 
     /// T is required due to type_t not permutable by pointer attribute
     template <typename T>
@@ -3403,7 +3407,7 @@ struct path:mx {
     operator cstr() const {
         return cstr(cs());
     }
-    str             ext () const { return str(p.extension().string()).mid(1); }
+    str             ext () const { return str(p.extension().string()); }
     str             ext4() const { return p.extension().string(); }
     path            file() const { return fs::is_regular_file(p) ? path(p) : path(null); }
     bool     copy(path to) const {
@@ -4524,10 +4528,10 @@ T path::read() const {
 #endif
 
 template <typename T>
-memory *memory::wrap(T *m) {
-    memory*     mem = (memory*)calloc(1, sizeof(memory)); /// there was a 16 multiplier prior.  todo: add address sanitizer support with appropriate clang stuff
-    mem->count      = 1;
-    mem->reserve    = 1;
+memory *memory::wrap(T *m, size_t count) {
+    memory*     mem = (memory*)calloc(1, sizeof(memory));
+    mem->count      = count;
+    mem->reserve    = 0;
     mem->refs       = 1;
     mem->type       = typeof(T);
     mem->origin     = m;
