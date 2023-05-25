@@ -217,14 +217,17 @@ memory *memory::alloc(type_t type, size_t type_sz, size_t count, size_t reserve,
             if (src_origin) {
                 /// if schema-copy-construct (call cpctr for each data type in composition)
                 for (size_t i = 0; i < type->schema->count; i++) {
-                    context_bind &bind = type->schema->composition[i];
-                    if (bind.data) bind.data->lambdas->cp(bind.data, mem->origin, src_origin, 0, count);
+                    context_bind &bind    = type->schema->composition[i];
+                    u8 *offset_origin     = &((u8*)mem->origin)[bind.offset];
+                    u8 *src_origin_offset = &((u8*) src_origin)[bind.offset];
+                    if (bind.data) bind.data->lambdas->cp(bind.data, offset_origin, src_origin_offset, 0, count);
                 }
             } else {
                 /// ctr: call construct across the composition
                 for (size_t i = 0; i < type->schema->count; i++) {
                     context_bind &bind = type->schema->composition[i];
-                    if (bind.data) bind.data->lambdas->construct(bind.data, mem->origin, 0, count); /// probably good to avoid the context bind at all if there is no data; in some cases it may not be required and the context does offer some insight by itself
+                    u8 *offset_origin  = &((u8*)mem->origin)[bind.offset];
+                    if (bind.data) bind.data->lambdas->construct(bind.data, offset_origin, 0, count); /// issue is origin passed and effectively reused memory! /// probably good to avoid the context bind at all if there is no data; in some cases it may not be required and the context does offer some insight by itself
                 }
             }
         }

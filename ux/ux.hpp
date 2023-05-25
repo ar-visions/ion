@@ -3,8 +3,7 @@
 #include <core/core.hpp>
 #include <math/math.hpp>
 #include <async/async.hpp>
-#include <audio/audio.hpp>
-#include <image/image.hpp>
+#include <media/media.hpp>
 
 struct GLFWwindow;
 struct VkWriteDescriptorSet;
@@ -963,8 +962,34 @@ struct GPU:mx {
     };
 
     gpu_memory *gmem; // support this.
-    ptr_decl(GPU, mx, gpu_memory, gmem);
-    //operators(GPU, gmem);
+    //ptr_decl(GPU, mx, gpu_memory, gmem);
+    
+    using MEM = mem_ptr_token;\
+    using PC  = mx;\
+    using CL  = GPU;\
+    using DC  = gpu_memory;\
+    GPU(memory* mem);\
+    GPU(gpu_memory* data);\
+    GPU(mx o);\
+    GPU();\
+    gpu_memory *operator->() {\
+        return gmem;\
+    }\
+    template <typename X>\
+    explicit operator X() {\
+        if constexpr (inherits<mx,X>())\
+            return *this;\
+        return *gmem;\
+    }\
+    template <typename X>\
+    operator X &() {\
+        if constexpr (inherits<mx,X>())\
+            return *this;\
+        return (X&)*gmem;\
+    }\
+    operator gpu_memory *();\
+    GPU &operator=(const GPU b);\
+    gpu_memory *operator=(const gpu_memory *b);
 
     uint32_t  index(Capability);
     void      destroy();

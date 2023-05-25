@@ -145,10 +145,10 @@ struct window_data {
     str              title;
     event            state;
     Device          *dev;
-    GPU             *gpu;
+    GPU              gpu;
     GLFWwindow      *glfw;
     VkSurfaceKHR     vk_surface; 
-    Texture         *tx_skia;
+    Texture          tx_skia;
     vec2             dpi_scale = { 1, 1 };
     bool             repaint;
     event            ev;
@@ -401,7 +401,9 @@ struct gpu_memory {
     VkSurfaceKHR surface;
 
     operator VkPhysicalDevice &() { return gpu; }
-    operator VkSurfaceKHR     &() { return surface; }
+    operator VkSurfaceKHR     &() {
+        return surface;
+    }
 };
 
 ///
@@ -1054,7 +1056,7 @@ void TextureMemory::create_sampler() {
 }
 
 void     Texture::set_stage (Stage s) { return data->set_stage(s);  }
-void     Texture::push_stage(Stage s) { return data->push_stage(s); }
+void     Texture::push_stage(Stage s) { return data->push_stage(s); } /// viewport is 1024 and window sz is 512.  i think this is accidental
 void     Texture::pop_stage()         { return data->pop_stage();   }
 
 uint32_t memory_type(VkPhysicalDevice gpu, uint32_t types, VkMemoryPropertyFlags props) {
@@ -1153,7 +1155,7 @@ void TextureMemory::set_stage(Texture::Stage next_stage) {
             .newLayout            = next_data->layout,
             .srcQueueFamilyIndex  = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex  = VK_QUEUE_FAMILY_IGNORED,
-            .image                = vk_image,
+            .image                = vk_image, /// check the workings of vk tutorial for vk_image origin, this one is null
             .subresourceRange     = {
                 .aspectMask       = aflags,
                 .baseMipLevel     = 0,
@@ -1360,7 +1362,8 @@ GPU create_gpu(VkPhysicalDevice gpu, VkSurfaceKHR surface) {
     }
     if (mgpu->support.ansio)
         mgpu->support.max_sampling = max_sampling(mgpu->gpu);
-    return GPU(mem);
+
+    return mem;
 }
 
 void UniformMemory::transfer(size_t frame_id) {
@@ -1451,8 +1454,47 @@ VkShaderModule Device::module(Path path, Assets &assets, ShadeModule type) {
 }
 
 ptr_impl(Buffer,       mx, BufferMemory,   bmem);
-ptr_impl(GPU,          mx, gpu_memory,     gmem);
-ptr_impl(Texture,      mx, TextureMemory,  data);
+
+
+//ptr_impl(GPU,          mx, gpu_memory,     gmem);
+
+
+GPU::GPU(memory* mem)  : mx(mem), gmem(mem ? mx::data<gpu_memory>() : null) { }\
+GPU::GPU(mx      o)    : GPU(o.mem->grab())   { }\
+GPU::GPU()             : GPU(mx::alloc<GPU>()) { }\
+GPU::GPU(gpu_memory *data) : GPU(memory::wrap<gpu_memory>(data, 1)) { }\
+GPU::operator gpu_memory * () { return gmem; }\
+GPU &GPU::operator=(const GPU b) { return (GPU &)assign_mx(*this, b); }\
+gpu_memory *GPU::operator=(const gpu_memory *b) {\
+    drop();\
+    mem = memory::wrap<gpu_memory>((gpu_memory*)b, 1);\
+    gmem = (gpu_memory*)mem->origin;\
+    return gmem;\
+}
+
+
+
+
+
+//ptr_impl(Texture,      mx, TextureMemory,  data);
+
+
+Texture::Texture(memory* mem)  : mx(mem), data(mem ? mx::data<TextureMemory>() : null) { }\
+Texture::Texture(mx      o)    : Texture(o.mem->grab())   { }\
+Texture::Texture()             : Texture(mx::alloc<Texture>()) { }\
+Texture::Texture(TextureMemory *data) : Texture(memory::wrap<TextureMemory>(data, 1)) { }\
+Texture::operator TextureMemory * () { return data; }\
+Texture &Texture::operator=(const Texture b) { return (Texture &)assign_mx(*this, b); }\
+TextureMemory *Texture::operator=(const TextureMemory *b) {\
+    drop();\
+    mem = memory::wrap<TextureMemory>((TextureMemory*)b, 1);\
+    data = (TextureMemory*)mem->origin;\
+    return data;\
+}
+
+
+
+
 ptr_impl(PipelineData, mx, PipelineMemory, m);
 ptr_impl(UniformData,  mx, UniformMemory,  umem);
 ptr_impl(VertexData,   mx, VertexInternal, m);
@@ -2317,13 +2359,10 @@ Internal &Internal::bootstrap() {
 }
 
 /// cleaning up the vk_instance / internal stuff now
-Texture &window::texture() { return *w->tx_skia; }
-Texture &window::texture(ion::size sz) {
-    if (w->tx_skia) {
-        delete w->tx_skia;
-    }
+Texture &window::texture() { return w->tx_skia; }
+Texture &window::texture(ion::size sz) { /// this should not be called twice for the same exact size
     ///  implicit wrap case, this takes over the life-cycle.  when it runs out of refs and it has no attachments, it will free memory.
-    w->tx_skia = new Texture {
+    w->tx_skia = Texture { /// this needs a VkImage binding
         new TextureMemory {
             w->dev, sz, rgba { 1.0, 0.0, 1.0, 1.0 },
             VK_IMAGE_USAGE_SAMPLED_BIT          | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
@@ -2333,8 +2372,9 @@ Texture &window::texture(ion::size sz) {
             VK_IMAGE_ASPECT_COLOR_BIT, false, VK_FORMAT_B8G8R8A8_UNORM, -1
         }
     };
-    w->tx_skia->push_stage(Texture::Stage::Color);
-    return *w->tx_skia;
+    w->tx_skia.data->vk_image = w->dev->tx_color.data->vk_image;
+    w->tx_skia.push_stage(Texture::Stage::Color); /// this needs to be updated when tx_color is updated
+    return w->tx_skia;
 }
 
 vk_interface::vk_interface() : i(&Internal::handle()) { }
@@ -2495,9 +2535,22 @@ struct gfx_memory {
     }
 };
 
-ptr_impl(gfx, cbase, gfx_memory, g);
+//ptr_impl(gfx, cbase,  gfx_memory, g);
 
-gfx::gfx(ion::window &win) : gfx(new gfx_memory { }) {
+gfx::gfx(memory* mem)  : cbase(mem), g(mem ? mx::data<gfx_memory>() : null) { }\
+gfx::gfx(mx      o)    : gfx(o.mem->grab())   { }\
+gfx::gfx()             : gfx(mx::alloc<gfx>()) { }\
+gfx::gfx(gfx_memory *data) : gfx(memory::wrap<gfx_memory>(data, 1)) { }\
+gfx::operator gfx_memory * () { return g; }\
+gfx &gfx::operator=(const gfx b) { return (gfx &)assign_mx(*this, b); }\
+gfx_memory *gfx::operator=(const gfx_memory *b) {\
+    drop();\
+    mem = memory::wrap<gfx_memory>((gfx_memory*)b, 1);\
+    g = (gfx_memory*)mem->origin;\
+    return g;\
+}
+
+gfx::gfx(ion::window &win) : gfx(mx::alloc<gfx>()) { /// this allocates both gfx_memory and cbase memory
     vk_interface vk; /// verify vulkan instanced prior
     g->win = &win;    /// should just set window without pointer
     m.size = win.w->sz;
@@ -2516,9 +2569,13 @@ gfx::gfx(ion::window &win) : gfx(new gfx_memory { }) {
     
     TextureMemory *tmem = g->tx;
   // not sure if the import is getting the VK_SAMPLE_COUNT_8_BIT and VkSampler, likely not.
-    g->vg_device       = vkvg_device_create_from_vk_multisample(
+    //g->vg_device       = vkvg_device_create_from_vk_multisample(
+    //    vk_inst, *device, *device,
+    //    family_index, queue_index, VK_SAMPLE_COUNT_8_BIT, false);
+    g->vg_device       = vkvg_device_create_from_vk(
         vk_inst, *device, *device,
-        family_index, queue_index, VK_SAMPLE_COUNT_8_BIT, false);
+        family_index, queue_index);
+    //vkvg_device_create_from_vk (VkInstance inst, VkPhysicalDevice phy, VkDevice vkdev, uint32_t qFamIdx, uint32_t qIndex);
     g->vkh_device      = vkh_device_import(vk.instance(), *device, *device); // use win instead of vk.
     g->vkh_image       = vkh_image_import(g->vkh_device, tmem->vk_image, tmem->format, u32(tmem->sz[1]), u32(tmem->sz[0]));
 
@@ -2558,9 +2615,22 @@ window::window(ion::size sz, mode::etype wmode, memory *control) : window() {
     /// a fast algorithm for choosing top gpu
     const size_t top_pick = 0; 
     w->gpu = create_gpu(hw[top_pick], w->vk_surface);
+    
+    
+    
+    // Get the supported surface formats
+    //VkSurfaceKHR surface = /* Your surface object */;
+    uint32_t formatCount;
+    vkGetPhysicalDeviceSurfaceFormatsKHR(w->gpu.gmem->gpu, w->vk_surface, &formatCount, nullptr);
+
+    VkSurfaceFormatKHR formats[60];
+    vkGetPhysicalDeviceSurfaceFormatsKHR(w->gpu.gmem->gpu, w->vk_surface, &formatCount, formats);
+    int test = 0;
+    test++;
+    
 
     /// create device with window, selected gpu and surface
-    w->dev = create_device(*w->gpu, true); 
+    w->dev = create_device(w->gpu, true);
     w->dev->initialize(w);
 }
 
@@ -2805,10 +2875,6 @@ ion::image gfx::resample(ion::size sz, real deg, graphics::shape view, vec2 axis
 
 int app::run() {
     /// this was debugging a memory issue
-    for (size_t i = 0; i < 100; i++) {
-        m.win    = window {size { 512, 512 }, mode::regular, mx::mem };
-        m.canvas = gfx(m.win);
-    }
     m.win    = window {size { 512, 512 }, mode::regular, mx::mem };
     m.canvas = gfx(m.win);
     Device &dev = m.canvas.device();

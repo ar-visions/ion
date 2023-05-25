@@ -11,6 +11,10 @@ import shutil
 import zipfile
 from datetime import datetime
 from datetime import timedelta
+from colorama import init, deinit
+
+# Initialize colorama
+init()
 
 src_dir   = os.environ.get('CMAKE_SOURCE_DIR')
 build_dir = os.environ.get('CMAKE_BINARY_DIR')
@@ -18,6 +22,7 @@ cfg       = os.environ.get('CMAKE_BUILD_TYPE')
 js_path   = os.environ.get('JSON_IMPORT_INDEX')
 cm_build  = 'ion-build'
 install_prefix = f'{build_dir}/extern/install'
+gen_only  = os.environ.get('GEN_ONLY')
 
 def sha256_file(file_path):
     sha256_hash = hashlib.sha256()
@@ -44,19 +49,20 @@ def    git(*args): return subprocess.run(['git']   + list(args), stdout=subproce
 
 def  cmake(*args):
     cmd = ['cmake'] + list(args)
-    print('running: ', ' '.join(cmd))
-    return subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+    return subprocess.run(cmd, capture_output=True, text=True)
 
 def       build(): return cmake('--build',   cm_build)
 def  cm_install(): return cmake('--install', cm_build)
 def         gen(type, cmake_script_root, prefix_path, extra=None):
     build_type = type[0].upper() + type[1:].lower()
-    print(f'install prefix: {install_prefix}')
-    print(f'prefix path: {prefix_path}')
-    print(f'build type: {build_type}')
     args = ['-S', cmake_script_root,
             '-B', cm_build, 
            f'-DCMAKE_INSTALL_PREFIX=\'{install_prefix}\'', 
+           f'-DCMAKE_INSTALL_DATAROOTDIR=\'{install_prefix}/share\'', 
+           f'-DCMAKE_INSTALL_DOCDIR=\'{install_prefix}/doc\'', 
+           f'-DCMAKE_INSTALL_INCLUDEDIR=\'{install_prefix}/doc\'', 
+           f'-DCMAKE_INSTALL_LIBDIR=\'{install_prefix}/lib\'', 
+           f'-DCMAKE_INSTALL_BINDIR=\'{install_prefix}/bin\'', 
            f'-DCMAKE_PREFIX_PATH=\'{prefix_path}\'', 
             '-DCMAKE_VERBOSE_MAKEFILE:BOOL=ON', 
            f'-DCMAKE_BUILD_TYPE={build_type}'
@@ -84,7 +90,9 @@ def latest_file(root_path, avoid = None):
                     if t_sub_latest and t_sub_latest > t_latest:
                         t_latest = t_sub_latest
                         n_latest = sub_latest
-        else:
+        elif os.path.islink(file_path) and not os.path.exists(os.path.realpath(file_path)):
+            continue
+        elif os.path.exists(file_path):
             ## check file modification time
             mt = os.path.getmtime(file_path)
             if mt and mt > t_latest:
@@ -144,6 +152,7 @@ def prepare_build(this_src_dir, fields):
         ## overlay files; not quite as good as diff but its easier to manipulate
         overlay = f'{this_src_dir}/overlays/{name}'
         if os.path.exists(overlay):
+            print('copying overlay for project: ', name)
             shutil.copytree(overlay, dst, dirs_exist_ok=True)
     else:
         cached = True
@@ -206,11 +215,28 @@ def prepare_project(src_dir):
 
                 ## only building the src git repos; the resources are system specific builds
                 if not cached and is_git:
-                    gen(cfg, cmake_script_root, prefix_path, cmake_args)
-                    build()
+                    gen_res = gen(cfg, cmake_script_root, prefix_path, cmake_args)
+                    if gen_res.returncode != 0:
+                        print(f'CMake Generator errors for dependency: {name}:')
+                        if gen_res.stderr:
+                            print(gen_res.stderr)
+                        print(gen_res.stdout)
+                        exit(1)
+                    build_res = build()
+                    if build_res.returncode != 0:
+                        print(f'Build errors for dependency: {name}:')
+                        if build_res.stderr:
+                            print(build_res.stderr)
+                        print(build_res.stdout)
+                        exit(1)
                     if install:
-                        cm_install()
-                    
+                        install_res = cm_install()
+                        if install_res.returncode != 0:
+                            print(f'Install errors for dependency: {name}:')
+                            if install_res.stderr:
+                                print(install_res.stderr)
+                            print(install_res.stdout)
+                            exit(1)
                     ## update timestamp
                     with open(timestamp, 'w') as f:
                         f.write('')
@@ -231,3 +257,5 @@ prepare_project(src_dir)
 # output everything discovered in original order
 with open(js_path, "w") as out:
     json.dump(everything, out)
+
+deinit()

@@ -91,6 +91,7 @@ function(main)
     set(ENV{CMAKE_BINARY_DIR}   ${CMAKE_BINARY_DIR})
     set(ENV{CMAKE_BUILD_TYPE}   ${CMAKE_BUILD_TYPE})
     set(ENV{JSON_IMPORT_INDEX}  ${CMAKE_BINARY_DIR}/import.json)
+    set(ENV{GEN_ONLY}           ${GEN_ONLY})
 
     print("CMAKE_SOURCE_DIR:  $ENV{CMAKE_SOURCE_DIR}")
     print("CMAKE_BINARY_DIR:  $ENV{CMAKE_BINARY_DIR}")

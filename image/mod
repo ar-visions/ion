@@ -1,2 +1,0 @@
-dep(ion.core ion.math zlib.z)
-cpp(17)

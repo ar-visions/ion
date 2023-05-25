@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.26)
 enable_language(CXX)
 
+option(GEN_ONLY "dont run the build action after generating the build folder for each external dependency" FALSE)
+
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Debug")
 endif()

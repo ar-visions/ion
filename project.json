@@ -3,16 +3,6 @@
     "version":"dev",
     "import": [
         {
-            "name":     "moltenvk",
-            "version":  "1.2.3",
-            "commit":   "db8512a64f2c703e31ff7038b2859034062aa00f",
-            "url":      "https://github.com/KhronosGroup/MoltenVK",
-            "includes": ["./MoltenVK/include"],
-            "libs":     ["./MoltenVK/dylib/macOS"],
-            "diff":     "moltenvk.diff",
-            "platforms":["mac"]
-        },
-        {
             "name":     "gsl",
             "version":  "2.7",
             "url":      "https://github.com/ampl/gsl",
@@ -100,16 +90,37 @@
             "sha256":   "1180EE7B3AC5DE5089F3CC3BC8F6651F886D8CFAA374947E9BC4B0CA1E83BB4E",
             "includes": ["./VulkanSDK/1.3.239.0/Include"],
             "libs":     ["./VulkanSDK/1.3.239.0/Lib"],
-            "platforms":["win"]
+            "platforms":["win","linux"]
+        },
+        {
+            "name":     "moltenvk",
+            "version":  "1.2.3",
+            "commit":   "db8512a64f2c703e31ff7038b2859034062aa00f",
+            "url":      "https://github.com/KhronosGroup/MoltenVK",
+            "includes": ["./MoltenVK/include"],
+            "libs":     ["./MoltenVK/dylib/macOS"],
+            "diff":     "moltenvk.diff",
+            "platforms":["mac"]
         },
         {
             "name":     "glfw",
             "version":  "3.3.8",
             "commit":   "7482de6",
             "url":      "https://github.com/glfw/glfw",
-            "cmake":    {"args": ["-DCMAKE_C_FLAGS=\"-D_GLFW_VULKAN_LIBRARY=\\\"libMoltenVK.dylib\\\"\""]},
+            "cmake":    {"args": ["-DCMAKE_C_FLAGS=\"-D_GLFW_VULKAN_LIBRARY=\\\"MoltenVK\\\"\""]},
             "includes": ["./include"],
             "libs":     ["./ion-build/src"]
+        },
+        {
+            "name":     "vkvg",
+            "version":  "0.2.2",
+            "commit":   "84cf72ddbeb6a38175ec04a1afc948373518086b",
+            "url":      "https://github.com/jpbruyere/vkvg.git",
+            "includes": ["./include","./vkh/include"],
+            "libs":     ["./ion-build","./ion-build/vkh","./ion-build/external/glutess"],
+            "cmake":    {"args": ["-DVKVG_USE_GLUTESS=True","-DVKVG_BUILD_SHARED_LIB=Off"]},
+            "diff":     "vkvg.diff",
+            "install":  true
         },
         {
             "name":     "mbedtls",
@@ -126,16 +137,6 @@
             "url":      "https://github.com/madler/zlib",
             "includes": ["./"],
             "libs":     ["./ion-build"]
-        },
-        {
-            "name":     "vkvg",
-            "version":  "0.2.2",
-            "commit":   "84cf72ddbeb6a38175ec04a1afc948373518086b",
-            "url":      "https://github.com/jpbruyere/vkvg.git",
-            "includes": ["./include","./vkh/include"],
-            "libs":     ["./ion-build","./ion-build/vkh","./ion-build/external/glutess"],
-            "cmake":    {"args": ["-DVKVG_USE_GLUTESS=true"]},
-            "diff":     "vkvg.diff"
         }
     ]
 }

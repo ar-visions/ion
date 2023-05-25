@@ -2,7 +2,7 @@
 #include <async/async.hpp>
 #include <net/net.hpp>
 #include <math/math.hpp>
-#include <image/image.hpp>
+#include <media/media.hpp>
 
 #include <sys/types.h>
 #include <sys/socket.h>

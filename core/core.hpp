@@ -1323,7 +1323,11 @@ size_t schema_info(alloc_schema *schema, int depth, T *p, idata *ctx_type) {
     ///
     if constexpr (!identical<T, none>()) {
         /// count is set to schema_info after first return
-        if (schema->count) { 
+        if (schema->count) {
+            if (ctx_type && strcmp(ctx_type->name, "ion::gfx") == 0) {
+                int test = 0;
+                test++;
+            }
             context_bind &bind = schema->composition[schema->count - 1 - depth]; /// would be not-quite-ideal casting-wise to go the other way, lol.
             bind.ctx     = ctx_type ? ctx_type : typeof(T);
             bind.data    = identical<typename T::DC, none>() ? null : typeof(typename T::DC);
@@ -4535,6 +4539,7 @@ memory *memory::wrap(T *m, size_t count) {
     mem->refs       = 1;
     mem->type       = typeof(T);
     mem->origin     = m;
+    return mem;
 }
 
 /// needs a way to not create lambdas for lambdas and in recursive fashion.
