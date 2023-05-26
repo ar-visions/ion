@@ -1,2 +1,3 @@
-dep(ion.core ion.math gsl.gsl opus.opus ogg.ogg opusenc.opusenc opusfile.opusfile speexdsp.speexdsp shine.shine zlib.z)
+dep(ion.core ion.math harfbuzz.harfbuzz bzip2.bz2 fontconfig.fontconfig freetype.freetyped libpng.png gsl.gsl
+    opus.opus ogg.ogg opusenc.opusenc opusfile.opusfile speexdsp.speexdsp shine.shine zlib.z)
 cpp(17)

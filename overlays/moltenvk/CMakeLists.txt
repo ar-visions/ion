@@ -14,12 +14,11 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 endif()
 
 get_filename_component(INSTALL_DIR ${CMAKE_SOURCE_DIR}/../install ABSOLUTE)
-set(PREFIX_DIR  ${INSTALL_DIR}/lib/Frameworks)
+set(PREFIX_DIR  ${INSTALL_DIR})
 set(INCLUDE_DIR ${CMAKE_SOURCE_DIR}/MoltenVK/include)
 
 file(MAKE_DIRECTORY ${PREFIX_DIR})
 set(ENV{PREFIX} ${PREFIX_DIR})
-message(STATUS "prefix = ${PREFIX_DIR}")
 
 execute_process(
     COMMAND make "${TARGET_OS}${dbg}"

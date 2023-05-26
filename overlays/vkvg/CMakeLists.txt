@@ -131,18 +131,7 @@ ENDIF ()
 # reports unsupported arch in console when I create a device
 # MoltenVK is just a better idea for Mac anyway so this may just be a Mac switch
 # would seem odd to have different stacks based on the Intel/Apple chip
-if (APPLE)
-    set(Vulkan_FOUND        TRUE)
-    set(Vulkan_LIBRARIES    MoltenVK)
-    set(Vulkan_LIBRARY_DIRS ${CMAKE_INSTALL_PREFIX}/lib)
-    set(Vulkan_INCLUDE_DIRS ${CMAKE_INSTALL_PREFIX}/include)
-    message(STATUS "> Vulkan_INCLUDE_DIRS: ${Vulkan_INCLUDE_DIRS}")
-    message(STATUS "> Vulkan_LIBRARIES: ${Vulkan_LIBRARIES}")
-    set(CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_FIND_LIBRARY_SUFFIXES} .a)
-else()
-    FIND_PACKAGE(Vulkan REQUIRED)
-endif()
-
+FIND_PACKAGE(Vulkan REQUIRED)
 FIND_PACKAGE(Freetype QUIET)
 FIND_PACKAGE(Fontconfig QUIET)
 FIND_PACKAGE(HarfBuzz QUIET)

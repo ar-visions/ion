@@ -1,4 +1,4 @@
-dep(ion.core glfw.glfw3 ion.net ion.media vkvg.vkvg vkvg.vkh vkvg.glutess)
+dep(ion.core glfw.glfw3 ion.net ion.media vkvg.vkvg vkvg.vkh vkvg.glutess vma.vma)
 if(APPLE)
     if(True)
         # M2 is broken in vulkan-sdk lib

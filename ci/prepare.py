@@ -24,6 +24,8 @@ cm_build  = 'ion-build'
 install_prefix = f'{build_dir}/extern/install'
 gen_only  = os.environ.get('GEN_ONLY')
 
+os.environ['INSTALL_PREFIX'] = install_prefix
+
 def sha256_file(file_path):
     sha256_hash = hashlib.sha256()
     with open(file_path, "rb") as file:
@@ -57,6 +59,8 @@ def         gen(type, cmake_script_root, prefix_path, extra=None):
     build_type = type[0].upper() + type[1:].lower()
     args = ['-S', cmake_script_root,
             '-B', cm_build, 
+           f'-DION=\'{src_dir}/../ion\'', # it just needs the ci files
+           f'-DCMAKE_SYSTEM_PREFIX_PATH=\'{src_dir}/../ion/ci;{install_prefix}/lib/cmake\'',
            f'-DCMAKE_INSTALL_PREFIX=\'{install_prefix}\'', 
            f'-DCMAKE_INSTALL_DATAROOTDIR=\'{install_prefix}/share\'', 
            f'-DCMAKE_INSTALL_DOCDIR=\'{install_prefix}/doc\'', 
@@ -100,6 +104,12 @@ def latest_file(root_path, avoid = None):
                 n_latest = file_path
     ##
     return n_latest, t_latest
+
+def sys_type():
+    p = platform.system()
+    if p == 'Darwin':  return 'mac'
+    if p == 'Windows': return 'win'
+    if p == 'Linux':   return 'linux'
 
 def is_cached(this_src_dir, vname):
     dst_build     = f'{this_src_dir}/{cm_build}'
@@ -183,10 +193,13 @@ def prepare_project(src_dir):
         prefix_path = install_prefix
         for fields in import_list:
             if not isinstance(fields, str):
-                name  = fields['name']
-                cmake = fields.get('cmake')
+                h           = fields.get('hide')
+                name        = fields['name']
+                cmake       = fields.get('cmake')
+                environment = fields.get('environment')
+                hide        = h == True or h == sys_type() # designed for vulkan things mixing up with wrappers so that you dont expose definitions, includes, etc.  the wrapper does that and knows where this stuff is.
                 cmake_script_root = '.'
-                cmake_args = []
+                cmake_args  = []
 
                 if cmake:
                     cmpath = cmake.get('path')
@@ -195,6 +208,17 @@ def prepare_project(src_dir):
                     cmargs = cmake.get('args')
                     if cmargs:
                         cmake_args = cmargs
+                
+                # set environment variables to those with %VAR%
+                if environment:
+                    for key, evalue in environment.items():
+                        if '%' in evalue:
+                            for env_var, var_value in os.environ.items():
+                                tmpl = "%" + env_var + "%"
+                                v    = evalue.replace(tmpl, var_value)
+                                if v != evalue:
+                                    evalue = v
+                        os.environ[key] = evalue
                 
                 platforms = fields.get('platforms')
                 if platforms:
@@ -244,12 +268,12 @@ def prepare_project(src_dir):
                 ## add prefix path if there is one (so the next build sees all of the prior resources)
                 ## this is so we can reduce how much we install.
                 ## chaining together the build-dirs in prefix works in 'most' cases
-                #if not install:
-                #    if os.path.isdir(remote_build_path):
-                #        if prefix_path:
-                #            prefix_path += f'{prefix_path};{remote_build_path}'
-                #        else:
-                #            prefix_path  = remote_build_path
+                if not install and not hide:
+                    if os.path.isdir(remote_build_path):
+                        if prefix_path:
+                            prefix_path += f'{prefix_path};{remote_build_path}'
+                        else:
+                            prefix_path  = remote_build_path
 
 # prepare project recursively
 prepare_project(src_dir)

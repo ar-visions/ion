@@ -93,15 +93,25 @@ clean:
 	$(XCODEBUILD) clean -project "$(XC_PROJ)" -scheme "$(XC_SCHEME) (macOS only)" -destination "generic/platform=macOS" $(OUTPUT_FMT_CMD)
 	rm -rf Package
 
-PREFIX      ?= /Library/Frameworks/
-FRAMEWORK   := Package/Latest/MoltenVK/MoltenVK.xcframework
+PREFIX    ?= /Library
+FWDIR     := $(PREFIX)/lib/Frameworks
+LIBDIR    := $(PREFIX)/lib
+BINDIR    := $(PREFIX)/bin
+FRAMEWORK := Package/Latest/MoltenVK/MoltenVK.xcframework
+
 .PHONY: install
 install:
-	rm -rf $(PREFIX)/MoltenVK.framework
-	rm -rf $(PREFIX)/MoltenVK.xcframework
-	cp -a  $(FRAMEWORK)       $(PREFIX)
-	cp -a  Package/Latest/MoltenVK/include $(PREFIX)
-	cp -a  $(FRAMEWORK)/*/libMoltenVK.a $(PREFIX)/lib
+	cp    -a  $(FRAMEWORK) $(FWDIR)
+	mkdir -p  $(LIBDIR)/cmake
+	rm   -rf  $(LIBDIR)/cmake/FindVulkan.cmake
+	cp    -a  External/Vulkan-Tools/cmake/FindVulkan.cmake $(LIBDIR)/cmake
+	cp    -a  Package/Latest/MoltenVK/include $(PREFIX)
+	rm    -f  Package/Latest/MoltenVK/lib
+	rm    -f  Package/Latest/MoltenVK/bin
+	ln    -s  $(LIBDIR) Package/Latest/MoltenVK/lib
+	ln    -s  $(BINDIR) Package/Latest/MoltenVK/bin
+	rm   -rf  $(LIBDIR)/libMoltenVK.a
+	cp    -a  $(FRAMEWORK)/macos-arm64_x86_64/libMoltenVK.a $(LIBDIR)
 
 # Deprecated target names
 .PHONY: iosfat
