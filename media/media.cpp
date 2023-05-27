@@ -9,10 +9,10 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include <zlib.h>
 
-#define STB_IMAGE_IMPLEMENTATION
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#include <media/stb-image-read.h>
-#include <media/stb-image-write.h>
+//#define STB_IMAGE_IMPLEMENTATION
+//#define STB_IMAGE_WRITE_IMPLEMENTATION
+//#include <media/stb-image-read.h>
+//#include <media/stb-image-write.h>
 
 #define  MINIMP3_ONLY_MP3
 #define  MINIMP3_ONLY_SIMD
@@ -34,6 +34,8 @@ extern "C" {
     #include <shine/layer3.h>
 };
 
+#include <png.h>
+
 namespace ion {
 
 /// load an image into 32bit rgba format
@@ -47,12 +49,146 @@ image::image(size sz, rgba::data *px, int scanline) : array() {
 /// save image, just png out but it could look at extensions too
 bool image::save(path p) const {
     assert(mem->shape && mem->shape->dims() == 2);
-    int w = int(width()),
-    h = int(height());
-    return stbi_write_png(p.cs(), w, h, 4, elements, w * 4);
+    int w = int(width());
+    int h = int(height());
+    FILE* file = fopen(p.cs(), "wb");
+    if (!file) {
+        return false; // Failed to open the file
+    }
+
+    png_structp png = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+    if (!png) {
+        fclose(file);
+        return false; // Failed to create PNG write structure
+    }
+
+    png_infop info = png_create_info_struct(png);
+    if (!info) {
+        png_destroy_write_struct(&png, NULL);
+        fclose(file);
+        return false; // Failed to create PNG info structure
+    }
+
+    if (setjmp(png_jmpbuf(png))) {
+        png_destroy_write_struct(&png, &info);
+        fclose(file);
+        return false; // Error occurred during PNG write
+    }
+
+    png_init_io(png, file);
+    png_set_IHDR(png, info, w, h, 8, PNG_COLOR_TYPE_RGBA, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
+    png_write_info(png, info);
+
+    const unsigned char** rows = new const unsigned char*[h];
+    for (int y = 0; y < h; ++y) {
+        rows[y] = (unsigned char *)&elements[y * w];
+    }
+
+    png_write_image(png, const_cast<unsigned char**>(rows));
+    png_write_end(png, NULL);
+
+    delete[] rows;
+    png_destroy_write_struct(&png, &info);
+    fclose(file);
+    return true;
 }
 
-/// load an image into 32bit rgba format
+image::image(path p) : array() {
+    int w = 0, h = 0;
+    png_bytep* rows = nullptr;
+
+    FILE* file = fopen(p.cs(), "rb");
+    if (!file)
+        return;
+
+    png_structp png = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+    if (!png) {
+        /// Handle libpng read struct creation error
+        fclose(file);
+        return;
+    }
+
+    png_infop info = png_create_info_struct(png);
+    if (!info) {
+        /// Handle png info struct creation error
+        png_destroy_read_struct(&png, NULL, NULL);
+        fclose(file);
+        return;
+    }
+
+    if (setjmp(png_jmpbuf(png))) {
+        /// Handle libpng error during read
+        png_destroy_read_struct(&png, &info, NULL);
+        fclose(file);
+        return;
+    }
+
+    png_init_io(png, file);
+    png_read_info(png, info);
+
+    w = png_get_image_width(png, info);
+    h = png_get_image_height(png, info);
+    png_byte color_type = png_get_color_type(png, info);
+    png_byte bit_depth = png_get_bit_depth(png, info);
+
+    /// Convert to 32-bit RGBA if necessary
+    if (bit_depth == 16)
+        png_set_strip_16(png);
+    
+    if (color_type == PNG_COLOR_TYPE_PALETTE)
+        png_set_palette_to_rgb(png);
+    
+    if (color_type == PNG_COLOR_TYPE_GRAY && bit_depth < 8)
+        png_set_expand_gray_1_2_4_to_8(png);
+    
+    if (png_get_valid(png, info, PNG_INFO_tRNS))
+        png_set_tRNS_to_alpha(png);
+    
+    if (color_type == PNG_COLOR_TYPE_RGB  ||
+        color_type == PNG_COLOR_TYPE_GRAY ||
+        color_type == PNG_COLOR_TYPE_PALETTE)
+        png_set_filler(png, 0xFF, PNG_FILLER_AFTER);
+    
+    if (color_type == PNG_COLOR_TYPE_GRAY ||
+        color_type == PNG_COLOR_TYPE_GRAY_ALPHA)
+        png_set_gray_to_rgb(png);
+
+    png_read_update_info(png, info);
+
+    /// Allocate memory for image data
+    rows = new png_bytep[h];
+    for (int y = 0; y < h; ++y) {
+        rows[y] = new png_byte[png_get_rowbytes(png, info)];
+    }
+
+    /// Read the image rows
+    png_read_image(png, rows);
+
+    /// Create array to hold image data
+    mem->count = h * w;
+    mem->shape = new size { h, w };
+    elements = new rgba::data[mem->count];
+
+    /// Copy image data to elements array
+    for (int y = 0; y < h; ++y) {
+        png_bytep row = rows[y];
+        for (int x = 0; x < w; ++x) {
+            png_bytep px = &(row[x * 4]);
+            elements[y * w + x] = rgba::data(px[0], px[1], px[2], px[3]);
+        }
+    }
+    /// Clean up and free resources
+    for (int y = 0; y < h; ++y) {
+        delete[] rows[y];
+    }
+    delete[] rows;
+    png_destroy_read_struct(&png, &info, NULL);
+    fclose(file);
+    mem->origin = elements;
+}
+
+    
+/*
 image::image(path p) : array() {
     int w = 0, h = 0, c = 0;
     /// if path exists and we can read read an image, set the size
@@ -63,7 +199,7 @@ image::image(path p) : array() {
         mem->origin = data; /// you can set whatever you want here; its freed at end of life-cycle for memory
         elements    = data;
     }
-}
+}*/
 
 /// inflate
 mx inflate(mx input) {

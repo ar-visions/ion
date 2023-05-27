@@ -60,11 +60,11 @@ def         gen(type, cmake_script_root, prefix_path, extra=None):
     args = ['-S', cmake_script_root,
             '-B', cm_build, 
            f'-DION=\'{src_dir}/../ion\'', # it just needs the ci files
-           f'-DCMAKE_SYSTEM_PREFIX_PATH=\'{src_dir}/../ion/ci;{install_prefix}/lib/cmake\'',
+           #f'-DCMAKE_SYSTEM_PREFIX_PATH=\'{src_dir}/../ion/ci;{install_prefix}/lib/cmake\'',
            f'-DCMAKE_INSTALL_PREFIX=\'{install_prefix}\'', 
            f'-DCMAKE_INSTALL_DATAROOTDIR=\'{install_prefix}/share\'', 
            f'-DCMAKE_INSTALL_DOCDIR=\'{install_prefix}/doc\'', 
-           f'-DCMAKE_INSTALL_INCLUDEDIR=\'{install_prefix}/doc\'', 
+           f'-DCMAKE_INSTALL_INCLUDEDIR=\'{install_prefix}/include\'', 
            f'-DCMAKE_INSTALL_LIBDIR=\'{install_prefix}/lib\'', 
            f'-DCMAKE_INSTALL_BINDIR=\'{install_prefix}/bin\'', 
            f'-DCMAKE_PREFIX_PATH=\'{prefix_path}\'', 
@@ -78,6 +78,9 @@ def         gen(type, cmake_script_root, prefix_path, extra=None):
 os.chdir(build_dir)
 if not os.path.exists('extern'):         os.mkdir('extern')
 if not os.path.exists('extern/install'): os.mkdir('extern/install')
+
+common = ['.cc',  '.c',   '.cpp', '.cxx', '.h',  '.hpp',
+          '.ixx', '.hxx', '.rs',  '.py',  '.sh', '.txt', '.ini', '.json']
 
 def latest_file(root_path, avoid = None):
     t_latest = 0
@@ -94,14 +97,18 @@ def latest_file(root_path, avoid = None):
                     if t_sub_latest and t_sub_latest > t_latest:
                         t_latest = t_sub_latest
                         n_latest = sub_latest
+        elif os.path.islink(file_path):
+            continue # avoiding interference
         elif os.path.islink(file_path) and not os.path.exists(os.path.realpath(file_path)):
             continue
         elif os.path.exists(file_path):
-            ## check file modification time
-            mt = os.path.getmtime(file_path)
-            if mt and mt > t_latest:
-                t_latest = mt
-                n_latest = file_path
+            ext = os.path.splitext(file_path)[1]
+            if ext in common:
+                ## check file modification time on common extensions
+                mt = os.path.getmtime(file_path)
+                if mt and mt > t_latest:
+                    t_latest = mt
+                    n_latest = file_path
     ##
     return n_latest, t_latest
 
@@ -110,6 +117,7 @@ def sys_type():
     if p == 'Darwin':  return 'mac'
     if p == 'Windows': return 'win'
     if p == 'Linux':   return 'linux'
+    exit(1)
 
 def is_cached(this_src_dir, vname):
     dst_build     = f'{this_src_dir}/{cm_build}'

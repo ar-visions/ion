@@ -844,8 +844,8 @@ void terminal::text(str s, graphics::shape vrect, alignment::data &align, vec2 v
     v2<real>   &offset =  voffset;
     draw_state &ds     = *t.ds;
     int         len    =  int(s.len());
-    int         szx    = sz[1];
-    int         szy    = sz[0];
+    int         szx    = int(sz[1]);
+    int         szy    = int(sz[0]);
     ///
     if (len == 0)
         return;
@@ -910,8 +910,8 @@ void terminal::outline(graphics::shape sh) {
 void terminal::fill(graphics::shape sh) {
     draw_state &ds = *t.ds;
     ion::size  &sz = cbase::size();
-    int         sx = sz[1];
-    int         sy = sz[0];
+    int         sx = int(sz[1]);
+    int         sy = int(sz[0]);
     if (ds.color) {
         r4r &r       = sh.rect();
         str  t_color = ansi_color(ds.color, false);
@@ -2735,7 +2735,7 @@ void gfx::image(ion::image img, graphics::shape sh, vec2 align, vec2 offset, vec
     attachment *att = img.find_attachment("vg-surf");
     if (!att) {
         VkvgSurface surf = vkvg_surface_create_from_bitmap(
-            g->vg_device, (uint8_t*)img.pixels(), img.width(), img.height());
+            g->vg_device, (uint8_t*)img.pixels(), u32(img.width()), u32(img.height()));
         att = img.attach("vg-surf", surf, [surf]() {
             vkvg_surface_destroy(surf);
         });

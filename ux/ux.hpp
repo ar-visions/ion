@@ -1539,8 +1539,8 @@ struct node:Element {
             canvas.image(image.img, image.shape, image.align, {0,0}, {0,0});
         
         /// if there is text (its not alpha 0, and there is text)
-        if (std.content && std.content.type() == typeof(char) ||
-                           std.content.type() == typeof(str)) {
+        if (std.content && ((std.content.type() == typeof(char)) ||
+                            (std.content.type() == typeof(str)))) {
             canvas.color(text.color);
             canvas.text(
                 std.content.grab(), text.shape.rect(),

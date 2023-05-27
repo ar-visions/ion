@@ -1,16 +1,7 @@
-dep(ion.core glfw.glfw3 ion.net ion.media vkvg.vkvg vkvg.vkh vkvg.glutess vma.vma)
+dep(ion.core glfw.glfw3 ion.net ion.media vkvg.vkvg vkvg.vkh vkvg.glutess vma.VulkanMemoryAllocatord)
 if(APPLE)
-    if(True)
-        # M2 is broken in vulkan-sdk lib
-        # they should just drop that scammer and put effort into open source MoltenVK.
-        dep(moltenvk.MoltenVK)
-    else()
-        dep(vulkan)
-    endif()
-    dep(AppKit CoreGraphics CoreFoundation Cocoa IOKit)
+    dep(moltenvk.MoltenVK IOSurface QuartzCore Metal AppKit CoreGraphics CoreFoundation Cocoa IOKit)
 else()
-    lib_paths("C:/VulkanSDK/1.3.239.0/Lib")
-    includes("C:/VulkanSDK/1.3.239.0/Include")
     dep(vulkan)
 endif()
 cpp(17)

@@ -75,7 +75,7 @@
             "includes": ["./include"],
             "libs":     ["./ion-build"],
             "cmake": {
-                "args": ["-DOP_DISABLE_HTTP=Yes","-DOP_DISABLE_DOCS=Yes"],
+                "args": ["-DOP_DISABLE_HTTP=Yes","-DOP_DISABLE_DOCS=Yes","-DOP_DISABLE_EXAMPLES=Yes"],
                 "path": "."
             },
             "install":  true
@@ -108,15 +108,10 @@
             "url":      "https://github.com/freetype/freetype",
             "includes": ["./include"],
             "libs":     ["./ion-build"],
-            "install":  true
-        },
-        {
-            "name":     "fontconfig",
-            "version":  "2.14.2",
-            "commit":   "175159676812b061b3f042ca60391f3cd2d236f7",
-            "url":      "https://gitlab.freedesktop.org/fontconfig/fontconfig",
-            "includes": ["./include"],
-            "libs":     ["./ion-build"],
+            "cmake": {
+                "args": ["-DFT_DISABLE_BROTLI=Yes"],
+                "path": "."
+            },
             "install":  true
         },
         {
@@ -138,6 +133,9 @@
             "url":      "https://github.com/harfbuzz/harfbuzz",
             "includes": ["./include"],
             "libs":     ["./ion-build"],
+            "cmake":    {
+                "args": ["-DHB_HAVE_FREETYPE=Yes"]
+            },
             "install":  true
         },
         {
@@ -189,7 +187,7 @@
             "url":      "https://github.com/jpbruyere/vkvg.git",
             "includes": ["./include","./vkh/include"],
             "libs":     ["./ion-build","./ion-build/vkh","./ion-build/external/glutess"],
-            "cmake":    {"args": ["-DVKVG_USE_GLUTESS=True","-DVKVG_BUILD_SHARED_LIB=Off"]},
+            "cmake":    {"args": ["-DVKVG_USE_GLUTESS=True","-DVKVG_BUILD_SHARED_LIB=Off","-DVKVG_USE_FONTCONFIG=Off","-DVKVG_USE_HARFBUZZ=On"]},
             "diff":     "vkvg.diff",
             "install":  true
         },

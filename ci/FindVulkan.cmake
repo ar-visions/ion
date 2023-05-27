@@ -264,7 +264,6 @@ if(WIN32)
     )
   endif()
 else()
-message(STATUS "Case #2")
   set(_Vulkan_library_name vulkan)
   set(_Vulkan_hint_include_search_paths
     "$ENV{VULKAN_SDK}/include"
@@ -280,7 +279,6 @@ if(DEFINED ENV{VULKAN_LIBRARY_NAME})
   set(_Vulkan_library_name $ENV{VULKAN_LIBRARY_NAME}) # cant cross select different vulkan subsystems on a platform that supports utility but not devices (support for m2 = broken in SDK)
 endif()
 if(APPLE AND DEFINED ENV{VULKAN_SDK})
-  message(STATUS "Case #3: $ENV{VULKAN_SDK}")
   cmake_path(SET _MoltenVK_path NORMALIZE "$ENV{VULKAN_SDK}/../MoltenVK")
   if(EXISTS "${_MoltenVK_path}")
     list(APPEND _Vulkan_hint_include_search_paths
@@ -310,16 +308,12 @@ find_path(Vulkan_INCLUDE_DIR
   )
 mark_as_advanced(Vulkan_INCLUDE_DIR)
 
-message(STATUS "Case #4: ${Vulkan_INCLUDE_DIR}")
-
 find_library(Vulkan_LIBRARY
   NAMES ${_Vulkan_library_name}
   HINTS
     ${_Vulkan_hint_library_search_paths}
   )
 mark_as_advanced(Vulkan_LIBRARY)
-
-message(STATUS "Case #5: ${Vulkan_LIBRARY}")
 
 if(glslc IN_LIST Vulkan_FIND_COMPONENTS)
   find_program(Vulkan_GLSLC_EXECUTABLE
@@ -584,7 +578,6 @@ if(Vulkan_INCLUDE_DIR)
 endif()
 
 if(Vulkan_MoltenVK_FOUND)
-  message(STATUS "Vulkan_MoltenVK_FOUND")
   set(Vulkan_MoltenVK_VERSION "")
   if(Vulkan_MoltenVK_INCLUDE_DIR)
     set(VK_MVK_MOLTENVK_H ${Vulkan_MoltenVK_INCLUDE_DIR}/MoltenVK/vk_mvk_moltenvk.h)
