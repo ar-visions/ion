@@ -2616,19 +2616,6 @@ window::window(ion::size sz, mode::etype wmode, memory *control) : window() {
     const size_t top_pick = 0; 
     w->gpu = create_gpu(hw[top_pick], w->vk_surface);
     
-    
-    
-    // Get the supported surface formats
-    //VkSurfaceKHR surface = /* Your surface object */;
-    uint32_t formatCount;
-    vkGetPhysicalDeviceSurfaceFormatsKHR(w->gpu.gmem->gpu, w->vk_surface, &formatCount, nullptr);
-
-    VkSurfaceFormatKHR formats[60];
-    vkGetPhysicalDeviceSurfaceFormatsKHR(w->gpu.gmem->gpu, w->vk_surface, &formatCount, formats);
-    int test = 0;
-    test++;
-    
-
     /// create device with window, selected gpu and surface
     w->dev = create_device(w->gpu, true);
     w->dev->initialize(w);

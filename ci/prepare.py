@@ -119,7 +119,7 @@ def sys_type():
     if p == 'Linux':   return 'linux'
     exit(1)
 
-def is_cached(this_src_dir, vname):
+def is_cached(this_src_dir, vname, mt_project):
     dst_build     = f'{this_src_dir}/{cm_build}'
     cached        = os.path.exists(dst_build)
     timestamp     = os.path.join(dst_build, '._build_timestamp')
@@ -129,6 +129,8 @@ def is_cached(this_src_dir, vname):
             m_name, m_time = latest_file(this_src_dir, cm_build)
             build_time     = os.stat(timestamp).st_mtime
             cached         = m_time <= build_time
+            if mt_project > build_time:
+                cached = False # regen/rebuild all things with project file updates
             ##
             if cached:
                 print(f'skipping {vname:20} (cached)')
@@ -140,10 +142,10 @@ def is_cached(this_src_dir, vname):
     return dst_build, timestamp, cached
     
 ## prepare an { object } of external repo
-def prepare_build(this_src_dir, fields):
+def prepare_build(this_src_dir, fields, mt_project):
     vname, name, version, res, sha256, url, commit, diff, install = parse(fields)
     dst = f'{build_dir}/extern/{vname}'
-    dst_build, timestamp, cached = is_cached(dst, vname)
+    dst_build, timestamp, cached = is_cached(dst, vname, mt_project)
 
     if not cached:
         ## if there is resource, download it and verify sha256 (required field)
@@ -172,6 +174,11 @@ def prepare_build(this_src_dir, fields):
         if os.path.exists(overlay):
             print('copying overlay for project: ', name)
             shutil.copytree(overlay, dst, dirs_exist_ok=True)
+            diff_file = f'{build_dir}/{name}.diff'
+            with open(diff_file, 'w') as d:
+                subprocess.run(['git', 'diff'], stdout=d)
+            print('diff-gen: ', diff_file)
+
     else:
         cached = True
     ##
@@ -182,9 +189,11 @@ everything = []
 # create sym-link for each remote as f'{name}' as its first include entry, or the repo path if no includes
 # all peers are symlinked and imported first
 def prepare_project(src_dir):
-    with open(src_dir + '/project.json', 'r') as project_contents:
+    project_file = src_dir + '/project.json'
+    with open(project_file, 'r') as project_contents:
         project_json = json.load(project_contents)
         import_list  = project_json['import']
+        mt_project   = os.path.getmtime(project_file)
 
         ## import the peers first, which have their own index (fetch first!)
         ## it should build while checking out
@@ -243,7 +252,7 @@ def prepare_project(src_dir):
                         continue
                 
                 ## check the timestamp here
-                remote_path, remote_build_path, timestamp, cached, vname, is_git, install = prepare_build(src_dir, fields)
+                remote_path, remote_build_path, timestamp, cached, vname, is_git, install = prepare_build(src_dir, fields, mt_project)
 
                 ## only building the src git repos; the resources are system specific builds
                 if not cached and is_git:

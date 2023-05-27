@@ -301,9 +301,7 @@ FUNCTION (setup_lib LibName)
 	IF(VKVG_USE_GLUTESS)
 		TARGET_LINK_LIBRARIES("${LibName}" PRIVATE glutess)
 	ENDIF()
-
-    message(STATUS "weird: ${Vulkan_LIBRARIES}")
-
+	
 	TARGET_LINK_LIBRARIES("${LibName}"
 		PUBLIC
 			${Vulkan_LIBRARIES}
