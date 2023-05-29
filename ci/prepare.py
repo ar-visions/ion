@@ -11,10 +11,6 @@ import shutil
 import zipfile
 from datetime import datetime
 from datetime import timedelta
-from colorama import init, deinit
-
-# Initialize colorama
-init()
 
 src_dir   = os.environ.get('CMAKE_SOURCE_DIR')
 build_dir = os.environ.get('CMAKE_BINARY_DIR')
@@ -298,5 +294,3 @@ prepare_project(src_dir)
 # output everything discovered in original order
 with open(js_path, "w") as out:
     json.dump(everything, out)
-
-deinit()

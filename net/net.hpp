@@ -213,7 +213,7 @@ struct sock:mx {
 private:
     inline static symbol pers = "ion:net";
     isock *isc;
-    bool connect(str host, int port);
+    //bool connect(str host, int port);
     bool bind(str adapter, int port);
     sock &establish();
     sock accept();
@@ -227,6 +227,7 @@ public:
            none, client, server);
 
     static async listen(uri url, lambda<bool(sock&)> fn);
+    static sock connect(uri url);
 
      sock(role r, uri bind);
     ~sock();

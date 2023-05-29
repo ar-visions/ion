@@ -2,13 +2,13 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name":             "ai-yt",
+            "name":             "orbiter",
             "type":             "cppdbg",
             "request":          "launch",
-            "program":          "${workspaceFolder}/../hyperspace/build/ai-yt",
+            "program":          "${workspaceFolder}/../orbiter/build-xcode/orbiter",
             "args":             [],
             "stopAtEntry":      false,
-            "cwd":              "${workspaceFolder}/../hyperspace/build/res",
+            "cwd":              "${workspaceFolder}/../orbiter/build-xcode/res",
             "environment":      [],
             "externalConsole":  false,
             "MIMode":           "gdb",
@@ -17,7 +17,6 @@
                 "group": "",
                 "order": 1,
             },
-            "preLaunchTask":    "build",
             "osx": { "MIMode":  "lldb" }
         }
     ]

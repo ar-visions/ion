@@ -148,11 +148,12 @@ constexpr int num_occurances(const char* cs, char c) {
             for (size_t i  = 0; i < c; i++)\
                 mem_symbol(sp[i].data, ty, i64(i));\
         }\
-        str name() {\
+        ion::symbol symbol() {\
             memory *mem = typeof(C)->lookup(u64(value));\
             assert(mem);\
             return (char*)mem->origin;\
         }\
+        str name() { return (char*)symbol(); }\
         static enum etype convert(mx raw) {\
             if (!init) initialize();\
             type_t   type = typeof(C);\
@@ -1324,19 +1325,11 @@ size_t schema_info(alloc_schema *schema, int depth, T *p, idata *ctx_type) {
     if constexpr (!identical<T, none>()) {
         /// count is set to schema_info after first return
         if (schema->count) {
-            if (ctx_type && strcmp(ctx_type->name, "ion::gfx") == 0) {
-                int test = 0;
-                test++;
-            }
             context_bind &bind = schema->composition[schema->count - 1 - depth]; /// would be not-quite-ideal casting-wise to go the other way, lol.
             bind.ctx     = ctx_type ? ctx_type : typeof(T);
             bind.data    = identical<typename T::DC, none>() ? null : typeof(typename T::DC);
             bind.data_sz = bind.data ? typesize(typename T::DC)     : 0;
             ///
-            /// this is to support external types by means of
-            /// pointing to their memory, no construction here either for opaque types
-            /// it can also be used by preference on non-opaque; you still have the same 
-            /// meta description ability (not with external fgs)
             if constexpr (!identical<typename T::DC, none>() && identical<typename T::MEM, mem_ptr_token>()) {
                 bind.ref_sz = sizeof(T*);
                 schema->total_bytes += bind.ref_sz;
@@ -1408,7 +1401,6 @@ struct memory {
     enum attr {
         constant = 1
     };
-
     size_t              refs;
     u64                 attrs;
     type_t              type;
@@ -1532,9 +1524,7 @@ public:
     enum { value = sizeof(test<T>(0)) == sizeof(char) };
 };
 
-
 i64 integer_value(memory *mem);
-
 
 struct str;
 
@@ -2469,7 +2459,8 @@ struct str:mx {
         return *sc;
     }
 
-    str(memory        *mem) :  mx(mem->type == typeof(null_t) ? alloc<char>(null, 0, 16) : mem), data(&mx::ref<char>()) { }
+    str(memory        *mem) : mx(mem->type == typeof(null_t) ? alloc<char>(null, 0, 16) : mem), data(&mx::ref<char>()) { }
+    str(mx               m) : mx(m.grab())                       { } // damn teh expense!
     str(nullptr_t n = null) : str(alloc<char>(null, 0, 16))      { }
     str(symbol         ccs) : str(mem_symbol(ccs, typeof(char))) { }
     str(char            ch) : str(alloc<char>(null, 1, 2))       { *data = ch; }
@@ -3057,49 +3048,6 @@ struct map:mx {
 
     operator bool() { return mx::mem && m; }
 
-    static map<V> args(int argc, cstr argv[], map def) {
-        map iargs = map();
-
-        for (int ai = 0; ai < argc; ai++) {
-            cstr ps = argv[ai];
-            ///
-            if (ps[0] == '-') {
-                bool   is_single = ps[1] != '-';
-                mx key {
-                    cstr(&ps[is_single ? 1 : 2]), typeof(char)
-                };
-
-                field<mx>* found;
-                if (is_single) {
-                    for (field<V> &df: def) {
-                        symbol s = symbol(df.key);
-                        if (ps[1] == s[0]) {
-                            found = &df;
-                            break;
-                        }
-                    }
-                } else found = def.lookup(key);
-                
-                if (found) {
-                    str     aval = str(argv[ai + 1]);
-                    type_t  type = found->value.type();
-                    iargs[key]   = type->lambdas->from_mstr(aval.mem);
-                } else {
-                    printf("arg not found: %s\n", str(key.mem).data);
-                    return null;
-                }
-            }
-        }
-        ///
-        /// return results in order of defaults, with default value given
-        map res = map();
-        for(field<V> &df:def.m.fields) {
-            field<mx> *ov = iargs.lookup(df.key);
-            res.m.fields += { df.key, V(ov ? ov->value : df.value) };
-        }
-        return res;
-    }
-
     //ctr(map, mx, mdata, m);
 //#define mx_basics(C, B, m_type, m_access) \
 
@@ -3175,6 +3123,50 @@ struct map:mx {
     inline liter<field<V>>     begin() const { return m.fields.begin(); }
     inline liter<field<V>>       end() const { return m.fields.end();   }
 };
+
+template <typename T>
+map<T> args(int argc, cstr *argv, map<mx> &def) {
+    map iargs = map<T>();
+
+    for (int ai = 0; ai < argc; ai++) {
+        cstr ps = argv[ai];
+        ///
+        if (ps[0] == '-') {
+            bool   is_single = ps[1] != '-';
+            mx key {
+                cstr(&ps[is_single ? 1 : 2]), typeof(char)
+            };
+
+            field<mx>* found;
+            if (is_single) {
+                for (field<T> &df: def) {
+                    symbol s = symbol(df.key);
+                    if (ps[1] == s[0]) {
+                        found = &df;
+                        break;
+                    }
+                }
+            } else found = def.lookup(key);
+            
+            if (found) {
+                str     aval = str(argv[ai + 1]);
+                type_t  type = found->value.type();
+                iargs[key]   = type->lambdas->from_mstr(aval.mem);
+            } else {
+                printf("arg not found: %s\n", str(key.mem).data);
+                return null;
+            }
+        }
+    }
+    ///
+    /// return results in order of defaults, with default value given
+    map res = map<T>();
+    for(field<T> &df:def.m.fields) {
+        field<mx> *ov = iargs.lookup(df.key);
+        res.m.fields += { df.key, T(ov ? ov->value : df.value) };
+    }
+    return res;
+}
 
 template <typename T>
 struct assigner {
@@ -3378,7 +3370,8 @@ struct path:mx {
          none, deleted, modified, created);
 
     static path cwd() {
-        std::string st = fs::current_path().string();
+        static std::string st;
+        st = fs::current_path().string();
         return str(st);
     }
 
@@ -4500,16 +4493,32 @@ bool path::write(T input) const {
     return true;
 }
 
+template<typename T, typename = void>
+struct has_int_conversion : std::false_type {};
+
+template<typename T>
+struct has_int_conversion<T, std::void_t<decltype(static_cast<int>(std::declval<T>()))>> : std::true_type {};
+
+
 /// use-case: any kind of file [Joey]
 template <typename T>
 T path::read() const {
-    if (!fs::is_regular_file(p))
-        return null;
+    const bool nullable = std::is_constructible<T, std::nullptr_t>::value;
+    const bool integral = !has_int_conversion<T>::value || std::is_integral<T>::value;
+    
+    if (!fs::is_regular_file(p)) {
+        if constexpr (nullable)
+            return null;
+        else if constexpr (integral)
+            return 0;
+        else
+            return T();
+    }
 
     if constexpr (identical<T, array<u8>>()) {
         std::ifstream input(p, std::ios::binary);
-        std::vector<u8> buffer(std::istreambuf_iterator<char>(input), { });
-        return array<u8>(buffer.data(), buffer.size());
+        std::vector<char> buffer(std::istreambuf_iterator<char>(input), { });
+        return array<u8>((u8*)buffer.data(), buffer.size());
     } else {
         std::ifstream fs;
         fs.open(p);
@@ -4524,7 +4533,12 @@ T path::read() const {
             return var::parse(cstr(st.c_str()));
         } else {
             console.fault("not implemented");
-            return null;
+            if constexpr (nullable)
+                return null;
+            else if constexpr (integral)
+                return 0;
+            else
+                return T();
         }
     }
 }

@@ -228,9 +228,7 @@ endfunction()
 
 # name name_ucase version imports
 function(read_project_json location name name_ucase version)
-    ##
     file(READ ${location} package_contents)
-
     if(NOT package_contents)
         message(FATAL_ERROR "project.json not in package root")
     endif()
@@ -293,9 +291,8 @@ function(load_project location remote)
     # iterate through modules
     # ------------------------
     foreach(mod ${module_dirs})
-        load_module(${location} ${name} ${mod})
+        load_module(${location} ${name} ${mod} ${js})
     endforeach()
-    
 endfunction()
 
 # select cmake package, target name, or framework
@@ -423,17 +420,18 @@ endmacro()
 
 macro(create_module_targets)
     set(v_src ${CMAKE_BINARY_DIR}/${t_name}-version.cpp)
+    source_group("Resources" FILES ${js})
     set_version_source(${t_name} ${version})
     if(full_src)
         if (dynamic)
-            add_library(${t_name} ${h_list})
+            add_library(${t_name} ${h_list} ${js})
             if(cpp EQUAL 23)
                 target_sources(${t_name}
                     PRIVATE
                         FILE_SET cxx_modules TYPE CXX_MODULES FILES
                         ${full_src})
             else()
-                target_sources(${t_name} PRIVATE ${full_src})
+                target_sources(${t_name} PRIVATE ${full_src} ${js})
             endif()
         elseif(static OR external_repo)
             add_library(${t_name} STATIC)
@@ -447,7 +445,7 @@ macro(create_module_targets)
                 #        BASE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/${mod}"
                 #        FILES ${h_list})
             else()
-                target_sources(${t_name} PRIVATE ${full_src} ${h_list})
+                target_sources(${t_name} PRIVATE ${full_src} ${h_list} ${js})
             endif()
 
         else()
@@ -483,7 +481,7 @@ macro(create_module_targets)
         endif()
     else()
         list(APPEND full_src ${v_src})
-        add_library(${t_name} STATIC ${full_src} ${h_list})
+        add_library(${t_name} STATIC ${full_src} ${h_list} ${js})
     endif()
 
     set_target_properties(${t_name} PROPERTIES LINKER_LANGUAGE CXX)
@@ -496,6 +494,7 @@ macro(create_module_targets)
 
     # Set the property to mark them as resources
     set_source_files_properties(${module_file} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+    source_group("Resources" FILES ${module_file})
 
     # Optional: organize the files in a folder structure in Xcode
     #source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${RES_FILES})
@@ -553,6 +552,8 @@ macro(create_module_targets)
     if(external_repo)
         set_target_properties(${t_name} PROPERTIES EXCLUDE_FROM_ALL TRUE)
     endif()
+
+    target_sources(${t_name} PRIVATE ${module_file})
 
     # support library paths
     foreach(p ${lib_paths})
@@ -614,7 +615,7 @@ endmacro()
 
 # load module file for a given project (mod, placed in module-folders)
 # ------------------------
-function(load_module r_path project_name mod)
+function(load_module r_path project_name mod js)
     # create a target name for this module (t_name = project-module)
     set(t_name "${project_name}-${mod}")
     if(NOT TARGET ${t_name})

@@ -252,12 +252,16 @@ bool sock::bind(str adapter, int port) {
     return res != 0;
 }
 
-bool sock::connect(str host, int port) {
+sock sock::connect(uri url) {
+    str host = url.host();
+    int port = url.port();
+    sock res { sock::role::client, url };
+    isock *isc = res.isc;
     /// this operation runs first and its cache is used by mbed
     int ret = mbedtls_ssl_setup(&isc->ssl, &isc->conf);
     if (ret != 0) {
         std::cerr << "mbedtls_ssl_setup failed: " << ret << std::endl;
-        return false;
+        return {};
     }
     
     str  str_port = str::from_integer(port);
@@ -266,13 +270,13 @@ bool sock::connect(str host, int port) {
     ret = mbedtls_ssl_set_hostname(&isc->ssl, s_host);
     if (ret != 0) {
         std::cerr << "mbedtls_ssl_set_hostname failed: " << ret << std::endl;
-        return false;
+        return {};
     }
     
     ret = mbedtls_net_connect(&isc->ctx, s_host, s_port, MBEDTLS_NET_PROTO_TCP);
     if (ret != 0) {
         std::cerr << "mbedtls_net_connect failed: " << ret << std::endl;
-        return false;
+        return {};
     }
     
     mbedtls_ssl_set_bio(&isc->ssl, &isc->ctx, mbedtls_net_send, mbedtls_net_recv, NULL);
@@ -281,11 +285,11 @@ bool sock::connect(str host, int port) {
         if (ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE) {
             std::cerr << "mbedtls_ssl_handshake failed: " << ret << std::endl;
             mbedtls_net_free(&isc->ctx);
-            return false;
+            return {};
         }
     }
     isc->connected = true;
-    return true;
+    return res;
 }
 
 
@@ -301,8 +305,6 @@ sock::sock(role r, uri addr) : sock() {
     
     if (isc->role == role::server)
         bind(s_addr, i_port);
-    else
-        connect(s_addr, i_port);
 }
 
 ssize_t sock::recv(unsigned char* buf, size_t len) {
@@ -735,11 +737,7 @@ future request(uri url, map<mx> args) {
         ///
         assert(query != method::undefined);
         console.log("(net) request: {0}", { url });
-        str host = query.host();
-        int port = query.port();
-        
-        sock client { sock::role::client, query };
- 
+        sock client = sock::connect(query);
         if (!client) return {};
         
         /// start request (this time get the casing right)
@@ -752,7 +750,7 @@ future request(uri url, map<mx> args) {
             { "Accept",          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" },
             { "Accept-Language", "en-US,en;q=0.9"       },
             { "Accept-Encoding", "gzip, deflate, br"    },
-            { "Host",             host                  }
+            { "Host",             query.host()          }
         };
         
         /// User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.3 Safari/605.1.15

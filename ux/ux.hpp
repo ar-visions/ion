@@ -1,8 +1,9 @@
 #pragma once
 
 #include <core/core.hpp>
-#include <math/math.hpp>
 #include <async/async.hpp>
+#include <net/net.hpp>
+#include <math/math.hpp>
 #include <media/media.hpp>
 
 struct GLFWwindow;

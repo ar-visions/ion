@@ -187,7 +187,7 @@
             "url":      "https://github.com/jpbruyere/vkvg.git",
             "includes": ["./include","./vkh/include"],
             "libs":     ["./ion-build","./ion-build/vkh","./ion-build/external/glutess"],
-            "cmake":    {"args": ["-DVKVG_USE_GLUTESS=True","-DVKVG_BUILD_SHARED_LIB=Off","-DVKVG_USE_FONTCONFIG=Off","-DVKVG_USE_HARFBUZZ=On"]},
+            "cmake":    {"args": ["-DFontconfig_DIR=%INSTALL_PREFIX%/lib/cmake/font-config", "-DVKVG_USE_GLUTESS=True","-DVKVG_BUILD_SHARED_LIB=Off","-DVKVG_USE_FONTCONFIG=Off","-DVKVG_USE_HARFBUZZ=On"]},
             "diff":     "vkvg.diff",
             "install":  true
         },
