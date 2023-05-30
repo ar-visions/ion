@@ -1,0 +1,1 @@
+static int abc = 0;

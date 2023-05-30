@@ -23,6 +23,9 @@
 #ifndef AMD_VULKAN_MEMORY_ALLOCATOR_H
 #define AMD_VULKAN_MEMORY_ALLOCATOR_H
 
+#pragma pack(push, 8)  // Set struct alignment to 8 bytes
+
+
 /** \mainpage Vulkan Memory Allocator
 
 <b>Version 3.0.1 (2022-05-26)</b>
@@ -217,6 +220,8 @@ extern "C" {
 #endif
 
 // Defined to 1 when VK_KHR_external_memory device extension is defined in Vulkan headers.
+#define VMA_EXTERNAL_MEMORY 1
+/*
 #if !defined(VMA_EXTERNAL_MEMORY)
     #if VK_KHR_external_memory
         #define VMA_EXTERNAL_MEMORY 1
@@ -224,6 +229,7 @@ extern "C" {
         #define VMA_EXTERNAL_MEMORY 0
     #endif
 #endif
+*/
 
 // Define these macros to decorate all public functions with additional code,
 // before and after returned type, appropriately. This may be useful for
@@ -997,102 +1003,37 @@ typedef struct VmaVulkanFunctions
 } VmaVulkanFunctions;
 
 /// Description of a Allocator to be created.
-typedef struct VmaAllocatorCreateInfo
-{
-    /// Flags for created allocator. Use #VmaAllocatorCreateFlagBits enum.
-    VmaAllocatorCreateFlags flags;
-    /// Vulkan physical device.
-    /** It must be valid throughout whole lifetime of created allocator. */
-    VkPhysicalDevice VMA_NOT_NULL physicalDevice;
-    /// Vulkan device.
-    /** It must be valid throughout whole lifetime of created allocator. */
-    VkDevice VMA_NOT_NULL device;
-    /// Preferred size of a single `VkDeviceMemory` block to be allocated from large heaps > 1 GiB. Optional.
-    /** Set to 0 to use default, which is currently 256 MiB. */
-    VkDeviceSize preferredLargeHeapBlockSize;
-    /// Custom CPU memory allocation callbacks. Optional.
-    /** Optional, can be null. When specified, will also be used for all CPU-side memory allocations. */
-    const VkAllocationCallbacks* VMA_NULLABLE pAllocationCallbacks;
-    /// Informative callbacks for `vkAllocateMemory`, `vkFreeMemory`. Optional.
-    /** Optional, can be null. */
+typedef struct VmaAllocatorCreateInfo {
+    VmaAllocatorCreateFlags                      flags;
+    VkPhysicalDevice                VMA_NOT_NULL physicalDevice;
+    VkDevice                        VMA_NOT_NULL device;
+    VkDeviceSize                                 preferredLargeHeapBlockSize;
+    const VkAllocationCallbacks*    VMA_NULLABLE pAllocationCallbacks;
     const VmaDeviceMemoryCallbacks* VMA_NULLABLE pDeviceMemoryCallbacks;
-    /** \brief Either null or a pointer to an array of limits on maximum number of bytes that can be allocated out of particular Vulkan memory heap.
 
-    If not NULL, it must be a pointer to an array of
-    `VkPhysicalDeviceMemoryProperties::memoryHeapCount` elements, defining limit on
-    maximum number of bytes that can be allocated out of particular Vulkan memory
-    heap.
+    int abc;
+    int abc2;
+    int abc3;
+    int abc4;
+    int abc5;
+    int abc6;
+    int abc7;
+    int abc8;
+    
+    const VkDeviceSize*             VMA_NULLABLE pHeapSizeLimit;
+    const VmaVulkanFunctions*       VMA_NULLABLE pVulkanFunctions;
+    VkInstance                      VMA_NOT_NULL instance;
+    uint32_t                                     vulkanApiVersion;
 
-    Any of the elements may be equal to `VK_WHOLE_SIZE`, which means no limit on that
-    heap. This is also the default in case of `pHeapSizeLimit` = NULL.
+    const VkExternalMemoryHandleTypeFlagsKHR* VMA_NULLABLE pTypeExternalMemoryHandleTypes;
 
-    If there is a limit defined for a heap:
-
-    - If user tries to allocate more memory from that heap using this allocator,
-      the allocation fails with `VK_ERROR_OUT_OF_DEVICE_MEMORY`.
-    - If the limit is smaller than heap size reported in `VkMemoryHeap::size`, the
-      value of this limit will be reported instead when using vmaGetMemoryProperties().
-
-    Warning! Using this feature may not be equivalent to installing a GPU with
-    smaller amount of memory, because graphics driver doesn't necessary fail new
-    allocations with `VK_ERROR_OUT_OF_DEVICE_MEMORY` result when memory capacity is
-    exceeded. It may return success and just silently migrate some device memory
-    blocks to system RAM. This driver behavior can also be controlled using
-    VK_AMD_memory_overallocation_behavior extension.
-    */
-    const VkDeviceSize* VMA_NULLABLE VMA_LEN_IF_NOT_NULL("VkPhysicalDeviceMemoryProperties::memoryHeapCount") pHeapSizeLimit;
-
-    /** \brief Pointers to Vulkan functions. Can be null.
-
-    For details see [Pointers to Vulkan functions](@ref config_Vulkan_functions).
-    */
-    const VmaVulkanFunctions* VMA_NULLABLE pVulkanFunctions;
-    /** \brief Handle to Vulkan instance object.
-
-    Starting from version 3.0.0 this member is no longer optional, it must be set!
-    */
-    VkInstance VMA_NOT_NULL instance;
-    /** \brief Optional. The highest version of Vulkan that the application is designed to use.
-
-    It must be a value in the format as created by macro `VK_MAKE_VERSION` or a constant like: `VK_API_VERSION_1_1`, `VK_API_VERSION_1_0`.
-    The patch version number specified is ignored. Only the major and minor versions are considered.
-    It must be less or equal (preferably equal) to value as passed to `vkCreateInstance` as `VkApplicationInfo::apiVersion`.
-    Only versions 1.0, 1.1, 1.2, 1.3 are supported by the current implementation.
-    Leaving it initialized to zero is equivalent to `VK_API_VERSION_1_0`.
-    */
-    uint32_t vulkanApiVersion;
-#if VMA_EXTERNAL_MEMORY
-    /** \brief Either null or a pointer to an array of external memory handle types for each Vulkan memory type.
-
-    If not NULL, it must be a pointer to an array of `VkPhysicalDeviceMemoryProperties::memoryTypeCount`
-    elements, defining external memory handle types of particular Vulkan memory type,
-    to be passed using `VkExportMemoryAllocateInfoKHR`.
-
-    Any of the elements may be equal to 0, which means not to use `VkExportMemoryAllocateInfoKHR` on this memory type.
-    This is also the default in case of `pTypeExternalMemoryHandleTypes` = NULL.
-    */
-    const VkExternalMemoryHandleTypeFlagsKHR* VMA_NULLABLE VMA_LEN_IF_NOT_NULL("VkPhysicalDeviceMemoryProperties::memoryTypeCount") pTypeExternalMemoryHandleTypes;
-#endif // #if VMA_EXTERNAL_MEMORY
 } VmaAllocatorCreateInfo;
 
 /// Information about existing #VmaAllocator object.
-typedef struct VmaAllocatorInfo
-{
-    /** \brief Handle to Vulkan instance object.
-
-    This is the same value as has been passed through VmaAllocatorCreateInfo::instance.
-    */
-    VkInstance VMA_NOT_NULL instance;
-    /** \brief Handle to Vulkan physical device object.
-
-    This is the same value as has been passed through VmaAllocatorCreateInfo::physicalDevice.
-    */
-    VkPhysicalDevice VMA_NOT_NULL physicalDevice;
-    /** \brief Handle to Vulkan device object.
-
-    This is the same value as has been passed through VmaAllocatorCreateInfo::device.
-    */
-    VkDevice VMA_NOT_NULL device;
+typedef struct VmaAllocatorInfo {
+    VkInstance          VMA_NOT_NULL instance;
+    VkPhysicalDevice    VMA_NOT_NULL physicalDevice;
+    VkDevice            VMA_NOT_NULL device;
 } VmaAllocatorInfo;
 
 /** @} */
@@ -15994,7 +15935,16 @@ VMA_CALL_PRE VkResult VMA_CALL_POST vmaCreateAllocator(
     const VmaAllocatorCreateInfo* pCreateInfo,
     VmaAllocator* pAllocator)
 {
-    printf("[b] Offset of .instance = %zu\n", offsetof(VmaAllocatorCreateInfo, instance));
+    printf("[vma] offset (flags) = %d, physicalDevice = %d, preferredLargeHeapBlockSize = %d, pAllocationCallbacks = %d, pDeviceMemoryCallbacks = %d, pHeapSizeLimit = %d, pVulkanFunctions = %d, instance = %d\n",
+        offsetof(VmaAllocatorCreateInfo, flags),
+        offsetof(VmaAllocatorCreateInfo, physicalDevice),
+        offsetof(VmaAllocatorCreateInfo, preferredLargeHeapBlockSize),
+        offsetof(VmaAllocatorCreateInfo, pAllocationCallbacks),
+        offsetof(VmaAllocatorCreateInfo, pDeviceMemoryCallbacks),
+        offsetof(VmaAllocatorCreateInfo, pHeapSizeLimit),
+        offsetof(VmaAllocatorCreateInfo, pVulkanFunctions),
+        offsetof(VmaAllocatorCreateInfo, instance),
+        sizeof(VmaAllocatorCreateInfo));
 
     VMA_ASSERT(pCreateInfo && pAllocator);
     VMA_ASSERT(pCreateInfo->vulkanApiVersion == 0 ||
@@ -17528,6 +17478,9 @@ VMA_CALL_PRE void VMA_CALL_POST vmaFreeVirtualBlockStatsString(VmaVirtualBlock V
 }
 #endif // VMA_STATS_STRING_ENABLED
 #endif // _VMA_PUBLIC_INTERFACE
+
+#pragma pack(pop) /// struct alignment to 8 byte boundary
+
 #endif // VMA_IMPLEMENTATION
 
 /**

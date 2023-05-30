@@ -85,7 +85,7 @@ struct runtime {
     lambda<void(mx)>           on_fail;
     size_t                     count;
     FnProcess				   fn;
-    mx                         results;
+    array<mx>                  results;
     std::vector<std::thread>  *threads;       /// todo: unstd when it lifts off ground. experiment complete time to crash and blast in favor of new matrix.
     int                        done      = 0; /// 
     bool                       failure   = false;
@@ -156,15 +156,7 @@ public:
         state.mtx_self.lock();
 
         state.failure |= !r;
-        
-        /// if this is a singleton, reduce results
-        if (state.count == 1)
-            state.results = r;
-        else {
-            /// simple casting
-            array<mx> arr = state.results;
-            arr[w] =  r;
-        }
+        state.results[w] = r;
         
         /// wait for completion of one (we coudl combine c check inside but not willing to stress test that atm)
         mtx_global.lock();
@@ -175,9 +167,9 @@ public:
         if (im_last) {
             if (state.on_done) {
                 if (state.failure)
-                    state.on_fail(state.results);
+                    state.on_fail(state.count ? state.results : state.results[0]);
                 else
-                    state.on_done(state.results);
+                    state.on_done(state.count ? state.results : state.results[0]);
             }
 
             mtx_global.lock();
@@ -194,16 +186,16 @@ public:
     ///
     ctr(process, mx, runtime, state);
     process(size_t count, FnProcess fn) : process(alloc<runtime>()) {
-       if(!init) {
-           init       = true;
-           th_manager = std::thread(manager);
-       }
-       state.fn       = fn;
-       state.count    = count;
-       if (count)
-          state.results  = (count > 1) ? array<mx> { count, count, [](num) -> mx { return mx(); } } : mx(null);
+        if(!init) {
+            init       = true;
+            th_manager = std::thread(manager);
+        }
+        state.fn      = fn;
+        if (count) {
+            state.count   = count;
+            state.results = array<mx> { count, count, [](num) -> mx { return mx(); } };
+        }
     }
-
     inline bool joining() const { return state.join; }
 };
 

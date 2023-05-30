@@ -52,7 +52,7 @@ array<mx> &async::sync() {
         d.mtx.unlock();
         yield();
     }
-    d.results = d.proc.state.results;
+    d.results = array<mx>(d.proc.state.results);
     return d.results;
 }
 

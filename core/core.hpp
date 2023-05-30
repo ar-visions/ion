@@ -168,6 +168,9 @@ constexpr int num_occurances(const char* cs, char c) {
             } else if (raw.type() == typeof(i64)) {\
                 i64   id = raw.ref<i64>();\
                 psym     = type->symbols->ids.lookup(id);\
+            } else if (raw.type() == typeof(etype)) {\
+                i64   id = raw.ref<etype>();\
+                psym     = type->symbols->ids.lookup(id);\
             }\
             if (!psym) throw C();\
             return (enum etype)((*psym)->id);\
@@ -4187,7 +4190,8 @@ template <typename T>
 T *memory::data(size_t index) const {
     type_t queried_type = ident::for_type<T>();
     size_t mxc = math::max(reserve, count);
-    if (queried_type == type) {
+    static type_t mx_t = typeof(mx);
+    if ((queried_type == type) || (queried_type == mx_t && inherits<mx, T>())){
         return (T *)origin;
     } else {
         alloc_schema *schema = type->schema;

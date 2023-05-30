@@ -140,36 +140,14 @@
         },
         {
             "name":     "vulkansdk",
-            "version":  "1.3.239.0",
-            "res":      "https://github.com/ar-visions/ar-visions.github.io/blob/main/res/vulkan-sdk-1.3.239.0.zip?raw=true",
+            "version":  "1.3.250.0",
+            "res":      "https://github.com/ar-visions/ar-visions.github.io/blob/main/res/vulkan-sdk-%platform%-1.3.250.0.zip?raw=true",
             "sha256":   "1180EE7B3AC5DE5089F3CC3BC8F6651F886D8CFAA374947E9BC4B0CA1E83BB4E",
-            "includes": ["./VulkanSDK/1.3.239.0/Include"],
-            "libs":     ["./VulkanSDK/1.3.239.0/Lib"],
+            "includes": ["./VulkanSDK/1.3.250.0/include"],
+            "libs":     ["./VulkanSDK/1.3.250.0/lib"],
+            "bins":     ["./VulkanSDK/1.3.250.0/bin"],
             "platforms":["win","linux"],
             "hide":     "mac"
-        },
-        {
-            "name":     "moltenvk",
-            "version":  "1.2.3",
-            "commit":   "db8512a64f2c703e31ff7038b2859034062aa00f",
-            "url":      "https://github.com/KhronosGroup/MoltenVK",
-            "includes": ["./MoltenVK/include"],
-            "libs":     ["./MoltenVK/dylib/macOS"],
-            "diff":     "moltenvk.diff",
-            "platforms":["mac"],
-            "environment": {
-                "VULKAN_SDK":"%INSTALL_PREFIX%/lib/Frameworks/MoltenVK",
-                "VULKAN_LIBRARY_NAME":"MoltenVK"
-            }
-        },
-        {
-            "name":     "vma",
-            "version":  "3.0.1",
-            "url":      "https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator",
-            "commit":   "a6bfc23",
-            "includes": ["./include"],
-            "libs":     ["./ion-build"],
-            "install":  true
         },
         {
             "name":     "glfw",
@@ -187,7 +165,7 @@
             "url":      "https://github.com/jpbruyere/vkvg.git",
             "includes": ["./include","./vkh/include"],
             "libs":     ["./ion-build","./ion-build/vkh","./ion-build/external/glutess"],
-            "cmake":    {"args": ["-DFontconfig_DIR=%INSTALL_PREFIX%/lib/cmake/font-config", "-DVKVG_USE_GLUTESS=True","-DVKVG_BUILD_SHARED_LIB=Off","-DVKVG_USE_FONTCONFIG=Off","-DVKVG_USE_HARFBUZZ=On"]},
+            "cmake":    {"args": ["-DVKVG_USE_GLUTESS=True","-DVKVG_BUILD_SHARED_LIB=Off","-DVKVG_USE_FONTCONFIG=Off","-DVKVG_USE_HARFBUZZ=On"]},
             "diff":     "vkvg.diff",
             "install":  true
         },

@@ -2582,7 +2582,7 @@ gfx::gfx(ion::window &win) : gfx(mx::alloc<gfx>()) { /// this allocates both gfx
     vkh_image_create_view(g->vkh_image, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT); // VK_IMAGE_ASPECT_COLOR_BIT questionable bit
     g->vg_surface       = vkvg_surface_create_for_VkhImage(g->vg_device, (void*)g->vkh_image);
     g->ctx              = vkvg_create(g->vg_surface);
-    push(); /// gfxs just needs a push off the ledge. [/penguin-drops]
+    push(); /// gfx just needs a push off the ledge. [/penguin-drops]
     defaults();
 }
 

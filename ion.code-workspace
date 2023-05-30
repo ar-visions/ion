@@ -52,7 +52,8 @@
 			"map": "cpp",
 			"__mutex_base": "cpp",
 			"mutex": "cpp",
-			"shared_mutex": "cpp"
+			"shared_mutex": "cpp",
+			"vk_mem_alloc.h": "c"
 		}
 	}
 }

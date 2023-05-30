@@ -1,6 +1,7 @@
 
 import os
 import sys
+import requests
 import subprocess
 import re
 import json
@@ -16,6 +17,7 @@ src_dir   = os.environ.get('CMAKE_SOURCE_DIR')
 build_dir = os.environ.get('CMAKE_BINARY_DIR')
 cfg       = os.environ.get('CMAKE_BUILD_TYPE')
 js_path   = os.environ.get('JSON_IMPORT_INDEX')
+io_res    = f'{build_dir}/io/res'
 cm_build  = 'ion-build'
 install_prefix = f'{build_dir}/extern/install'
 gen_only  = os.environ.get('GEN_ONLY')
@@ -137,6 +139,17 @@ def is_cached(this_src_dir, vname, mt_project):
     ##
     return dst_build, timestamp, cached
     
+def cp_deltree(src, dst, dirs_exist_ok=True):
+    shutil.copytree(src, dst, dirs_exist_ok=dirs_exist_ok)
+    for root, dirs, files in os.walk(dst):
+        for file in files:
+            if file.startswith('rm@'):
+                rm_cmd = os.path.join(root, file)
+                src_rm = os.path.join(root, file[3:])
+                os.remove(rm_cmd)
+                if os.path.exists(src_rm): # subsequent calls error.  the repo would need deleted files restored but no other changes reverted.  better to just check
+                    os.remove(src_rm)
+    
 ## prepare an { object } of external repo
 def prepare_build(this_src_dir, fields, mt_project):
     vname, name, version, res, sha256, url, commit, diff, install = parse(fields)
@@ -146,7 +159,14 @@ def prepare_build(this_src_dir, fields, mt_project):
     if not cached:
         ## if there is resource, download it and verify sha256 (required field)
         if res:
-            res_zip = f'{build_dir}/io/res/{res}'
+            res = res.replace('%platform%', sys_type())
+            response = requests.get(res)
+            base = os.path.basename(res)  # Extract the filename from the URL
+            base = base.split('?')[0] if '?' in base else base
+            os.makedirs(io_res, exist_ok=True)
+            res_zip = os.path.join(io_res, base)  # Path to save the downloaded zip file
+            with open(res_zip, "wb") as file:
+                file.write(response.content)
             digest = sha256_file(res_zip)
             if digest != sha256:
                 print(f'sha256 checksum failure in project {name}')
@@ -169,7 +189,8 @@ def prepare_build(this_src_dir, fields, mt_project):
         overlay = f'{this_src_dir}/overlays/{name}'
         if os.path.exists(overlay):
             print('copying overlay for project: ', name)
-            shutil.copytree(overlay, dst, dirs_exist_ok=True)
+            #shutil.copytree(overlay, dst, dirs_exist_ok=True)
+            cp_deltree(overlay, dst, dirs_exist_ok=True)
             diff_file = f'{build_dir}/{name}.diff'
             with open(diff_file, 'w') as d:
                 subprocess.run(['git', 'diff'], stdout=d)
