@@ -24,6 +24,11 @@ gen_only  = os.environ.get('GEN_ONLY')
 
 os.environ['INSTALL_PREFIX'] = install_prefix
 
+# Function to replace %NAME% with corresponding environment variable
+def replace_env_variables(match):
+    var_name = match.group(1)  # Extract NAME from %NAME%
+    return os.environ.get(var_name, match.group(0))  # Replace with env var, or leave unchanged if not found
+
 def sha256_file(file_path):
     sha256_hash = hashlib.sha256()
     with open(file_path, "rb") as file:
@@ -156,6 +161,14 @@ def prepare_build(this_src_dir, fields, mt_project):
     dst = f'{build_dir}/extern/{vname}'
     dst_build, timestamp, cached = is_cached(dst, vname, mt_project)
 
+    if 'libs' in fields: fields['libs'] = [re.sub(r'%([^%]+)%', replace_env_variables, s) for s in fields['libs']]
+    
+    if 'bins' in fields:
+        fields['bins'] = [re.sub(r'%([^%]+)%', replace_env_variables, s) for s in fields['bins']]
+        print('bins = ', fields['bins'])
+    
+    if 'includes' in fields: fields['includes'] = [re.sub(r'%([^%]+)%', replace_env_variables, s) for s in fields['includes']]
+
     if not cached:
         ## if there is resource, download it and verify sha256 (required field)
         if res:
@@ -173,6 +186,8 @@ def prepare_build(this_src_dir, fields, mt_project):
                 print(f'checksum for {res}: {digest}')
             with zipfile.ZipFile(res_zip, 'r') as z:
                 z.extractall(dst)
+        elif not url:
+            print(f'{name}: (proprietary system dependency. stand by to engage)')
         else:
             os.chdir(f'{build_dir}/extern')
             if not os.path.exists(vname):
@@ -199,7 +214,7 @@ def prepare_build(this_src_dir, fields, mt_project):
     else:
         cached = True
     ##
-    return dst, dst_build, timestamp, cached, vname, not res, install
+    return dst, dst_build, timestamp, cached, vname, (not res) and url, install, res, url
 
 everything = []
 
@@ -269,7 +284,7 @@ def prepare_project(src_dir):
                         continue
                 
                 ## check the timestamp here
-                remote_path, remote_build_path, timestamp, cached, vname, is_git, install = prepare_build(src_dir, fields, mt_project)
+                remote_path, remote_build_path, timestamp, cached, vname, is_git, install, res, url = prepare_build(src_dir, fields, mt_project)
 
                 ## only building the src git repos; the resources are system specific builds
                 if not cached and is_git:
@@ -302,6 +317,8 @@ def prepare_project(src_dir):
                 ## add prefix path if there is one (so the next build sees all of the prior resources)
                 ## this is so we can reduce how much we install.
                 ## chaining together the build-dirs in prefix works in 'most' cases
+                ## deprecate the usage of multiple prefix path.  not worth the concatenation and sheer volume
+                ## install to prefix
                 if not install and not hide:
                     if os.path.isdir(remote_build_path):
                         if prefix_path:

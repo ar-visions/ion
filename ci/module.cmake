@@ -366,22 +366,37 @@ macro(process_dep d t_name)
         if(EXISTS ${pkg_path})
             set(target ${project}-${module})
             target_link_libraries(${t_name} PRIVATE ${target})
-            message(STATUS "target = ${project}-${module}")
             target_include_directories(${t_name} PUBLIC ${extern_path})
         else()
             set(found FALSE)
             foreach (import ${imports})
                 if ("${import}" STREQUAL "${project}")
-                    # add lib paths for this external
+                    ## add lib paths for this external
                     foreach (i ${import.${import}.libs})
                         link_directories(${t_name} ${i})
                     endforeach()
 
-                    # switch based on static/dynamic use-cases
-                    # private for shared libs and public for pass-through to exe linking
+                    ## symlink bins into CMAKE_BINARY_DIR; having a PATH for this doesnt work
+                    foreach (bin_dir ${import.${import}.bins})
+                        ## previous was a copy; reserve for exceptions
+                        ##add_custom_command(
+                        ##    TARGET ${PROJECT_NAME} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory ${bin_dir} ${CMAKE_BINARY_DIR})
+                        file(GLOB bin_files "${bin_dir}/*")
+                        print("bin files from ${bin_dir} = ${bin_files}")
+                        foreach(bin_file ${bin_files})
+                            get_filename_component(file_name ${bin_file} NAME)
+                            add_custom_command(
+                                TARGET  ${t_name} POST_BUILD
+                                COMMAND ${CMAKE_COMMAND} -E create_symlink ${bin_file} ${CMAKE_BINARY_DIR}/${file_name})
+                        endforeach()
+                    endforeach()
+
+                    ## switch based on static/dynamic use-cases
+                    ## private for shared libs and public for pass-through to exe linking
                     set_if(exposure dynamic "PRIVATE" "PUBLIC")
                     target_link_libraries(${t_name} ${exposure} ${module}) 
-                    # this was private and thats understandable, but apps that use this should also get it too
+                    ## this was private and thats understandable, but apps that use this should also get it too
+                    ## do env var replacement on include paths; vulkan one can be guessed and if its not there on init
                     target_include_directories(${t_name} PUBLIC ${import.${import}.includes})
                     set(found TRUE)
                     break()
