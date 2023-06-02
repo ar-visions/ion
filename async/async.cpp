@@ -15,33 +15,41 @@ async::async(size_t count, FnProcess fn) : async() {
     ps.handle   = d.proc.mem->grab();
     
     /// measure d.proc.rt address here
-    if (count <= 0) {
-        lock.unlock();
-        process::procs.push(&ps);
-        fn(ps, 0);
-        process::procs.pop();
-        lock.lock();
-        d.proc = null; /// delete process here (it is out of the list by the lock time and thus should immediately delete)
-        /// i think the above line is optional, as when the async falls out of scope, the ref-- delete results in trivial destruction which ref--'s
-    } else {
-        ///
-        ps.threads = new std::vector<std::thread>();
-        ps.threads->reserve(count);
-        for (size_t i = 0; i < count; i++)
-            ps.threads->emplace_back(std::thread(process::run, &ps, int(i)));
-        ///
-        process::procs.push(&ps);
-    }
+    ps.threads = new std::vector<std::thread>();
+    ps.threads->reserve(count);
+    for (size_t i = 0; i < count; i++)
+        ps.threads->emplace_back(std::thread(process::run, &ps, int(i)));
+    ///
+    process::procs.push(&ps);
 }
 
 /// path to execute, we dont host a bunch of environment vars. ar.
-async::async(path exec) : async(1, [&](runtime &proc, int i) -> mx {
-    return int(std::system(exec.cs()));
+/// make path a string instance i think; fs::path doesnt offs
+async::async(exec command) : async(1, [&](runtime &proc, int i) -> mx {
+    path p   = command.path();
+    path dir = p.parent();
+    
+    if (dir == "" || dir == ".") {
+        path   cwd = dir::cwd(); /// this always puts a trailing slash on
+        path local = cwd / p;
+        assert(local != "");
+        exec   cmd = fmt {"{0}{1}", { str(local.cs()), command }};
+        command    = cmd;
+        assert(local.exists());
+    } else {
+        /// would rather not use anything in PATH
+        if (p.exists()) {
+            console.log("std::system (shell) will default to PATH for command:\n > {0}", { p });
+        }
+    }
+    console.log("shell > {0}", { command });
+    int exit_code = int(std::system(command.cs()));
+    return exit_code;
 }) { }
 
 async::async(lambda<mx(runtime &, int)> fn) : async(1, fn) {}
 
-array<mx> &async::sync() {
+array<mx> async::sync() {
     /// wait for join to complete, set results internal and return
     for (;;) {
         d.mtx.lock();
@@ -52,8 +60,7 @@ array<mx> &async::sync() {
         d.mtx.unlock();
         yield();
     }
-    d.results = array<mx>(d.proc.state.results);
-    return d.results;
+    return d.proc.state.results;
 }
 
 /// await all async processes to complete

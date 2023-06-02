@@ -788,10 +788,13 @@ struct has_compare : std::false_type {};
 template <typename T>
 struct has_compare<T, std::void_t<decltype(std::declval<T>().compare((T &)*(T*)null))>> : std::true_type {};
 
-template <typename T, typename = void>
-struct is_array : std::false_type {};
-template <typename T>
-struct is_array<T, std::void_t<decltype(std::declval<T>().element_type())>> : std::true_type {};
+//template <typename T, typename = void>
+//struct is_array : std::false_type {};
+//template <typename T>
+//struct is_array<T, std::void_t<decltype(std::declval<T>().element_type())>> : std::true_type {};
+
+template <typename>
+struct is_array           : std::false_type {};
 
 template <typename T, typename = void>
 struct is_map : std::false_type {};
@@ -2105,7 +2108,8 @@ public:
     }
 
     inline void set_size(size sz) {
-        elements = mem->realloc<T>(sz, true);
+        if (mem->reserve < sz)
+            elements = mem->realloc<T>(sz, true);
     }
 
     ///
@@ -2316,6 +2320,9 @@ public:
     }
 };
 
+template <typename T>
+struct is_array<array<T>> : std::true_type {};
+
 using ichar = int;
 
 static lambda<void(u32)> fn = {};
@@ -2383,6 +2390,9 @@ struct ex:mx {
     template <typename E, typename C>
     ex(E v, C *inst) : ex(alloc<E>(&v), this) { }
 };
+
+/// useful for constructors that deal with ifstream
+size_t length(std::ifstream& in);
 
 struct str:mx {
     enum MatchType {
@@ -2469,6 +2479,12 @@ struct str:mx {
     str(char            ch) : str(alloc<char>(null, 1, 2))       { *data = ch; }
     str(size_t          sz) : str(alloc<char>(null, 0, sz + 1))  { }
     
+    //str(std::ifstream  &in) : str((memory*)null) { }
+    str(std::ifstream &in) : str(alloc<char>(null, 0, ion::length(in) + 1)) {
+        mem->count = mem->reserve - 1;
+        in.read((char*)data, mem->count);
+    }
+                                  
     static str from_integer(i64 i) { return str(memory::string(std::to_string(i))); }
 
     str(float          f32, int n = 6) : str(memory::string(string_from_real(f32, n))) { }
@@ -2478,7 +2494,7 @@ struct str:mx {
     str(std::string s) : str(cstr(s.c_str()), s.length()) { } // error: member initializer 'str' does not name a non-static data member or base class
 
 
-    str(const str       &s)            : str(s.mem->grab()) { }
+    str(const str &s) : str(s.mem->grab()) { }
 
     inline cstr cs() { return cstr(data); }
 
@@ -2653,18 +2669,15 @@ struct str:mx {
         return memcmp(s, e, l0) == 0;
     }
 
-    static str read_file(std::ifstream& in) {
-        std::ostringstream st;
-        st << in.rdbuf();
-        std::string contents = st.str();
-        return str { cstr(contents.c_str()), contents.length() };
-    }
-
     static str read_file(fs::path path) {
         std::ifstream in(path);
-        return read_file(in);
+        return str(in);
     }
-
+                                  
+    static str read_file(std::ifstream& in) {
+        return str(in);
+    }
+                                  
     str recase(bool lower = true) const {
         str     b  = copy();
         cstr    rp = b.data;
@@ -3287,7 +3300,11 @@ struct states:mx {
 
 // just a mere lexical user of cwd
 struct dir {
-    static fs::path cwd() { return fs::current_path(); }
+    static fs::path cwd() {
+        fs::path p = fs::current_path();
+        assert(p != "/");
+        return p;
+    }
     fs::path prev;
      ///
      dir(fs::path p) : prev(cwd()) { chdir(p   .string().c_str()); }
@@ -3359,7 +3376,6 @@ extern logger console;
 
 /// use char as base.
 struct path:mx {
-    fs::path   &p;
     inline static std::error_code ec;
 
     using Fn = lambda<void(path)>;
@@ -3377,10 +3393,10 @@ struct path:mx {
         st = fs::current_path().string();
         return str(st);
     }
-
+    fs::path &p;
     ctr(path, mx, std::filesystem::path, p);
 
-    inline path(str s)     : path(fs::path(s))  { }
+    inline path(str     s) : path(fs::path(s))  { }
     inline path(symbol cs) : path(fs::path(cs)) { }
 
     template <typename T> T     read() const;
@@ -3445,14 +3461,19 @@ struct path:mx {
     /// operators
     operator        bool()         const { return p.string().length() > 0; }
     operator         str()         const { return str(p.string()); }
-    operator    fs::path()         const { return p; }
+    operator    fs::path()         const { return p; } /// take out this operator
+    path          parent()         const { return p.parent_path(); }
     
     path operator / (path       s) const { return path(p / s.p); }
     path operator / (symbol     s) const { return path(p / fs::path(s)); }
     path operator / (const str& s) const { return path(p / fs::path((symbol)s.data)); }
     path relative   (path    from) const { return path(fs::relative(p, from.p)); }
-    bool  operator==(path&      b) const { return  p == b.p;        }
+    
+    bool  operator==(path&      b) const { return  p == b.p; }
     bool  operator!=(path&      b) const { return !(operator==(b)); }
+    
+    bool  operator==(symbol     b) const { return p == b; }
+    bool  operator!=(symbol     b) const { return !(operator==(b)); }
 
     ///
     static path uid(path b) {
@@ -4161,7 +4182,10 @@ idata *ident::for_type() {
                 //type->defaults = memory::alloc(type);
                 /// including mx in vector because schema could be used by other bases
                 /// would be nice to implement in mx::read_schema<T>(type, (T*)null)
-                if constexpr (inherits<ion::mx, T>()) {
+
+                /// this helps basic types flow with array use cases
+                /// it makes the types a bit more array/not-of agnostic
+                if constexpr (!is_array<T>() && !identical<ion::mx, T>() && inherits<ion::mx, T>()) {
                     type->schema = (alloc_schema*)calloc(1, sizeof(alloc_schema) * 16);
                     alloc_schema &schema = *type->schema;
                     
@@ -4191,21 +4215,18 @@ T *memory::data(size_t index) const {
     type_t queried_type = ident::for_type<T>();
     size_t mxc = math::max(reserve, count);
     static type_t mx_t = typeof(mx);
-    if ((queried_type == type) || (queried_type == mx_t && inherits<mx, T>())){
-        return (T *)origin;
-    } else {
-        alloc_schema *schema = type->schema;
-        if (schema) {
-            size_t offset = 0;
-            for (size_t i = 0; i < schema->count; i++) {
-                context_bind &c = schema->composition[i];
-                if (c.data == queried_type)
-                    return (T*)&cstr(origin)[c.offset * mxc + c.data->base_sz * index];
-            }
+
+    alloc_schema *schema = type->schema;
+    if (queried_type != type && schema) { // dont insert schema for mx type duh
+        size_t offset = 0;
+        for (size_t i = 0; i < schema->count; i++) {
+            context_bind &c = schema->composition[i];
+            if (c.data == queried_type)
+                return (T*)&cstr(origin)[c.offset * mxc + c.data->base_sz * index];
         }
-    }
-    assert(false);
-    return (T*)null;
+        console.fault("type not found in schema: {0}", { str(queried_type->name) });
+    } else
+        return &((T *)origin)[index];
 }
 
 template <typename T>

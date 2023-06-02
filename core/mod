@@ -1,1 +1,4 @@
 cpp(17)
+
+# make Xcode/VS a semi-usable ide with artifacts; can do wildcards
+artifacts(../ci/prepare.py)

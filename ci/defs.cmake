@@ -213,6 +213,10 @@ macro(src)
     listy(src "" ${ARGN})
 endmacro()
 
+macro(artifacts)
+    listy(_artifacts "" ${ARGN})
+endmacro()
+
 macro(includes)
     listy(includes "" ${ARGN})
 endmacro()

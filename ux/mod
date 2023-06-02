@@ -1,6 +1,6 @@
 dep(ion.core glfw.glfw3 ion.net ion.media vkvg.vkvg vkvg.vkh vkvg.glutess vma.VulkanMemoryAllocatord)
 if(APPLE)
-    dep(vulkansdk.MoltenVK IOSurface QuartzCore Metal AppKit CoreGraphics CoreFoundation Cocoa IOKit)
+    dep(moltenvk.MoltenVK IOSurface QuartzCore Metal AppKit CoreGraphics CoreFoundation Cocoa IOKit)
 else()
     dep(vulkansdk.vulkan)
 endif()

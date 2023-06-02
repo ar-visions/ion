@@ -3,6 +3,14 @@
 namespace ion {
 logger console;
 
+size_t length(std::ifstream& in) {
+    std::streamsize base = in.tellg();
+    in.seekg(0, std::ios::end);
+    std::streamsize to_end = in.tellg();
+    in.seekg(base);
+    return to_end - base;
+}
+
 ///
 int str::index_of(MatchType ct, symbol mp) const {
     int index = 0;

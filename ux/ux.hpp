@@ -566,8 +566,9 @@ namespace user {
 struct event:mx {
     ///
     struct edata {
-        user::chr     chr;
+        user::chr     unicode;
         user::key     key;
+        vec2          wheel_delta;
         vec2          cursor;
         states<mouse>    buttons;
         states<keyboard> modifiers;
@@ -577,9 +578,9 @@ struct event:mx {
         bool          stop_propagation;
     } &evd;
 
-    ///
     ctr(event, mx, edata, evd);
     
+    event(const mx &a) = delete;
     ///
     inline void prevent_default()   {         evd.prevent_default = true; }
     inline bool is_default()        { return !evd.prevent_default; }

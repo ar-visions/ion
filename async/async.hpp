@@ -2,6 +2,16 @@
 
 namespace ion {
 
+/// executables are different types, and require async
+struct exec:str {
+    exec(str s) : str(s) { }
+    ion::path path() {
+        /// atm no spaces supported, not sure how i want to format
+        array<str> sp = str::split();
+        return ion::path(sp[0].cs());
+    }
+};
+
 /// 
 struct completer:mx {
     struct cdata {
@@ -160,18 +170,17 @@ public:
         
         /// wait for completion of one (we coudl combine c check inside but not willing to stress test that atm)
         mtx_global.lock();
-        bool im_last = (++state.done == state.count);
+        bool im_last = (++state.done >= state.count);
         mtx_global.unlock();
 
         /// if all complete, notify condition var after calling completer/failure methods
         if (im_last) {
             if (state.on_done) {
                 if (state.failure)
-                    state.on_fail(state.count ? state.results : state.results[0]);
+                    state.on_fail(state.results);
                 else
-                    state.on_done(state.count ? state.results : state.results[0]);
+                    state.on_done(state.results);
             }
-
             mtx_global.lock();
             cv_cleanup.notify_all();
             mtx_global.unlock();
@@ -190,7 +199,7 @@ public:
             init       = true;
             th_manager = std::thread(manager);
         }
-        state.fn      = fn;
+        state.fn = fn;
         if (count) {
             state.count   = count;
             state.results = array<mx> { count, count, [](num) -> mx { return mx(); } };
@@ -204,20 +213,22 @@ struct async {
     ///
     struct delegation {
         process         proc;
-        array<mx>       results;
+        mx              results;
         mutex           mtx; /// could be copy ctr
     } d;
 
     async();
-    ///
-    async(size_t count, FnProcess fn);
+    
+    /// n processes
+    async(size_t, FnProcess);
 
     /// path to execute, we dont host a bunch of environment vars. ar.
-    async(path exec);
+    async(exec);
     
-    async(lambda<mx(runtime &, int)> fn);
+    /// singleton process
+    async(FnProcess);
 
-    array<mx> &sync();
+    array<mx> sync();
 
     /// await all async processes to complete
     static int await();
@@ -232,7 +243,7 @@ struct sync:async {
 
     /// call array<S> src -> T conversion
     template <typename T>
-    operator array<T>() { return     async::sync();     }
-    operator      int() { return int(async::sync()[0]); }
+    operator array<T>() { return async::sync(); }
+    operator      int() { return async::sync(); }
 };
 }

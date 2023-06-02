@@ -69,6 +69,7 @@ macro(var_prepare r_path)
     set(lib_paths       "")
     set(src             "")
     set(_includes       "")
+    set(_artifacts      "")
     set(_src            "")
     set(_headers        "")
     set(_apps_src       "")
@@ -184,7 +185,15 @@ macro(var_finish)
         list(APPEND h_list "${p}/${n}")
         list(APPEND full_src "${p}/${n}")
     endforeach()
-    
+
+    # add artifacts (misc sources we depend on)
+    foreach(a ${_artifacts})
+        source_group("Resources" FILES "${p}/${a}")
+        list(APPEND src "${p}/${a}")
+        list(APPEND full_src "${p}/${a}")
+        print("added: ${p}/${a}")
+    endforeach()
+        
     set(full_includes "")
 
     # add prefixed location if it exists
@@ -251,7 +260,7 @@ function(read_project_json location name name_ucase version)
 endfunction()
 
 macro(get_module_dirs src result)
-    file(GLOB children RELATIVE ${src} ${src}/*)
+    file(GLOB children RELATIVE ${src} "${src}/*")
     set(dirlist "")
     foreach(child ${children})
     if(IS_DIRECTORY "${src}/${child}" AND EXISTS "${src}/${child}/mod")
@@ -347,7 +356,7 @@ macro(process_dep d t_name)
     ## project.module supported when the project is imported by peer extension or git relationship
     ## ------------------------
     if(index GREATER 0)
-        ## must exist in extern:
+        ## get project name
         string(SUBSTRING  ${d} 0 ${index} project)
         math(EXPR index   "${index}+1")
         string(SUBSTRING  ${d} ${index} -1 module)        
@@ -376,18 +385,18 @@ macro(process_dep d t_name)
                         link_directories(${t_name} ${i})
                     endforeach()
 
+                    ## prepare.py needs to be set as Resource, would need to be associated to a build module
+                    ## its probably a good idea to have the mods have src(../ci/prepare.py)
                     ## symlink bins into CMAKE_BINARY_DIR; having a PATH for this doesnt work
                     foreach (bin_dir ${import.${import}.bins})
-                        ## previous was a copy; reserve for exceptions
-                        ##add_custom_command(
-                        ##    TARGET ${PROJECT_NAME} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory ${bin_dir} ${CMAKE_BINARY_DIR})
                         file(GLOB bin_files "${bin_dir}/*")
-                        print("bin files from ${bin_dir} = ${bin_files}")
+                        
                         foreach(bin_file ${bin_files})
                             get_filename_component(file_name ${bin_file} NAME)
+                            set_if(CMD ${DEBUG} create_symlink copy)
                             add_custom_command(
                                 TARGET  ${t_name} POST_BUILD
-                                COMMAND ${CMAKE_COMMAND} -E create_symlink ${bin_file} ${CMAKE_BINARY_DIR}/${file_name})
+                                COMMAND ${CMAKE_COMMAND} -E ${CMD} ${bin_file} ${CMAKE_BINARY_DIR}/${file_name})
                         endforeach()
                     endforeach()
 
@@ -462,7 +471,6 @@ macro(create_module_targets)
             else()
                 target_sources(${t_name} PRIVATE ${full_src} ${h_list} ${js})
             endif()
-
         else()
             message(FATAL_ERROR "!dynamic && !static")
         endif()
@@ -470,9 +478,7 @@ macro(create_module_targets)
         if (WIN32)
             add_compile_options(/bigobj)
         endif()
-
         address_sanitizer(${t_name})
-        
         if (cpp EQUAL 23)
             if(MSVC)
                 target_compile_options(${t_name} PRIVATE /experimental:module /sdl- /EHsc)
@@ -490,7 +496,6 @@ macro(create_module_targets)
         else()
             message(FATAL_ERROR "cpp version ${cpp} not supported")
         endif()
-        
         if(full_includes)
             target_include_directories(${t_name} PRIVATE ${full_includes})
         endif()
@@ -503,7 +508,7 @@ macro(create_module_targets)
 
 
     if (${t_name} STREQUAL "ion-core")
-        file(GLOB cm ${p}/../ci/*.cmake)
+        file(GLOB cm "${p}/../ci/*.cmake")
         add_custom_target(cmake_source SOURCES ${cm})
     endif()
 
@@ -525,7 +530,7 @@ macro(create_module_targets)
         add_custom_command(
             TARGET ${t_name} POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${p}/res ${CMAKE_BINARY_DIR}/res)
+            ${p}/res ${CMAKE_BINARY_DIR})
     endif()
 
     # test products
