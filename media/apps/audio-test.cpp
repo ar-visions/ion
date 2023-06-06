@@ -33,7 +33,7 @@ int main(int argc, cstr argv[]) {
     }
 
     int16_t pcm[FRAME_SIZE * CHANNELS];
-    float fft_in[FRAME_SIZE];
+    double fft_in[FRAME_SIZE];
     double fft_out[FRAME_SIZE / 2 + 1];
 
     gsl_fft_real_wavetable *real = gsl_fft_real_wavetable_alloc(FRAME_SIZE);

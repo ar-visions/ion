@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.26)
+cmake_minimum_required(VERSION 3.20)
 enable_language(CXX)
 
 option(GEN_ONLY "dont run the build action after generating the build folder for each external dependency" FALSE)

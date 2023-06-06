@@ -7,16 +7,8 @@
 #include <media/media.hpp>
 
 struct GLFWwindow;
-struct VkWriteDescriptorSet;
-//struct VkDescriptorSet;
 
 namespace ion {
-
-struct Device;
-struct Texture;
-struct Texture;
-struct BufferMemory;
-struct GPU;
 
 using Path    = path;
 using Image   = image;
@@ -33,11 +25,11 @@ using mesh = array<ngon>;
 
 struct text_metrics:mx {
     struct data {
-        real           w, h;
-        real         ascent,
-                    descent;
-        real    line_height,
-                 cap_height;
+        real        w, h;
+        real      ascent,
+                 descent;
+        real line_height,
+              cap_height;
     } &m;
     ctr(text_metrics, mx, data, m);
 };
@@ -90,9 +82,11 @@ namespace graphics {
     };
 
     struct rect:mx {
-        using T  = real; /// i cannot believe its not a template type
-        using r4 = r4<T>;
-        using v2 = v2<T>;
+        using T  = real;
+        using r4 = ion::r4<T>;
+        using v2 = ion::v2<T>;
+
+        
         
         r4 &data;
 
@@ -102,8 +96,9 @@ namespace graphics {
         inline rect(v2 p0, v2 p1)       : rect(p0.x, p0.y, p1.x, p1.y) { }
 
         inline rect  offset(T a)               const { return data.offset(a); }
-        inline size       shape()              const { return { num(data.h), num(data.w) }; }
-        inline v2          size()              const { return data.size();       }
+        inline v2         size()               const { return data.size(); }
+        inline ion::size shape()               const { return { num(data.h), num(data.w) }; }
+        
         inline v2            xy()              const { return data.xy();         }
         inline v2        center()              const { return data.center();     }
         inline bool    contains(vec2 p)        const { return data.contains(p);  }
@@ -298,9 +293,9 @@ namespace graphics {
         }
 
         shape(r4r r4, real rx = nan<real>(), real ry = nan<real>()) : shape() {
-            bool use_rect = isnan(rx) || rx == 0 || ry == 0;
+            bool use_rect = std::isnan(rx) || rx == 0 || ry == 0;
             m.bounds = use_rect ? graphics::rect(graphics::rect   (r4)) : 
-                                  graphics::rect(graphics::rounded(r4, rx, isnan(ry) ? rx : ry));
+                                  graphics::rect(graphics::rounded(r4, rx, std::isnan(ry) ? rx : ry));
         }
 
 
@@ -312,9 +307,6 @@ namespace graphics {
         void bezier  (graphics::bezier b) { m.ops += b; }
       //void quad    (graphics::quad   q) { m.ops += q; }
         void arc     (graphics::arc    a) { m.ops += a; }
-        graphics::rect rect() {
-            return bounds();
-        };
         
         operator       bool() { bounds(); return bool(m.bounds); }
         bool      operator!() { return !operator bool(); }
@@ -721,7 +713,7 @@ struct dispatch:mx {
 
 /// simple wavefront obj
 template <typename V>
-struct Obj:mx {
+struct OBJ:mx {
     /// prefer this to typedef
     using strings = array<str>;
 
@@ -738,9 +730,9 @@ struct Obj:mx {
         map<group> groups;
     } &m;
 
-    ctr(Obj, mx, members, m);
+    ctr(OBJ, mx, members, m);
 
-    Obj(path p, lambda<V(group&, vec3&, vec2&, vec3&)> fn) : Obj() {
+    OBJ(path p, lambda<V(group&, vec3&, vec2&, vec3&)> fn) : OBJ() {
         str g;
         str contents  = str::read_file(p.exists() ? p : fmt {"models/{0}.obj", { p }});
         assert(contents.len() > 0);
@@ -814,11 +806,11 @@ struct window:mx {
 
     Device   *device();
     Texture  &texture();
-    Texture  &texture(size sz);
+    Texture  &texture(ion::size sz);
     
     void loop(lambda<void()> fn);
 
-    window(size sz, mode::etype m, memory *control);
+    window(ion::size sz, mode::etype m, memory *control);
 
     inline static window handle(GLFWwindow *h);
 
@@ -831,68 +823,9 @@ struct window:mx {
     void show();
     void hide();
     void start();
-    size size();
+    ion::size size();
     void repaint();
     operator bool();
-};
-
-struct BufferMemory;
-struct Buffer:mx {
-    enums(Usage, Undefined,
-       "Undefined, Src, Dst, Uniform, Storage, Index, Vertex",
-        Undefined, Src, Dst, Uniform, Storage, Index, Vertex);
-    ///
-    BufferMemory *bmem;
-    //operators(Buffer, bmem);
-    void destroy();
-
-    ///
-    Buffer(Device *, size_t type_size, void *data, size_t count);
-
-    template <typename T>
-    Buffer(Device *d, array<T> &v, Usage usage): Buffer(create_buffer(d, v.len(), (void*)v.data(), typeof(T), usage)) { }
-
-    ptr_decl(Buffer, mx, BufferMemory, bmem);
-    
-    size_t count();
-    size_t type_size();
-};
-
-Buffer create_buffer(Device *d, size_t sz, void *bytes, type_t type, Buffer::Usage usage);
-
-struct IndexMemory;
-///
-struct IndexData:mx {
-    IndexMemory *imem;
-    ptr_decl(IndexData, mx, IndexMemory, imem);
-    size_t len();
-    IndexData(Device *device, Buffer buffer);
-    operator bool ();
-    bool operator!();
-};
-
-///
-template <typename I>
-struct IndexBuffer:IndexData {
-    //VkWriteDescriptorSet operator()(VkDescriptorSet &ds) {
-    //    return { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, ds, 0, 0,
-    //             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, buffer };
-    //}
-    IndexBuffer(std::nullptr_t n = null) : IndexData() { }
-    IndexBuffer(Device *device, array<I> &i) : IndexData(device, Buffer {
-            device, i, Buffer::Usage::Index }) { }
-};
-
-///
-struct VertexData:mx {
-    struct VertexInternal *m;
-    ptr_decl(VertexData, mx, VertexInternal, m);
-
-    VertexData(Device *device, Buffer buffer, lambda<void(void*)> fn_attribs);
-    ///
-    size_t       size();
-       operator bool ();
-       bool operator!();
 };
 
 enums(Asset, Undefined,
@@ -935,9 +868,9 @@ struct Texture:mx {
         bool operator<(Stage &b) { return value < b.value; }
              operator     Type() { return value; }
     };
-    TextureMemory *data;
-    ptr_decl(Texture, mx, TextureMemory, data);
-
+    TextureMemory *dat;
+    ptr_decl(Texture, mx, TextureMemory, dat);
+    
     void set_stage(Stage s) ;
     void push_stage(Stage s);
     void pop_stage();
@@ -945,159 +878,13 @@ struct Texture:mx {
     
 public:
     /// pass-through operators
-    operator  bool                  () { return  data; }
-    bool operator!                  () { return !data; }
-    bool operator==      (Texture &tx) { return &data == &tx.data; }
-};
-
-struct PipelineData;
-struct Texture;
-
-struct gpu_memory;
-template <> struct is_opaque<gpu_memory> : true_type { };
-
-struct GPU:mx {
-    enum Capability {
-        Present,
-        Graphics,
-        Complete
-    };
-
-    gpu_memory *gmem; // support this.
-    //ptr_decl(GPU, mx, gpu_memory, gmem);
-    
-    using MEM = mem_ptr_token;\
-    using PC  = mx;\
-    using CL  = GPU;\
-    using DC  = gpu_memory;\
-    GPU(memory* mem);\
-    GPU(gpu_memory* data);\
-    GPU(mx o);\
-    GPU();\
-    gpu_memory *operator->() {\
-        return gmem;\
-    }\
-    template <typename X>\
-    explicit operator X() {\
-        if constexpr (inherits<mx,X>())\
-            return *this;\
-        return *gmem;\
-    }\
-    template <typename X>\
-    operator X &() {\
-        if constexpr (inherits<mx,X>())\
-            return *this;\
-        return (X&)*gmem;\
-    }\
-    operator gpu_memory *();\
-    GPU &operator=(const GPU b);\
-    gpu_memory *operator=(const gpu_memory *b);
-
-    uint32_t  index(Capability);
-    void      destroy();
-    operator  bool();
-    bool      operator()(Capability);
-};
-
-struct Device;
-
-using  UniformFn = lambda<void(void *)> ;
-
-struct UniformMemory;
-
-struct UniformData:mx {
-    UniformMemory *umem;
-    ptr_decl(UniformData, mx, UniformMemory, umem);
-
-    UniformData(Device *device, size_t struct_sz, UniformFn fn);
-
-    inline operator  bool();
-    inline bool operator!();
-};
-
-template <typename U>
-struct UniformBuffer:UniformData { /// will be best to call it 'Uniform', 'Verts', 'Polys'; make sensible.
-    UniformBuffer(std::nullptr_t n = null) { }
-    UniformBuffer(Device *device, UniformFn fn) : UniformData(device, sizeof(U), fn) { }
+    operator  bool                  () { return  dat; }
+    bool operator!                  () { return !dat; }
+    bool operator==      (Texture &tx) { return &dat == &tx.dat; }
 };
 
 
-struct Light {
-    v4f pos_rads;
-    v4f color;
-};
-
-///
-struct Material {
-    v4f ambient;
-    v4f diffuse;
-    v4f specular;
-    v4f attr;
-};
-
-///
-struct MVP {
-    m44f::data model;
-    m44f::data view;
-    m44f::data proj;
-};
-
-struct vkState;
-using VkStateFn = lambda<void(vkState *)>;
-
-struct PipelineMemory;
-
-/// pipeline data is the base on Pipeline interface, consisting of an internal implementation in PipelineMemory
-struct PipelineData:mx {
-    PipelineMemory *m;
-    ptr_decl(PipelineData, mx, PipelineMemory, m);
-    ///
-    operator bool  ();
-    bool operator! ();
-    void   enable  (bool en);
-    bool operator==(PipelineData &b);
-    void   update  (size_t frame_id);
-    ///
-    PipelineData(Device *device, UniformData &ubo, VertexData &vbo, IndexData &ibo,
-                 Assets &assets, size_t vsize, rgba clr, str shader, VkStateFn vk_state = null);
-};
-
-/// pipeline dx
-template <typename V>
-struct Pipeline:PipelineData {
-    Pipeline(Device *device, UniformData &ubo,  VertexData &vbo,
-             IndexData &ibo,   Assets &assets,  rgba clr, str name):
-        PipelineData(device, ubo, vbo, ibo, assets, sizeof(V), clr, name) { }
-};
-
-/// calls for Daniel
-struct Pipes:mx {
-    struct data {
-        Device           *device  = null;
-        VertexData        vbo;
-        uint32_t          binding = 0;
-      //array<Attrib>     attr    = {};
-        map<PipelineData> part;
-    } &d;
-    
-    ctr(Pipes, mx, data, d);
-
-    Pipes(Device *device);
-
-    /// could be a global mx resource, so domain, name, attribute, extension
-    static str form_path(str model, str skin, str ext) {
-        str sk = skin ? str(skin + ".") : str("");
-        return fmt {"textures/{0}{1}.{2}", {model, sk, ext}};
-    }
-
-    /// skin will just override where overriden in the file-system
-    static Assets cache_assets(data &d, str model, str skin, states<Asset> &atypes);
-    
-    operator bool() { return d.part.count() > 0; }
-    inline map<PipelineData> &map() { return d.part; }
-};
-
-/// generic vertex model; uses spec map, normal map, 
+/// generic vertex model; uses spec map, normal map by tangent/bi-tangent v3 unit vectors
 struct Vertex {
     ///
     v3f pos;  // position
@@ -1133,19 +920,11 @@ struct Vertex {
 /// use this for building up data, and then it is handed to VertexBuffer
 using Vertices = array<Vertex>;
 
-template <typename V>
-struct VertexBuffer:VertexData {
-    VertexBuffer(Device *device, array<V> &v, VAttribs &attr) :
-        VertexData(device, Buffer {
-            device, v, Buffer::Usage::Src },
-            [attr=attr](void *vk_attr_res) { return V::attribs(attr, vk_attr_res); }) { }
-};
-
 mesh subdiv(const mesh& input_mesh, const array<v3f>& verts);
 
-///
+/// this one would be nice to use gcc's static [] or () overload in c++ 23
 struct Shaders {
-    map<str> map;
+    ion::map<str> map;
     /// default construction
     Shaders(std::nullptr_t n = null) {
         map["*"] = "main";
@@ -1180,56 +959,9 @@ struct Shaders {
     }
 };
 
-struct Device;
-struct Texture;
-
-template <> struct is_opaque<struct BufferMemory>   : true_type { };
-template <> struct is_opaque<struct UniformMemory>  : true_type { };
-template <> struct is_opaque<struct DeviceMemory>   : true_type { };
-template <> struct is_opaque<struct PipelineMemory> : true_type { };
-
 struct Composer;
 
 extern Assets cache_assets(str model, str skin, states<Asset> &atypes);
-
-/// Model is the integration of device, ubo, attrib, with interfaces around OBJ format or Lambda
-template <typename V>
-struct Model:Pipes {
-    struct Polys {
-        ion::map<array<int32_t>> groups;
-        array<V> verts;
-    };
-    
-    ///
-    struct Shape {
-        using ModelFn = lambda<Polys(void)>;
-        ModelFn fn;
-    };
-    
-    ///
-    Model(Device *device) : Pipes(device) { }
-    
-    Model(str name, str skin, Device &device, UniformData &ubo, VAttribs &attr,
-          states<Asset> &atypes, Shaders &shaders) : Model(device) {
-        using Obj = Obj<V>;
-        /// cache control for images to texture here; they might need a new reference upon pipeline rebuild
-        auto assets = Pipes::cache_assets(d, name, skin, atypes);
-        auto  mpath = form_path(name, skin, ".obj");
-        auto    obj = Obj(mpath, [](auto& g, vec3& pos, vec2& uv, vec3& norm) {
-            return V(pos, norm, uv, vec4f {1.0f, 1.0f, 1.0f, 1.0f});
-        });
-        auto &d = *this->data;
-        // VertexBuffer(Device &device, array<V> &v, VAttribs &attr)
-        d.vbo   = VertexBuffer<V>(device, obj.vbo, attr);
-        for (field<typename Obj::group> &fgroup: obj.groups) {
-            symbol       name = fgroup.key;
-            typename Obj::group &group = fgroup.value;
-            auto     ibo = IndexBuffer<uint32_t>(device, group.ibo);
-            str   s_name = name;
-            d.part[name] = Pipeline<V>(device, ubo, d.vbo, ibo, assets, rgba {0.0, 0.0, 0.0, 0.0}, shaders(s_name));
-        }
-    }
-};
 
 struct font:mx {
     struct data {
@@ -1254,23 +986,19 @@ struct font:mx {
 
 ///
 struct glyph:mx {
-    ///
     struct members {
         int        border;
         str        chr;
         rgba::data bg;
         rgba::data fg;
     } &m;
-
     ctr(glyph, mx, members, m);
 
     str ansi();
-    
     bool operator==(glyph &lhs) {
         return   (m.border == lhs->border) && (m.chr == lhs->chr) &&
                  (m.bg     == lhs->bg)     && (m.fg  == lhs->fg);
     }
-
     bool operator!=(glyph &lhs) { return !operator==(lhs); }
 };
 
@@ -1295,7 +1023,7 @@ struct cbase:mx {
         defs, push, pop);
     
     struct cdata {
-        size               size; /// size in integer units; certainly not part of the stack lol.
+        ion::size          size; /// size in integer units; certainly not part of the stack lol.
         type_t             pixel_t;
         doubly<draw_state> stack; /// ds = states.last()
         draw_state*        state; /// todo: update w push and pop
@@ -1314,7 +1042,7 @@ struct cbase:mx {
     }
 
     public:
-    size &size() { return m.size; }
+    ion::size &size() { return m.size; }
 
     virtual void    outline(graphics::shape) { }
     virtual void       fill(graphics::shape) { }
@@ -1422,6 +1150,7 @@ struct gfx:cbase {
     ion::image    resample(ion::size sz, real deg, graphics::shape view, vec2 axis);
 };
 
+/// should call it text_canvas, display_buffer, tcanvas; terminal should be implementation of escape sequence/display in gfx context
 struct terminal:cbase {
     static inline symbol reset_chr = "\u001b[0m";
 
@@ -1474,7 +1203,7 @@ struct node:Element {
             graphics::cap       cap;   
             graphics::join      join;
             graphics::border    border;
-            inline graphics::rect rect() { return shape.rect(); }
+            inline graphics::rect rect() { return shape.bounds(); }
         };
 
         /// this is simply bounds, not rounded
@@ -1545,7 +1274,7 @@ struct node:Element {
                             (std.content.type() == typeof(str)))) {
             canvas.color(text.color);
             canvas.text(
-                std.content.grab(), text.shape.rect(),
+                std.content.grab(), text.shape.bounds(),
                 text.align, {0.0, 0.0}, true);
         }
 
@@ -1562,7 +1291,7 @@ struct node:Element {
         vec2  o = { 0, 0 };
         while (n) {
             props::drawing &draw = n->std.drawings[operation::child];
-            r4<real> &rect = draw.shape.rect();
+            r4<real> &rect = draw.shape.bounds();
             o  += rect.xy();
             o  -= n->std.scroll;
             n   = n->e.parent;
@@ -1600,9 +1329,9 @@ struct node:Element {
     }
 
     style *fetch_style() const { return  root()->e.root_style; } /// fetch data from Element's accessor
-    Device        *dev() const {
-        return null;
-    }
+    //Device        *dev() const {
+    //    return null;
+    //}
 
     doubly<prop> meta() const {
         return {
@@ -1880,23 +1609,22 @@ enums(rendition, none,
     "none, shader, wireframe",
      none, shader, wireframe);
 
-using construction = Pipes; /// generic of Model<T> ; will call it this instead of Pipes lol.
 using AssetUtil    = array<Asset>;
+
+//void push_pipeline(Device *dev, PipelineData &pipe);
 
 template <typename V>
 struct object:node {
     /// our members
     struct members {
-        protected:
-            construction    plumbing;
-        public:
-            str             model     = "";
-            str             skin      = "";
-            states<Asset>   assets    = { Asset::Color };
-            Shaders         shaders   = { "*=main" };
-            UniformData     ubo;
-            VAttribs        attr      = { VA::Position, VA::UV, VA::Normal };
-            rendition       render    = { rendition::shader };
+      //construction    plumbing;
+        str             model     = "";
+        str             skin      = "";
+        states<Asset>   assets    = { Asset::Color };
+        Shaders         shaders   = { "*=main" };
+      //UniformData     ubo;
+      //VAttribs        attr      = { VA::Position, VA::UV, VA::Normal };
+        rendition       render    = { rendition::shader };
     } &m;
 
     /// make a node_constructors
@@ -1909,22 +1637,23 @@ struct object:node {
             prop { m, "skin",      m.skin },
             prop { m, "assets",    m.assets },
             prop { m, "shaders",   m.shaders },
-            prop { m, "ubo",       m.ubo },
-            prop { m, "attr",      m.attr },
+          //prop { m, "ubo",       m.ubo },
+          //prop { m, "attr",      m.attr },
             prop { m, "render",    m.render }
         };
     }
     
     /// change management, we probably have to give prev values in a map.
     void changed(doubly<prop> list) {
-        m.plumbing = Model<Vertex>(m.model, m.skin, m.ubo, m.attr, m.assets, m.shaders);
+        // needs new model interface through vkengine
+        //m.plumbing = Model<Vertex>(m.model, m.skin, m.ubo, m.attr, m.assets, m.shaders);
     }
-    
+
     /// rendition of pipes
     Element update() {
-        if (m.plumbing)
-            for (auto &[pipe, name]: m.plumbing.map())
-                dev()->push(pipe);
+        //if (m.plumbing)
+        //    for (auto &[pipe, name]: m.plumbing.map())
+        //        push_pipeline(dev(), pipe);
         return node::update();
     }
 };
@@ -1934,12 +1663,10 @@ struct button:node {
     enums(behavior, push,
         "push, label, toggle, radio",
          push, label, toggle, radio);
-    ///
-    struct props {
-        behavior behavior;
-    } &m;
     
-    ///
+    struct props {
+        button::behavior behavior;
+    } &m;
     ctr_args(button, node, props, m);
 };
 

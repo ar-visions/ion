@@ -66,7 +66,7 @@ str dns(str hostname) {
     status = getaddrinfo(symbol(hostname.cs()), nullptr, &hints, &res);
     if (status != 0) {
         std::cerr << "DNS lookup failed: " << gai_strerror(status) << std::endl;
-        return;
+        return null;
     }
     
     str result;

@@ -241,7 +241,7 @@ void dispatch::operator()(event e) {
 static symbol cstr_copy(symbol s) {
     size_t len = strlen(s);
     cstr     r = (cstr)malloc(len + 1);
-    std::memcpy((void *)r, (void *)s, len + 1);
+    memcpy((void *)r, (void *)s, len + 1);
     return symbol(r);
 }
 
@@ -323,6 +323,7 @@ struct TextureMemory {
     operator                bool();
     bool                    operator!();
 
+    // these should all be functions, all operators.  its too stubborn to hide the actual vk types
     operator VkImage &();
     operator VkImageView &();
     operator VkDeviceMemory &();
@@ -438,7 +439,9 @@ struct Device {
     Texture               tx_depth;
     map<Device::Pair>     tx_cache;
 
-    operator VkPhysicalDevice &() { return gpu; }
+    VkPhysicalDevice &vk_gpu() { return gpu->gpu; }
+    VkDevice         &vk_dev() { return device; }
+
     operator VkCommandPool    &() { return command; }
     operator VkDevice         &() { return device; }
     operator VkRenderPass     &() { return render_pass; }
@@ -546,6 +549,10 @@ struct Device {
     }
 };
 
+void push_pipeline(Device *dev, PipelineData &pipe) {
+    dev->render.sequence.push(pipe.mem->grab());
+}
+
 VkSampleCountFlagBits max_sampling(VkPhysicalDevice gpu);
 
 Device *create_device(GPU &p_gpu, bool aa) {
@@ -561,7 +568,7 @@ Device *create_device(GPU &p_gpu, bool aa) {
     qcreate            += VkDeviceQueueCreateInfo  { VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO, null, 0, i_gfx,     1, &priority };
     if (i_present != i_gfx)
         qcreate        += VkDeviceQueueCreateInfo  { VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO, null, 0, i_present, 1, &priority };
-    auto features       = VkPhysicalDeviceFeatures { .samplerAnisotropy = aa ? VK_TRUE : VK_FALSE };
+    auto features       = VkPhysicalDeviceFeatures { .logicOp = VK_TRUE, .samplerAnisotropy = aa ? VK_TRUE : VK_FALSE };
     bool is_apple = false;
     ///
     /// silver: macros should be better, not removed. wizard once told me.
@@ -583,7 +590,7 @@ Device *create_device(GPU &p_gpu, bool aa) {
     ci.sType                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     ci.queueCreateInfoCount    = uint32_t(qcreate.len());
     ci.pQueueCreateInfos       = qcreate.data();
-    ci.pEnabledFeatures        = &features;
+    ci.pEnabledFeatures        = &features; /// logicOp wasnt enabled
     ci.enabledExtensionCount   = uint32_t(ext.len() - size_t(!is_apple));
     ci.ppEnabledExtensionNames = ext.data();
 
@@ -630,7 +637,7 @@ struct BufferMemory {
         VkBufferUsageFlags usage, VkMemoryPropertyFlags pflags =
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
-    ~BufferMemory() {
+   ~BufferMemory() {
         /// shouldnt be life cycle issues with this weak ref
         vkDestroyBuffer(*device, buffer, null);
         vkFreeMemory(*device, memory, null);
@@ -891,7 +898,7 @@ void terminal::fill(graphics::shape sh) {
     int         sx = int(sz[1]);
     int         sy = int(sz[0]);
     if (ds.color) {
-        r4r &r       = sh.rect();
+        r4r &r       = sh.bounds();
         str  t_color = ansi_color(ds.color, false);
         ///
         int      x0 = math::max(int(0),        int(r.x)),
@@ -973,19 +980,6 @@ static Texture create_texture(Device *device, image &im,
     return Texture(mem);
 }
 
-static Texture create_texture(Device *device, size sz,
-        VkImage         vk_image,  VkImageView           view,
-        VkImageUsageFlags  usage,  VkMemoryPropertyFlags vk_mem,
-        VkImageAspectFlags aspect, bool                  ms,
-        VkFormat           format = VK_FORMAT_R8G8B8A8_SRGB, int mips = -1) {
-
-    memory        *mem;
-    TextureMemory *data; 
-    palloc(Texture, mem, data,
-        device, sz, vk_image, view, usage, vk_mem, aspect, ms, format, mips);
-    return Texture(mem);
-}
-
 Texture::Stage::Stage(Stage::Type value) : value(value) { }
 
 struct StageData {
@@ -1009,7 +1003,7 @@ const StageData *Texture::Stage::data() { return &stage_types[value]; }
 
 void TextureMemory::create_sampler() {
     VkPhysicalDeviceProperties props { };
-    vkGetPhysicalDeviceProperties(*device, &props);
+    vkGetPhysicalDeviceProperties(device->vk_gpu(), &props);
     ///
     VkSamplerCreateInfo si { };
     si.sType                     = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
@@ -1033,9 +1027,9 @@ void TextureMemory::create_sampler() {
     assert  (r == VK_SUCCESS);
 }
 
-void     Texture::set_stage (Stage s) { return data->set_stage(s);  }
-void     Texture::push_stage(Stage s) { return data->push_stage(s); } /// viewport is 1024 and window sz is 512.  i think this is accidental
-void     Texture::pop_stage()         { return data->pop_stage();   }
+void     Texture::set_stage (Stage s) { return dat->set_stage(s);  }
+void     Texture::push_stage(Stage s) { return dat->push_stage(s); } /// viewport is 1024 and window sz is 512.  i think this is accidental
+void     Texture::pop_stage()         { return dat->pop_stage();   }
 
 uint32_t memory_type(VkPhysicalDevice gpu, uint32_t types, VkMemoryPropertyFlags props) {
    VkPhysicalDeviceMemoryProperties mprops;
@@ -1205,7 +1199,7 @@ TextureMemory::operator VkAttachmentDescription() {
     bool is_color = usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     auto     desc = VkAttachmentDescription {
         .format         = format,
-        .samples        = ms ? device->sampling : VK_SAMPLE_COUNT_1_BIT,
+        .samples        = ms ? device->sampling : VK_SAMPLE_COUNT_1_BIT, /// may need override if its a resolve attachment
         .loadOp         = image_ref ? VK_ATTACHMENT_LOAD_OP_DONT_CARE :
                                       VK_ATTACHMENT_LOAD_OP_CLEAR,
         .storeOp        =  is_color ? VK_ATTACHMENT_STORE_OP_STORE :
@@ -1257,8 +1251,8 @@ DepthTexture::DepthTexture(Device *device, size sz, rgba clr):
             VK_IMAGE_USAGE_TRANSFER_DST_BIT|VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
             VK_IMAGE_ASPECT_DEPTH_BIT, true, VK_FORMAT_D32_SFLOAT, 1)) {
-        data->image_ref = false; /// we are explicit here.. just plain explicit.
-        data->push_stage(Stage::Depth);
+        dat->image_ref = false; /// we are explicit here.. just plain explicit.
+        dat->push_stage(Stage::Depth);
     }
     
 ColorTexture::ColorTexture(Device *device, size sz, rgba clr):
@@ -1266,8 +1260,8 @@ ColorTexture::ColorTexture(Device *device, size sz, rgba clr):
             VK_IMAGE_USAGE_TRANSFER_DST_BIT|VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
             VK_IMAGE_ASPECT_COLOR_BIT, true, VK_FORMAT_B8G8R8A8_UNORM, 1)) { // was VK_FORMAT_B8G8R8A8_SRGB
-        data->image_ref = false; /// 'SwapImage' should have this set as its a View-only.. [/creeps away slowly, very unsure of themselves]
-        data->push_stage(Stage::Color);
+        dat->image_ref = false; /// 'SwapImage' should have this set as its a View-only.. [/creeps away slowly, very unsure of themselves]
+        dat->push_stage(Stage::Color);
     }
 
 SwapImage::SwapImage(Device *device, size sz, VkImage vk_image):
@@ -1275,7 +1269,7 @@ SwapImage::SwapImage(Device *device, size sz, VkImage vk_image):
             VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
             VK_IMAGE_ASPECT_COLOR_BIT, false, VK_FORMAT_B8G8R8A8_UNORM, 1)) { // VK_FORMAT_B8G8R8A8_UNORM tried here, no effect on SwapImage
-        data->layout_override = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        dat->layout_override = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     }
 
 /// could be called surface binding i suppose thats a bit more to its application
@@ -1305,17 +1299,23 @@ GPU create_gpu(VkPhysicalDevice gpu, VkSurfaceKHR surface) {
         /// prefer to get gfx and present in the same family_props
         if (has_gfx) {
             mgpu->gfx = mx(index);
+            ///
             /// query surface formats
             uint32_t format_count;
-            vkGetPhysicalDeviceSurfaceFormatsKHR(gpu, mgpu->surface, &format_count, nullptr);
+            VkResult res = vkGetPhysicalDeviceSurfaceFormatsKHR(gpu, mgpu->surface, &format_count, nullptr); // corrupted
+            console.test(res == VK_SUCCESS, "vkGetPhysicalDeviceSurfaceFormatsKHR failure");
+            printf("format count = %d\n", format_count);
+            ///
             if (format_count != 0) {
                 mgpu->support.formats.set_size(format_count);
                 vkGetPhysicalDeviceSurfaceFormatsKHR(
                     mgpu->gpu, surface, &format_count, mgpu->support.formats.data());
             }
+            ///
             /// query swap chain support, store on GPU
             vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
                 mgpu->gpu, mgpu->surface, &mgpu->support.caps);
+            ///
             /// ansio relates to gfx
             VkPhysicalDeviceFeatures fx;
             vkGetPhysicalDeviceFeatures(gpu, &fx);
@@ -1456,17 +1456,17 @@ gpu_memory *GPU::operator=(const gpu_memory *b) {\
 //ptr_impl(Texture,      mx, TextureMemory,  data);
 
 
-Texture::Texture(memory* mem)  : mx(mem), data(mem ? mx::data<TextureMemory>() : null) { }\
+Texture::Texture(memory* mem)  : mx(mem), dat(mem ? mx::data<TextureMemory>() : null) { }\
 Texture::Texture(mx      o)    : Texture(o.mem->grab())   { }\
 Texture::Texture()             : Texture(mx::alloc<Texture>()) { }\
-Texture::Texture(TextureMemory *data) : Texture(memory::wrap<TextureMemory>(data, 1)) { }\
-Texture::operator TextureMemory * () { return data; }\
+Texture::Texture(TextureMemory *dat) : Texture(memory::wrap<TextureMemory>(dat, 1)) { }\
+Texture::operator TextureMemory * () { return dat; }\
 Texture &Texture::operator=(const Texture b) { return (Texture &)assign_mx(*this, b); }\
 TextureMemory *Texture::operator=(const TextureMemory *b) {\
     drop();\
     mem = memory::wrap<TextureMemory>((TextureMemory*)b, 1);\
-    data = (TextureMemory*)mem->origin;\
-    return data;\
+    dat = (TextureMemory*)mem->origin;\
+    return dat;\
 }
 
 
@@ -1479,11 +1479,11 @@ ptr_impl(VertexData,   mx, VertexInternal, m);
 /// this is to avoid doing explicit monkey-work, and keep code size down as well as find misbound texture
 uint32_t Device::attachment_index(TextureMemory *tx) {
     auto is_referencing = [&](TextureMemory *a_data, Texture *b) {
-        if (!a_data && !b->data)
+        if (!a_data && !b->dat)
             return false;
-        if (a_data && b->data && a_data->vk_image && a_data->vk_image == b->data->vk_image)
+        if (a_data && b->dat && a_data->vk_image && a_data->vk_image == b->dat->vk_image)
             return true;
-        if (a_data && b->data && a_data->view  && a_data->view  == b->data->view)
+        if (a_data && b->dat && a_data->view  && a_data->view  == b->dat->view)
             return true;
         return false;
     };
@@ -1570,13 +1570,17 @@ void Device::initialize(window_data *wdata) {
     this->extent       = extent;
     viewport           = { 0.0f, 0.0f, r32(extent.width), r32(extent.height), 0.0f, 1.0f };
     const int guess    = 8;
-    auto      ps       = std::array<VkDescriptorPoolSize, 3> {};
+    array<VkDescriptorPoolSize> ps(3);
     ps[0]              = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         frame_count * guess };
     ps[1]              = { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, frame_count * guess };
     ps[2]              = { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, frame_count * guess };
-    auto dpi           = VkDescriptorPoolCreateInfo {
-                            VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO, null, 0,
-                            frame_count * guess, uint32_t(frame_count), ps.data() };
+    ps.set_size(3);
+
+    const int max_frames_in_flight = 2;
+    auto dpi = VkDescriptorPoolCreateInfo {
+        VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO, null, 0,
+        frame_count * guess, uint32_t(max_frames_in_flight), ps.data()
+    };
     render             = Render(this);
     
     VkFence f0 = render.fence_active[0];
@@ -1617,9 +1621,12 @@ void Device::create_render_pass() {
     Frame &f0                     = frames[0];
     Texture &tx_ref               = f0.attachments[Frame::SwapView]; /// has msaa set to 1bit
     assert(f0.attachments.len() == 3);
-    VkAttachmentReference    cref = VkAttachmentReference(tx_color); // VK_IMAGE_LAYOUT_UNDEFINED
-    VkAttachmentReference    dref = VkAttachmentReference(tx_depth); // VK_IMAGE_LAYOUT_UNDEFINED
-    VkAttachmentReference    rref = VkAttachmentReference(tx_ref);   // the odd thing is the associated COLOR_ATTACHMENT layout here;
+    
+    /// no more casts sailing through lol. perhaps if it works on all compilers.
+    VkAttachmentReference    cref = VkAttachmentReference(*tx_color.dat); // VK_IMAGE_LAYOUT_UNDEFINED
+    VkAttachmentReference    rref = VkAttachmentReference(*tx_ref  .dat);   // the odd thing is the associated COLOR_ATTACHMENT layout here;
+    VkAttachmentReference    dref = VkAttachmentReference(*tx_depth.dat); // VK_IMAGE_LAYOUT_UNDEFINED
+
     VkSubpassDescription     sp   = { 0, VK_PIPELINE_BIND_POINT_GRAPHICS, 0, null, 1, &cref, &rref, &dref };
 
     VkSubpassDependency dep { };
@@ -1630,22 +1637,22 @@ void Device::create_render_pass() {
     dep.dstStageMask              = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
     dep.dstAccessMask             = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT          | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
-    VkAttachmentDescription adesc_clr_image  = *f0.attachments[0].data;
-    VkAttachmentDescription adesc_dep_image  = *f0.attachments[1].data; // format is wrong here, it should be the format of the tx
-    VkAttachmentDescription adesc_swap_image = *f0.attachments[2].data;
+    VkAttachmentDescription adesc_clr_image  = *f0.attachments[0].dat;
+    VkAttachmentDescription adesc_dep_image  = *f0.attachments[1].dat; // format is wrong here, it should be the format of the tx
+    VkAttachmentDescription adesc_swap_image = *f0.attachments[2].dat;
     
     std::array<VkAttachmentDescription, 3> attachments = {adesc_clr_image, adesc_dep_image, adesc_swap_image};
     VkRenderPassCreateInfo rpi { }; // VkAttachmentDescription needs to be 4, 4, 1
     rpi.sType                     = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
     rpi.attachmentCount           = uint32_t(attachments.size());
-    rpi.pAttachments              = attachments.data();
+    rpi.pAttachments              = attachments.data(); /// reporting 8
     rpi.subpassCount              = 1;
     rpi.pSubpasses                = &sp;
     rpi.dependencyCount           = 1;
     rpi.pDependencies             = &dep;
     ///
     /// seems like tx_depth is not created with a 'depth' format, or improperly being associated to a color format
-    ///
+    /// these attachments are 0
     assert(vkCreateRenderPass(device, &rpi, nullptr, &render_pass) == VK_SUCCESS);
 }
 
@@ -1792,7 +1799,7 @@ PipelineMemory::PipelineMemory(Device   *device,  UniformData &ubo,
     ai.pSetLayouts         = layouts.data();
     desc_sets.set_size(n_frames);
     VkDescriptorSet *ds_data = desc_sets.data();
-    VkResult res = vkAllocateDescriptorSets(*device, &ai, ds_data);
+    VkResult res = vkAllocateDescriptorSets(device->vk_dev(), &ai, ds_data);
     assert  (res == VK_SUCCESS);
     ubo->update(device);
     ///
@@ -1807,7 +1814,7 @@ PipelineMemory::PipelineMemory(Device   *device,  UniformData &ubo,
         for (field<Texture*> &f:assets) {
             Asset    a  = f.key;
             Texture *tx = f.value;
-            v_writes += tx->data->descriptor(&desc_set, uint32_t(int(a)));
+            v_writes += tx->dat->descriptor(&desc_set, uint32_t(int(a)));
         }
         
         VkDevice    dev = *device;
@@ -1983,11 +1990,11 @@ void PipelineMemory::update(size_t frame_id) {
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
     
     /// toss together a VBO array
-    array<VkBuffer>  a_vbo   = { vbo };
+    array<VkBuffer>  a_vbo   = { vbo->buffer->buffer };
     VkDeviceSize   offsets[] = {0};
     vkCmdBindVertexBuffers(cmd, 0, 1, a_vbo.data(), offsets);
     auto ts = ibo->buffer->type_size;
-    vkCmdBindIndexBuffer(cmd, ibo, 0, ts == 2 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
+    vkCmdBindIndexBuffer(cmd, ibo->buffer->buffer, 0, ts == 2 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
         pipeline_layout, 0, 1, (const VkDescriptorSet*)desc_sets.data(), 0, nullptr);
     
@@ -2158,7 +2165,7 @@ BufferMemory::BufferMemory(Device *device, size_t sz, size_t type_size, void *by
     VkMemoryAllocateInfo alloc { };
     alloc.sType             = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     alloc.allocationSize    = req.size;
-    alloc.memoryTypeIndex   = memory_type(*device, req.memoryTypeBits, pflags);
+    alloc.memoryTypeIndex   = memory_type(device->vk_gpu(), req.memoryTypeBits, pflags);
     vkAllocateMemory(*device, &alloc, nullptr, &memory);
     vkBindBufferMemory(*device, buffer, memory, VkDeviceSize(0));
     
@@ -2262,25 +2269,28 @@ Internal &Internal::bootstrap() {
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     }
 
-    //uint32_t count;
-    //vkEnumerateInstanceLayerProperties(&count, nullptr);
-    //layers.set_size(count);
-    //vkEnumerateInstanceLayerProperties(&count, layers.data());
+    uint32_t count;
+    vkEnumerateInstanceLayerProperties(&count, nullptr);
+    layers.set_size(count);
+    vkEnumerateInstanceLayerProperties(&count, layers.data());
 
     const symbol validation_layer   = "VK_LAYER_KHRONOS_validation";
     u32          glfwExtensionCount = 0;
-    //symbol*      glfwExtensions     = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+    symbol*      glfwExtensions     = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
 
     array<symbol> extensions(32);
 
-    extensions += VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
-    if constexpr (is_apple())
-        extensions += VK_EXT_METAL_SURFACE_EXTENSION_NAME;
+    extensions += "VK_KHR_surface";
+    extensions += "VK_KHR_portability_enumeration";
 
-    for (symbol sym: extensions) {
-        console.log("symbol: {0}", { sym });
-    }
+    if      constexpr (is_debug()) { extensions += VK_EXT_DEBUG_UTILS_EXTENSION_NAME; }
+    if      constexpr (is_apple()) { extensions += "VK_MVK_macos_surface"; }
+    else if constexpr (is_win())   { extensions += "VK_KHR_win32_surface"; }
+    else                           { extensions += "VK_KHR_xcb_surface";   }
 
+    for (symbol sym: extensions) console.log("symbol: {0}", { sym });
+    extensions += symbol(null);
+    
     // set the debug messenger
     VkDebugUtilsMessengerCreateInfoEXT debug {
         .sType              = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
@@ -2292,25 +2302,21 @@ Internal &Internal::bootstrap() {
         .pfnUserCallback    = vk_debug
     };
     
-    /// null term the list (minus this one below; thisi s for the hint)
-    extensions += symbol(null);
-
-    // set the application info
     VkApplicationInfo app_info   = {
         .sType               = VK_STRUCTURE_TYPE_APPLICATION_INFO,
         .pApplicationName    = "ion:ux",
-        .applicationVersion  = VK_MAKE_API_VERSION(0, 1, 0, 0),
+        .applicationVersion  = VK_MAKE_API_VERSION(0, 0, 2, 2),
         .pEngineName         = "ion:ux",
-        .engineVersion       = VK_MAKE_API_VERSION(0, 1, 0, 0),
+        .engineVersion       = VK_MAKE_API_VERSION(0, 0, 2, 2),
         .apiVersion          = VK_API_VERSION_1_2
     };
 
     VkInstanceCreateInfo create_info = {
         .sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         .pNext                   = &debug,
-        .pApplicationInfo        = &app_info,
         .flags                   = VkInstanceCreateFlags(VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR),
-        .enabledLayerCount       = 0, //is_debug() ? 1 : 0, -- this is broken on M1/M2 due to the use of Molten over VulkanRT/SDK
+        .pApplicationInfo        = &app_info,
+        .enabledLayerCount       = (!is_apple() && is_debug()) ? 1 : 0,
         .ppEnabledLayerNames     = &validation_layer,
         .enabledExtensionCount   = u32(extensions.len() - 1),
         .ppEnabledExtensionNames = extensions.data()
@@ -2356,7 +2362,7 @@ Texture &window::texture(ion::size sz) { /// this should not be called twice for
             VK_IMAGE_ASPECT_COLOR_BIT, false, VK_FORMAT_B8G8R8A8_UNORM, -1
         }
     };
-    w->tx_skia.data->vk_image = w->dev->tx_color.data->vk_image;
+    w->tx_skia.dat->vk_image = w->dev->tx_color.dat->vk_image;
     w->tx_skia.push_stage(Texture::Stage::Color); /// this needs to be updated when tx_color is updated
     return w->tx_skia;
 }
@@ -2366,7 +2372,7 @@ vk_interface::vk_interface() : i(&Internal::handle()) { }
 //::window    &vk_interface::window  () { return *i->win;        }
 //::Device    &vk_interface::device  () { return *i->win->w->dev; }
 VkInstance    &vk_interface::instance() { return  i->vk;         }
-uint32_t       vk_interface::version () { return VK_MAKE_VERSION(1, 1, 0); }
+uint32_t       vk_interface::version () { return VK_API_VERSION_1_2; }
 Device        *window::device()         { return w->dev; }
 
 
@@ -2545,26 +2551,21 @@ gfx::gfx(ion::window &win) : gfx(mx::alloc<gfx>()) { /// this allocates both gfx
     g->tx = win.texture(m.size); 
 
     VkInstance vk_inst = vk.instance();
-    Device *device = win.device();
-
+    Device    *device  = win.device();
     u32   family_index = device->gpu.index(GPU::Graphics);//win.graphics_index();
     u32    queue_index = 0; // not very clear this.
 
-    
     TextureMemory *tmem = g->tx;
   // not sure if the import is getting the VK_SAMPLE_COUNT_8_BIT and VkSampler, likely not.
     g->vg_device       = vkvg_device_create_from_vk_multisample(
-        vk_inst, *device, *device,
+        vk_inst, device->vk_gpu(), device->vk_dev(),
         family_index, queue_index, device->sampling, false);
-    //g->vg_device       = vkvg_device_create_from_vk(
-    //    vk_inst, *device, *device,
-    //    family_index, queue_index);
-    //vkvg_device_create_from_vk (VkInstance inst, VkPhysicalDevice phy, VkDevice vkdev, uint32_t qFamIdx, uint32_t qIndex);
-    g->vkh_device      = vkh_device_import(vk.instance(), *device, *device); // use win instead of vk.
+
+    g->vkh_device      = vkh_device_import(vk.instance(), device->vk_gpu(), device->vk_dev()); // use win instead of vk.
     g->vkh_image       = vkh_image_import(g->vkh_device, tmem->vk_image, tmem->format, u32(tmem->sz[1]), u32(tmem->sz[0]));
 
     vkh_image_create_view(g->vkh_image, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT); // VK_IMAGE_ASPECT_COLOR_BIT questionable bit
-    g->vg_surface       = vkvg_surface_create_for_VkhImage(g->vg_device, (void*)g->vkh_image);
+    g->vg_surface       = vkvg_surface_create_for_VkhImage(g->vg_device, (void*)g->vkh_image); // attachment #0 in VkFramebufferCreateInfo has 8bit samples that do not match VkRenderPass's attachment at same rank
     g->ctx              = vkvg_create(g->vg_surface);
     push(); /// gfx just needs a push off the ledge. [/penguin-drops]
     defaults();
@@ -2715,7 +2716,7 @@ void gfx::image(ion::image img, graphics::shape sh, vec2 align, vec2 offset, vec
     VkvgSurface surf = (VkvgSurface)att->data;
     draw_state   &ds = *g->ds;
     ion::size     sz = img.shape();
-    r4r           &r = sh.rect();
+    r4r           &r = sh.bounds();
     assert(surf);
     vkvg_set_source_rgba(g->ctx,
         ds.color->r, ds.color->g, ds.color->b, ds.color->a * ds.opacity);

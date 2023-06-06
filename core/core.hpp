@@ -45,7 +45,9 @@
 #include <utility>
 #include <type_traits>
 
-#ifdef __APPLE__
+#include <string.h>
+#include <stdarg.h>
+#ifndef _WIN32
 #include <unistd.h>
 #endif
 
@@ -309,7 +311,7 @@ struct mem_embed_token { };
     operator X &() {\
         if constexpr (inherits<mx,X>())\
             return *this;\
-        return (X&)*m_access;\
+        return *m_access;\
     }\
        operator m_type *();\
     C &operator=(const C b);\
@@ -534,7 +536,7 @@ struct v2 {
 
 template <typename T>
 struct v3 {
-    using v2 = v2<T>;
+    using v2 = ion::v2<T>;
     T x, y, z;
     
     inline v3(T x = 0, T y = 0, T z = 0) : x(x), y(y), z(z) { }
@@ -577,8 +579,8 @@ struct v3 {
 
 template <typename T>
 struct v4 {
-    using v2 = v2<T>;
-    using v3 = v3<T>;
+    using v2 = ion::v2<T>;
+    using v3 = ion::v3<T>;
     T x, y, z, w;
     
     v2 xy  () const { return { x, y };    }
@@ -666,8 +668,8 @@ struct c4 {
 
 template <typename T>
 struct e2 {
-    using v2 = v2<T>;
-    using v4 = v4<T>;
+    using v2 = ion::v2<T>;
+    using v4 = ion::v4<T>;
 
     v2 a, b;
 
@@ -734,16 +736,16 @@ struct item {
 /// iterator unique for doubly
 template <typename T>
 struct liter {
-    item<T>* item;
+    item<T>* cur;
     ///
-    liter& operator++  () { item = item->next; return *this;          }
-    liter& operator--  () { item = item->prev; return *this;          }
+    liter& operator++  () { cur = cur->next; return *this;          }
+    liter& operator--  () { cur = cur->prev; return *this;          }
 
-    T& operator *  ()                  const { return item->data;     }
-       operator T& ()                  const { return item->data;     }
+    T& operator *  ()                  const { return cur->data;     }
+       operator T& ()                  const { return cur->data;     }
 
-    inline bool operator==  (liter& b) const { return item == b.item; }
-    inline bool operator!=  (liter& b) const { return item != b.item; }
+    inline bool operator==  (liter& b) const { return cur == b.cur; }
+    inline bool operator!=  (liter& b) const { return cur != b.cur; }
 };
 
 struct true_type {
@@ -1112,7 +1114,7 @@ template <typename T> std::string string_from_real(T a_value, int n = 6) {
 /// a simple hash K -> V impl
 template <typename K, typename V>
 struct hmap {
-    using pair   = pair <K,V>;
+    using pair   = ion::pair <K,V>;
     using bucket = typename doubly<pair>::data; /// no reason i should have to put typename. theres no conflict on data.
     memory *mem  = null;
 
@@ -2949,7 +2951,7 @@ template <typename V>
 struct map:mx {
     static inline type_t value_type() { return typeof(V); }
     inline static const size_t default_hash_size = 64;
-    using hmap = hmap<mx, field<V>*>;
+    using hmap = ion::hmap<mx, field<V>*>;
 
     struct mdata {
         doubly<field<V>>  fields;
@@ -3125,7 +3127,7 @@ struct map:mx {
 
     size_t        count()            { return m.count();   }
     size_t        count(mx k)        { return m.count(k);  }
-    size_t        count(cstr cs)     { return m.count(cs); }
+    size_t        count(symbol cs)   { return m.count(cs); }
 
     field<V>    *lookup(mx &k) const { return m.lookup(k); }
     bool         remove(field<V> &f) { return m.remove(f); }
@@ -3368,7 +3370,6 @@ struct logger {
     inline void error(mx m, array<mx> ar = array<mx> { }) { str s = m.to_string(); _print(s, ar, { err }); brexit(); }
     inline void print(mx m, array<mx> ar = array<mx> { }) { str s = m.to_string(); _print(s, ar, { append }); }
     inline void debug(mx m, array<mx> ar = array<mx> { }) { str s = m.to_string(); _print(s, ar, { append }); }
-    
 };
 
 /// define a logger for global use; 'console' can certainly be used as delegate in mx or node, for added context
@@ -3393,17 +3394,17 @@ struct path:mx {
         st = fs::current_path().string();
         return str(st);
     }
+
     fs::path &p;
     ctr(path, mx, std::filesystem::path, p);
 
-    inline path(str     s) : path(fs::path(s))  { }
+    inline path(str     s) : path(fs::path(symbol(s.cs()))) { }
     inline path(symbol cs) : path(fs::path(cs)) { }
 
     template <typename T> T     read() const;
     template <typename T> bool write(T input) const;
 
-    str mime_type();
-
+    str        mime_type();
     str             stem() const { return !p.empty() ? str(p.stem().string()) : str(null);    }
     bool      remove_all() const { std::error_code ec;          return fs::remove_all(p, ec); }
     bool          remove() const { std::error_code ec;          return fs::remove(p, ec);     }
@@ -4225,6 +4226,7 @@ T *memory::data(size_t index) const {
                 return (T*)&cstr(origin)[c.offset * mxc + c.data->base_sz * index];
         }
         console.fault("type not found in schema: {0}", { str(queried_type->name) });
+        return (T*)null;
     } else
         return &((T *)origin)[index];
 }
@@ -4501,7 +4503,7 @@ bool path::write(T input) const {
     if constexpr (is_array<T>()) {
         std::ofstream f(p, std::ios::out | std::ios::binary);
         if (input.len() > 0)
-            f.write((symbol)input.data(), input.data_type()->sz * input.len());
+            f.write((symbol)input.data(), input.data_type()->base_sz * input.len());
     } else if constexpr (identical<T, var>()) {
         str    v  = input.stringify(); /// needs to escape strings
         std::ofstream f(p, std::ios::out | std::ios::binary);

@@ -6,7 +6,7 @@ namespace ion {
 
 template <typename T>
 struct vector2:mx {
-    using v2 = v2<T>;
+    using v2 = ion::v2<T>;
     v2 &data;
     
     ctr(vector2, mx, v2, data);
@@ -42,7 +42,7 @@ struct vector2:mx {
 
 template <typename T>
 struct vector3:mx {
-    using v3 = v3<T>;
+    using v3 = ion::v3<T>;
     v3 &data;
 
     ctr(vector3, mx, v3, data);
@@ -117,9 +117,9 @@ struct vector4:mx {
 
 template <typename T>
 struct edge2:mx {
-    using e2 = e2<T>;
-    using v2 = v2<T>;
-    using v4 = v4<T>;
+    using e2 = ion::e2<T>;
+    using v2 = ion::v2<T>;
+    using v4 = ion::v4<T>;
 
     e2 &data;
 
@@ -389,7 +389,7 @@ struct matrix44:mx {
 
 template <typename T>
 struct r4 {
-    using v2 = v2<T>;
+    using v2 = ion::v2<T>;
     T x, y, w, h;
     
     inline r4(T x = 0, T y = 0, T w = 0, T h = 0) : x(x), y(y), w(w), h(h) { }

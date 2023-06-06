@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.20)
 include(../ion/ci/main.cmake)
 get_name("project.json" name)
 project(${name})

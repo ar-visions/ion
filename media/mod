@@ -1,4 +1,4 @@
 # fontconfig.fontconfig 
-dep(ion.core ion.math harfbuzz.harfbuzz bzip2.bz2 freetype.freetyped libpng.png gsl.gsl
-    opus.opus ogg.ogg opusenc.opusenc opusfile.opusfile speexdsp.speexdsp shine.shine zlib.z)
+dep(ion.core ion.math libpng.png gsl.gsl
+    opusenc.opusenc opusfile.opusfile speexdsp.speexdsp shine.shine zlib.z opus.opus ogg.ogg)
 cpp(17)

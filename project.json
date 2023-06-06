@@ -155,9 +155,9 @@
         {
             "name":     "vulkansdk",
             "version":  "1.3.250.0",
-            "includes": ["%VULKAN_SDK%/macOS/include"],
-            "libs":     ["%VULKAN_SDK%/macOS/lib"],
-            "bins":     ["%VULKAN_SDK%/macOS/bin"]
+            "includes": ["%VULKAN_SDK%/x86_64/include"],
+            "libs":     ["%VULKAN_SDK%/x86_64/lib"],
+            "bins":     ["%VULKAN_SDK%/x86_64/bin"]
         },
         {
             "name":     "vma",
@@ -169,23 +169,49 @@
             "install":  true
         },
         {
+            "name":     "glm",
+            "version":  "0.9.9.8",
+            "commit":   "bf71a83",
+            "url":      "https://github.com/g-truc/glm",
+            "includes": ["./"],
+            "libs":     ["./ion-build"]
+        },
+        {
             "name":     "glfw",
             "version":  "3.3.8",
             "commit":   "7482de6",
             "url":      "https://github.com/glfw/glfw",
-            "cmake":    {"args": ["-DGLFW_VULKAN_STATIC=Yes", "-DCMAKE_C_FLAGS=\"-D_GLFW_VULKAN_LIBRARY=\\\"MoltenVK\\\"\""]},
             "includes": ["./include"],
             "libs":     ["./ion-build/src"]
         },
         {
-            "name":     "vkvg",
+            "name":     "vkengine",
             "version":  "0.2.2",
-            "commit":   "84cf72ddbeb6a38175ec04a1afc948373518086b",
+            "commit":   "0a181e01c758691d981c6d5ed2b17c1d7e95c284",
             "url":      "https://github.com/jpbruyere/vkvg.git",
             "includes": ["./include","./vkh/include"],
             "libs":     ["./ion-build","./ion-build/vkh","./ion-build/external/glutess"],
-            "cmake":    {"args": ["-DVKVG_USE_GLUTESS=True","-DVKVG_BUILD_SHARED_LIB=Off","-DVKVG_USE_FONTCONFIG=Off","-DVKVG_USE_HARFBUZZ=On"]},
-            "diff":     "vkvg.diff",
+            "cmake":    {"args": [
+                "-DVKVG_ENABLE_VK_SCALAR_BLOCK_LAYOUT=Off",
+                "-DVKVG_USE_GLUTESS=On",
+                "-DVKVG_BUILD_SHARED_LIB=Off",
+                "-DVKVG_USE_FONTCONFIG=Off",
+                "-DVKVG_USE_HARFBUZZ=On"]},
+            "install":  true
+        },
+        {
+            "name":     "vkvg",
+            "version":  "0.2.2",
+            "commit":   "0a181e01c758691d981c6d5ed2b17c1d7e95c284",
+            "url":      "https://github.com/jpbruyere/vkvg.git",
+            "includes": ["./include","./vkh/include"],
+            "libs":     ["./ion-build","./ion-build/vkh","./ion-build/external/glutess"],
+            "cmake":    {"args": [
+                "-DVKVG_ENABLE_VK_SCALAR_BLOCK_LAYOUT=Off",
+                "-DVKVG_USE_GLUTESS=On",
+                "-DVKVG_BUILD_SHARED_LIB=Off",
+                "-DVKVG_USE_FONTCONFIG=Off",
+                "-DVKVG_USE_HARFBUZZ=On"]},
             "install":  true
         },
         {

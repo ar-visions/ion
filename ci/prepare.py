@@ -54,6 +54,8 @@ def    git(*args): return subprocess.run(['git']   + list(args), stdout=subproce
 
 def  cmake(*args):
     cmd = ['cmake'] + list(args)
+    shell_cmd = ' '.join(cmd)
+    print('cmake > ', shell_cmd)
     return subprocess.run(cmd, capture_output=True, text=True)
 
 def       build(): return cmake('--build',   cm_build)
@@ -193,7 +195,10 @@ def prepare_build(this_src_dir, fields, mt_project):
             if not os.path.exists(vname):
                 print(f'checking out {vname}...')
                 git('clone', '--recursive', url, vname)
-
+                if vname == 'vkvg-0.2.2':
+                    print(f'vname = {vname}')
+                    exit(1)
+            
             os.chdir(vname)
             git('fetch') # this will get the commit identifiers sometimes not received yet
             if diff: git('reset', '--hard')
@@ -295,6 +300,7 @@ def prepare_project(src_dir):
                             print(gen_res.stderr)
                         print(gen_res.stdout)
                         exit(1)
+                    
                     build_res = build()
                     if build_res.returncode != 0:
                         print(f'Build errors for dependency: {name}:')
@@ -302,6 +308,7 @@ def prepare_project(src_dir):
                             print(build_res.stderr)
                         print(build_res.stdout)
                         exit(1)
+                    
                     if install:
                         install_res = cm_install()
                         if install_res.returncode != 0:
@@ -310,6 +317,7 @@ def prepare_project(src_dir):
                                 print(install_res.stderr)
                             print(install_res.stdout)
                             exit(1)
+                    
                     ## update timestamp
                     with open(timestamp, 'w') as f:
                         f.write('')

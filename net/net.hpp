@@ -1,5 +1,8 @@
 #pragma once
 
+#include <core/core.hpp>
+#include <async/async.hpp>
+
 struct WOLFSSL_CTX;
 struct WOLFSSL;
 struct WOLFSSL_METHOD;

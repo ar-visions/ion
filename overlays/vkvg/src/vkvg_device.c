@@ -88,31 +88,8 @@ void _device_init (VkvgDevice dev, VkInstance inst, VkPhysicalDevice phy, VkDevi
 	VmaAllocatorCreateInfo allocatorInfo = {
 		.physicalDevice = phy,
 		.device = vkdev,
-        .instance = inst
+		.instance = inst,
 	};
-
-    /*
-    VmaAllocatorCreateFlags flags;
-    VkPhysicalDevice VMA_NOT_NULL physicalDevice;
-    VkDevice VMA_NOT_NULL device;
-    VkDeviceSize preferredLargeHeapBlockSize;
-    const VkAllocationCallbacks* VMA_NULLABLE pAllocationCallbacks;
-    const VmaDeviceMemoryCallbacks* VMA_NULLABLE pDeviceMemoryCallbacks;
-    const VkDeviceSize* VMA_NULLABLE VMA_LEN_IF_NOT_NULL("VkPhysicalDeviceMemoryProperties::memoryHeapCount") pHeapSizeLimit;
-    const VmaVulkanFunctions* VMA_NULLABLE pVulkanFunctions;
-    VkInstance VMA_NOT_NULL instance;
-    */
-
-    printf("[vkvg_device] offset (flags) = %d, physicalDevice = %d, preferredLargeHeapBlockSize = %d, pAllocationCallbacks = %d, pDeviceMemoryCallbacks = %d, pHeapSizeLimit = %d, pVulkanFunctions = %d, instance = %d\n",
-        offsetof(VmaAllocatorCreateInfo, flags),
-        offsetof(VmaAllocatorCreateInfo, physicalDevice),
-        offsetof(VmaAllocatorCreateInfo, preferredLargeHeapBlockSize),
-        offsetof(VmaAllocatorCreateInfo, pAllocationCallbacks),
-        offsetof(VmaAllocatorCreateInfo, pDeviceMemoryCallbacks),
-        offsetof(VmaAllocatorCreateInfo, pHeapSizeLimit),
-        offsetof(VmaAllocatorCreateInfo, pVulkanFunctions),
-        offsetof(VmaAllocatorCreateInfo, instance),
-        sizeof(VmaAllocatorCreateInfo));
 	vmaCreateAllocator(&allocatorInfo, (VmaAllocator*)&dev->allocator);
 #endif
 
@@ -131,6 +108,7 @@ void _device_init (VkvgDevice dev, VkInstance inst, VkPhysicalDevice phy, VkDevi
 		dev->renderPass_ClearStencil	= _device_createRenderPassMS (dev, VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_LOAD_OP_CLEAR);
 		dev->renderPass_ClearAll		= _device_createRenderPassMS (dev, VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_LOAD_OP_CLEAR);
 	}
+    
 	_device_createDescriptorSetLayout	(dev);
 	_device_setupPipelines				(dev);
 

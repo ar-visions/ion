@@ -1,11 +1,13 @@
 #pragma once
+#include <core/core.hpp>
+#include <math/math.hpp>
 
 namespace ion {
 
 template <typename T>
 struct color:vec<T, 4> {
-    using  base = vec<T,4>;
-    using  data = c4 <T>;
+    using  base = ion::vec<T,4>;
+    using  data = ion::c4 <T>;
 
     data &m;
     

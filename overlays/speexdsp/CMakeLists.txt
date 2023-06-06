@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.26)
+cmake_minimum_required(VERSION 3.20)
 project(libspeexdsp)
 
 execute_process(COMMAND sh "./autogen.sh" RESULT_VARIABLE autogen   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})

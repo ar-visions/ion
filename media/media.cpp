@@ -208,11 +208,11 @@ mx inflate(mx input) {
     
     // setup zlib inflate stream
     z_stream stream {
+        .next_in  = Z_NULL,
+        .avail_in = 0,
         .zalloc   = Z_NULL,
         .zfree    = Z_NULL,
-        .opaque   = Z_NULL,
-        .avail_in = 0,
-        .next_in  = Z_NULL
+        .opaque   = Z_NULL
     };
 
     if (::inflateInit2(&stream, 16 + MAX_WBITS) != Z_OK) {
@@ -323,6 +323,7 @@ static bool mp3_set_id3(path p, str artist, str title) {
     }
     
     fclose(mp3f);
+    return true;
 }
 
 /// use this to hide away the data and isolate its dependency

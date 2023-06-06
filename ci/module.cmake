@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.26)
+cmake_minimum_required(VERSION 3.20)
 
 if (DEFINED ModuleGuard)
     return()
@@ -68,7 +68,7 @@ macro(var_prepare r_path)
     set(dep             "")
     set(lib_paths       "")
     set(src             "")
-    set(_includes       "")
+    set(includes        "")
     set(_artifacts      "")
     set(_src            "")
     set(_headers        "")
@@ -205,25 +205,20 @@ macro(var_finish)
     # handle includes by preferring abs path, then relative to prefix-path
     # ------------------------
     foreach(n ${includes})
-        set(found FALSE)
-
+        # ------------------------
         # abs path n exists
         # ------------------------
         if(EXISTS ${n})
+            message("include (abs): ${n}")
             list(APPEND full_includes ${n})
-            set(found TRUE)
-        endif()
-
-        # /usr/local/include/n exists (system-include)
-        # ------------------------
-        if(EXISTS "${PREFIX}/include/${n}")
+            # /usr/local/include/n exists (system-include)
+            # ------------------------
+        elseif(EXISTS "${PREFIX}/include/${n}")
+            message("include (system): ${n}")
             list(APPEND full_includes "${PREFIX}/include/${n}")
-            set(found TRUE)
-        endif()
-
-        # include must be found; otherwise its indication of error
-        # ------------------------
-        if(!found)
+        else()
+            # include must be found; otherwise its indication of error
+            # ------------------------
             message(FATAL "couldnt find include path for symbol: ${n}")
         endif()
     endforeach()
@@ -434,10 +429,10 @@ macro(address_sanitizer t_name)
     # enable address sanitizer
     if (DEBUG)
         if (MSVC)
-            target_compile_options(${t_name} PRIVATE /fsanitize=address)
+            #target_compile_options(${t_name} PRIVATE /fsanitize=address)
         else()
-            target_compile_options(${t_name} PRIVATE -fsanitize=address)
-            target_link_options(${t_name} PRIVATE -fsanitize=address)
+            #target_compile_options(${t_name} PRIVATE -fsanitize=address)
+            #target_link_options(${t_name} PRIVATE -fsanitize=address)
         endif()
     endif()
 endmacro()
@@ -496,14 +491,14 @@ macro(create_module_targets)
         else()
             message(FATAL_ERROR "cpp version ${cpp} not supported")
         endif()
-        if(full_includes)
-            target_include_directories(${t_name} PRIVATE ${full_includes})
-        endif()
     else()
         list(APPEND full_src ${v_src})
         add_library(${t_name} STATIC ${full_src} ${h_list} ${js})
     endif()
-
+    if(full_includes)
+        message(STATUS "full includes for ${t_name} = ${full_includes}")
+        target_include_directories(${t_name} PUBLIC ${full_includes})
+    endif()
     set_target_properties(${t_name} PROPERTIES LINKER_LANGUAGE CXX)
 
 
