@@ -2,6 +2,7 @@
     "name":   "ion",
     "version":"dev",
     "import": [
+        "vkengine", "vkvg",
         {
             "name":     "zlib",
             "version":  "1.2.13",
@@ -127,48 +128,6 @@
             "install":  true
         },
         {
-            "name":     "harfbuzz",
-            "version":  "7.3.0",
-            "commit":   "4584bcd",
-            "url":      "https://github.com/harfbuzz/harfbuzz",
-            "includes": ["./include"],
-            "libs":     ["./ion-build"],
-            "cmake":    {
-                "args": ["-DHB_HAVE_FREETYPE=Yes"]
-            },
-            "install":  true
-        },
-        {
-            "name":     "moltenvk",
-            "version":  "1.2.3",
-            "commit":   "db8512a64f2c703e31ff7038b2859034062aa00f",
-            "url":      "https://github.com/KhronosGroup/MoltenVK",
-            "includes": ["./MoltenVK/include"],
-            "libs":     ["./MoltenVK/dylib/macOS"],
-            "diff":     "moltenvk.diff",
-            "platforms":["mac"],
-            "environment": {
-                "VULKAN_SDK":"%INSTALL_PREFIX%/lib/Frameworks/MoltenVK",
-                "VULKAN_LIBRARY_NAME":"MoltenVK"
-            }
-        },
-        {
-            "name":     "vulkansdk",
-            "version":  "1.3.250.0",
-            "includes": ["%VULKAN_SDK%/x86_64/include"],
-            "libs":     ["%VULKAN_SDK%/x86_64/lib"],
-            "bins":     ["%VULKAN_SDK%/x86_64/bin"]
-        },
-        {
-            "name":     "vma",
-            "version":  "3.0.1",
-            "url":      "https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator",
-            "commit":   "a6bfc23",
-            "includes": ["./include"],
-            "libs":     ["./ion-build"],
-            "install":  true
-        },
-        {
             "name":     "glm",
             "version":  "0.9.9.8",
             "commit":   "bf71a83",
@@ -176,44 +135,7 @@
             "includes": ["./"],
             "libs":     ["./ion-build"]
         },
-        {
-            "name":     "glfw",
-            "version":  "3.3.8",
-            "commit":   "7482de6",
-            "url":      "https://github.com/glfw/glfw",
-            "includes": ["./include"],
-            "libs":     ["./ion-build/src"]
-        },
-        {
-            "name":     "vkengine",
-            "version":  "0.2.2",
-            "commit":   "0a181e01c758691d981c6d5ed2b17c1d7e95c284",
-            "url":      "https://github.com/jpbruyere/vkvg.git",
-            "includes": ["./include","./vkh/include"],
-            "libs":     ["./ion-build","./ion-build/vkh","./ion-build/external/glutess"],
-            "cmake":    {"args": [
-                "-DVKVG_ENABLE_VK_SCALAR_BLOCK_LAYOUT=Off",
-                "-DVKVG_USE_GLUTESS=On",
-                "-DVKVG_BUILD_SHARED_LIB=Off",
-                "-DVKVG_USE_FONTCONFIG=Off",
-                "-DVKVG_USE_HARFBUZZ=On"]},
-            "install":  true
-        },
-        {
-            "name":     "vkvg",
-            "version":  "0.2.2",
-            "commit":   "0a181e01c758691d981c6d5ed2b17c1d7e95c284",
-            "url":      "https://github.com/jpbruyere/vkvg.git",
-            "includes": ["./include","./vkh/include"],
-            "libs":     ["./ion-build","./ion-build/vkh","./ion-build/external/glutess"],
-            "cmake":    {"args": [
-                "-DVKVG_ENABLE_VK_SCALAR_BLOCK_LAYOUT=Off",
-                "-DVKVG_USE_GLUTESS=On",
-                "-DVKVG_BUILD_SHARED_LIB=Off",
-                "-DVKVG_USE_FONTCONFIG=Off",
-                "-DVKVG_USE_HARFBUZZ=On"]},
-            "install":  true
-        },
+
         {
             "name":     "mbedtls",
             "version":  "3.4.0",

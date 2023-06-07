@@ -1,6 +1,18 @@
 {
 	"folders": [
 		{
+			"path": "../prefix"
+		},
+		{
+			"path": "../vkengine"
+		},
+		{
+			"path":"../glutess"
+		},
+		{
+			"path": "../vkvg"
+		},
+		{
 			"path": "."
 		},
 		{
@@ -8,7 +20,7 @@
 		},
 		{
 			"path": "../orbiter"
-		}
+		},
 	],
 	"settings": {
 		"files.associations": {
@@ -53,7 +65,14 @@
 			"__mutex_base": "cpp",
 			"mutex": "cpp",
 			"shared_mutex": "cpp",
-			"vk_mem_alloc.h": "c"
+			"vk_mem_alloc.h": "c",
+			"queue": "c",
+			"stack": "c",
+			"vke_device.h": "c",
+			"vkvg_device_internal.h": "c",
+			"vkvg_surface_internal.h": "c",
+			"vke_image.h": "c",
+			"vkvg_matrix.h": "c"
 		}
 	}
 }

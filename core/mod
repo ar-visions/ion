@@ -2,3 +2,7 @@ cpp(17)
 
 # make Xcode/VS a semi-usable ide with artifacts; can do wildcards
 artifacts(../ci/prepare.py)
+
+# merge into artifacts :D
+file(GLOB cm "${p}/../../prefix/*.cmake") # prefix has a source root we should monitor.  cmake was in ion prior but core should keep it coupled
+add_custom_target(cmake_source SOURCES ${cm})

@@ -24,8 +24,8 @@
 
 #define GetVkProcAddress(dev, inst, func)(vkGetDeviceProcAddr(dev,#func)==NULL)?(PFN_##func)vkGetInstanceProcAddr(inst, #func):(PFN_##func)vkGetDeviceProcAddr(dev, #func)
 
-#include "vkvg_device_internal.h"
-#include "vkvg_context_internal.h"
+#include <vkvg/vkvg_device_internal.h"
+#include <vkvg/vkvg_context_internal.h"
 #include "shaders.h"
 
 uint32_t vkvg_log_level = VKVG_LOG_DEBUG;
@@ -57,7 +57,7 @@ PFN_vkResetCommandBuffer		ResetCommandBuffer;
 
 bool _device_try_get_phyinfo (VkhPhyInfo* phys, uint32_t phyCount, VkPhysicalDeviceType gpuType, VkhPhyInfo* phy) {
 	for (uint32_t i=0; i<phyCount; i++){
-		if (vkh_phyinfo_get_properties(phys[i]).deviceType == gpuType) {
+		if (vke_phyinfo_get_properties(phys[i]).deviceType == gpuType) {
 			 *phy = phys[i];
 			 return true;
 		}
@@ -470,7 +470,7 @@ void _device_store_context (VkvgContext ctx) {
 }
 void _device_submit_cmd (VkvgDevice dev, VkCommandBuffer* cmd, VkFence fence) {
 	LOCK_DEVICE
-	vkh_cmd_submit (dev->gQueue, cmd, fence);
+	vke_cmd_submit (dev->gQueue, cmd, fence);
 	UNLOCK_DEVICE
 }
 
@@ -480,7 +480,7 @@ bool _device_init_function_pointers (VkvgDevice dev) {
 		LOG(VKVG_LOG_ERR, "vkvg create device failed: 'VK_EXT_debug_utils' has to be loaded for Debug build\n");
 		return false;
 	}
-	vkh_device_init_debug_utils ((VkhDevice)dev);
+	vke_device_init_debug_utils ((VkhDevice)dev);
 #endif
 	CmdBindPipeline			= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdBindPipeline);
 	CmdBindDescriptorSets	= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdBindDescriptorSets);
@@ -504,17 +504,17 @@ bool _device_init_function_pointers (VkvgDevice dev) {
 
 void _device_create_empty_texture (VkvgDevice dev, VkFormat format, VkImageTiling tiling) {
 	//create empty image to bind to context source descriptor when not in use
-	dev->emptyImg = vkh_image_create((VkhDevice)dev,format,16,16,tiling,VKH_MEMORY_USAGE_GPU_ONLY,
+	dev->emptyImg = vke_image_create((VkhDevice)dev,format,16,16,tiling,VKE_MEMORY_USAGE_GPU_ONLY,
 									 VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
-	vkh_image_create_descriptor(dev->emptyImg, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT, VK_FILTER_NEAREST, VK_FILTER_NEAREST, VK_SAMPLER_MIPMAP_MODE_NEAREST,VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+	vke_image_create_descriptor(dev->emptyImg, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT, VK_FILTER_NEAREST, VK_FILTER_NEAREST, VK_SAMPLER_MIPMAP_MODE_NEAREST,VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
 
 	_device_wait_and_reset_device_fence (dev);
 
-	vkh_cmd_begin (dev->cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-	vkh_image_set_layout (dev->cmd, dev->emptyImg, VK_IMAGE_ASPECT_COLOR_BIT,
+	vke_cmd_begin (dev->cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+	vke_image_set_layout (dev->cmd, dev->emptyImg, VK_IMAGE_ASPECT_COLOR_BIT,
 						  VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 						  VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
-	vkh_cmd_end (dev->cmd);
+	vke_cmd_end (dev->cmd);
 	_device_submit_cmd (dev, &dev->cmd, dev->fence);
 }
 void _device_check_best_image_tiling (VkvgDevice dev, VkFormat format) {
