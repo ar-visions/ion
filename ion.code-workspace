@@ -1,26 +1,33 @@
 {
 	"folders": [
 		{
+			"name": "prefix",
 			"path": "../prefix"
 		},
 		{
+			"name": "vkengine",
 			"path": "../vkengine"
 		},
 		{
-			"path":"../glutess"
+			"name": "glutess",
+			"path": "../glutess"
 		},
 		{
+			"name": "vkvg",
 			"path": "../vkvg"
 		},
 		{
-			"path": "."
-		},
-		{
+			"name": "hyperspace",
 			"path": "../hyperspace"
 		},
 		{
-			"path": "../orbiter"
+			"name": "ion",
+			"path": "."
 		},
+		{
+			"name": "orbiter",
+			"path": "../orbiter"
+		}
 	],
 	"settings": {
 		"files.associations": {

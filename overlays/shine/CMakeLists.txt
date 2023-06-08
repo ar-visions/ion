@@ -1,3 +1,3 @@
-cmake_minimum_required(VERSION 1.0.2)
+cmake_minimum_required(VERSION 3.20)
 project(libshine)
-include(${ION}/ci/automake.cmake)
+include(${CI}/automake.cmake)
