@@ -21,8 +21,10 @@ target_include_directories(opusenc PUBLIC
     ${CMAKE_INSTALL_PREFIX}/include
 )
 
-target_link_libraries(opusenc
-    PRIVATE
-        opus
-        opusfile
-)
+target_link_libraries(opusenc PRIVATE opus opusfile)
+
+file(GLOB_RECURSE SRC_FILES "${CMAKE_SOURCE_DIR}/src/*.h")
+install(FILES ${SRC_FILES} DESTINATION ${CMAKE_INSTALL_PREFIX}/include/opusenc)
+
+file(GLOB_RECURSE INC_FILES "${CMAKE_SOURCE_DIR}/include/*.h")
+install(FILES ${INC_FILES} DESTINATION ${CMAKE_INSTALL_PREFIX}/include/opusenc)

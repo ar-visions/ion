@@ -79,7 +79,8 @@
 			"vkvg_device_internal.h": "c",
 			"vkvg_surface_internal.h": "c",
 			"vke_image.h": "c",
-			"vkvg_matrix.h": "c"
+			"vkvg_matrix.h": "c",
+			"glutess.h": "c"
 		}
 	}
 }

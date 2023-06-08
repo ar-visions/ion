@@ -1,2 +1,2 @@
 cpp(17)
-dep(ion.core)
+dep(ion:core)

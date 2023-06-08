@@ -1,3 +1,2 @@
-cpp(17)
 # purely for source changes
-dep(prefix.ci)
+#dep(prefix:ci)

@@ -24,8 +24,8 @@
 
 #define GetVkProcAddress(dev, inst, func)(vkGetDeviceProcAddr(dev,#func)==NULL)?(PFN_##func)vkGetInstanceProcAddr(inst, #func):(PFN_##func)vkGetDeviceProcAddr(dev, #func)
 
-#include <vkvg/vkvg_device_internal.h"
-#include <vkvg/vkvg_context_internal.h"
+#include <vkvg/vkvg_device_internal.h>
+#include <vkvg/vkvg_context_internal.h>
 #include "shaders.h"
 
 uint32_t vkvg_log_level = VKVG_LOG_DEBUG;

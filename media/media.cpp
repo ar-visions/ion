@@ -26,9 +26,9 @@
 #include <gsl/gsl_errno.h>
 #include <gsl/gsl_fft_real.h>
 #include <ogg/ogg.h>
-#include <opus.h>
-#include <opusenc.h>
-#include <opusfile.h>
+#include <opus/opus.h>
+#include <opusenc/opusenc.h>
+#include <opusfile/opusfile.h>
 
 extern "C" {
     #include <shine/layer3.h>

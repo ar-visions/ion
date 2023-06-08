@@ -1,4 +1,6 @@
-# fontconfig.fontconfig 
-dep(ion.core ion.math libpng.png gsl.gsl
-    opusenc.opusenc opusfile.opusfile speexdsp.speexdsp shine.shine zlib.z opus.opus ogg.ogg)
+dep(ion:core ion:math libpng:png gsl:gsl
+    opusenc:opusenc opusfile:opusfile
+    speexdsp:speexdsp shine:shine
+    zlib:z opus:opus ogg:ogg)
+includes(${INSTALL_PREFIX}/include/opus)
 cpp(17)
