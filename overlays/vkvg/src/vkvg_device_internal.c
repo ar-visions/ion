@@ -28,7 +28,6 @@
 #include <vkvg/vkvg_context_internal.h>
 #include "shaders.h"
 
-uint32_t vkvg_log_level = VKVG_LOG_DEBUG;
 #ifdef VKVG_WIRED_DEBUG
 vkvg_wired_debug_mode vkvg_wired_debug = vkvg_wired_debug_mode_normal;
 #endif
@@ -55,7 +54,7 @@ PFN_vkWaitForFences				WaitForFences;
 PFN_vkResetFences				ResetFences;
 PFN_vkResetCommandBuffer		ResetCommandBuffer;
 
-bool _device_try_get_phyinfo (VkhPhyInfo* phys, uint32_t phyCount, VkPhysicalDeviceType gpuType, VkhPhyInfo* phy) {
+bool _device_try_get_phyinfo (VkePhyInfo* phys, uint32_t phyCount, VkPhysicalDeviceType gpuType, VkePhyInfo* phy) {
 	for (uint32_t i=0; i<phyCount; i++){
 		if (vke_phyinfo_get_properties(phys[i]).deviceType == gpuType) {
 			 *phy = phys[i];
@@ -68,7 +67,7 @@ bool _device_try_get_phyinfo (VkhPhyInfo* phys, uint32_t phyCount, VkPhysicalDev
 void _device_create_pipeline_cache(VkvgDevice dev){
 
 	VkPipelineCacheCreateInfo pipelineCacheCreateInfo = {.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO};
-	VK_CHECK_RESULT(vkCreatePipelineCache(dev->vkDev, &pipelineCacheCreateInfo, NULL, &dev->pipelineCache));
+	VK_CHECK_RESULT(vkCreatePipelineCache(dev->vke->vkdev, &pipelineCacheCreateInfo, NULL, &dev->pipelineCache));
 }
 
 VkRenderPass _device_createRenderPassNoResolve(VkvgDevice dev, VkAttachmentLoadOp loadOp, VkAttachmentLoadOp stencilLoadOp)
@@ -122,7 +121,7 @@ VkRenderPass _device_createRenderPassNoResolve(VkvgDevice dev, VkAttachmentLoadO
 				.pDependencies = dependencies
 	};
 	VkRenderPass rp;
-	VK_CHECK_RESULT(vkCreateRenderPass(dev->vkDev, &renderPassInfo, NULL, &rp));
+	VK_CHECK_RESULT(vkCreateRenderPass(dev->vke->vkdev, &renderPassInfo, NULL, &rp));
 	return rp;
 }
 VkRenderPass _device_createRenderPassMS(VkvgDevice dev, VkAttachmentLoadOp loadOp, VkAttachmentLoadOp stencilLoadOp)
@@ -187,7 +186,7 @@ VkRenderPass _device_createRenderPassMS(VkvgDevice dev, VkAttachmentLoadOp loadO
 				.pDependencies = dependencies
 	};
 	VkRenderPass rp;
-	VK_CHECK_RESULT(vkCreateRenderPass(dev->vkDev, &renderPassInfo, NULL, &rp));
+	VK_CHECK_RESULT(vkCreateRenderPass(dev->vke->vkdev, &renderPassInfo, NULL, &rp));
 	return rp;
 }
 
@@ -287,7 +286,7 @@ void _device_setupPipelines(VkvgDevice dev)
 	VkShaderModuleCreateInfo createInfo = { .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
 											.pCode = (uint32_t*)vkvg_main_vert_spv,
 											.codeSize = vkvg_main_vert_spv_len };
-	VK_CHECK_RESULT(vkCreateShaderModule(dev->vkDev, &createInfo, NULL, &modVert));
+	VK_CHECK_RESULT(vkCreateShaderModule(dev->vke->vkdev, &createInfo, NULL, &modVert));
 #if defined(VKVG_LCD_FONT_FILTER) && defined(FT_CONFIG_OPTION_SUBPIXEL_RENDERING)
 	createInfo.pCode = (uint32_t*)vkvg_main_lcd_frag_spv;
 	createInfo.codeSize = vkvg_main_lcd_frag_spv_len;
@@ -295,7 +294,7 @@ void _device_setupPipelines(VkvgDevice dev)
 	createInfo.pCode = (uint32_t*)vkvg_main_frag_spv;
 	createInfo.codeSize = vkvg_main_frag_spv_len;
 #endif
-	VK_CHECK_RESULT(vkCreateShaderModule(dev->vkDev, &createInfo, NULL, &modFrag));
+	VK_CHECK_RESULT(vkCreateShaderModule(dev->vke->vkdev, &createInfo, NULL, &modFrag));
 
 	VkPipelineShaderStageCreateInfo vertStage = { .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
 		.stage = VK_SHADER_STAGE_VERTEX_BIT,
@@ -335,27 +334,27 @@ void _device_setupPipelines(VkvgDevice dev)
 	pipelineCreateInfo.layout = dev->pipelineLayout;
 
 #ifndef __APPLE__
-	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->vkDev, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipelinePolyFill));
+	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->vke->vkdev, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipelinePolyFill));
 #endif
 
 	inputAssemblyState.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 	dsStateCreateInfo.back = dsStateCreateInfo.front = clipingOpState;
 	dynamicState.dynamicStateCount = 5;
-	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->vkDev, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipelineClipping));
+	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->vke->vkdev, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipelineClipping));
 
 	dsStateCreateInfo.back = dsStateCreateInfo.front = stencilOpState;
 	blendAttachmentState.colorWriteMask=0xf;
 	dynamicState.dynamicStateCount = 3;
 	pipelineCreateInfo.stageCount = 2;
-	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->vkDev, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipe_OVER));
+	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->vke->vkdev, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipe_OVER));
 
 	blendAttachmentState.alphaBlendOp = blendAttachmentState.colorBlendOp = VK_BLEND_OP_SUBTRACT;
-	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->vkDev, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipe_SUB));
+	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->vke->vkdev, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipe_SUB));
 
 	colorBlendState.logicOpEnable = VK_TRUE;
 	blendAttachmentState.blendEnable = VK_FALSE;
 	colorBlendState.logicOp = VK_LOGIC_OP_CLEAR;
-	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->vkDev, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipe_CLEAR));
+	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->vke->vkdev, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipe_CLEAR));
 
 
 #ifdef VKVG_WIRED_DEBUG
@@ -366,22 +365,22 @@ void _device_setupPipelines(VkvgDevice dev)
 	createInfo.pCode = (uint32_t*)wired_frag_spv;
 
 	createInfo.codeSize = wired_frag_spv_len;
-	VK_CHECK_RESULT(vkCreateShaderModule(dev->vkDev, &createInfo, NULL, &modFragWired));
+	VK_CHECK_RESULT(vkCreateShaderModule(dev->vke->vkdev, &createInfo, NULL, &modFragWired));
 
 	shaderStages[1].module = modFragWired;
 
 	rasterizationState.polygonMode = VK_POLYGON_MODE_LINE;
-	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->vkDev, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipelineLineList));
+	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->vke->vkdev, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipelineLineList));
 
 	inputAssemblyState.topology = VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
 	rasterizationState.polygonMode = VK_POLYGON_MODE_FILL;
-	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->vkDev, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipelineWired));
+	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->vke->vkdev, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipelineWired));
 
-	vkDestroyShaderModule(dev->vkDev, modFragWired, NULL);
+	vkDestroyShaderModule(dev->vke->vkdev, modFragWired, NULL);
 #endif
 
-	vkDestroyShaderModule(dev->vkDev, modVert, NULL);
-	vkDestroyShaderModule(dev->vkDev, modFrag, NULL);
+	vkDestroyShaderModule(dev->vke->vkdev, modVert, NULL);
+	vkDestroyShaderModule(dev->vke->vkdev, modFrag, NULL);
 }
 
 void _device_createDescriptorSetLayout (VkvgDevice dev) {
@@ -391,10 +390,10 @@ void _device_createDescriptorSetLayout (VkvgDevice dev) {
 	VkDescriptorSetLayoutCreateInfo dsLayoutCreateInfo = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
 														  .bindingCount = 1,
 														  .pBindings = &dsLayoutBinding };
-	VK_CHECK_RESULT(vkCreateDescriptorSetLayout(dev->vkDev, &dsLayoutCreateInfo, NULL, &dev->dslFont));
-	VK_CHECK_RESULT(vkCreateDescriptorSetLayout(dev->vkDev, &dsLayoutCreateInfo, NULL, &dev->dslSrc));
+	VK_CHECK_RESULT(vkCreateDescriptorSetLayout(dev->vke->vkdev, &dsLayoutCreateInfo, NULL, &dev->dslFont));
+	VK_CHECK_RESULT(vkCreateDescriptorSetLayout(dev->vke->vkdev, &dsLayoutCreateInfo, NULL, &dev->dslSrc));
 	dsLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	VK_CHECK_RESULT(vkCreateDescriptorSetLayout(dev->vkDev, &dsLayoutCreateInfo, NULL, &dev->dslGrad));
+	VK_CHECK_RESULT(vkCreateDescriptorSetLayout(dev->vke->vkdev, &dsLayoutCreateInfo, NULL, &dev->dslGrad));
 
 	VkPushConstantRange pushConstantRange[] = {
 		{VK_SHADER_STAGE_VERTEX_BIT,0,sizeof(push_constants)},
@@ -407,19 +406,19 @@ void _device_createDescriptorSetLayout (VkvgDevice dev) {
 															.pPushConstantRanges = (VkPushConstantRange*)&pushConstantRange,
 															.setLayoutCount = 3,
 															.pSetLayouts = dsls };
-	VK_CHECK_RESULT(vkCreatePipelineLayout(dev->vkDev, &pipelineLayoutCreateInfo, NULL, &dev->pipelineLayout));
+	VK_CHECK_RESULT(vkCreatePipelineLayout(dev->vke->vkdev, &pipelineLayoutCreateInfo, NULL, &dev->pipelineLayout));
 }
 
 void _device_wait_idle (VkvgDevice dev) {
-	vkDeviceWaitIdle (dev->vkDev);
+	vkDeviceWaitIdle (dev->vke->vkdev);
 }
 void _device_wait_and_reset_device_fence (VkvgDevice dev) {
-	vkWaitForFences (dev->vkDev, 1, &dev->fence, VK_TRUE, UINT64_MAX);
-	ResetFences (dev->vkDev, 1, &dev->fence);
+	vkWaitForFences (dev->vke->vkdev, 1, &dev->fence, VK_TRUE, UINT64_MAX);
+	ResetFences (dev->vke->vkdev, 1, &dev->fence);
 }
 
 bool _device_try_get_cached_context (VkvgDevice dev, VkvgContext* pCtx) {
-	LOCK_DEVICE
+	obi_lock(dev);
 
 	if (dev->cachedContextCount) {
 		thrd_t curThread = thrd_current ();
@@ -434,11 +433,11 @@ bool _device_try_get_cached_context (VkvgDevice dev, VkvgContext* pCtx) {
 
 				dev->cachedContextCount--;
 
-				LOG(VKVG_LOG_THREAD,"get cached context: %p, thd:%lu cached ctx: %d\n", cur->ctx, cur->thread, dev->cachedContextCount);
+				vke_log(VKE_LOG_THREAD,"get cached context: %p, thd:%lu cached ctx: %d\n", cur->ctx, cur->thread, dev->cachedContextCount);
 
 				*pCtx = cur->ctx;
 				free (cur);
-				UNLOCK_DEVICE
+				obi_unlock(dev);
 				return true;
 			}
 			prev = cur;
@@ -446,15 +445,16 @@ bool _device_try_get_cached_context (VkvgDevice dev, VkvgContext* pCtx) {
 		}
 	}
 	*pCtx = NULL;
-	UNLOCK_DEVICE
+	obi_unlock(dev);
 	return false;
 }
 void _device_store_context (VkvgContext ctx) {
 	VkvgDevice dev = ctx->dev;
 
-	LOCK_DEVICE
-
-	_cached_ctx* cur = (_cached_ctx*)calloc(1, sizeof(_cached_ctx));
+	obi_lock(dev);
+	
+	_cached_ctx* cur;
+	obi_init(_cached_ctx, cur);
 	cur->ctx	= ctx;
 	cur->thread	= thrd_current ();
 	cur->pNext	= dev->cachedContextLast;
@@ -462,49 +462,49 @@ void _device_store_context (VkvgContext ctx) {
 	dev->cachedContextLast = cur;
 	dev->cachedContextCount++;
 
-	LOG(VKVG_LOG_THREAD,"store context: %p, thd:%lu cached ctx: %d\n", cur->ctx, cur->thread, dev->cachedContextCount);
-
-	ctx->references++;
-
-	UNLOCK_DEVICE
+	vke_log(VKE_LOG_THREAD,"store context: %p, thd:%lu cached ctx: %d\n", cur->ctx, cur->thread, dev->cachedContextCount);
+	obi_unlock(dev);
 }
 void _device_submit_cmd (VkvgDevice dev, VkCommandBuffer* cmd, VkFence fence) {
-	LOCK_DEVICE
+	obi_lock(dev);
 	vke_cmd_submit (dev->gQueue, cmd, fence);
-	UNLOCK_DEVICE
+	obi_unlock(dev);
 }
 
 bool _device_init_function_pointers (VkvgDevice dev) {
 #if defined(DEBUG) && defined (VKVG_DBG_UTILS)
-	if (vkGetInstanceProcAddr(dev->instance, "vkSetDebugUtilsObjectNameEXT")==VK_NULL_HANDLE){
-		LOG(VKVG_LOG_ERR, "vkvg create device failed: 'VK_EXT_debug_utils' has to be loaded for Debug build\n");
+	if (vkGetInstanceProcAddr(dev->vke->app->inst, "vkSetDebugUtilsObjectNameEXT")==VK_NULL_HANDLE){
+		vke_log(VKE_LOG_ERR, "vkvg create device failed: 'VK_EXT_debug_utils' has to be loaded for Debug build\n");
 		return false;
 	}
-	vke_device_init_debug_utils ((VkhDevice)dev);
+	vke_device_init_debug_utils ((VkeDevice)dev->vke);
 #endif
-	CmdBindPipeline			= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdBindPipeline);
-	CmdBindDescriptorSets	= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdBindDescriptorSets);
-	CmdBindIndexBuffer		= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdBindIndexBuffer);
-	CmdBindVertexBuffers	= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdBindVertexBuffers);
-	CmdDrawIndexed			= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdDrawIndexed);
-	CmdDraw					= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdDraw);
-	CmdSetStencilCompareMask= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdSetStencilCompareMask);
-	CmdSetStencilReference	= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdSetStencilReference);
-	CmdSetStencilWriteMask	= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdSetStencilWriteMask);
-	CmdBeginRenderPass		= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdBeginRenderPass);
-	CmdEndRenderPass		= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdEndRenderPass);
-	CmdSetViewport			= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdSetViewport);
-	CmdSetScissor			= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdSetScissor);
-	CmdPushConstants		= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdPushConstants);
-	WaitForFences			= GetVkProcAddress(dev->vkDev, dev->instance, vkWaitForFences);
-	ResetFences				= GetVkProcAddress(dev->vkDev, dev->instance, vkResetFences);
-	ResetCommandBuffer		= GetVkProcAddress(dev->vkDev, dev->instance, vkResetCommandBuffer);
+	VkDevice vkdev = dev->vke->vkdev;
+	VkIntance  inst = dev->vke->app->inst;
+	///
+	CmdBindPipeline			= GetVkProcAddress(vkdev, inst, vkCmdBindPipeline);
+	CmdBindDescriptorSets	= GetVkProcAddress(vkdev, inst, vkCmdBindDescriptorSets);
+	CmdBindIndexBuffer		= GetVkProcAddress(vkdev, inst, vkCmdBindIndexBuffer);
+	CmdBindVertexBuffers	= GetVkProcAddress(vkdev, inst, vkCmdBindVertexBuffers);
+	CmdDrawIndexed			= GetVkProcAddress(vkdev, inst, vkCmdDrawIndexed);
+	CmdDraw					= GetVkProcAddress(vkdev, inst, vkCmdDraw);
+	CmdSetStencilCompareMask= GetVkProcAddress(vkdev, inst, vkCmdSetStencilCompareMask);
+	CmdSetStencilReference	= GetVkProcAddress(vkdev, inst, vkCmdSetStencilReference);
+	CmdSetStencilWriteMask	= GetVkProcAddress(vkdev, inst, vkCmdSetStencilWriteMask);
+	CmdBeginRenderPass		= GetVkProcAddress(vkdev, inst, vkCmdBeginRenderPass);
+	CmdEndRenderPass		= GetVkProcAddress(vkdev, inst, vkCmdEndRenderPass);
+	CmdSetViewport			= GetVkProcAddress(vkdev, inst, vkCmdSetViewport);
+	CmdSetScissor			= GetVkProcAddress(vkdev, inst, vkCmdSetScissor);
+	CmdPushConstants		= GetVkProcAddress(vkdev, inst, vkCmdPushConstants);
+	WaitForFences			= GetVkProcAddress(vkdev, inst, vkWaitForFences);
+	ResetFences				= GetVkProcAddress(vkdev, inst, vkResetFences);
+	ResetCommandBuffer		= GetVkProcAddress(vkdev, inst, vkResetCommandBuffer);
 	return true;
 }
 
 void _device_create_empty_texture (VkvgDevice dev, VkFormat format, VkImageTiling tiling) {
 	//create empty image to bind to context source descriptor when not in use
-	dev->emptyImg = vke_image_create((VkhDevice)dev,format,16,16,tiling,VKE_MEMORY_USAGE_GPU_ONLY,
+	dev->emptyImg = vke_image_create((VkeDevice)dev,format,16,16,tiling,VKE_MEMORY_USAGE_GPU_ONLY,
 									 VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
 	vke_image_create_descriptor(dev->emptyImg, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT, VK_FILTER_NEAREST, VK_FILTER_NEAREST, VK_SAMPLER_MIPMAP_MODE_NEAREST,VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
 
@@ -526,7 +526,7 @@ void _device_check_best_image_tiling (VkvgDevice dev, VkFormat format) {
 	dev->pngStagFormat = VK_FORMAT_UNDEFINED;
 	for (int i = 0; i < 2; i++)
 	{
-		vkGetPhysicalDeviceFormatProperties(dev->phy, pngBlitFormats[i], &phyImgProps);
+		vkGetPhysicalDeviceFormatProperties(dev->gpu, pngBlitFormats[i], &phyImgProps);
 		if ((phyImgProps.linearTilingFeatures & VKVG_PNG_WRITE_IMG_REQUIREMENTS) == VKVG_PNG_WRITE_IMG_REQUIREMENTS) {
 			dev->pngStagFormat = pngBlitFormats[i];
 			dev->pngStagTiling = VK_IMAGE_TILING_LINEAR;
@@ -539,18 +539,18 @@ void _device_check_best_image_tiling (VkvgDevice dev, VkFormat format) {
 	}
 
 	if (dev->pngStagFormat == VK_FORMAT_UNDEFINED)
-		LOG(VKVG_LOG_DEBUG, "vkvg create device failed: no suitable image format for png write\n");
+		vke_log(VKE_LOG_DEBUG, "vkvg create device failed: no suitable image format for png write\n");
 
 	dev->stencilFormat = VK_FORMAT_UNDEFINED;
 	dev->stencilAspectFlag = VK_IMAGE_ASPECT_STENCIL_BIT;
 	dev->supportedTiling = 0xff;
 	
-	vkGetPhysicalDeviceFormatProperties(dev->phy, format, &phyImgProps);
+	vkGetPhysicalDeviceFormatProperties(dev->gpu, format, &phyImgProps);
 	
 	if ((phyImgProps.optimalTilingFeatures & VKVG_SURFACE_IMGS_REQUIREMENTS) == VKVG_SURFACE_IMGS_REQUIREMENTS) {
 		for (int i = 0; i < 4; i++)
 		{
-			vkGetPhysicalDeviceFormatProperties(dev->phy, stencilFormats[i], &phyStencilProps);
+			vkGetPhysicalDeviceFormatProperties(dev->gpu, stencilFormats[i], &phyStencilProps);
 			if (phyStencilProps.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) {
 				dev->stencilFormat = stencilFormats[i];
 				if (i > 0)
@@ -563,7 +563,7 @@ void _device_check_best_image_tiling (VkvgDevice dev, VkFormat format) {
 	if ((phyImgProps.linearTilingFeatures & VKVG_SURFACE_IMGS_REQUIREMENTS) == VKVG_SURFACE_IMGS_REQUIREMENTS) {
 		for (int i = 0; i < 4; i++)
 		{
-			vkGetPhysicalDeviceFormatProperties(dev->phy, stencilFormats[i], &phyStencilProps);
+			vkGetPhysicalDeviceFormatProperties(dev->gpu, stencilFormats[i], &phyStencilProps);
 			if (phyStencilProps.linearTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) {
 				dev->stencilFormat = stencilFormats[i];
 				if (i > 0)
@@ -573,13 +573,13 @@ void _device_check_best_image_tiling (VkvgDevice dev, VkFormat format) {
 			}
 		}
 	}
-	dev->status = VKVG_STATUS_INVALID_FORMAT;
-	LOG(VKVG_LOG_ERR, "vkvg create device failed: image format not supported: %d\n", format);
+	dev->status = VKE_STATUS_INVALID_FORMAT;
+	vke_log(VKE_LOG_ERR, "vkvg create device failed: image format not supported: %d\n", format);
 }
 
 void _dump_image_format_properties (VkvgDevice dev, VkFormat format) {
 	/*VkImageFormatProperties imgProps;
-	VK_CHECK_RESULT(vkGetPhysicalDeviceImageFormatProperties(dev->phy,
+	VK_CHECK_RESULT(vkGetPhysicalDeviceImageFormatProperties(dev->gpu,
 															 format, VK_IMAGE_TYPE_2D, VKVG_TILING,
 															 VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT,
 															 0, &imgProps));

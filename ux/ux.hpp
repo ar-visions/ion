@@ -10,6 +10,10 @@ struct GLFWwindow;
 
 namespace ion {
 
+/// @brief  imaginary friends
+struct Device;
+struct Texture;
+
 using Path    = path;
 using Image   = image;
 using strings = array<str>;
@@ -803,28 +807,24 @@ struct window_data;
 struct window:mx {
     window_data *w;
     ptr_decl(window, mx, window_data, w);
-
-    Device   *device();
-    Texture  &texture();
-    Texture  &texture(ion::size sz);
     
-    void loop(lambda<void()> fn);
-
     window(ion::size sz, mode::etype m, memory *control);
 
-    inline static window handle(GLFWwindow *h);
+    void        loop(lambda<void()> fn);
+    bool        key(int key);
+    vec2        cursor();
+    str         clipboard();
+    void        set_clipboard(str text);
+    void        set_title(str s);
+    void        show();
+    void        hide();
+    void        start();
+    ion::size   size();
+    void        repaint();
+    Device     *device();
+    Texture    *texture();
+    Texture    *texture(ion::size sz);
 
-    bool key(int key);
-
-    vec2 cursor();
-    str  clipboard();
-    void set_clipboard(str text);
-    void set_title(str s);
-    void show();
-    void hide();
-    void start();
-    ion::size size();
-    void repaint();
     operator bool();
 };
 
@@ -1121,7 +1121,7 @@ struct gfx:cbase {
     ptr_decl(gfx, cbase, gfx_memory, g);
 
     ion::window    &window();
-    Device         &device();
+    Device         *device();
     void draw_state_change(draw_state *ds, cbase::state_change type);
     text_metrics   measure(str text);
     str    format_ellipsis(str text, real w, text_metrics &tm_result);
