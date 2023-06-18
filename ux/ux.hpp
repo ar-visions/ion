@@ -1,6 +1,6 @@
 #pragma once
 
-#include <core/core.hpp>
+#include <mx/mx.hpp>
 #include <async/async.hpp>
 #include <net/net.hpp>
 #include <math/math.hpp>
@@ -125,15 +125,15 @@ namespace graphics {
             array<v2>        p = poly;
             array<v2>   points = clip.edge_points();
             ///
-            for (int i = 0; i < points.len(); i++) {
+            for (int i = 0; i < points.length(); i++) {
                 v2   &e0   = points[i];
-                v2   &e1   = points[(i + 1) % points.len()];
+                v2   &e1   = points[(i + 1) % points.length()];
                 e2<T> edge = { e0, e1 };
                 array<v2> cl;
                 ///
-                for (int ii = 0; ii < p.len(); ii++) {
+                for (int ii = 0; ii < p.length(); ii++) {
                     const v2 &pi = p[(ii + 0)];
-                    const v2 &pk = p[(ii + 1) % p.len()];
+                    const v2 &pk = p[(ii + 1) % p.length()];
                     const bool    top = i == 0;
                     const bool    bot = i == 2;
                     const bool    lft = i == 3;
@@ -185,25 +185,25 @@ namespace graphics {
                 /// top-left
                 p_tl  = tl.xy();
                 v_tl  = tr.xy() - p_tl;
-                l_tl  = v_tl.len();
+                l_tl  = v_tl.length();
                 d_tl  = v_tl / l_tl;
 
                 /// top-right
                 p_tr  = tr.xy();
                 v_tr  = br.xy() - p_tr;
-                l_tr  = v_tr.len();
+                l_tr  = v_tr.length();
                 d_tr  = v_tr / l_tr;
 
                 // bottom-right
                 p_br  = br.xy();
                 v_br  = bl.xy() - p_br;
-                l_br  = v_br.len();
+                l_br  = v_br.length();
                 d_br  = v_br / l_br;
 
                 /// bottom-left
                 p_bl  = bl.xy();
                 v_bl  = tl.xy() - p_bl;
-                l_bl  = v_bl.len();
+                l_bl  = v_bl.length();
                 d_bl  = v_bl / l_bl;
 
                 /// set-radius
@@ -328,9 +328,9 @@ namespace graphics {
         ///
         border_data(str raw) : border_data() {
             str        trimmed = raw.trim();
-            size_t     tlen    = trimmed.len();
+            size_t     tlen    = trimmed.length();
             array<str> values  = raw.split();
-            size_t     ncomps  = values.len();
+            size_t     ncomps  = values.length();
             ///
             if (tlen > 0) {
                 size = values[0].real_value<real>();
@@ -418,7 +418,7 @@ struct scalar:mx {
 
     scalar(str s) : scalar() {
         str    tr  = s.trim();
-        size_t len = tr.len();
+        size_t len = tr.length();
         bool in_symbol = isalpha(tr[0]) || tr[0] == '_' || tr[0] == '%'; /// str[0] is always guaranteed to be there
         array<str> sp   = tr.split([&](char &c) -> bool {
             bool split  = false;
@@ -644,7 +644,7 @@ struct Element:mx {
 
     template <typename T>
     static Element each(array<T> a, lambda<Element(T &v)> fn) {
-        Element res(typeof(map_results), a.len());
+        Element res(typeof(map_results), a.length());
         for (auto &v:a) {
             Element ve = fn(v);
             if (ve) *res.e.children += ve;
@@ -739,10 +739,10 @@ struct OBJ:mx {
     OBJ(path p, lambda<V(group&, vec3&, vec2&, vec3&)> fn) : OBJ() {
         str g;
         str contents  = str::read_file(p.exists() ? p : fmt {"models/{0}.obj", { p }});
-        assert(contents.len() > 0);
+        assert(contents.length() > 0);
         
         auto lines    = contents.split("\n");
-        size_t line_c = lines.len();
+        size_t line_c = lines.length();
         auto wlines   = array<strings>();
         auto v        = array<vec3>(line_c); // need these
         auto vn       = array<vec3>(line_c);
@@ -762,7 +762,7 @@ struct OBJ:mx {
                 m.groups[g].name  = g;
                 m.gcount[g]       = 0;
             } else if (w[0] == "f") {
-                if (!g.len() || w.len() != 4)
+                if (!g.length() || w.length() != 4)
                     console.fault("import requires triangles"); /// f pos/uv/norm pos/uv/norm pos/uv/norm
                 m.gcount[g]++;
             }
@@ -779,7 +779,7 @@ struct OBJ:mx {
             else if (w[0] == "vt") vt += vec2 { w[1].real_value<real>(), w[2].real_value<real>() };
             else if (w[0] == "vn") vn += vec3 { w[1].real_value<real>(), w[2].real_value<real>(), w[3].real_value<real>() };
             else if (w[0] == "f") {
-                assert(g.len());
+                assert(g.length());
                 for (size_t i = 1; i < 4; i++) {
                     auto key = w[i];
                     if (indices.count(key) == 0) {
@@ -805,8 +805,9 @@ enums(mode, regular,
 
 struct window_data;
 struct window:mx {
-    window_data *w;
-    ptr_decl(window, mx, window_data, w);
+    using intern = window_data;
+    ///
+    ptr_declare(window);
     
     window(ion::size sz, mode::etype m, memory *control);
 
@@ -841,48 +842,6 @@ using VAttribs = states<VA>;
 struct TextureMemory;
 struct StageData;
 ///
-struct Texture:mx {
-    struct Stage {
-        enum Type {
-            Undefined,
-            Transfer,
-            Shader,
-            Color,
-            Depth
-        };
-        ///
-        Type value;
-
-        const StageData *data();
-        ///
-        inline bool operator==(Stage &b)      { return value == b.value; }
-        inline bool operator!=(Stage &b)      { return value != b.value; }
-        inline bool operator==(Stage::Type b) { return value == b; }
-        inline bool operator!=(Stage::Type b) { return value != b; }
-        ///
-        Stage(      Type    type = Undefined);
-        Stage(const Stage & ref) : value(ref.value) { };
-        Stage(      Stage & ref) : value(ref.value) { };
-        ///
-        bool operator>(Stage &b) { return value > b.value; }
-        bool operator<(Stage &b) { return value < b.value; }
-             operator     Type() { return value; }
-    };
-    TextureMemory *dat;
-    ptr_decl(Texture, mx, TextureMemory, dat);
-    
-    void set_stage(Stage s) ;
-    void push_stage(Stage s);
-    void pop_stage();
-    void transfer_pixels(rgba::data *pixels);
-    
-public:
-    /// pass-through operators
-    operator  bool                  () { return  dat; }
-    bool operator!                  () { return !dat; }
-    bool operator==      (Texture &tx) { return &dat == &tx.dat; }
-};
-
 
 /// generic vertex model; uses spec map, normal map by tangent/bi-tangent v3 unit vectors
 struct Vertex {
@@ -942,7 +901,7 @@ struct Shaders {
         strings sp = v.split(",");
         for (str &v: sp) {
             auto a = v.split("=");
-            assert(a.len() == 2);
+            assert(a.length() == 2);
             str key   = a[0];
             str value = a[1];
             map[key] = value;
@@ -1035,7 +994,7 @@ struct cbase:mx {
     virtual void init() { }
     
     draw_state &cur() {
-        if (m.stack.len() == 0)
+        if (m.stack.length() == 0)
             m.stack += draw_state(); /// this errors in graphics::cap initialize (type construction, Deallocate error indicates stack corruption?)
         
         return m.stack.last();
@@ -1445,7 +1404,7 @@ struct style:mx {
         transition(str s) : transition() {
             if (s) {
                 array<str> sp = s.split();
-                size_t    len = sp.len();
+                size_t    len = sp.length();
                 ///
                 if (len == 2) {
                     /// 0.5s ease-out [things like that]
@@ -1825,7 +1784,7 @@ struct list_view:node {
         array<mx> d_array(data.grab());
         double  sy = std.scroll.data.y;
         int  limit = sy + fill.h() - (columns ? 2.0 : 0.0);
-        for (int i = sy; i < math::min(limit, int(d_array.len())); i++) {
+        for (int i = sy; i < math::min(limit, int(d_array.length())); i++) {
             mx &d = d_array[i];
             cells([&](Column::data &c, r4<real> &cell) {
                 str s = c ? str(d[c.id]) : str(d);
@@ -1875,7 +1834,7 @@ struct composer:mx {
             return (active && n->std.active) ? n : null;
         });
 
-        array<node*> result = array<node *>(size_t(inside.len()) + size_t(actives.len()));
+        array<node*> result = array<node *>(size_t(inside.length()) + size_t(actives.length()));
 
         for (node *i: inside)
             result += i;

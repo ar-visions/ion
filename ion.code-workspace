@@ -5,24 +5,12 @@
 			"path": "../prefix"
 		},
 		{
-			"name": "vkengine",
-			"path": "../vkengine"
-		},
-		{
-			"name": "glutess",
-			"path": "../glutess"
-		},
-		{
-			"name": "vkvg",
-			"path": "../vkvg"
+			"name": "ion",
+			"path": "."
 		},
 		{
 			"name": "hyperspace",
 			"path": "../hyperspace"
-		},
-		{
-			"name": "ion",
-			"path": "."
 		},
 		{
 			"name": "orbiter",
@@ -104,7 +92,56 @@
 			"tinycthread.h": "c",
 			"memory_resource": "c",
 			"vke_app.h": "c",
-			"vke_buffer.h": "c"
+			"vke_buffer.h": "c",
+			"vke_queue.h": "c",
+			"fstream": "c",
+			"istream": "c",
+			"streambuf": "c",
+			"stdbool.h": "c",
+			"__split_buffer": "cpp",
+			"stdlib.h": "c",
+			"stdio.h": "c",
+			"math.h": "c",
+			"vkvg_internal.h": "c",
+			"complex": "c",
+			"cglm.h": "c",
+			"vec2.h": "c",
+			"string.h": "c",
+			"__string": "cpp",
+			"__node_handle": "c",
+			"__bits": "cpp",
+			"__config": "cpp",
+			"__debug": "cpp",
+			"__errc": "cpp",
+			"__verbose_abort": "cpp",
+			"bit": "cpp",
+			"cctype": "cpp",
+			"cinttypes": "cpp",
+			"clocale": "cpp",
+			"csignal": "cpp",
+			"cstdarg": "cpp",
+			"cstdint": "cpp",
+			"cstdio": "cpp",
+			"cstdlib": "cpp",
+			"cstring": "cpp",
+			"ctime": "cpp",
+			"cwchar": "cpp",
+			"cwctype": "cpp",
+			"deque": "cpp",
+			"exception": "cpp",
+			"initializer_list": "cpp",
+			"iomanip": "cpp",
+			"iostream": "cpp",
+			"list": "cpp",
+			"memory": "cpp",
+			"new": "cpp",
+			"optional": "cpp",
+			"ostream": "cpp",
+			"stdexcept": "cpp",
+			"__nullptr": "cpp",
+			"concepts": "cpp",
+			"numeric": "cpp",
+			"__memory": "cpp"
 		}
 	}
 }

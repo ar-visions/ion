@@ -68,13 +68,13 @@ typedef struct
     void *read_data;
     MP3D_SEEK_CB seek;
     void *seek_data;
-} mp3dec_io_t;
+} mp3dec_mx_t;
 
 typedef struct
 {
     mp3dec_t mp3d;
     mp3dec_map_info_t file;
-    mp3dec_io_t *mx;
+    mp3dec_mx_t *mx;
     mp3dec_index_t index;
     uint64_t offset, samples, detected_samples, cur_sample, start_offset, end_offset;
     mp3dec_frame_info_t info;
@@ -95,16 +95,16 @@ extern "C" {
 
 /* detect mp3/mpa format */
 int mp3dec_detect_buf(const uint8_t *buf, size_t buf_size);
-int mp3dec_detect_cb(mp3dec_io_t *mx, uint8_t *buf, size_t buf_size);
+int mp3dec_detect_cb(mp3dec_mx_t *mx, uint8_t *buf, size_t buf_size);
 /* decode whole buffer block */
 int mp3dec_load_buf(mp3dec_t *dec, const uint8_t *buf, size_t buf_size, mp3dec_file_info_t *info, MP3D_PROGRESS_CB progress_cb, void *user_data);
-int mp3dec_load_cb(mp3dec_t *dec, mp3dec_io_t *mx, uint8_t *buf, size_t buf_size, mp3dec_file_info_t *info, MP3D_PROGRESS_CB progress_cb, void *user_data);
+int mp3dec_load_cb(mp3dec_t *dec, mp3dec_mx_t *mx, uint8_t *buf, size_t buf_size, mp3dec_file_info_t *info, MP3D_PROGRESS_CB progress_cb, void *user_data);
 /* iterate through frames */
 int mp3dec_iterate_buf(const uint8_t *buf, size_t buf_size, MP3D_ITERATE_CB callback, void *user_data);
-int mp3dec_iterate_cb(mp3dec_io_t *mx, uint8_t *buf, size_t buf_size, MP3D_ITERATE_CB callback, void *user_data);
+int mp3dec_iterate_cb(mp3dec_mx_t *mx, uint8_t *buf, size_t buf_size, MP3D_ITERATE_CB callback, void *user_data);
 /* streaming decoder with seeking capability */
 int mp3dec_ex_open_buf(mp3dec_ex_t *dec, const uint8_t *buf, size_t buf_size, int flags);
-int mp3dec_ex_open_cb(mp3dec_ex_t *dec, mp3dec_io_t *mx, int flags);
+int mp3dec_ex_open_cb(mp3dec_ex_t *dec, mp3dec_mx_t *mx, int flags);
 void mp3dec_ex_close(mp3dec_ex_t *dec);
 int mp3dec_ex_seek(mp3dec_ex_t *dec, uint64_t position);
 size_t mp3dec_ex_read_frame(mp3dec_ex_t *dec, mp3d_sample_t **buf, mp3dec_frame_info_t *frame_info, size_t max_samples);
@@ -239,7 +239,7 @@ int mp3dec_detect_buf(const uint8_t *buf, size_t buf_size)
     return mp3dec_detect_cb(0, (uint8_t *)buf, buf_size);
 }
 
-int mp3dec_detect_cb(mp3dec_io_t *mx, uint8_t *buf, size_t buf_size)
+int mp3dec_detect_cb(mp3dec_mx_t *mx, uint8_t *buf, size_t buf_size)
 {
     if (!buf || (size_t)-1 == buf_size || (mx && buf_size < MINIMP3_BUF_SIZE))
         return MP3D_E_PARAM;
@@ -282,7 +282,7 @@ int mp3dec_load_buf(mp3dec_t *dec, const uint8_t *buf, size_t buf_size, mp3dec_f
     return mp3dec_load_cb(dec, 0, (uint8_t *)buf, buf_size, info, progress_cb, user_data);
 }
 
-int mp3dec_load_cb(mp3dec_t *dec, mp3dec_io_t *mx, uint8_t *buf, size_t buf_size, mp3dec_file_info_t *info, MP3D_PROGRESS_CB progress_cb, void *user_data)
+int mp3dec_load_cb(mp3dec_t *dec, mp3dec_mx_t *mx, uint8_t *buf, size_t buf_size, mp3dec_file_info_t *info, MP3D_PROGRESS_CB progress_cb, void *user_data)
 {
     if (!dec || !buf || !info || (size_t)-1 == buf_size || (mx && buf_size < MINIMP3_BUF_SIZE))
         return MP3D_E_PARAM;
@@ -535,7 +535,7 @@ int mp3dec_iterate_buf(const uint8_t *buf, size_t buf_size, MP3D_ITERATE_CB call
     return 0;
 }
 
-int mp3dec_iterate_cb(mp3dec_io_t *mx, uint8_t *buf, size_t buf_size, MP3D_ITERATE_CB callback, void *user_data)
+int mp3dec_iterate_cb(mp3dec_mx_t *mx, uint8_t *buf, size_t buf_size, MP3D_ITERATE_CB callback, void *user_data)
 {
     if (!mx || !buf || (size_t)-1 == buf_size || buf_size < MINIMP3_BUF_SIZE || !callback)
         return MP3D_E_PARAM;
@@ -970,7 +970,7 @@ size_t mp3dec_ex_read(mp3dec_ex_t *dec, mp3d_sample_t *buf, size_t samples)
     return samples_requested - samples;
 }
 
-int mp3dec_ex_open_cb(mp3dec_ex_t *dec, mp3dec_io_t *mx, int flags)
+int mp3dec_ex_open_cb(mp3dec_ex_t *dec, mp3dec_mx_t *mx, int flags)
 {
     if (!dec || !mx || (flags & (~MP3D_FLAGS_MASK)))
         return MP3D_E_PARAM;

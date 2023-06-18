@@ -245,7 +245,7 @@ static void stbi__start_write_callbacks(stbi__write_context *s, stbi_write_func 
 
 #ifndef STBI_WRITE_NO_STDIO
 
-static void stbi__stdio_write(void *context, void *data, int size)
+static void stbi__stdmx_write(void *context, void *data, int size)
 {
    fwrite(data,1,size,(FILE*) context);
 }
@@ -296,7 +296,7 @@ static FILE *stbiw__fopen(char const *filename, char const *mode)
 static int stbi__start_write_file(stbi__write_context *s, const char *filename)
 {
    FILE *f = stbiw__fopen(filename, "wb");
-   stbi__start_write_callbacks(s, stbi__stdio_write, (void *) f);
+   stbi__start_write_callbacks(s, stbi__stdmx_write, (void *) f);
    return f != NULL;
 }
 

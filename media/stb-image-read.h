@@ -410,7 +410,7 @@ typedef struct
    int      (*read)  (void *user,char *data,int size);   // fill 'data' with 'size' bytes.  return number of bytes actually read
    void     (*skip)  (void *user,int n);                 // skip the next 'n' bytes, or 'unget' the last -n bytes if negative
    int      (*eof)   (void *user);                       // returns nonzero if we are at end of file/data
-} stbi_io_callbacks;
+} stbi_mx_callbacks;
 
 ////////////////////////////////////
 //
@@ -418,7 +418,7 @@ typedef struct
 //
 
 STBIDEF stbi_uc *stbi_load_from_memory   (stbi_uc           const *buffer, int len   , int *x, int *y, int *channels_in_file, int desired_channels);
-STBIDEF stbi_uc *stbi_load_from_callbacks(stbi_io_callbacks const *clbk  , void *user, int *x, int *y, int *channels_in_file, int desired_channels);
+STBIDEF stbi_uc *stbi_load_from_callbacks(stbi_mx_callbacks const *clbk  , void *user, int *x, int *y, int *channels_in_file, int desired_channels);
 
 #ifndef STBI_NO_STDIO
 STBIDEF stbi_uc *stbi_load            (char const *filename, int *x, int *y, int *channels_in_file, int desired_channels);
@@ -440,7 +440,7 @@ STBIDEF int stbi_convert_wchar_to_utf8(char *buffer, size_t bufferlen, const wch
 //
 
 STBIDEF stbi_us *stbi_load_16_from_memory   (stbi_uc const *buffer, int len, int *x, int *y, int *channels_in_file, int desired_channels);
-STBIDEF stbi_us *stbi_load_16_from_callbacks(stbi_io_callbacks const *clbk, void *user, int *x, int *y, int *channels_in_file, int desired_channels);
+STBIDEF stbi_us *stbi_load_16_from_callbacks(stbi_mx_callbacks const *clbk, void *user, int *x, int *y, int *channels_in_file, int desired_channels);
 
 #ifndef STBI_NO_STDIO
 STBIDEF stbi_us *stbi_load_16          (char const *filename, int *x, int *y, int *channels_in_file, int desired_channels);
@@ -453,7 +453,7 @@ STBIDEF stbi_us *stbi_load_from_file_16(FILE *f, int *x, int *y, int *channels_i
 //
 #ifndef STBI_NO_LINEAR
    STBIDEF float *stbi_loadf_from_memory     (stbi_uc const *buffer, int len, int *x, int *y, int *channels_in_file, int desired_channels);
-   STBIDEF float *stbi_loadf_from_callbacks  (stbi_io_callbacks const *clbk, void *user, int *x, int *y,  int *channels_in_file, int desired_channels);
+   STBIDEF float *stbi_loadf_from_callbacks  (stbi_mx_callbacks const *clbk, void *user, int *x, int *y,  int *channels_in_file, int desired_channels);
 
    #ifndef STBI_NO_STDIO
    STBIDEF float *stbi_loadf            (char const *filename, int *x, int *y, int *channels_in_file, int desired_channels);
@@ -472,7 +472,7 @@ STBIDEF stbi_us *stbi_load_from_file_16(FILE *f, int *x, int *y, int *channels_i
 #endif // STBI_NO_LINEAR
 
 // stbi_is_hdr is always defined, but always returns false if STBI_NO_HDR
-STBIDEF int    stbi_is_hdr_from_callbacks(stbi_io_callbacks const *clbk, void *user);
+STBIDEF int    stbi_is_hdr_from_callbacks(stbi_mx_callbacks const *clbk, void *user);
 STBIDEF int    stbi_is_hdr_from_memory(stbi_uc const *buffer, int len);
 #ifndef STBI_NO_STDIO
 STBIDEF int      stbi_is_hdr          (char const *filename);
@@ -489,9 +489,9 @@ STBIDEF void     stbi_image_free      (void *retval_from_stbi_load);
 
 // get image dimensions & components without fully decoding
 STBIDEF int      stbi_info_from_memory(stbi_uc const *buffer, int len, int *x, int *y, int *comp);
-STBIDEF int      stbi_info_from_callbacks(stbi_io_callbacks const *clbk, void *user, int *x, int *y, int *comp);
+STBIDEF int      stbi_info_from_callbacks(stbi_mx_callbacks const *clbk, void *user, int *x, int *y, int *comp);
 STBIDEF int      stbi_is_16_bit_from_memory(stbi_uc const *buffer, int len);
-STBIDEF int      stbi_is_16_bit_from_callbacks(stbi_io_callbacks const *clbk, void *user);
+STBIDEF int      stbi_is_16_bit_from_callbacks(stbi_mx_callbacks const *clbk, void *user);
 
 #ifndef STBI_NO_STDIO
 STBIDEF int      stbi_info               (char const *filename,     int *x, int *y, int *comp);
@@ -804,8 +804,8 @@ typedef struct
    stbi__uint32 img_x, img_y;
    int img_n, img_out_n;
 
-   stbi_io_callbacks mx;
-   void *io_user_data;
+   stbi_mx_callbacks mx;
+   void *mx_user_data;
 
    int read_from_callbacks;
    int buflen;
@@ -830,10 +830,10 @@ static void stbi__start_mem(stbi__context *s, stbi_uc const *buffer, int len)
 }
 
 // initialize a callback-based context
-static void stbi__start_callbacks(stbi__context *s, stbi_io_callbacks *c, void *user)
+static void stbi__start_callbacks(stbi__context *s, stbi_mx_callbacks *c, void *user)
 {
    s->mx = *c;
-   s->io_user_data = user;
+   s->mx_user_data = user;
    s->buflen = sizeof(s->buffer_start);
    s->read_from_callbacks = 1;
    s->callback_already_read = 0;
@@ -844,12 +844,12 @@ static void stbi__start_callbacks(stbi__context *s, stbi_io_callbacks *c, void *
 
 #ifndef STBI_NO_STDIO
 
-static int stbi__stdio_read(void *user, char *data, int size)
+static int stbi__stdmx_read(void *user, char *data, int size)
 {
    return (int) fread(data,1,size,(FILE*) user);
 }
 
-static void stbi__stdio_skip(void *user, int n)
+static void stbi__stdmx_skip(void *user, int n)
 {
    int ch;
    fseek((FILE*) user, n, SEEK_CUR);
@@ -859,21 +859,21 @@ static void stbi__stdio_skip(void *user, int n)
    }
 }
 
-static int stbi__stdio_eof(void *user)
+static int stbi__stdmx_eof(void *user)
 {
    return feof((FILE*) user) || ferror((FILE *) user);
 }
 
-static stbi_io_callbacks stbi__stdio_callbacks =
+static stbi_mx_callbacks stbi__stdmx_callbacks =
 {
-   stbi__stdio_read,
-   stbi__stdio_skip,
-   stbi__stdio_eof,
+   stbi__stdmx_read,
+   stbi__stdmx_skip,
+   stbi__stdmx_eof,
 };
 
 static void stbi__start_file(stbi__context *s, FILE *f)
 {
-   stbi__start_callbacks(s, &stbi__stdio_callbacks, (void *) f);
+   stbi__start_callbacks(s, &stbi__stdmx_callbacks, (void *) f);
 }
 
 //static void stop_file(stbi__context *s) { }
@@ -1399,10 +1399,10 @@ STBIDEF stbi_us *stbi_load_16_from_memory(stbi_uc const *buffer, int len, int *x
    return stbi__load_and_postprocess_16bit(&s,x,y,channels_in_file,desired_channels);
 }
 
-STBIDEF stbi_us *stbi_load_16_from_callbacks(stbi_io_callbacks const *clbk, void *user, int *x, int *y, int *channels_in_file, int desired_channels)
+STBIDEF stbi_us *stbi_load_16_from_callbacks(stbi_mx_callbacks const *clbk, void *user, int *x, int *y, int *channels_in_file, int desired_channels)
 {
    stbi__context s;
-   stbi__start_callbacks(&s, (stbi_io_callbacks *)clbk, user);
+   stbi__start_callbacks(&s, (stbi_mx_callbacks *)clbk, user);
    return stbi__load_and_postprocess_16bit(&s,x,y,channels_in_file,desired_channels);
 }
 
@@ -1413,10 +1413,10 @@ STBIDEF stbi_uc *stbi_load_from_memory(stbi_uc const *buffer, int len, int *x, i
    return stbi__load_and_postprocess_8bit(&s,x,y,comp,req_comp);
 }
 
-STBIDEF stbi_uc *stbi_load_from_callbacks(stbi_io_callbacks const *clbk, void *user, int *x, int *y, int *comp, int req_comp)
+STBIDEF stbi_uc *stbi_load_from_callbacks(stbi_mx_callbacks const *clbk, void *user, int *x, int *y, int *comp, int req_comp)
 {
    stbi__context s;
-   stbi__start_callbacks(&s, (stbi_io_callbacks *) clbk, user);
+   stbi__start_callbacks(&s, (stbi_mx_callbacks *) clbk, user);
    return stbi__load_and_postprocess_8bit(&s,x,y,comp,req_comp);
 }
 
@@ -1462,10 +1462,10 @@ STBIDEF float *stbi_loadf_from_memory(stbi_uc const *buffer, int len, int *x, in
    return stbi__loadf_main(&s,x,y,comp,req_comp);
 }
 
-STBIDEF float *stbi_loadf_from_callbacks(stbi_io_callbacks const *clbk, void *user, int *x, int *y, int *comp, int req_comp)
+STBIDEF float *stbi_loadf_from_callbacks(stbi_mx_callbacks const *clbk, void *user, int *x, int *y, int *comp, int req_comp)
 {
    stbi__context s;
-   stbi__start_callbacks(&s, (stbi_io_callbacks *) clbk, user);
+   stbi__start_callbacks(&s, (stbi_mx_callbacks *) clbk, user);
    return stbi__loadf_main(&s,x,y,comp,req_comp);
 }
 
@@ -1536,11 +1536,11 @@ STBIDEF int stbi_is_hdr_from_file(FILE *f)
 }
 #endif // !STBI_NO_STDIO
 
-STBIDEF int      stbi_is_hdr_from_callbacks(stbi_io_callbacks const *clbk, void *user)
+STBIDEF int      stbi_is_hdr_from_callbacks(stbi_mx_callbacks const *clbk, void *user)
 {
    #ifndef STBI_NO_HDR
    stbi__context s;
-   stbi__start_callbacks(&s, (stbi_io_callbacks *) clbk, user);
+   stbi__start_callbacks(&s, (stbi_mx_callbacks *) clbk, user);
    return stbi__hdr_test(&s);
    #else
    STBI_NOTUSED(clbk);
@@ -1576,7 +1576,7 @@ enum
 
 static void stbi__refill_buffer(stbi__context *s)
 {
-   int n = (s->mx.read)(s->io_user_data,(char*)s->buffer_start,s->buflen);
+   int n = (s->mx.read)(s->mx_user_data,(char*)s->buffer_start,s->buflen);
    s->callback_already_read += (int) (s->img_buffer - s->img_buffer_original);
    if (n == 0) {
       // at end of file, treat same as if from memory, but need to handle case
@@ -1608,7 +1608,7 @@ stbi_inline static stbi_uc stbi__get8(stbi__context *s)
 stbi_inline static int stbi__at_eof(stbi__context *s)
 {
    if (s->mx.read) {
-      if (!(s->mx.eof)(s->io_user_data)) return 0;
+      if (!(s->mx.eof)(s->mx_user_data)) return 0;
       // if feof() is true, check if buffer = end
       // special case: we've only got the special 0 character at the end
       if (s->read_from_callbacks == 0) return 1;
@@ -1632,7 +1632,7 @@ static void stbi__skip(stbi__context *s, int n)
       int blen = (int) (s->img_buffer_end - s->img_buffer);
       if (blen < n) {
          s->img_buffer = s->img_buffer_end;
-         (s->mx.skip)(s->io_user_data, n - blen);
+         (s->mx.skip)(s->mx_user_data, n - blen);
          return;
       }
    }
@@ -1652,7 +1652,7 @@ static int stbi__getn(stbi__context *s, stbi_uc *buffer, int n)
 
          memcpy(buffer, s->img_buffer, blen);
 
-         count = (s->mx.read)(s->io_user_data, (char*) buffer + blen, n - blen);
+         count = (s->mx.read)(s->mx_user_data, (char*) buffer + blen, n - blen);
          res = (count == (n-blen));
          s->img_buffer = s->img_buffer_end;
          return res;
@@ -7647,10 +7647,10 @@ STBIDEF int stbi_info_from_memory(stbi_uc const *buffer, int len, int *x, int *y
    return stbi__info_main(&s,x,y,comp);
 }
 
-STBIDEF int stbi_info_from_callbacks(stbi_io_callbacks const *c, void *user, int *x, int *y, int *comp)
+STBIDEF int stbi_info_from_callbacks(stbi_mx_callbacks const *c, void *user, int *x, int *y, int *comp)
 {
    stbi__context s;
-   stbi__start_callbacks(&s, (stbi_io_callbacks *) c, user);
+   stbi__start_callbacks(&s, (stbi_mx_callbacks *) c, user);
    return stbi__info_main(&s,x,y,comp);
 }
 
@@ -7661,10 +7661,10 @@ STBIDEF int stbi_is_16_bit_from_memory(stbi_uc const *buffer, int len)
    return stbi__is_16_main(&s);
 }
 
-STBIDEF int stbi_is_16_bit_from_callbacks(stbi_io_callbacks const *c, void *user)
+STBIDEF int stbi_is_16_bit_from_callbacks(stbi_mx_callbacks const *c, void *user)
 {
    stbi__context s;
-   stbi__start_callbacks(&s, (stbi_io_callbacks *) c, user);
+   stbi__start_callbacks(&s, (stbi_mx_callbacks *) c, user);
    return stbi__is_16_main(&s);
 }
 

@@ -1,31 +1,9 @@
-/*
- * Copyright (c) 2018-2022 Jean-Philippe Bruyère <jp_bruyere@hotmail.com>
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy of
- * this software and associated documentation files (the "Software"), to deal in
- * the Software without restriction, including without limitation the rights to use,
- * copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the
- * Software, and to permit persons to whom the Software is furnished to do so, subject
- * to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in all
- * copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- */
+﻿#include <vkg/vkvg_internal.h>
 
 #define GetInstProcAddress(inst, func)(PFN_##func)vkGetInstanceProcAddr(inst, #func);
 
 #define GetVkProcAddress(dev, inst, func)(vkGetDeviceProcAddr(dev,#func)==NULL)?(PFN_##func)vkGetInstanceProcAddr(inst, #func):(PFN_##func)vkGetDeviceProcAddr(dev, #func)
 
-#include <vkvg/vkvg_device_internal.h>
-#include <vkvg/vkvg_context_internal.h>
 #include "shaders.h"
 
 #ifdef VKVG_WIRED_DEBUG
@@ -418,7 +396,7 @@ void _device_wait_and_reset_device_fence (VkvgDevice dev) {
 }
 
 bool _device_try_get_cached_context (VkvgDevice dev, VkvgContext* pCtx) {
-	obi_lock(dev);
+	io_sync(dev);
 
 	if (dev->cachedContextCount) {
 		thrd_t curThread = thrd_current ();
@@ -433,11 +411,11 @@ bool _device_try_get_cached_context (VkvgDevice dev, VkvgContext* pCtx) {
 
 				dev->cachedContextCount--;
 
-				vke_log(VKE_LOG_THREAD,"get cached context: %p, thd:%lu cached ctx: %d\n", cur->ctx, cur->thread, dev->cachedContextCount);
+				vke_log(VKE_LOG_THREAD,"get cached context: %p, thd:%p cached ctx: %d\n", cur->ctx, (void*)cur->thread, dev->cachedContextCount);
 
 				*pCtx = cur->ctx;
 				free (cur);
-				obi_unlock(dev);
+				io_unsync(dev);
 				return true;
 			}
 			prev = cur;
@@ -445,16 +423,21 @@ bool _device_try_get_cached_context (VkvgDevice dev, VkvgContext* pCtx) {
 		}
 	}
 	*pCtx = NULL;
-	obi_unlock(dev);
+	io_unsync(dev);
 	return false;
 }
+
+void _cached_ctx_destroy(_cached_ctx *cur) {
+}
+
 void _device_store_context (VkvgContext ctx) {
 	VkvgDevice dev = ctx->dev;
 
-	obi_lock(dev);
-	
+	mx_sync(dev);
+
 	_cached_ctx* cur;
-	obi_init(_cached_ctx, cur);
+	mx_init(_cached_ctx, cur);
+
 	cur->ctx	= ctx;
 	cur->thread	= thrd_current ();
 	cur->pNext	= dev->cachedContextLast;
@@ -462,13 +445,13 @@ void _device_store_context (VkvgContext ctx) {
 	dev->cachedContextLast = cur;
 	dev->cachedContextCount++;
 
-	vke_log(VKE_LOG_THREAD,"store context: %p, thd:%lu cached ctx: %d\n", cur->ctx, cur->thread, dev->cachedContextCount);
-	obi_unlock(dev);
+	vke_log(VKE_LOG_THREAD,"store context: %p, thd:%p cached ctx: %d\n", cur->ctx, (void*)cur->thread, dev->cachedContextCount);
+	io_unsync(dev);
 }
 void _device_submit_cmd (VkvgDevice dev, VkCommandBuffer* cmd, VkFence fence) {
-	obi_lock(dev);
+	mx_sync(dev);
 	vke_cmd_submit (dev->gQueue, cmd, fence);
-	obi_unlock(dev);
+	io_unsync(dev);
 }
 
 bool _device_init_function_pointers (VkvgDevice dev) {
@@ -477,11 +460,10 @@ bool _device_init_function_pointers (VkvgDevice dev) {
 		vke_log(VKE_LOG_ERR, "vkvg create device failed: 'VK_EXT_debug_utils' has to be loaded for Debug build\n");
 		return false;
 	}
-	vke_device_init_debug_utils ((VkeDevice)dev->vke);
+	vke_device_init_debug_utils (dev->vke);
 #endif
 	VkDevice vkdev = dev->vke->vkdev;
-	VkIntance  inst = dev->vke->app->inst;
-	///
+	VkInstance inst = dev->app->inst;
 	CmdBindPipeline			= GetVkProcAddress(vkdev, inst, vkCmdBindPipeline);
 	CmdBindDescriptorSets	= GetVkProcAddress(vkdev, inst, vkCmdBindDescriptorSets);
 	CmdBindIndexBuffer		= GetVkProcAddress(vkdev, inst, vkCmdBindIndexBuffer);
@@ -504,7 +486,7 @@ bool _device_init_function_pointers (VkvgDevice dev) {
 
 void _device_create_empty_texture (VkvgDevice dev, VkFormat format, VkImageTiling tiling) {
 	//create empty image to bind to context source descriptor when not in use
-	dev->emptyImg = vke_image_create((VkeDevice)dev,format,16,16,tiling,VKE_MEMORY_USAGE_GPU_ONLY,
+	dev->emptyImg = vke_image_create(dev->vke,format,16,16,tiling,VKE_MEMORY_USAGE_GPU_ONLY,
 									 VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
 	vke_image_create_descriptor(dev->emptyImg, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT, VK_FILTER_NEAREST, VK_FILTER_NEAREST, VK_SAMPLER_MIPMAP_MODE_NEAREST,VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
 
@@ -526,7 +508,7 @@ void _device_check_best_image_tiling (VkvgDevice dev, VkFormat format) {
 	dev->pngStagFormat = VK_FORMAT_UNDEFINED;
 	for (int i = 0; i < 2; i++)
 	{
-		vkGetPhysicalDeviceFormatProperties(dev->gpu, pngBlitFormats[i], &phyImgProps);
+		vkGetPhysicalDeviceFormatProperties(dev->vke->phyinfo->gpu, pngBlitFormats[i], &phyImgProps);
 		if ((phyImgProps.linearTilingFeatures & VKVG_PNG_WRITE_IMG_REQUIREMENTS) == VKVG_PNG_WRITE_IMG_REQUIREMENTS) {
 			dev->pngStagFormat = pngBlitFormats[i];
 			dev->pngStagTiling = VK_IMAGE_TILING_LINEAR;
@@ -545,12 +527,12 @@ void _device_check_best_image_tiling (VkvgDevice dev, VkFormat format) {
 	dev->stencilAspectFlag = VK_IMAGE_ASPECT_STENCIL_BIT;
 	dev->supportedTiling = 0xff;
 	
-	vkGetPhysicalDeviceFormatProperties(dev->gpu, format, &phyImgProps);
+	vkGetPhysicalDeviceFormatProperties(dev->vke->phyinfo->gpu, format, &phyImgProps);
 	
 	if ((phyImgProps.optimalTilingFeatures & VKVG_SURFACE_IMGS_REQUIREMENTS) == VKVG_SURFACE_IMGS_REQUIREMENTS) {
 		for (int i = 0; i < 4; i++)
 		{
-			vkGetPhysicalDeviceFormatProperties(dev->gpu, stencilFormats[i], &phyStencilProps);
+			vkGetPhysicalDeviceFormatProperties(dev->vke->phyinfo->gpu, stencilFormats[i], &phyStencilProps);
 			if (phyStencilProps.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) {
 				dev->stencilFormat = stencilFormats[i];
 				if (i > 0)
@@ -563,7 +545,7 @@ void _device_check_best_image_tiling (VkvgDevice dev, VkFormat format) {
 	if ((phyImgProps.linearTilingFeatures & VKVG_SURFACE_IMGS_REQUIREMENTS) == VKVG_SURFACE_IMGS_REQUIREMENTS) {
 		for (int i = 0; i < 4; i++)
 		{
-			vkGetPhysicalDeviceFormatProperties(dev->gpu, stencilFormats[i], &phyStencilProps);
+			vkGetPhysicalDeviceFormatProperties(dev->vke->phyinfo->gpu, stencilFormats[i], &phyStencilProps);
 			if (phyStencilProps.linearTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) {
 				dev->stencilFormat = stencilFormats[i];
 				if (i > 0)
@@ -579,7 +561,7 @@ void _device_check_best_image_tiling (VkvgDevice dev, VkFormat format) {
 
 void _dump_image_format_properties (VkvgDevice dev, VkFormat format) {
 	/*VkImageFormatProperties imgProps;
-	VK_CHECK_RESULT(vkGetPhysicalDeviceImageFormatProperties(dev->gpu,
+	VK_CHECK_RESULT(vkGetPhysicalDeviceImageFormatProperties(dev->vke->phyinfo->gpu,
 															 format, VK_IMAGE_TYPE_2D, VKVG_TILING,
 															 VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT,
 															 0, &imgProps));
@@ -605,3 +587,287 @@ void _dump_image_format_properties (VkvgDevice dev, VkFormat format) {
 */
 
 }
+
+#define TRY_LOAD_DEVICE_EXT(ext) {								\
+if (vke_phyinfo_try_get_extension_properties(pi, #ext, NULL))	\
+	enabledExts[enabledExtsCount++] = #ext;						\
+}
+
+void vkvg_device_free(VkvgDevice dev) {
+	if (dev->cachedContextCount > 0) { /// i cant wait to see what this brings
+		_cached_ctx* cur = dev->cachedContextLast;
+		while (cur) {
+			_release_context_ressources (cur->ctx);
+			_cached_ctx* prev = cur;
+			cur = cur->pNext;
+			free (prev);
+		}
+	}
+
+	vke_log(VKE_LOG_INFO, "DESTROY Device\n");
+	vkDeviceWaitIdle (dev->vke->vkdev);
+	vke_image_drop				(dev->emptyImg);
+	vkDestroyDescriptorSetLayout	(dev->vke->vkdev, dev->dslGrad,NULL);
+	vkDestroyDescriptorSetLayout	(dev->vke->vkdev, dev->dslFont,NULL);
+	vkDestroyDescriptorSetLayout	(dev->vke->vkdev, dev->dslSrc, NULL);
+#ifndef __APPLE__
+	vkDestroyPipeline				(dev->vke->vkdev, dev->pipelinePolyFill, NULL);
+#endif
+	vkDestroyPipeline				(dev->vke->vkdev, dev->pipelineClipping, NULL);
+
+	vkDestroyPipeline				(dev->vke->vkdev, dev->pipe_OVER,	NULL);
+	vkDestroyPipeline				(dev->vke->vkdev, dev->pipe_SUB,		NULL);
+	vkDestroyPipeline				(dev->vke->vkdev, dev->pipe_CLEAR,	NULL);
+
+#ifdef VKVG_WIRED_DEBUG
+	vkDestroyPipeline				(dev->vke->vkdev, dev->pipelineWired, NULL);
+	vkDestroyPipeline				(dev->vke->vkdev, dev->pipelineLineList, NULL);
+#endif
+
+	vkDestroyPipelineLayout			(dev->vke->vkdev, dev->pipelineLayout, NULL);
+	vkDestroyPipelineCache			(dev->vke->vkdev, dev->pipelineCache, NULL);
+	vkDestroyRenderPass				(dev->vke->vkdev, dev->renderPass, NULL);
+	vkDestroyRenderPass				(dev->vke->vkdev, dev->renderPass_ClearStencil, NULL);
+	vkDestroyRenderPass				(dev->vke->vkdev, dev->renderPass_ClearAll, NULL);
+
+	vkWaitForFences					(dev->vke->vkdev, 1, &dev->fence, VK_TRUE, UINT64_MAX);
+	vkDestroyFence					(dev->vke->vkdev, dev->fence,NULL);
+
+	vkFreeCommandBuffers			(dev->vke->vkdev, dev->cmdPool, 1, &dev->cmd);
+	vkDestroyCommandPool			(dev->vke->vkdev, dev->cmdPool, NULL);
+
+	vke_queue_drop(dev->gQueue);
+
+	_font_cache_free(dev);
+	
+	if (dev->vke) {
+		VkeApp app = vke_device_app(dev->vke);
+		io_drop(dev->vke);
+		io_drop(app);
+	}
+}
+
+/// experiment with calling this. // todo
+void vkvg_device_set_context_cache_size (VkvgDevice dev, uint32_t maxCount) {
+	if (maxCount == dev->cachedContextMaxCount)
+		return;
+
+	dev->cachedContextMaxCount = maxCount;
+
+	_cached_ctx* cur = dev->cachedContextLast;
+	while (cur && dev->cachedContextCount > dev->cachedContextMaxCount) {
+		_release_context_ressources (cur->ctx);
+		_cached_ctx* prev = cur;
+		cur = cur->pNext;
+		free (prev);
+		dev->cachedContextCount--;
+	}
+	dev->cachedContextLast = cur;
+}
+
+bool _get_dev_extension_is_supported (VkExtensionProperties* pExtensionProperties, uint32_t extensionCount, const char* name) {
+	for (uint32_t i=0; i<extensionCount; i++) {
+		if (strcmp(name, pExtensionProperties[i].extensionName)==0)
+			return true;
+	}
+	return false;
+}
+#define _CHECK_DEV_EXT(ext) {					\
+	if (_get_dev_extension_is_supported(pExtensionProperties, extensionCount, #ext)){\
+		if (pExtensions)							\
+			pExtensions[*pExtCount] = #ext;			\
+		(*pExtCount)++;								\
+	}\
+}
+
+VkeStatus vkvg_get_required_device_extensions (VkPhysicalDevice gpu, const char** pExtensions, uint32_t* pExtCount) {
+	VkExtensionProperties* pExtensionProperties;
+	uint32_t extensionCount;
+
+	*pExtCount = 0;
+
+	VK_CHECK_RESULT(vkEnumerateDeviceExtensionProperties(gpu, NULL, &extensionCount, NULL));
+	pExtensionProperties = (VkExtensionProperties*)malloc(extensionCount * sizeof(VkExtensionProperties));
+	VK_CHECK_RESULT(vkEnumerateDeviceExtensionProperties(gpu, NULL, &extensionCount, pExtensionProperties));
+
+	//https://vulkan.lunarg.com/doc/view/1.2.162.0/mac/1.2-extensions/vkspec.html#VK_KHR_portability_subset
+	_CHECK_DEV_EXT(VK_KHR_portability_subset);
+	VkPhysicalDeviceFeatures2 phyFeat2 = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+
+#ifdef VKVG_ENABLE_VK_SCALAR_BLOCK_LAYOUT
+	//ensure feature is implemented by driver.
+	VkPhysicalDeviceScalarBlockLayoutFeatures scalarBlockLayoutSupport = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SCALAR_BLOCK_LAYOUT_FEATURES};
+	phyFeat2.pNext = &scalarBlockLayoutSupport;
+#endif
+
+#ifdef VKVG_ENABLE_VK_TIMELINE_SEMAPHORE
+	VkPhysicalDeviceTimelineSemaphoreFeatures timelineSemaphoreSupport = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES};
+	timelineSemaphoreSupport.pNext = phyFeat2.pNext;
+	phyFeat2.pNext = &timelineSemaphoreSupport;
+#endif
+
+	vkGetPhysicalDeviceFeatures2(gpu, &phyFeat2);
+
+#ifdef VKVG_ENABLE_VK_SCALAR_BLOCK_LAYOUT
+	if (!scalarBlockLayoutSupport.scalarBlockLayout) {
+		vke_log(VKE_LOG_ERR, "CREATE Device failed, vkvg compiled with VKVG_ENABLE_VK_SCALAR_BLOCK_LAYOUT and feature is not implemented for physical device.\n");
+		return VKE_STATUS_DEVICE_ERROR;
+	}
+	_CHECK_DEV_EXT(VK_EXT_scalar_block_layout)
+#endif
+#ifdef VKVG_ENABLE_VK_TIMELINE_SEMAPHORE
+	if (!timelineSemaphoreSupport.timelineSemaphore) {
+		vke_log(VKE_LOG_ERR, "CREATE Device failed, VK_SEMAPHORE_TYPE_TIMELINE not supported.\n");
+		return VKE_STATUS_DEVICE_ERROR;
+	}
+	_CHECK_DEV_EXT(VK_KHR_timeline_semaphore)
+#endif
+
+	return VKE_STATUS_SUCCESS;
+}
+
+//enabledFeature12 is guarantied to be the first in pNext chain
+const void* vkvg_get_device_requirements (VkPhysicalDeviceFeatures* pEnabledFeatures) {
+
+	pEnabledFeatures->fillModeNonSolid	= VK_TRUE;
+	pEnabledFeatures->sampleRateShading	= VK_TRUE;
+	pEnabledFeatures->logicOp			= VK_TRUE;
+
+	void* pNext = NULL;
+
+#ifdef VK_VERSION_1_2
+	static VkPhysicalDeviceVulkan12Features enabledFeatures12 = {
+		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES
+#ifdef VKVG_ENABLE_VK_SCALAR_BLOCK_LAYOUT
+		,.scalarBlockLayout = VK_TRUE
+#endif
+#ifdef VKVG_ENABLE_VK_TIMELINE_SEMAPHORE
+		,.timelineSemaphore = VK_TRUE
+#endif
+	};
+	enabledFeatures12.pNext = pNext;
+	pNext = &enabledFeatures12;
+#else
+#ifdef VKVG_ENABLE_VK_SCALAR_BLOCK_LAYOUT
+	static VkPhysicalDeviceScalarBlockLayoutFeaturesEXT scalarBlockFeat = {
+		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SCALAR_BLOCK_LAYOUT_FEATURES_EXT
+		,.scalarBlockLayout = VK_TRUE
+	};
+	scalarBlockFeat.pNext = pNext;
+	pNext = &scalarBlockFeat;
+#endif
+#ifdef VKVG_ENABLE_VK_TIMELINE_SEMAPHORE
+	static VkPhysicalDeviceTimelineSemaphoreFeaturesKHR timelineSemaFeat = {
+		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES_KHR
+		,.timelineSemaphore = VK_TRUE
+	};
+	timelineSemaFeat.pNext = pNext;
+	pNext = &timelineSemaFeat;
+#endif
+#endif
+
+	return pNext;
+}
+
+VkvgDevice vkvg_device_create(VkeDevice vke, VkSampleCountFlagBits samples, bool defer_resolve) {
+	/// construct with method and arguments; also sets ref count and mutex
+	VkvgDevice dev = io_new(vkvg_device);
+	dev->vke       		 = vke;
+	dev->samples   		 = vke_max_samples(samples);
+	dev->deferredResolve = (dev->samples == VK_SAMPLE_COUNT_1_BIT) ? false : defer_resolve;
+	dev->cachedContextMaxCount = VKVG_MAX_CACHED_CONTEXT_COUNT;
+
+	int p_index = vke_device_present_index(vke);
+	vke_log(VKE_LOG_INFO, "vkvg_device_with_vke: qFam = %d; qIdx = %d\n", p_index, 0);
+
+#if VKVG_DBG_STATS
+	dev->debug_stats = (vkvg_debug_stats_t) {0};
+#endif
+	VkFormat format = FB_COLOR_FORMAT;
+	_device_check_best_image_tiling(dev, format);
+	if (dev->status != VKE_STATUS_SUCCESS)
+		return NULL;
+
+	if (!_device_init_function_pointers (dev)){
+		dev->status = VKE_STATUS_NULL_POINTER;
+		return NULL;
+	}
+
+	dev->gQueue = vke_queue_create (dev->vke, p_index, 0);
+	//mtx_init (&dev->gQMutex, mtx_plain);
+
+	VmaAllocatorCreateInfo allocatorInfo = {
+		.physicalDevice = vke->phyinfo->gpu,
+		.device 		= vke->vkdev
+	};
+	vmaCreateAllocator(&allocatorInfo, (VmaAllocator*)&dev->vke->allocator);
+
+	dev->cmdPool= vke_cmd_pool_create		(dev->vke, dev->gQueue->familyIndex, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+	dev->cmd	= vke_cmd_buff_create		(dev->vke, dev->cmdPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+	dev->fence	= vke_fence_create_signaled (dev->vke);
+
+	_device_create_pipeline_cache		(dev);
+	_fonts_cache_create					(dev);
+	if (dev->deferredResolve || dev->samples == VK_SAMPLE_COUNT_1_BIT){
+		dev->renderPass					= _device_createRenderPassNoResolve (dev, VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_LOAD_OP_LOAD);
+		dev->renderPass_ClearStencil	= _device_createRenderPassNoResolve (dev, VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_LOAD_OP_CLEAR);
+		dev->renderPass_ClearAll		= _device_createRenderPassNoResolve (dev, VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_LOAD_OP_CLEAR);
+	} else {
+		dev->renderPass					= _device_createRenderPassMS (dev, VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_LOAD_OP_LOAD);
+		dev->renderPass_ClearStencil	= _device_createRenderPassMS (dev, VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_LOAD_OP_CLEAR);
+		dev->renderPass_ClearAll		= _device_createRenderPassMS (dev, VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_LOAD_OP_CLEAR);
+	}
+	_device_createDescriptorSetLayout	(dev);
+	_device_setupPipelines				(dev);
+	_device_create_empty_texture		(dev, format, dev->supportedTiling);
+
+#ifdef DEBUG
+	#if defined(__linux__) && defined(__GLIBC__)
+		_linux_register_error_handler ();
+	#endif
+	#ifdef VKVG_DBG_UTILS
+		vke_device_set_object_name(dev->vke, VK_OBJECT_TYPE_COMMAND_POOL, (uint64_t)dev->cmdPool, "Device Cmd Pool");
+		vke_device_set_object_name(dev->vke, VK_OBJECT_TYPE_COMMAND_BUFFER, (uint64_t)dev->cmd, "Device Cmd Buff");
+		vke_device_set_object_name(dev->vke, VK_OBJECT_TYPE_FENCE, (uint64_t)dev->fence, "Device Fence");
+		vke_device_set_object_name(dev->vke, VK_OBJECT_TYPE_RENDER_PASS, (uint64_t)dev->renderPass, "RP load img/stencil");
+		vke_device_set_object_name(dev->vke, VK_OBJECT_TYPE_RENDER_PASS, (uint64_t)dev->renderPass_ClearStencil, "RP clear stencil");
+		vke_device_set_object_name(dev->vke, VK_OBJECT_TYPE_RENDER_PASS, (uint64_t)dev->renderPass_ClearAll, "RP clear all");
+
+		vke_device_set_object_name(dev->vke, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, (uint64_t)dev->dslSrc, "DSLayout SOURCE");
+		vke_device_set_object_name(dev->vke, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, (uint64_t)dev->dslFont, "DSLayout FONT");
+		vke_device_set_object_name(dev->vke, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, (uint64_t)dev->dslGrad, "DSLayout GRADIENT");
+		vke_device_set_object_name(dev->vke, VK_OBJECT_TYPE_PIPELINE_LAYOUT, (uint64_t)dev->pipelineLayout, "PLLayout dev");
+
+		#ifndef __APPLE__
+			vke_device_set_object_name(dev->vke, VK_OBJECT_TYPE_PIPELINE, (uint64_t)dev->pipelinePolyFill, "PL Poly fill");
+		#endif
+		vke_device_set_object_name(dev->vke, VK_OBJECT_TYPE_PIPELINE, (uint64_t)dev->pipelineClipping, "PL Clipping");
+		vke_device_set_object_name(dev->vke, VK_OBJECT_TYPE_PIPELINE, (uint64_t)dev->pipe_OVER, "PL draw Over");
+		vke_device_set_object_name(dev->vke, VK_OBJECT_TYPE_PIPELINE, (uint64_t)dev->pipe_SUB, "PL draw Substract");
+		vke_device_set_object_name(dev->vke, VK_OBJECT_TYPE_PIPELINE, (uint64_t)dev->pipe_CLEAR, "PL draw Clear");
+
+		vke_image_set_name(dev->emptyImg, "empty IMG");
+		vke_device_set_object_name(dev->vke, VK_OBJECT_TYPE_IMAGE_VIEW, (uint64_t)vke_image_get_view(dev->emptyImg), "empty IMG VIEW");
+		vke_device_set_object_name(dev->vke, VK_OBJECT_TYPE_SAMPLER, (uint64_t)vke_image_get_sampler(dev->emptyImg), "empty IMG SAMPLER");
+	#endif
+#endif
+	dev->status = VKE_STATUS_SUCCESS;
+	return dev;
+}
+
+VkeStatus vkvg_device_status (VkvgDevice dev) {
+	return dev->status;
+}
+
+void vkvg_device_set_thread_aware (VkvgDevice dev, uint32_t thread_aware) {
+	io_sync_enable(dev, (bool)thread_aware);
+}
+
+#if VKVG_DBG_STATS
+vkvg_debug_stats_t vkvg_device_get_stats (VkvgDevice dev) {
+	return dev->debug_stats;
+}
+vkvg_debug_stats_t vkvg_device_reset_stats (VkvgDevice dev) {
+	dev->debug_stats = (vkvg_debug_stats_t) {0};
+}
+#endif

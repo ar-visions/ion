@@ -1,0 +1,15 @@
+
+## install base headers
+file(GLOB INC_FILES "${CMAKE_SOURCE_DIR}/glm/*.hpp" "${CMAKE_SOURCE_DIR}/glm/*.h" "${CMAKE_SOURCE_DIR}/glm/*.inl")
+install(FILES   ${INC_FILES} DESTINATION ${CMAKE_INSTALL_PREFIX}/include/glm)
+
+## install more headers
+set(dirs ext detail gtc simd)
+foreach(d ${dirs})
+    file(GLOB INC_FILES "${CMAKE_SOURCE_DIR}/glm/${d}/*.hpp" "${CMAKE_SOURCE_DIR}/glm/${d}/*.h" "${CMAKE_SOURCE_DIR}/glm/${d}/*.inl")
+    install(FILES   ${INC_FILES} DESTINATION ${CMAKE_INSTALL_PREFIX}/include/glm/${d})
+endforeach()
+
+## install libraries
+file(GLOB LIB_FILES "${CMAKE_BINARY_DIR}/*.a" "${CMAKE_BINARY_DIR}/*.lib")
+install(FILES   ${LIB_FILES} DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)

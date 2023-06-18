@@ -19,6 +19,24 @@
                 "order": 1,
             },
             "osx": { "MIMode":  "lldb" }
+        },
+        {
+            "name":             "io test",
+            "type":             "cppdbg",
+            "request":          "launch",
+            "program":          "${workspaceFolder}/../io/build/io-test",
+            "args":             [],
+            "stopAtEntry":      false,
+            "cwd":              "${workspaceFolder}/../io/build",
+            "environment":      [],
+            "externalConsole":  false,
+            "MIMode":           "gdb",
+            "presentation": {
+                "hidden": false,
+                "group": "",
+                "order": 1,
+            },
+            "osx": { "MIMode":  "lldb" }
         }
     ]
 }

@@ -1,7 +1,9 @@
-#include <core/core.hpp>
+#include <mx/mx.hpp>
 
 namespace ion {
 logger console;
+
+ptr_implement(mutex);
 
 size_t length(std::ifstream& in) {
     std::streamsize base = in.tellg();
@@ -57,6 +59,8 @@ int snprintf(char *str, size_t size, const char *format, ...) {
 }
 
 str path::mime_type() {
+    /// prefix builds have their own resources gathered throughout.
+    /// depend on a module and we copy (res/*) -> binary_dir/
     mx e = ext().symbolize();
     static path  data = "data/mime-type.json";
     static map<mx> js =  data.read<var>();
@@ -89,14 +93,14 @@ i64 millis() {
 }
 
 /// attach arbs to memory (uses a pointer)
-attachment *memory::attach(ion::symbol id, void *data, func<void()> release) {
+attachment *memory::attach(::symbol id, void *data, func<void()> release) {
     if (!atts)
         atts = new doubly<attachment>();
     atts->push(attachment {id, data, release});
     return &atts->last();
 }
 
-attachment *memory::find_attachment(ion::symbol id) {
+attachment *memory::find_attachment(::symbol id) {
     if (!atts) return nullptr;
     /// const char * symbol should work fine for the cases used
     for (attachment &att:*atts)
@@ -105,15 +109,71 @@ attachment *memory::find_attachment(ion::symbol id) {
     return nullptr;
 }
 
+void *mx::realloc(size_t alloc_sz, bool set_sz) {
+    type_t ty = mem->type;
+    ty->
+}
+
+
+void *mx::realloc(size_t to, bool fill_default) {
+    type_t data_type = mem->type;
+        size_t    sz = data_type->base_sz
+    /// 
+    u8    *dst      = (u8*)calloc(to, sz);
+    size_t mn       = math::min(to, mem->count);
+    u8    *elements = (u8*)origin;
+
+    function_table *func = data_type->functions;
+
+    const bool prim = (data_type->traits & traits::primitive) != 0;
+    
+    ///
+    if (prim) {
+        memcpy(dst, elements, sz * mn);
+    } else {
+        data_type->vcopy_fn(data_type, dst, elements, 0, mn);
+        data_type->vdestruct_fn(data_type, origin, 0, count);
+    }
+    /// free if its an already a reallocation
+    //if ((memory*)elements != &this[1])
+    //    free(elements);
+
+    if (fill_default) {
+        count = to;
+        if (prim)
+            memset(&dst[sz * mn], 0, sz * (to - mn));
+        else {
+            for (size_t i = mn; i < to; i++)
+                data_type->lambdas->construct(data_type, dst, mn, to);
+        }
+    } else {
+        count = mn;
+    }
+    origin = raw_t(dst);
+    reserve = to;
+    return (T*)origin;
+}
+
+/// mx-objects are clearable which brings their count to 0 after destruction
+void clear() {
+    type->lambdas->dtr(type, origin, 0, count);
+    count = 0;
+}
+
+
+
+
+
+
 memory *memory::stringify(cstr cs, size_t len, size_t rsv, bool constant, type_t ctype, i64 id) {
-    ion::symbol sym = (ion::symbol)(cs ? cs : "");
+    ::symbol sym = (::symbol)(cs ? cs : "");
     if (constant) {
         if(!ctype->symbols)
             ctype->symbols = new symbol_data { };
         u64  h_sym = djb2(cstr(sym));
         memory *&m = ctype->symbols->djb2[h_sym];
         if (!m) {
-            size_t ln = (len == memory::auto_len) ? strlen(sym) : len; /// like auto-wash
+            size_t ln = (len == memory::autolen) ? strlen(sym) : len; /// like auto-wash
             m = memory::alloc(typeof(char), typesize(char), len, len + 1, raw_t(sym));
             m->attrs = attr::constant;
             ctype->symbols->ids[id] = m; /// was not hashing by id, it was the djb2 again (incorrect)
@@ -122,7 +182,7 @@ memory *memory::stringify(cstr cs, size_t len, size_t rsv, bool constant, type_t
         }
         return m->grab();
     } else {
-        size_t     ln = (len == memory::auto_len) ? strlen(sym) : len;
+        size_t     ln = (len == memory::autolen) ? strlen(sym) : len;
         size_t     al = rsv ? rsv : (strlen(sym) + 1);
         memory*   mem = memory::alloc(typeof(char), typesize(char), ln, al, raw_t(sym));
         cstr  start   = mem->data<char>(0);
@@ -134,7 +194,7 @@ memory *memory::stringify(cstr cs, size_t len, size_t rsv, bool constant, type_t
 memory *memory::string (std::string s) { return stringify(cstr(s.c_str()), s.length(), 0, false, typeof(char), 0); }
 memory *memory::cstring(cstr s)        { return stringify(cstr(s),         strlen(s),  0, false, typeof(char), 0); }
 
-memory *memory::symbol (ion::symbol s, type_t ty, i64 id) {
+memory *memory::symbol (::symbol s, type_t ty, i64 id) {
     return stringify(cstr(s), strlen(s), 0, true, ty, id);
 }
 
@@ -169,12 +229,8 @@ void memory::drop() {
     if (--refs <= 0 && !constant) { /// <= because ptr does a defer on the actual construction of the container class
         assert(this != &m_null);
         /// call destructor on memory payload, if defined
-        if (type->lambdas->dtr)
-            type->lambdas->dtr(type, origin, 0, count);
-        if (origin != (this + 1)) {
-            //free(origin);
-            origin = null;
-        }
+
+        origin = null;
         // delete attachment lambda after calling it
         if (atts) {
             for (attachment &att: *atts)
@@ -182,6 +238,8 @@ void memory::drop() {
             delete atts;
             atts = null;
         }
+        if (managed)
+            free(origin);
         if (shape) {
             delete shape;
             shape = null;
@@ -194,17 +252,8 @@ void memory::drop() {
 memory *memory::alloc(type_t type, size_t type_sz, size_t count, size_t reserve, raw_t src_origin, bool call_ctr) {
     /// must specify a type_sz if there is a copy operation
     assert(!src_origin || type_sz);
-    
-    /// requirement: array of mx is just array of memory*
-    /// mx = memory* size
-    if (type_sz == 0)
-        type_sz = type->schema ? type->schema->total_bytes : type->base_sz;
-    
-    memory  *mem  = null;
-    
-    /// singletons are fun as 1:1 class-instanced data
-    bool singleton = type->traits & traits::singleton;
-    if  (singleton && type->singleton) return type->singleton->grab();
+    size_t type_sz = type->size();
+    memory    *mem = null;
     
     /// memory::alloc with a type of mx has no data-type payload
     /// when doing default allocation of mx, this mx type arg is passed and routes to m_null
@@ -217,6 +266,7 @@ memory *memory::alloc(type_t type, size_t type_sz, size_t count, size_t reserve,
         mem = raw_alloc(type, type_sz, count, reserve);
     }
     
+    /// schema needs to have if its a ptr or not
     /// if allocating a schema-based object (mx being first user of this)
     if (type->schema && type->schema->total_bytes) {
         assert(type_sz == type->schema->total_bytes);
@@ -248,13 +298,12 @@ memory *memory::alloc(type_t type, size_t type_sz, size_t count, size_t reserve,
                 type->lambdas->construct(type, mem->origin, 0, count);
         }
     }
-    if (singleton) type->singleton = mem->grab(); /// user we return to is a user (+1 at alloc), this is a user as well. (==2)
     return mem;
 }
 
 memory *memory::copy(size_t reserve) {
     memory *a   = this;
-    memory *res = alloc(a->type, a->type_size(), a->count, reserve, a->origin);
+    memory *res = alloc(a->type, a->count, reserve, a->origin);
     return  res;
 }
 
@@ -279,7 +328,7 @@ void chdir(std::string c) {
 #endif
 }
 
-memory* mem_symbol(ion::symbol cs, type_t ty, i64 id) {
+memory* mem_symbol(::symbol cs, type_t ty, i64 id) {
     return memory::symbol(cs, ty, id);
 }
 
@@ -295,20 +344,3 @@ memory *cstring(cstr cs, size_t len, size_t reserve, bool is_constant) {
     return memory::stringify(cs, len, 0, is_constant, typeof(char), 0);
 }
 
-
-void shared::drop() {
-    if (mem)
-        mem->drop();
-}
-
-memory *shared::grab() {
-    return mem ? mem->grab() : null;
-}
-
-shared::~shared() {
-    if (mem)
-        mem->drop();
-}
-
-shared::shared(const shared &ref) : ident(((shared &)ref).grab()) { }
-}

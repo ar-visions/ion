@@ -1,0 +1,11 @@
+# vkengine is to wrap vulkan.  its deadly to include vulkan again and again in iterative builds.  
+# no its much better to make 2 sides; one is just an opaque pointer
+
+cpp(17)
+dep(ion:mx ion:math)
+
+if(APPLE)
+    dep(moltenvk:MoltenVK IOSurface QuartzCore Metal AppKit CoreGraphics CoreFoundation Cocoa IOKit)
+else()
+    dep(X11 vulkansdk:vulkan)
+endif()

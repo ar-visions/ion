@@ -53,14 +53,30 @@
 
 #include <assert.h>
 
+#include <io/io.h>
+
 namespace ion {
 
 struct idata;
 struct mx;
 struct memory;
 
+using raw_t = void*;
 using type_t = idata *;
 
+/// need to forward these
+memory*       grab(memory *mem);
+memory*       drop(memory *mem);
+memory* mem_symbol(symbol cs, type_t ty, i64 id);
+memory*  raw_alloc(idata *ty, size_t sz);
+void*   mem_origin(memory *mem);
+memory*    cstring(cstr cs, size_t len, size_t reserve, bool is_constant);
+
+
+
+
+
+/*
 /// i8 -> 64
 using i8  = signed char;
 using i16 = signed short;
@@ -85,8 +101,9 @@ using cchar_t  = const char;
 using num      = i64;
 using handle_t = void*;
 using raw_t    = void*;
-using null_t   = std::nullptr_t;
+ */
 
+using        null_t      = std::nullptr_t;
 static const null_t null = nullptr;
 
 template <typename T>
@@ -150,7 +167,7 @@ constexpr int num_occurances(const char* cs, char c) {
             for (size_t i  = 0; i < c; i++)\
                 mem_symbol(sp[i].data, ty, i64(i));\
         }\
-        ion::symbol symbol() {\
+        ::symbol symbol() {\
             memory *mem = typeof(C)->lookup(u64(value));\
             assert(mem);\
             return (char*)mem->origin;\
@@ -228,155 +245,105 @@ static void breakp() {
         }\
     } while (0);
 
-#define mx_basics(C, B, m_type, m_access) \
-    using PC  = B;\
-    using CL  = C;\
-    using DC  = m_type;\
-    using MEM = mem_embed_token;\
-    template <typename CC>\
-    static memory *mx_conv(mx &o) {\
-        constexpr bool can_conv = has_convert<CC>();\
-        type_t o_type = o.type();\
-        type_t d_type = typeof(DC);\
-        if constexpr (can_conv)\
-            if (o.mem && o_type != d_type)\
-                return (memory *)CC::convert(o.mem);\
-        if (o_type == d_type)\
-            return ion::grab(o.mem);\
-        else if (!o.mem)\
-            printf("null memory: %s\n", #C);\
-        else\
-            printf("type mismatch; conversion required for %s -> %s\n", o_type->name, o_type->name);\
-        return (memory *)null;\
-    }\
-    inline    operator m_type &()  { return m_access; }\
-    inline C &operator=(const C b) { return (C &)assign_mx(*this, b); }\
-    m_type *operator->() { return &m_access; }
-
-#define ctr(C, B, m_type, m_access) \
-    mx_basics(C, B, m_type, m_access)\
-    inline C(memory*     mem) : B(mem), m_access(mx::ref<m_type>()) { }\
-    inline C(mx            o) : C(  mx_conv<C>(o)) { }\
-    inline C(null_t =   null) : C(mx::alloc<C>( )) { }\
-    inline C(m_type    tdata) : C(mx::alloc<C>( )) {\
-        inplace<DC>(&m_access, tdata, true);\
-    }
-
-#define ctr_args(C, B, T, A) \
-    ctr(C, B, T, A) \
-    inline C(initial<arg> args) : B(typeof(C), args), A(defaults<T>()) { }
-
 #define interops(C) \
     template <typename X>\
     operator X &() {\
-        return (X &)mx::data<typename C::DC>();\
+        return (X &)mx::data<typename C::intern>();\
     }\
 
-struct mem_ptr_token   { };
-struct mem_embed_token { };
+/// who needs to copy?
 
+#define _data_lifecycle(C, B, D) \
+    static bool _ctx_bool(C *ctx) {\
+        if constexpr (has_bool<C>) return bool(*ctx);\
+        return false;\
+    }\
+    static bool _data_bool(D *data) {\
+        if(data && has_bool<D>) return bool(*data);\
+        return false;\
+    }\
+    static void _data_ctr(D *data) {\
+             if constexpr ( has_static_init<D>()) D::init(data);\
+        else if constexpr (      !is_opaque<D>())    new (data) D();\
+    }\
+    static void _data_dtr(D *data, size_t count) {\
+        for (size_t i = 0; i < count; i++) {\
+                 if constexpr ( has_static_free<D>()) D::free(data);\
+            else if constexpr (      !is_opaque<D>()) data -> ~D();\
+        }\
+    }\
+    static void _ctr(C *addr, D *data) {\
+        *addr = C(data);\
+    }\
 
-/// use this in cases of in-module declaration / implementation
-#define ptr(C, B, m_type, m_access) \
-    using MEM = mem_ptr_token;\
-    using PC  = B;\
-    using CL  = C;\
-    using DC  = m_type;\
-    C(memory*   mem) : B(mem), m_access(mx::data<m_type>()) { }\
-    C(mx          o) : C(o.mem->grab()) { }\
-    C(null_t = null) : C(mx::alloc<C>()) { }\
-    operator m_type *() { return m_access; }\
-    C &operator=   (const C b) { return (C &)assign_mx(*this, b); }
+static null_t abc = null;
 
-/// use these two for the split case
-#define ptr_decl(C, B, m_type, m_access) \
-    using MEM = mem_ptr_token;\
-    using PC  = B;\
-    using CL  = C;\
-    using DC  = m_type;\
-    C(memory*   mem);\
-    C(m_type*  data);\
-    C(mx          o);\
+#define ptr_declare(C, B, D) \
+    using parent_class   = B;\
+    using context_class  = C;\
+    using intern         = D;\
+    C(memory* mem);\
+    C(intern* data);\
+    C(mx o);\
     C();\
-    m_type *operator->() {\
-        return m_access;\
-    }\
-    template <typename X>\
-    explicit operator X() {\
-        if constexpr (inherits<mx,X>())\
-            return *this;\
-        return *m_access;\
-    }\
-    template <typename X>\
-    operator X &() {\
-        if constexpr (inherits<mx,X>())\
-            return *this;\
-        return *m_access;\
-    }\
-       operator m_type *();\
+    _data_lifecycle(C, B, D)\
+    intern *data;\
+    intern *operator->() { return data; }\
+       operator intern *();\
     C &operator=(const C b);\
-    m_type *operator=(const m_type *b);
+    intern *operator=(const intern *b);
 
-/// the ptr isolation after cbase is a bit of an insult to matters
-/// it needs to harbor the basic allocation and attach an isolated piece of memory state
-/// would like that without quirks
-
-/// default ctr does not allocate; ptrs are meant to be isolated
-#define ptr_impl(C, B, m_type, m_access) \
-    C::C(memory* mem)  : B(mem), m_access(mem ? mx::data<m_type>() : null) { }\
+#define ptr_implement(C, B) \
+    C::C(memory* mem)  : B(mem), data(mem ? mx::data<intern>() : null) { }\
     C::C(mx      o)    : C(o.mem->grab())   { }\
     C::C()             : C(mx::alloc<C>()) { }\
-    C::C(m_type *data) : C(memory::wrap<m_type>(data, 1)) { }\
-    C::operator m_type * () { return m_access; }\
+    C::C(intern *data) : C(memory::wrap<intern>(data, 1)) { }\
+    C::operator m_type * () { return data; }\
     C &C::operator=(const C b) { return (C &)assign_mx(*this, b); }\
-    m_type *C::operator=(const m_type *b) {\
+    intern *C::operator=(const intern *b) {\
         drop();\
-        mem = memory::wrap<m_type>((m_type*)b, 1);\
-        m_access = (m_type*)mem->origin;\
-        return m_access;\
+        mem = memory::wrap<intern>((intern*)b, 1);\
+        data = (m_type*)mem->origin;\
+        return data;\
     }
 
-/// switch by context in memory::alloc
-
-#define ictr(C, B) \
-    using MEM = mem_embed_token;\
-    using PC  = B;\
-    using CL  = C;\
-    using DC  = none;\
-    inline C(memory*      mem) : B(mem) { }\
-    inline C(mx             o) : C(o.mem ? o.mem->grab() : null) { }\
-    inline C(typename B::DC d) : B(d) { }\
-    inline C(null_t n = null)  : C(mx::alloc<C>()) { }\
-    C &operator=(const C b) { return (C &)assign_mx(*this, b); }
-
-/// this is needed on a mutex container and phase out
-#define ctr_cp(C, B, m_type, m_access) \
-    using MEM = mem_embed_token;\
-    using PC  = B;\
-    using CL  = C;\
-    using DC  = m_type;\
-    inline C(memory*      mem) : B(mem), m_access(mx::ref<m_type>()) { }\
-    inline C(mx             o) : C(o.mem ? o.mem->grab() : null) { }\
-    inline C(null_t    = null) : C(mx::alloc<C>()) { }\
-    inline C(const C       &r) : C(r.mem->grab()) { }\
-    inline operator m_type &() { return m_access; }\
+/// for templates in header
+#define ptr(C, B, D) \
+    using parent_class   = B;\
+    using context_class  = C;\
+    using intern         = D;\
+    C(memory* mem)  : B(mem), data(mem ? mx::data<intern>() : null) { }\
+    C(mx      o)    : C(o.mem->grab())   { }\
+    C()             : C(mx::alloc<C>()) { }\
+    C(intern *data) : C(memory::wrap<intern>(data, 1)) { }\
+    _data_lifecycle(C, B, D)\
+    intern *data;\
+    intern *operator->() { return data; }\
+       operator intern *();\
+    C &operator=(const C b);\
+    intern *operator=(const intern *b) {\
+        drop();\
+        mem = memory::wrap<intern>((intern*)b, 1);\
+        data = (intern*)mem->origin;\
+        return data;\
+    }
 
 template <typename DC>
-static constexpr void inplace(DC *ptr, bool dtr) {
-    if (dtr) (ptr) -> ~DC(); 
-    new (ptr) DC();
+static constexpr void inplace(DC *p, bool dtr) {
+    if (dtr) (p) -> ~DC(); 
+    new (p) DC();
 }
 
 template <typename DC>
-static constexpr void inplace(DC *ptr, DC &data, bool dtr) {
-    if (dtr) (ptr) -> ~DC(); 
-    new (ptr) DC(data);
+static constexpr void inplace(DC *p, DC &data, bool dtr) {
+    if (dtr) (p) -> ~DC(); 
+    new (p) DC(data);
 }
 
 template <typename DC, typename ARG>
-static constexpr void inplace(DC *ptr, ARG *arg, bool dtr) {
-    if (dtr) (ptr) -> ~DC(); 
-    new (ptr) DC(arg);
+static constexpr void inplace(DC *p, ARG *arg, bool dtr) {
+    if (dtr) (p) -> ~DC(); 
+    new (p) DC(arg);
 }
 
 template <class T, class Enable = void>
@@ -435,19 +402,6 @@ constexpr bool transitionable() {
     return has_multiply_double<T>::value && has_addition<T>::value;
 }
 
-template <typename T>
-constexpr bool is_mx() {
-    return identical<T, mx>();
-}
-
-///
-memory*       grab(memory *mem);
-memory*       drop(memory *mem);
-memory* mem_symbol(symbol cs, type_t ty, i64 id);
-memory*  raw_alloc(idata *ty, size_t sz);
-void*   mem_origin(memory *mem);
-memory*    cstring(cstr cs, size_t len, size_t reserve, bool is_constant);
-
 static inline void yield() {
 #ifdef _WIN32
     SwitchToThread(); // turns out you can. lol.
@@ -470,8 +424,7 @@ struct traits {
         integral  = 2,
         realistic = 4,
         mx        = 8,
-        singleton = 16,
-        opaque    = 32
+        opaque    = 16
     };
 };
 
@@ -489,235 +442,6 @@ template <typename T, typename B>
                       T mix(T a, T b, B f) { return a * (B(1.0) - f) + b * f; }
 template <typename T> T radians(T degrees) { return degrees * static_cast<T>(0.01745329251994329576923690768489); }
 template <typename T> T degrees(T radians) { return radians * static_cast<T>(57.295779513082320876798154814105); }
-
-template <typename T>
-struct v2 {
-    T x, y;
-    
-    inline v2(T x = 0, T y = 0) : x(x), y(y) { }
-    
-    inline T*       data     () const { return &x;                 }
-    inline T        dot  (v2 v) const { return  x * v.x + y * v.y; }
-    inline T        dot      () const { return  x *   x + y *   y; }
-    inline T        area     () const { return  x * y;             }
-    real            len      () const { return    sqrt(dot());     }
-    v2              normalize() const { return *this / len();      }
-
-    inline v2 operator+  (v2 v) const { return { x + v.x, y + v.y }; }
-    inline v2 operator-  (v2 v) const { return { x - v.x, y - v.y }; }
-    inline v2 operator*  (v2 v) const { return { x * v.x, y * v.y }; }
-    inline v2 operator/  (v2 v) const { return { x / v.x, y / v.y }; }
-
-    inline v2 operator*  (T  v) const { return { x * v, y * v }; }
-    inline v2 operator/  (T  v) const { return { x / v, y / v }; }
-    inline v2 operator+  (T  v) const { return { x + v, y + v }; }
-    inline v2 operator-  (T  v) const { return { x - v, y - v }; }
-
-    inline v2 &operator+=(v2 v)       { x += v.x; y += v.y; return *this; }
-    inline v2 &operator-=(v2 v)       { x -= v.x; y -= v.y; return *this; }
-    inline v2 &operator*=(v2 v)       { x *= v.x; y *= v.y; return *this; }
-    inline v2 &operator/=(v2 v)       { x /= v.x; y /= v.y; return *this; }
-
-    inline v2 &operator+=(T  v)       { x += v;   y += v;   return *this; }
-    inline v2 &operator-=(T  v)       { x -= v;   y -= v;   return *this; }
-    inline v2 &operator*=(T  v)       { x *= v;   y *= v;   return *this; }
-    inline v2 &operator/=(T  v)       { x /= v;   y /= v;   return *this; }
-
-    inline bool operator >= (v2 &v) const { return x >= v.x && y >= v.y; }
-    inline bool operator <= (v2 &v) const { return x <= v.x && y <= v.y; }
-    inline bool operator >  (v2 &v) const { return x >  v.x && y >  v.y; }
-    inline bool operator <  (v2 &v) const { return x >  v.x && y <  v.y; }
-
-    inline bool operator==(v2<T> &b) const { return x == b.x && y == b.y; }
-    inline bool operator!=(v2<T> &b) const { return x != b.x || y != b.y; }
-
-    inline T   &operator[](size_t i) const { return ((T *)(&x))[i]; }
-};
-
-template <typename T>
-struct v3 {
-    using v2 = ion::v2<T>;
-    T x, y, z;
-    
-    inline v3(T x = 0, T y = 0, T z = 0) : x(x), y(y), z(z) { }
-
-    inline T          dot(v3 v) const { return x * v.x + y * v.y + z * v.z; }
-    inline T              dot() const { return x * x + y * y + z * z; }
-    inline T*            data() const { return &x; }
-    T                     len() const { return sqrt(dot()); }
-    v3              normalize() const { return *this / len(); }
-
-    inline v3 cross(v3 b) const {
-        const v3 &a = *this;
-        return {
-            a.y * b.z - b.y * a.z,
-            a.z * b.x - b.z * a.x,
-            a.x * b.y - b.x * a.y
-        };
-    }
-
-    v2 xy() const { return { x, y }; }
-
-    inline v3 operator+  (v3 v) const { return { x + v.x, y + v.y, z + v.z }; }
-    inline v3 operator-  (v3 v) const { return { x - v.x, y - v.y, z - v.z }; }
-    inline v3 operator*  (v3 v) const { return { x * v.x, y * v.y, z * v.z }; }
-    inline v3 operator/  (v3 v) const { return { x / v.x, y / v.y, z / v.z }; }
-    inline v3 operator*  (T  v) const { return { x * v, y * v, z * v }; }
-    inline v3 operator/  (T  v) const { return { x / v, y / v, z / v }; }
-
-    inline v3 &operator+=(v3 v)       { x += v.x; y += v.y; z += v.z; return *this; }
-    inline v3 &operator-=(v3 v)       { x -= v.x; y -= v.y; z -= v.z; return *this; }
-    inline v3 &operator*=(v3 v)       { x *= v.x; y *= v.y; z *= v.z; return *this; }
-    inline v3 &operator/=(v3 v)       { x /= v.x; y /= v.y; z /= v.z; return *this; }
-    inline v3 &operator*=(T  v)       { x *= v;   y *= v;   z *= v;   return *this; }
-    inline v3 &operator/=(T  v)       { x /= v;   y /= v;   z /= v;   return *this; }
-
-    inline bool operator==(v3<T> &b) const { return x == b.x && y == b.y && z == b.z; }
-    inline bool operator!=(v3<T> &b) const { return x != b.x || y != b.y || z != b.z; }
-    inline T   &operator[](size_t i) const { return ((T *)(&x))[i]; }
-};
-
-template <typename T>
-struct v4 {
-    using v2 = ion::v2<T>;
-    using v3 = ion::v3<T>;
-    T x, y, z, w;
-    
-    v2 xy  () const { return { x, y };    }
-    v3 xyz () const { return { x, y, z }; }
-
-    inline v4(T x = 0, T y = 0, T z = 0, T w = 0) : x(x), y(y), z(z), w(w) { }
-    inline v4(v2 a, v2 b) : x(a.x), y(a.y), z(b.x), w(b.y) { }
-
-    inline T          dot(v4 v) const { return x * v.x + y * v.y + z * v.z + w * v.w; }
-    inline T              dot() const { return x * x + y * y + z * z + w * w; }
-    inline T*            data() const { return (T *)&x; }
-    inline real       len_sqr() const { return x * x + y * y + z * z + w * w; }
-    inline real           len() const { return sqrt_simd(len_sqr()); }
-    inline v4       normalize() const { return *this / len(); }
-
-    inline v4 operator+  (v4 v) const { return { x + v.x, y + v.y, z + v.z, w + v.w }; }
-    inline v4 operator-  (v4 v) const { return { x - v.x, y - v.y, z - v.z, w - v.w }; }
-    inline v4 operator*  (v4 v) const { return { x * v.x, y * v.y, z * v.z, w * v.w }; }
-    inline v4 operator/  (v4 v) const { return { x / v.x, y / v.y, z / v.z, w / v.w }; }
-    inline v4 operator*  (T  v) const { return { x * v, y * v, z * v, w * v }; }
-    inline v4 operator/  (T  v) const { return { x / v, y / v, z / v, w / v }; }
-
-    inline v4 &operator+=(v4 v)       { x += v.x; y += v.y; z += v.z; w += v.w; return *this; }
-    inline v4 &operator-=(v4 v)       { x -= v.x; y -= v.y; z -= v.z; w -= v.w; return *this; }
-    inline v4 &operator*=(v4 v)       { x *= v.x; y *= v.y; z *= v.z; w *= v.w; return *this; }
-    inline v4 &operator/=(v4 v)       { x /= v.x; y /= v.y; z /= v.z; w /= v.w; return *this; }
-    inline v4 &operator*=(T  v)       { x *= v;   y *= v;   z *= v;   w *= v;   return *this; }
-    inline v4 &operator/=(T  v)       { x /= v;   y /= v;   z /= v;   z /= v;   return *this; }
-
-    inline bool operator==(v4<T> &b) const { return x == b.x && y == b.y && z == b.z && w == b.w; }
-    inline bool operator!=(v4<T> &b) const { return x != b.x || y != b.y || z != b.z || w != b.w; }
-
-    inline T &operator[](size_t i) const { return ((T *)(&x))[i]; }
-};
-
-template <typename T>
-struct c4 {
-    T r, g, b, a;
-    
-    inline c4(T r = 0, T g = 0, T b = 0, T a = 0) : r(r), g(g), b(b), a(a) { }
-    inline c4(std::nullptr_t n)                   : r(0), g(0), b(0), a(0) { }
-
-    inline T*            data() const { return &r; }
-    inline real       len_sqr() const { return r * r + g * g + b * b + a * a; }
-    inline real           len() const { return sqrt_simd(len_sqr()); }
-    inline c4       normalize() const { return *this / len(); }
-
-    inline c4 operator+  (c4 v) const { return { r + v.r, g + v.y, b + v.b, a + v.a }; }
-    inline c4 operator-  (c4 v) const { return { r - v.r, g - v.y, b - v.b, a - v.a }; }
-    inline c4 operator*  (c4 v) const { return { r * v.r, g * v.y, b * v.b, a * v.a }; }
-    inline c4 operator/  (c4 v) const { return { r / v.r, g / v.y, b / v.b, a / v.a }; }
-    inline c4 operator*  (T  v) const { return { r * v,   g * v,   b * v,   a * v   }; }
-    inline c4 operator/  (T  v) const { return { r / v,   g / v,   b / v,   a / v   }; }
-
-    inline c4 &operator+=(c4 v)       { r += v.r; g += v.g; b += v.b; a += v.a; return *this; }
-    inline c4 &operator-=(c4 v)       { r -= v.r; g -= v.g; b -= v.b; a -= v.a; return *this; }
-    inline c4 &operator*=(c4 v)       { r *= v.r; g *= v.g; b *= v.b; a *= v.a; return *this; }
-    inline c4 &operator/=(c4 v)       { r /= v.r; g /= v.g; b /= v.b; a /= v.a; return *this; }
-    inline c4 &operator*=(T  v)       { r *= v;   g *= v;   b *= v;   a *= v;   return *this; }
-    inline c4 &operator/=(T  v)       { r /= v;   g /= v;   b /= v;   a /= v;   return *this; }
-
-    inline T &operator[](size_t i) const { return ((T *)(&r))[i]; }
-
-    inline bool operator==(c4 &v) const { return r == v.r && g == v.g && b == v.b && a == v.a; }
-    inline bool operator!=(c4 &v) const { return r != v.r || g != v.g || b != v.b || a != v.a; }
-    
-    operator bool() {
-        return a > 0;
-    }
-
-    template <typename B>
-    operator v4<B>() const {
-        if constexpr (identical<T, B>())
-            return v4<B> { r, g, b, a };
-        else {
-            if constexpr (sizeof(B) == 1 && sizeof(T) > 1)
-                return v4<B> { r * 255.0, g * 255.0, b * 255.0, a * 255.0 };
-            else if constexpr (sizeof(T) == 1 && sizeof(B) > 1)
-                return v4<B> { B(r / 255.0), B(g / 255.0), B(b / 255.0), B(a / 255.0) };
-            else
-                return v4<B> { B(r), B(g), B(b), B(a) };
-        }
-    }
-};
-
-template <typename T>
-struct e2 {
-    using v2 = ion::v2<T>;
-    using v4 = ion::v4<T>;
-
-    v2 a, b;
-
-    e2() : v4() { }
-    e2(v2 a = {0,0}, v2 b = {0,0}) : a(a), b(b) { }
-
-    /// returns x-value of intersection of two lines
-    T x(v2 c, v2 d) const {
-        T num = (a.x*b.y  -  a.y*b.x) * (c.x-d.x) - (a.x-b.x) * (c.x*d.y - c.y*d.x);
-        T den = (a.x-b.x) * (c.y-d.y) - (a.y-b.y) * (c.x-d.x);
-        return num / den;
-    }
-    
-    /// returns y-value of intersection of two lines
-    T y(v2 c, v2 d) const {
-        T num = (a.x*b.y  -  a.y*b.x) * (c.y-d.y) - (a.y-b.y) * (c.x*d.y - c.y*d.x);
-        T den = (a.x-b.x) * (c.y-d.y) - (a.y-b.y) * (c.x-d.x);
-        return num / den;
-    }
-    
-    /// returns xy-value of intersection of two lines
-    inline v2 xy(v2 c, v2 d) const { return { x(c, d), y(c, d) }; }
-
-    /// returns x-value of intersection of two lines
-    T x(e2 e) const {
-        v2 &a =   a;
-        v2 &b =   b;
-        v2 &c = e.a;
-        v2 &d = e.b;
-        T num = (a.x*b.y  -  a.y*b.x) * (c.x-d.x) - (a.x-b.x) * (c.x*d.y - c.y*d.x);
-        T den = (a.x-b.x) * (c.y-d.y) - (a.y-b.y) * (c.x-d.x);
-        return num / den;
-    }
-    
-    /// returns y-value of intersection of two lines
-    T y(e2 e) const {
-        v2 &a =   a;
-        v2 &b =   b;
-        v2 &c = e.a;
-        v2 &d = e.b;
-        T num = (a.x*b.y  -  a.y*b.x) * (c.y-d.y) - (a.y-b.y) * (c.x*d.y - c.y*d.x);
-        T den = (a.x-b.x) * (c.y-d.y) - (a.y-b.y) * (c.x-d.x);
-        return num / den;
-    }
-
-    /// returns xy-value of intersection of two lines (via edge0 and edge1)
-    inline v2 xy(e2 e) const { return { x(e), y(e) }; }
-};
 
 template <typename T>
 struct item {
@@ -760,12 +484,14 @@ struct false_type {
 
 struct memory;
 
+
+
+
 template <typename> struct is_opaque    : false_type { };
 template <typename> struct is_singleton : false_type { };
 
 /// just one of those associated to the type; nobody would ever write to this
-template <> struct is_singleton<null_t> : true_type { };
-
+template <> struct is_singleton<std::nullptr_t> : true_type { };
 
 template <typename A, typename B, typename = void>
 struct has_operator : false_type { };
@@ -783,12 +509,12 @@ constexpr bool type_complete <T, std::void_t<decltype(sizeof(T))>> = true;
 template <typename T, typename = void>
 struct has_convert : std::false_type {};
 template <typename T>
-struct has_convert<T, std::void_t<decltype(std::declval<T>().convert((memory*)null))>> : std::true_type {};
+struct has_convert<T, std::void_t<decltype(std::declval<T>().convert((memory*)nullptr))>> : std::true_type {};
 
 template <typename T, typename = void>
 struct has_compare : std::false_type {};
 template <typename T>
-struct has_compare<T, std::void_t<decltype(std::declval<T>().compare((T &)*(T*)null))>> : std::true_type {};
+struct has_compare<T, std::void_t<decltype(std::declval<T>().compare((T &)*(T*)nullptr))>> : std::true_type {};
 
 //template <typename T, typename = void>
 //struct is_array : std::false_type {};
@@ -992,6 +718,10 @@ struct doubly {
         size_t len() {
             return icount;
         }
+        
+        size_t length() {
+            return icount;
+        }
 
         bool remove(item<T> *i) {
             if (i) {
@@ -1114,6 +844,7 @@ template <typename T> std::string string_from_real(T a_value, int n = 6) {
 /// a simple hash K -> V impl
 template <typename K, typename V>
 struct hmap {
+  //using hmap   = ion::hmap <K,V>;
     using pair   = ion::pair <K,V>;
     using bucket = typename doubly<pair>::data; /// no reason i should have to put typename. theres no conflict on data.
     memory *mem  = null;
@@ -1139,6 +870,12 @@ struct hmap {
     hmap(memory     *mem) : mem(mem), m(mref<data>(mem)) { }
     hmap(size_t   sz = 0) : hmap(talloc<data>()) { m.sz = sz; }
     hmap(initial<pair> a) : hmap() { for (auto &v: a) push(v); }
+
+    hmap& operator=(hmap a) {
+        drop(mem);
+        mem = grab(a.mem);
+        return *this;
+    }
 
     inline pair* shared_lookup(K key); 
     
@@ -1176,57 +913,38 @@ struct ident {
     ident(memory* mem) : mem(mem) { }
 };
 
-/// usable shared type (lambda based on this)
-struct shared:ident {
-    shared() : ident(null) { }
-
-    void drop();
-    struct memory *grab();
-
-    template <typename T>
-    shared(T *ptr);
-
-     shared(const shared &ref);
-    ~shared();
-
-    //template <typename T>
-    //T *operator= (T *ptr);
-    
-    template <typename T>
-    T *get();
-};
-
-using any = shared;
-
 memory *mem_symbol(symbol cs, type_t ty = typeof(char), i64 id = 0);
 
 /// now that we have allowed for any, make entry for meta description
 struct prop {
     u8     *container; /// address of container.
     memory *key;
-    any     member;
+    size_t  member_addr;
     size_t  offset; /// this is set by once-per-type meta fetcher
 
     template <typename MC, typename M>
-    prop(MC &container, symbol name, M &member) : container((u8*)&container), key(mem_symbol(name)), member(&member) { }
+    prop(MC &container, symbol name, M &member) : container((u8*)&container), key(mem_symbol(name)), member_addr(&member) { }
 
     template <typename M, typename D>
     M &member_ref(D &m) {
         return *(M *)handle_t(&cstr(&m)[offset]);
     }
+
+    symbol name() const;
 };
 
 /// must cache by cstr, and id; ideally support any sort of id range
 /// symbols 
 using symbol_djb2  = hmap<u64, memory*>;
 using symbol_ids   = hmap<i64, memory*>;
-
-using     prop_map =   hmap<symbol, prop>;
+using     prop_map = hmap<symbol, prop>;
 
 struct context_bind;
 ///
+
 struct alloc_schema {
     doubly<prop>  meta;
+    bool          pointer; /// allocate enough space for a pointer to be stored
     prop_map      meta_map;
     size_t        count;       /// bind-count
     size_t        total_bytes; /// total-allocation-size
@@ -1250,16 +968,151 @@ static inline u64 djb2(cstr str) {
     return  h;
 }
 
+using      FreeFn =    void(*)(void*);                /// class*
+using      InitFn =    void(*)(void*);                /// class*
+using   CompareFn =     int(*)(void*, void*);         /// class*, class*
+using   BooleanFn =    bool(*)(void*);                /// class*
+using     ToStrFn = memory*(*)(void*);                /// class*
+using  DestructFn =    void(*)(void*, size_t);        /// src, count
+using ConstructFn =    void(*)(void*, size_t);        /// src, count
+using      HashFn =  size_t(*)(void*, size_t);        /// src, count
+using      MetaFn =  doubly<prop>(*)(void*);
+
+template <typename T, typename D, typename = void>
+struct has_static_compare : std::false_type { 
+    bool operator()() const { return value; } 
+};
+
+template <typename T, typename D>
+struct has_static_compare<T, D, std::enable_if_t<std::is_same_v<decltype(T::compare(std::declval<D*>(), std::declval<D*>())), void>>> : std::true_type { 
+    bool operator()() const { return value; } 
+};
+
+template <typename T, typename D, typename = void>
+struct has_static_to_string : std::false_type { 
+    bool operator()() const { return value; } 
+};
+
+template <typename T, typename D>
+struct has_static_to_string<T, D, std::enable_if_t<std::is_same_v<decltype(T::to_string(std::declval<D*>())), void>>> : std::true_type { 
+    bool operator()() const { return value; } 
+};
+
+template <typename T, typename D, typename = void>
+struct has_static_init : std::false_type { 
+    bool operator()() const { return value; } 
+};
+
+template <typename T, typename D>
+struct has_static_init<T, D, std::enable_if_t<std::is_same_v<decltype(T::init(std::declval<D*>())), void>>> : std::true_type { 
+    bool operator()() const { return value; } 
+};
+
+template <typename T, typename D, typename = void>
+struct has_static_free : std::false_type { 
+    bool operator()() const { return value; } 
+};
+
+template <typename T, typename D>
+struct has_static_free<T, D, std::enable_if_t<std::is_same_v<decltype(T::free(std::declval<D*>())), void>>> : std::true_type { 
+    bool operator()() const { return value; } 
+};
+
+template <typename T, typename D, typename = void>
+struct has_instance_meta : std::false_type {
+    bool operator()() const { return value; }
+};
+
+template <typename T>
+struct has_instance_meta <T, std::void_t<decltype(std::declval<T>().meta())>> : std::true_type { 
+    bool operator()() const { return value; }
+};
+
+template <typename T, typename = void>
+struct has_static_meta : std::false_type {
+    bool operator()() const { return value; }
+};
+
+template <typename T>
+struct has_static_meta<T, std::enable_if_t<std::is_same<decltype(T::meta(std::declval<T&>())), void>::value>> : std::true_type {
+    bool operator()() const { return value; }
+};
+
+/// djb2 should be the hash_fn for char/8bit
+
+/// use functions, not lambdas
+struct function_table {
+         FreeFn free;
+         InitFn init;
+      CompareFn compare;
+      BooleanFn boolean;
+        ToStrFn to_string;
+     DestructFn destruct;
+    ConstructFn construct;
+         HashFn hash;
+         MetaFn meta;
+
+    template <typename T>
+    static function_table *set_functionality(type_t ty);
+};
+
+template <typename D, typename = void>
+struct has_global_compare : std::false_type {
+    bool operator()() const { return value; }
+};
+
+template <typename D>
+struct has_global_compare<D, std::void_t<decltype(compare(std::declval<D*>(), std::declval<D*>()))>> : std::true_type {
+    bool operator()() const { return value; }
+};
+
+template <typename D, typename = void>
+struct has_global_to_string : std::false_type {
+    bool operator()() const { return value; }
+};
+
+template <typename D>
+struct has_global_to_string<D, std::void_t<decltype(to_string(std::declval<D*>()))>> : std::true_type {
+    bool operator()() const { return value; }
+};
+
+template <typename D, typename = void>
+struct has_global_init : std::false_type {
+    bool operator()() const { return value; }
+};
+
+template <typename D>
+struct has_global_init<D, std::void_t<decltype(init(std::declval<D*>()))>> : std::true_type {
+    bool operator()() const { return value; }
+};
+
+template <typename D, typename = void>
+struct has_global_free : std::false_type {
+    bool operator()() const { return value; }
+};
+
+template <typename D>
+struct has_global_free<D, std::void_t<decltype(free(std::declval<D*>()))>> : std::true_type {
+    bool operator()() const { return value; }
+};
+
+// going without copy; those are redundant and best not to have them lol.
+//using      CopyFn = void(*)(void*, void*, size_t); /// dst, src, count
+
+///
 struct idata {
     void            *src;     /// the source.
     cstr             name;
     size_t           base_sz; /// a types base sz is without regards to pointer state
     size_t           traits;
     alloc_schema    *schema;  /// primitives dont need this one
-    lambda_table    *lambdas;
+    function_table  *functions;
     symbol_data     *symbols;
-    memory          *singleton;
- ///memory          *defaults;
+
+    size_t size() {
+        return schema ? schema->total_bytes : base_sz;
+    }
+
     memory *lookup(symbol sym) {
         u64 hash = djb2(cstr(sym));
         memory **result = symbols ? symbols->djb2.lookup(hash) : null;
@@ -1287,22 +1140,6 @@ struct context_bind {
 
 memory *wrap_alloc(raw_t m, size_t sz);
 memory* raw_alloc(type_t ty, size_t sz);
-
-struct lambda_table {
-    func <   void(type_t,void*,size_t,size_t)>       construct;  /// construct over vector
-    func <   void(type_t,void*,size_t,size_t)>       dtr;        /// destruct over vector
-    func <   void(type_t,void*,void*,size_t,size_t)> cp;         /// copy-construct over vector
-    func <   void(void*,memory*)>                    assign_mx;  /// assign operation [ destruct mx inst, re-construct with memory pointer ]
-    func <   void(void*,void*,bool)>                 assign_tr;  /// assign operation [ destruct trivial, re-construct with src pointer ]
-    func <   bool(memory*)>                          boolean;    /// boolean-op; if the type has no op specified, boolean this is not set.
-    func <    int(void*,void*)>                      compare;    /// memory is always the same type, operator== in mx requires that
-    func <memory*(memory*)>                          from_mstr;  ///
-    func <memory*(memory*)>                          to_mstr;    ///
-    func <    u64(memory*)>                          hash;
-
-    template <typename T>
-    static lambda_table *set_lambdas(type_t ty);
-};
 
 i64 integer_value(memory *mem);
 
@@ -1338,14 +1175,18 @@ size_t schema_info(alloc_schema *schema, int depth, T *p, idata *ctx_type) {
             bind.data    = identical<typename T::DC, none>() ? null : typeof(typename T::DC);
             bind.data_sz = bind.data ? typesize(typename T::DC)     : 0;
             ///
-            if constexpr (!identical<typename T::DC, none>() && identical<typename T::MEM, mem_ptr_token>()) {
+            //if constexpr (!identical<typename T::DC, none>() && identical<typename T::MEM, mem_ptr_token>()) {
+
+            if constexpr (identical<typename T::intern, none>()) {
                 bind.ref_sz = sizeof(T*);
                 schema->total_bytes += bind.ref_sz;
-            } else {
-                schema->total_bytes += bind.data_sz;
             }
+
+            //} else {
+            //    schema->total_bytes += bind.data_sz;
+            //}
         }
-        typename T::PC *placeholder = null;
+        typename T::parent_class *placeholder = null;
         return schema_info(schema, depth + 1, placeholder, null);
         ///
     } else
@@ -1359,16 +1200,13 @@ u64 hash_value(T &key) {
     if constexpr (is_primitive<T>()) {
         return u64(key);
     } else if constexpr (identical<T, cstr>() || identical<T, symbol>()) {
-        printf("djb2: %s\n", key);
         return djb2(cstr(key));
     } else if constexpr (is_convertible<hash, T>()) {
         return hash(key);
     } else if constexpr (inherits<mx, T>() || is_mx<T>()) {
-        return key.mx::mem->type->lambdas->hash(key.mem);
+        return key.mx::mem->type->functions->hash(key.mem->origin);
     } else {
-        type_t ty = typeof(T);
-        printf("hash_value: impl type: %s\n", ty->name);
-        return hash(0);
+        return 0;
     }
 }
 
@@ -1405,10 +1243,11 @@ struct attachment {
 
 struct mutex;
 
+/// schema vs single
+/// 
+
 struct memory {
-    enum attr {
-        constant = 1
-    };
+    enum attr { constant = 1 };
     size_t              refs;
     u64                 attrs;
     type_t              type;
@@ -1416,102 +1255,46 @@ struct memory {
     size               *shape; // if null, then, its just 1 dim, of count.  otherwise this is the 'shape' of the data and strides through according
     doubly<attachment> *atts;
     size_t              id;
-private:
-    size_t              type_sz; /// this is needed because type is an abstract without regards to pointer
-public:
+    bool                managed; /// origin is allocated by us
     raw_t               origin;
 
-    size_t type_size() { return type_sz ? type_sz : type->base_sz; } /// base_sz is the sizeof(CL)
+    size_t type_size() { return type->base_sz; } /// base_sz is the sizeof(context_class)
 
-    memory(size_t refs, u64 attrs, type_t type, size_t count, size_t reserve, doubly<attachment> *atts, size_t id, void *origin) :
-        refs(refs), attrs(attrs), type(type), count(count), reserve(reserve), atts(atts), id(id), origin(origin)  { }
+    memory(
+        size_t refs,    u64 attrs,                type_t type, size_t count,
+        size_t reserve, doubly<attachment> *atts, size_t id,   void *origin) :
+        refs(refs),       attrs(attrs), type(type), count(count),
+        reserve(reserve), atts(atts),   id(id),     origin(origin)  { }
 
     static memory *wrap(raw_t m, type_t ty);
 
     template <typename T>
     static memory *wrap(T *m, size_t count);
 
-    /// T is required due to type_t not permutable by pointer attribute
-    template <typename T>
-    T *realloc(size_t to, bool fill_default) {
-        type_t data_type = typeof(T);
-        assert(data_type == type || (type->schema && (data_type == type->schema->bind->data)));
-         size_t      sz = sizeof(T);
-        /// 
-        u8    *dst      = (u8*)calloc(to, sz * 16);
-        size_t mn       = math::min(to, count);
-        u8    *elements = (u8*)origin;
-
-        const bool prim = (data_type->traits & traits::primitive) != 0;
-       
-        ///
-        if (prim) {
-            memcpy(dst, elements, sz * mn);
-        } else {
-            data_type->lambdas->cp(data_type, dst, elements, 0, mn);
-            data_type->lambdas->dtr(data_type, origin, 0, count);
-        }
-        /// free if its an already a reallocation
-        //if ((memory*)elements != &this[1])
-        //    free(elements);
-    
-        if (fill_default) {
-            count = to;
-            if (prim)
-                memset(&dst[sz * mn], 0, sz * (to - mn));
-            else {
-                for (size_t i = mn; i < to; i++)
-                    data_type->lambdas->construct(data_type, dst, mn, to);
-            }
-        } else {
-            count = mn;
-        }
-        origin = raw_t(dst);
-        reserve = to;
-        return (T*)origin;
-    }
-
-    /// mx-objects are clearable which brings their count to 0 after destruction
-    void clear() {
-        type->lambdas->dtr(type, origin, 0, count);
-        count = 0;
-    }
-
     void drop();
     attachment *attach(symbol id, void *data, func<void()> release);
     attachment *find_attachment(symbol id);
 
-    static inline const size_t auto_len = UINT64_MAX;
+    static inline const size_t autolen = UINT64_MAX;
 
-    static memory *stringify(cstr cs, size_t len = auto_len, size_t rsv = 0, bool constant = false, type_t ctype = typeof(char), i64 id = 0);
+    static memory *stringify(cstr cs, size_t len = autolen, size_t rsv = 0, bool constant = false, type_t ctype = typeof(char), i64 id = 0);
     static memory *string   (std::string s);
     static memory *cstring  (cstr        s);
-    static memory *symbol   (ion::symbol s, type_t ty = typeof(char), i64 id = 0);
+    static memory *symbol   (::symbol s, type_t ty = typeof(char), i64 id = 0);
     
-    ion::symbol symbol() {
-        return ion::symbol(origin);
+    ::symbol symbol() {
+        return ::symbol(origin);
     }
-
-    /// src is assumed to be same sz & count
-    static memory *raw_alloc(type_t type, size_t sz, size_t count = 1, size_t res = 1); 
 
     memory();
 
-    operator ion::symbol &() {
+    operator ::symbol*() {
         assert(attrs & constant);
-        return *(ion::symbol*)&origin;
+        return (::symbol *)origin;
     }
 
     memory *copy(size_t reserve = 0);
     memory *grab();
-
-    /// should be able to reference other args if its before
-    static memory *alloc(type_t type,
-                         size_t type_sz   = 0, /// can be reduced away i think
-                         size_t count     = 1,
-                         size_t reserve   = 0,
-                         raw_t  src       = null,
-                         bool   call_ctr  = true);
     
     /// now it has a schema with types to each data structure, their offset in allocation, and the total allocation bytes
     /// also supports the primative store, non-mx
@@ -1521,6 +1304,10 @@ public:
     template <typename T>
     T &ref() const { return *data<T>(0); }
 };
+
+symbol prop::name() const {
+    return symbol(key->origin);
+}
 
 template <typename T>
 class has_string {
@@ -1543,22 +1330,6 @@ T &defaults() {
 }
 
 template <typename T> T* mdata(memory *mem, size_t index) { return mem->data<T>(index); }
-template <typename T> T* mdata(raw_t origin, size_t index, type_t ctx) {
-    static memory *mem;
-    if (!mem)
-         mem = new memory { size_t(1), u64(0), type_t(null), size_t(1), size_t(1), (doubly<attachment>*)null, size_t(0), raw_t(null) };
-    mem->type   = ctx; /// important to set this everytime its not always T
-    mem->origin = origin;
-    T* result = mem->data<T>(index);
-    return result;
-}
-template <typename T> T& mref(memory *mem) {
-    return mem->ref<T>();
-}
-
-template <typename T> memory* talloc(size_t c, size_t r, bool call_ctr) {
-    return memory::alloc(typeof(T), typesize(T), c, r, raw_t(null), call_ctr);
-}
 
 template <typename T>
 inline T &assign_mx(T &a, const T &b) {
@@ -1571,7 +1342,7 @@ inline T &assign_tr(T &a, const T &b, bool call_dtr) {
     return a;
 }
 
-memory *cstring(cstr cs, size_t len = memory::auto_len, size_t reserve = 0, bool sym = false);
+memory *cstring(cstr cs, size_t len = memory::autolen, size_t reserve = 0, bool sym = false);
 
 
 using fn_t = func<void()>;
@@ -1620,24 +1391,67 @@ struct size;
 
 struct mx {
     memory *mem = null; ///type_t  ctx = null; // ctx == mem->type for contextual classes, with schema populated
-    using PC  = none;
-    using CL  = mx;
-    using DC  = none;
-    using MEM = mem_embed_token;
+    using parent_class  = none;
+    using context_class = none;
+    using intern        = none;
+    
     ///
     inline mx(std::string s) : mem(memory::string(s)) { }
     inline mx(cstr s)        : mem(memory::cstring(s)) { }
+
+    template <typename T>
+    static memory *alloc(size_t count, size_t reserve) {
+        memory*     mem = (memory*)calloc(1, sizeof(memory)); /// there was a 16 multiplier prior.  todo: add address sanitizer support with appropriate clang stuff
+        mem->count      = count;
+        mem->reserve    = math::max(count, reserve);
+        mem->refs       = 1;
+        mem->type       = typeof(T); /// design-time should already know this is opaque if its indeed setup that way in declaration; use ptr_decl_opaque() or something
+        return mem;
+    }
+
+    /// instance is fine here
+    /// should be agnostic to vector; meaning the embedded types should not repeat across schema; reduce and simplify!
+    template <typename T>
+    static memory *import(T *addr, size_t count, size_t reserve, bool managed) {
+        memory*     mem = alloc<T>(count, reserve); /// there was a 16 multiplier prior.  todo: add address sanitizer support with appropriate clang stuff
+        mem->managed    = managed;
+        mem->origin     = addr;
+        return mem;
+    }
+
+    template <typename T>
+    static memory *singleton() {
+        static memory* mem;
+        if (!mem)
+            mem = alloc<T>(1, 1); /// there was a 16 multiplier prior.  todo: add address sanitizer support with appropriate clang stuff
+        return mem;
+    }
+
+    /// must move lambda code away from lambda table, and into constructor code gen
+    template <typename T>
+    memory *copy(T *src, size_t count, size_t reserve) {
+        memory*     mem = (memory*)calloc(1, sizeof(memory)); /// there was a 16 multiplier prior.  todo: add address sanitizer support with appropriate clang stuff
+        mem->count      = count;
+        mem->reserve    = math::max(count, reserve);
+        mem->refs       = 1;
+        mem->type       = typeof(T); /// design-time should already know this is opaque if its indeed setup that way in declaration; use ptr_decl_opaque() or something
+        mem->managed    = true;
+        mem->origin     = (T*)calloc(mem->reserve, sizeof(T));
+        ///
+        if (is_primitive<T>()) {
+            memcpy(mem->origin, src, sizeof(T) * count);
+        } else {
+            for (size_t i = 0; i < count; i++)
+                new (&((T*)mem->origin)[i]) T(&src[i]);
+        }
+        return mem;
+    }
+
     ///
     inline memory *grab() const { return mem->grab(); }
     inline size  *shape() const { return mem->shape;  }
     inline void    drop() const { mem->drop();        }
 
-    template <typename CL>
-    static memory *alloc(CL *src = null, size_t count = 1, size_t reserve = 0, bool call_ctr = true) {
-        static type_t type    = typeof(CL);
-        static size_t type_sz = typesize(CL); // instance size vs data size needs to be common place
-        return memory::alloc(type, type_sz, count, reserve, raw_t(src), call_ctr);
-    }
 
     inline attachment *find_attachment(symbol id) {
         return mem->find_attachment(id);
@@ -1667,30 +1481,17 @@ struct mx {
     
 
     /// interop with shared; needs just base type functionality for lambda
-    inline mx(null_t n = null): mem(mx::alloc<null_t>()) { }
+    inline mx(null_t n = null): mem(singleton<null_t>()) { }
     inline mx(memory *mem)    : mem(mem) { }
     inline mx(symbol ccs, type_t type = typeof(char)) : mx(mem_symbol(ccs, type)) { }
-    inline mx(  cstr  cs, type_t type = typeof(char)) : mx(memory::stringify(cs, memory::auto_len, 0, false, type)) { }
-    inline mx(const shared &sh) : mem(sh.mem ? sh.mem->grab() : (memory*)null) { }
+    inline mx(  cstr  cs, type_t type = typeof(char)) : mx(memory::stringify(cs, memory::autolen, 0, false, type)) { }
     inline mx(const mx     & b) :  mx( b.mem ?  b.mem->grab() : null) { }
 
     //template <typename T>
     //mx(T& ref, bool cp1) : mx(memory::alloc(typeof(T), 1, 0, cp1 ? &ref : (T*)null), ctx) { }
 
-    inline mx(cstr src, size_t len = memory::auto_len, size_t rs = 0) :
-        mem(memory::alloc(
-            typeof(char), typesize(char),
-               len >= 0 ? size_t(len) : strlen(src),
-               math::max(rs, len ? size_t(len) : strlen(src) + 1),
-               src)) { }
-
-    bool destructable() const { return mem && mem->refs <= 1; }
-
-    template <typename T>
-    memory *view(T *src, size_t res, size_t wc) { /// reserve is the design-time constant, we assert if that is overrunning designed window space
-        assert(res >= wc);
-        return memory::alloc(typeof(T), wc, res, src);
-    }
+    inline mx(cstr src, size_t len = memory::autolen, size_t rs = 0) :
+        mem(mx::copy<char>(src, len, 0)) { }
 
     template <typename T> inline T *data() const { return  mem->data<T>(0); }
     template <typename T> inline T &ref () const { return *mem->data<T>(0); }
@@ -1698,17 +1499,17 @@ struct mx {
     template <typename T>
     inline T *get(size_t index) const { return mem->data<T>(index); }
 
-    inline mx(bool   v) : mem(alloc(&v)) { }
-    inline mx(u8     v) : mem(alloc(&v)) { }
-    inline mx(i8     v) : mem(alloc(&v)) { }
-    inline mx(u16    v) : mem(alloc(&v)) { }
-    inline mx(i16    v) : mem(alloc(&v)) { }
-    inline mx(u32    v) : mem(alloc(&v)) { }
-    inline mx(i32    v) : mem(alloc(&v)) { }
-    inline mx(u64    v) : mem(alloc(&v)) { }
-    inline mx(i64    v) : mem(alloc(&v)) { }
-    inline mx(r32    v) : mem(alloc(&v)) { }
-    inline mx(r64    v) : mem(alloc(&v)) { }
+    inline mx(bool   v) : mem(copy(&v, 1, 1)) { }
+    inline mx(u8     v) : mem(copy(&v, 1, 1)) { }
+    inline mx(i8     v) : mem(copy(&v, 1, 1)) { }
+    inline mx(u16    v) : mem(copy(&v, 1, 1)) { }
+    inline mx(i16    v) : mem(copy(&v, 1, 1)) { }
+    inline mx(u32    v) : mem(copy(&v, 1, 1)) { }
+    inline mx(i32    v) : mem(copy(&v, 1, 1)) { }
+    inline mx(u64    v) : mem(copy(&v, 1, 1)) { }
+    inline mx(i64    v) : mem(copy(&v, 1, 1)) { }
+    inline mx(r32    v) : mem(copy(&v, 1, 1)) { }
+    inline mx(r64    v) : mem(copy(&v, 1, 1)) { }
 
     template <typename E, typename = std::enable_if_t<std::is_enum_v<E>>>
     inline mx(E v) : mem(alloc(&v)) { }
@@ -1741,25 +1542,29 @@ struct mx {
     type_t  type() const { return mem ? mem->type  : null; }
 
     memory  *to_string() const {
-        if      (mem->type == typeof(i8) ) return memory::string(std::to_string(mem->ref<i8 > ()));
-        else if (mem->type == typeof(i16)) return memory::string(std::to_string(mem->ref<i16> ()));
-        else if (mem->type == typeof(i32)) return memory::string(std::to_string(mem->ref<i32> ()));
-        else if (mem->type == typeof(i64)) return memory::string(std::to_string(mem->ref<i64> ()));
-        else if (mem->type == typeof(u8) ) return memory::string(std::to_string(mem->ref<u8 > ()));
-        else if (mem->type == typeof(u16)) return memory::string(std::to_string(mem->ref<u16> ()));
-        else if (mem->type == typeof(u32)) return memory::string(std::to_string(mem->ref<u32> ()));
-        else if (mem->type == typeof(u64)) return memory::string(std::to_string(mem->ref<u64> ()));
-        else if (mem->type == typeof(r32)) return memory::string(std::to_string(mem->ref<r32> ()));
-        else if (mem->type == typeof(r64)) return memory::string(std::to_string(mem->ref<r64> ()));
-        else if (mem->type == typeof(bool))return memory::string(std::to_string(mem->ref<bool>()));
-        /// call string() on context class
-        else if (mem->type->schema && mem->type->lambdas->to_mstr)
-            return mem->type->lambdas->to_mstr(mem);
-        /// call to_mstr on the data type afterwards
-        else if (mem->type->schema && mem->type->schema->bind->data->lambdas->to_mstr)
-            return mem->type->schema->bind->data->lambdas->to_mstr(mem);
+        if      (mem->type == typeof(i8) ) return memory::string(std::to_string(*(i8*)  mem->origin));
+        else if (mem->type == typeof(i16)) return memory::string(std::to_string(*(i16*) mem->origin));
+        else if (mem->type == typeof(i32)) return memory::string(std::to_string(*(i32*) mem->origin));
+        else if (mem->type == typeof(i64)) return memory::string(std::to_string(*(i64*) mem->origin));
+        else if (mem->type == typeof(u8) ) return memory::string(std::to_string(*(u8*)  mem->origin));
+        else if (mem->type == typeof(u16)) return memory::string(std::to_string(*(u16*) mem->origin));
+        else if (mem->type == typeof(u32)) return memory::string(std::to_string(*(u32*) mem->origin));
+        else if (mem->type == typeof(u64)) return memory::string(std::to_string(*(u64*) mem->origin));
+        else if (mem->type == typeof(r32)) return memory::string(std::to_string(*(r32*) mem->origin));
+        else if (mem->type == typeof(r64)) return memory::string(std::to_string(*(r64*) mem->origin));
+        else if (mem->type == typeof(bool))return memory::string(std::to_string(*(bool*)mem->origin));
+        
+        else if   (mem->type->functions->to_string)
+            return mem->type->functions->to_string(mem->origin); /// call to_string() on context class
+        
+        else   if (mem->type->schema &&
+                   mem->type->schema->bind->data->functions &&
+                   mem->type->schema->bind->data->functions->to_string)
+            return mem->type->schema->bind->data->functions->to_string(mem->origin); /// or data...
+        
         else if (mem->type == typeof(char))
             return mem->grab();
+        
         else {
             type_t id = mem->type;
             static char buf[128];
@@ -1777,8 +1582,8 @@ struct mx {
             size_t cn = mem->count;
             if (ty->traits & traits::primitive)
                 return memcmp(mem->origin, b.mem->origin, ty->base_sz * cn) == 0;
-            else if (ty->lambdas->compare)
-                return ty->lambdas->compare(raw_t(mem->origin), raw_t(b.mem->origin)); /// must pass this in; dont change to memory* type, deprecate those
+            else if (ty->functions && ty->functions->compare)
+                return ty->functions->compare(mem->origin, b.mem->origin); /// must pass this in; dont change to memory* type, deprecate those
         }
         return false;
     }
@@ -1809,26 +1614,31 @@ struct mx {
 
     /// without this as explicit, there are issues with enum mx types casting to their etype.
     explicit operator bool() const {
-        if (mem) {
+        if (mem) { /// if mem, origin is always set
             type_t ty = mem->type;
-            
+
             if (is_string())
                 return mem->origin && *(char*)mem->origin != 0;
             
-            if (ty == typeof(null_t)) /// when constructing nulls its best to set its count to 0, that way its null on other rules without disturbing integrity.. quirk maybe
+            if (ty == typeof(null_t))
                 return false;
+
+            if (ty->functions->boolean) {
+                BooleanFn ctx_bool = ty->schema->bind->data->functions->boolean;
+                return    ctx_bool((void*)this);
+            }
             
-            if (ty->lambdas->boolean)
-                return ty->lambdas->boolean(mem);
+            if (ty->schema) {
+                BooleanFn data_bool = ty->schema->bind->data->functions->boolean;
+                return    data_bool((void*)mem->origin);
+            }
             
             return mem->count > 0;
         } else
             return false;
     }
     
-    inline bool operator!() const {
-        return !(operator bool());
-    }
+    inline bool operator!() const { return !(operator bool()); }
 
     ///
     explicit operator   i8()      { return mem->ref<i8>();  }
@@ -1842,63 +1652,29 @@ struct mx {
     explicit operator  r32()      { return mem->ref<r32>(); }
     explicit operator  r64()      { return mem->ref<r64>(); }
     explicit operator  memory*()  { return mem->grab(); } /// trace its uses
-
-    explicit operator symbol()    { assert(mem->attrs & memory::constant); return mem->ref<symbol>(); }
-};
-
-/// general purpose static-max-size vector type with data windowing, so you can use it for matrix rows
-template <typename T, const size_t SZ>
-struct vec:mx {
-    T *data;
-    using vtype = vec<T, SZ>;
-    using DC = T;
-    inline vec(memory *mem, size_t sz = 0) : mx(mem->grab()), data(&ref<T>()) {
-        if (sz != 0) {
-            breakp();
-            mem->count = sz; // set size on memory if size is specified
-        }
-        assert(data);
-    }
-    
-    inline vec(T *d,    size_t sz) : vec(view<T>(sz, SZ))                 { }
-    inline vec(size_t          sz) : vec(alloc<T>(null, sz, SZ))          { }
-    inline vec(null_t    n = null) : vec(alloc<T>(null, SZ, SZ))          { }
-    inline vec(initial<T>    args) : vec(alloc<T>(null, args.size(), SZ)) {
-        size_t count  = args.size();
-        assert(count <= SZ);
-        size_t i = 0;
-        for (auto &val: args)
-            data[i++] = val;
-    }
-
-    /// compare vector (at this level, a reference is preferred)
-    inline bool operator==(vec b) const {
-        if (count() != b.count())
-            return false;
-        ///
-        for (size_t i = 0; i < count(); i++)
-            if (data[i] != b.data[i])
-                return false;
-        ///
-        return true;
-    }
-
-    inline bool operator!=(vec sb) const { return !operator==(sb); }
-
-    T product() const {
-        T v = count() < 1 ? T(0) : T(1);
-        for (size_t i = 0; i < count(); i++)
-            v *= data[i];
-        return v;
-    }
-
-    // vector types construct with these after either passing in buffer size, src to copy or window
-    inline T &operator[](size_t i) const { return data[i]; }
-    inline T &       get(size_t i) const { return data[i]; }
+    explicit operator  symbol()   { assert(mem->attrs & memory::constant); return mem->ref<symbol>(); }
 };
 
 template <typename T>
+constexpr bool is_mx() {
+    return identical<T, mx>();
+}
+
+template <typename T>
 struct lambda;
+
+
+// Helper to detect a bool conversion operator
+template <typename T, typename = std::void_t<>>
+struct has_bool_op: std::false_type {};
+
+template <typename T>
+struct has_bool_op<T, std::void_t<decltype(static_cast<bool>(std::declval<T>()))>> : std::true_type {};
+
+// A utility function to use the custom type trait
+template <typename T>
+constexpr bool has_bool = has_bool_op<T>::value;
+
 
 template <typename> struct is_lambda : false_type { };
 
@@ -1912,19 +1688,19 @@ struct lambda<R(Args...)>:mx {
         ~container() {
             delete fn;
         }
-    } *c;
+    };
     
-    ptr(lambda, mx, container, c);
+    ptr(lambda, mx, container);
     
     template <typename F>
     lambda(F&& fn);
     
     R operator()(Args... args) const {
-        return (*c->fn)(std::forward<Args>(args)...);
+        return (*data->fn)(std::forward<Args>(args)...);
     }
     
     operator bool() {
-        return c && c->fn && *c->fn;
+        return data && data->fn && *data->fn;
     }
 };
 
@@ -1969,12 +1745,12 @@ template <typename F>
 lambda<R(Args...)>::lambda(F&& fn) : mx() {
     if constexpr (is_lambda<std::remove_reference_t<F>>::value) {
         mx::mem = fn.mem->grab();
-        c       = (container*)mem->origin;
+        data    = (container*)mem->origin;
     } else {
         if constexpr (std::is_invocable_r_v<R, F, Args...>) {
-            mx::mem = mx::alloc<container>();
-            c       = (container*)mem->origin;
-            c->fn   = new fdata(std::forward<F>(fn));
+            mx::mem  = mx::alloc<container>();
+            data     = (container*)mem->origin;
+            data->fn = new fdata(std::forward<F>(fn));
         } else {
             static_assert("args conversion not supported");
         }
@@ -1999,9 +1775,6 @@ inline void vset(T *data, T v, size_t c) {
 /// --------------------------------
 template <typename T>
 struct array:mx {
-    static inline type_t element_type() { return typeof(T); }
-    T *elements;
-
 protected:
     size_t alloc_size() const {
         size_t usz = size_t(mem->count);
@@ -2010,25 +1783,28 @@ protected:
     }
 
 public:
+    static inline type_t element_type() { return typeof(T); }
+    ptr(array, mx, T);
+
     /// push an element, return its reference
     T &push(T &v) {
         size_t csz = mem->count;
         if (csz + 1 > alloc_size())
-            elements = mem->realloc<T>(csz + 1, false); /// when you realloc you must have a pointer. 
+            data = mx::realloc(csz + 1, false); /// when you realloc you must have a pointer. 
         ///
-        new (&elements[csz]) T(v);
+        new (&data[csz]) T(v);
         mem->count++;
-        return elements[csz];
+        return data[csz];
     }
 
     T &push() {
         size_t csz = mem->count;
         if (csz + 1 > alloc_size())
-            elements = mem->realloc<T>(csz + 1, false);
+            data = mx::realloc(csz + 1, false);
 
-        new (&elements[csz]) T();
+        new (&data[csz]) T();
         mem->count++;
-        return elements[csz];
+        return data[csz];
     }
 
     void push(T *pv, size_t push_count) {
@@ -2038,14 +1814,14 @@ public:
         size_t rsv = size_t(mem->reserve);
 
         if (usz + push_count > rsv)
-            elements = mem->realloc<T>(usz + push_count, false);
+            data = mem->realloc(usz + push_count, false);
         
         if constexpr (is_primitive<T>()) {
-            memcpy(&elements[usz], pv, sizeof(T) * push_count);
+            memcpy(&data[usz], pv, sizeof(T) * push_count);
         } else {
             /// call copy-constructor
             for (size_t i = 0; i < push_count; i++)
-                new (&elements[usz + i]) T(&pv[i]);
+                new (&data[usz + i]) T(&pv[i]);
         }
         usz += push_count;
         mem->count = usz;
@@ -2055,9 +1831,9 @@ public:
         size_t i = size_t(mem->count);
         assert(i > 0);
         if (prev)
-        *prev = elements[i];
+        *prev = data[i];
         if constexpr (!is_primitive<T>())
-            elements[i]. ~T();
+            data[i]. ~T();
         --mem->count;
     }
 
@@ -2090,46 +1866,33 @@ public:
     
     static array<T> empty() { return array<T>(size_t(1)); }
 
-  //ptr(array, mx, T, elements);
-    using PC  = mx;
-    using CL  = array;
-    using DC  = T;
-    using MEM = mem_ptr_token;
-
-    inline array(memory*      mem) : mx(mem), elements(&mx::ref<T>()) { }\
-    inline array(mx             o) : array(o.mem->grab()) { }\
-    inline array(null_t =    null) : array(mx::alloc<T>(null, 0, 1, false)) { }\
-    
-    inline operator T *() { return elements; }\
-    array &operator=   (const array b) { return (array &)assign_mx(*this, b); }
-
     array(initial<T> args) : array(size(args.size()), size(args.size())) {
         num i = 0; /// typesize must be sizeof mx if its an mx type
-        T* e = elements;
-        for (auto &v:args) new (&elements[i++]) T(v); /// copy construct, we allocated memory raw in reserve
+        T* e = data;
+        for (auto &v:args) new (&data[i++]) T(v); /// copy construct, we allocated memory raw in reserve
     }
 
     inline void set_size(size sz) {
         if (mem->reserve < sz)
-            elements = mem->realloc<T>(sz, true);
+            data = mem->realloc<T>(sz, true);
     }
 
     ///
     size_t count(T v) {
         size_t c = 0;
         for (size_t i = 0; i < mem->count; i++)
-            if (elements[i] == v)
+            if (data[i] == v)
                 c++;
         return c;
     }
 
     ///
-    T* data() const { return elements; }
+    T* elements() const { return data; }
 
     ///
     int index_of(T v) const {
         for (size_t i = 0; i < mem->count; i++) {
-            if (elements[i] == v)
+            if (data[i] == v)
                 return int(i);
         }
         return -1;
@@ -2139,7 +1902,7 @@ public:
     template <typename R>
     R select_first(lambda<R(T&)> qf) const {
         for (size_t i = 0; i < mem->count; i++) {
-            R r = qf(elements[i]);
+            R r = qf(data[i]);
             if (r)
                 return r;
         }
@@ -2155,7 +1918,7 @@ public:
         array<R> res(mem->count);
         ///
         for (size_t i = 0; i < mem->count; i++) {
-            R r = qf(elements[i]);
+            R r = qf(data[i]);
             if (r)
                 res += r;
         }
@@ -2173,7 +1936,7 @@ public:
         size_t sz = len();
         mx **refs = (mx **)calloc(len(), sizeof(mx*));
         for (size_t i = 0; i < sz; i++)
-            refs[i] = &elements[i];
+            refs[i] = &data[i];
 
         /// recursion lambda
         func<void(int, int)> qk;
@@ -2206,11 +1969,12 @@ public:
     /// needs to support shape when its suitable in mx
     inline size     shape() const { return size(mem->count); }
     inline size_t     len() const { return mem->count; }
+    inline size_t  length() const { return mem->count; }
     inline size_t reserve() const { return mem->reserve; }
 
     array(T* d, size_t sz, size_t al = 0) : array(alloc<T>((T*)null, sz, al, false)) {
         for (size_t i = 0; i < sz; i++)
-            new (&elements[i]) T(d[i]);
+            new (&data[i]) T(d[i]);
     }
 
     array(size al, size sz = size(0), lambda<T(size_t)> fn = lambda<T(size_t)>(nullptr)) : 
@@ -2219,7 +1983,7 @@ public:
             mem->shape = new size(al); /// only allocate a shape in the shaped cases; a 0 count is not valid atm.
         if (fn)
             for (size_t i = 0; i < size_t(sz); i++)
-                new (&elements[i]) T { fn(i) };
+                new (&data[i]) T { fn(i) };
     }
 
     /// constructor for allocating with a space to fill (and construct; this allocation does not run the constructor (if non-primitive) until append)
@@ -2243,7 +2007,7 @@ public:
 
         array<T> result(cp_count);
         for (size_t i = 0; i < cp_count; i++)
-            result.push(elements[start + i]);
+            result.push(data[start + i]);
         ///
         return result;
     }
@@ -2255,17 +2019,17 @@ public:
             assert(i >= 0);
         }
         assert(i >= 0 && i < num(mem->count));
-        return elements[i];
+        return data[i];
     }
 
 
-    iter<T>  begin() const { return { (T *)elements, size_t(0)    }; }
-	iter<T>    end() const { return { (T *)elements, size_t(mem->count) }; }
-    T&       first() const { return elements[0];        }
-	T&        last() const { return elements[mem->count - 1]; }
+    iter<T>  begin() const { return { (T *)data, size_t(0)    }; }
+	iter<T>    end() const { return { (T *)data, size_t(mem->count) }; }
+    T&       first() const { return data[0];        }
+	T&        last() const { return data[mem->count - 1]; }
     
     void realloc(size s_to) {
-        elements = mem->realloc<T>(s_to, false); /// does not update the size internally
+        data = mx::realloc(s_to, false);
     }
 
     operator  bool() const { return mx::mem && mem->count > 0; }
@@ -2276,7 +2040,7 @@ public:
         if (mx::mem && b.mem) {
             if (mem->count != b.mem->count) return false;
             for (size_t i = 0; i < mem->count; i++)
-                if (!(elements[i] == b.elements[i])) return false;
+                if (!(data[i] == b.data[i])) return false;
         }
         return true;
     }
@@ -2286,30 +2050,30 @@ public:
     
     inline T &operator[](size index) {
         if (index.count == 1)
-            return (T &)elements[size_t(index.values[0])];
+            return (T &)data[size_t(index.values[0])];
         else {
             assert(mem->shape);
             mem->shape->assert_index(index);
             size_t i = mem->shape->index_value(index);
-            return (T &)elements[i];
+            return (T &)data[i];
         }
     }
 
-    inline T &operator[](size_t index) { return elements[index]; }
+    inline T &operator[](size_t index) { return data[index]; }
 
     template <typename IX>
     inline T &operator[](IX index) {
         if constexpr (identical<IX, size>()) {
             mem->shape->assert_index(index);
             size_t i = mem->shape->index_value(index);
-            return (T &)elements[i];
+            return (T &)data[i];
         } else if constexpr (std::is_enum<IX>() || is_integral<IX>()) { /// just dont bitch at people.  people index by so many types.. most type casts are crap and noise as result
             size_t i = size_t(index);
-            return (T &)elements[i];
+            return (T &)data[i];
         } else {
             /// now this is where you bitch...
             assert(!"index type must be size or integral type");
-            return (T &)elements[0];
+            return (T &)data[0];
         }
     }
 
@@ -2318,7 +2082,7 @@ public:
     }
 
     void clear() {
-        elements = mem->realloc<T>(1, false);
+        data = mem->realloc(1, false);
     }
 };
 
@@ -2492,7 +2256,7 @@ struct str:mx {
     str(float          f32, int n = 6) : str(memory::string(string_from_real(f32, n))) { }
     str(double         f64, int n = 6) : str(memory::string(string_from_real(f64, n))) { }
 
-    str(cstr cs, size_t len = memory::auto_len, size_t rs = 0) : str(cstring(cs, len, rs)) { } 
+    str(cstr cs, size_t len = memory::autolen, size_t rs = 0) : str(cstring(cs, len, rs)) { } 
     str(std::string s) : str(cstr(s.c_str()), s.length()) { } // error: member initializer 'str' does not name a non-static data member or base class
 
 
@@ -3066,41 +2830,7 @@ struct map:mx {
 
     operator bool() { return mx::mem && m; }
 
-    //ctr(map, mx, mdata, m);
-//#define mx_basics(C, B, m_type, m_access) \
-
-    using PC = mx;\
-    using CL = map;\
-    using DC = mdata;\
-    template <typename CC>\
-    static memory *mx_conv(mx &o) {\
-        constexpr bool can_conv = has_convert<CC>::value;\
-        type_t o_type = o.type();\
-        type_t d_type = typeof(DC);\
-        if constexpr (can_conv)\
-            if (o.mem && o_type != d_type)\
-                return (memory *)CC::convert(o.mem);\
-        if (o_type == d_type)\
-            return o.mem->grab();\
-        else if (!o.mem)\
-            printf("null memory: %s\n", "map");\
-        else\
-            printf("type mismatch; conversion required for %s -> %s\n", o_type->name, d_type->name);\
-        return (memory *)null;\
-    }\
-    inline    operator mdata &()  { return m; }\
-    inline map &operator=(const map b) { return (map &)assign_mx(*this, b); }\
-    mdata *operator->() { return &m; }
-    
-    //mx_basics(map, mx, mdata, m)\
-    
-    inline map(memory*     mem) : mx(mem), m(mx::ref<mdata>()) { }\
-    inline map(mx            o) : map(  mx_conv<map>(o)) { }\
-    inline map(null_t =   null) : map(mx::alloc<map>( )) { }\
-    inline map(mdata    tdata) : map(mx::alloc<map>( )) {\
-            (&m) -> ~DC();\
-        new (&m)     DC(tdata);\
-    }
+    ctr(map, mx, mdata, m);
 
     /// when a size is specified to map, it engages hash map mode
     map(size sz) : map() {
@@ -3218,8 +2948,8 @@ public:
     enum { value = sizeof(test<T>(0)) == sizeof(char) };
 };
 
-//#define ctr(C, B, m_type, m_access) \
-//    inline C(memory*     mem) : B(mem), m_access(mx::ref<m_type>()) { }\
+//#define ctr(C, B, m_type, data) \
+//    inline C(memory*     mem) : B(mem), data(mx::ref<m_type>()) { }\
 
 template <typename T>
 struct states:mx {
@@ -3608,7 +3338,7 @@ struct path:mx {
         return ret;
     }
 
-    operator str() { return str(cs(), memory::auto_len); }
+    operator str() { return str(cs(), memory::autolen); }
 };
 
 using path_t = path;
@@ -4086,18 +3816,12 @@ protected:
 
 using FnFuture = lambda<void(mx)>;
 
-using FnFuture2 = lambda<void()>;
-
-
 /// required for hash-map and multi-threaded list
 struct mutex:mx {
-    struct data {
-        std::mutex h;
-    } &mtx;
-    ///
-    ctr_cp(mutex, mx, data, mtx);
-    void   lock() const { mtx.h.lock();   }
-    void unlock() const { mtx.h.unlock(); }
+    using intern = std::mutex;
+    ptr_declare(mutex);
+    void   lock() const { data->lock();   }
+    void unlock() const { data->unlock(); }
 };
 
 template <typename T>
@@ -4108,20 +3832,13 @@ struct sp:mx {
     ///
     T *operator=(T *v) { return (data = v); }
     T *operator->()    { return data; }
-
-    /// pass-through operators on smart pointer, because we are handing out rights here
-    /// not at all ambiguous.  to get its own pointer you use -> or the T*, and thus cannot be conflusing to use
-    template <typename X>
-    operator    X &() {
-        return (X &)*data;
-    }
 };
 
-void chdir(std::string c);
-memory* mem_symbol(ion::symbol cs, type_t ty, i64 id);
-memory* raw_alloc(idata *ty, size_t sz);
-void *mem_origin(memory *mem);
-memory *cstring(cstr cs, size_t len, size_t reserve, bool is_constant);
+void         chdir(std::string c);
+memory* mem_symbol(::symbol cs, type_t ty, i64 id);
+memory*  raw_alloc(idata *ty, size_t sz);
+void *  mem_origin(memory *mem);
+memory *   cstring(cstr cs, size_t len, size_t reserve, bool is_constant);
 
 template <typename K, typename V>
 pair<K,V> *hmap<K, V>::shared_lookup(K input) {
@@ -4129,9 +3846,13 @@ pair<K,V> *hmap<K, V>::shared_lookup(K input) {
     return p;
 }
 
+/// no lambdas i think just call statics on types.  not a problem there.
+/// to call all statics with the proper data pointers is all one needs
+/// origin = data pointer [class at 0]
+/// 
 template <typename T>
 idata *ident::for_type() {
-    ///
+    /// get string name of class (works on win, mac and linux)
     static auto parse_fn = [](std::string cn) -> cstr {
         std::string      st = is_win() ? "<"  : "T =";
         std::string      en = is_win() ? ">(" : "]";
@@ -4159,52 +3880,59 @@ idata *ident::for_type() {
             type                = (idata*)mem_origin(mem);
             type->src           = type;
             type->name          = parse_fn(__PRETTY_FUNCTION__);
-            type->base_sz       = sizeof(T);
-            type->lambdas       = lambda_table::set_lambdas<T>(type);
-        } else {
+            type->base_sz       = sizeof(T*);
+            type->lambdas       = function_table::probe<T>(type);
+        } else if constexpr (std::is_const    <T>::value) return ident::for_type<std::remove_const_t    <T>>();
+          else if constexpr (std::is_reference<T>::value) return ident::for_type<std::remove_reference_t<T>>();
+          else if constexpr (std::is_pointer  <T>::value) return ident::for_type<std::remove_pointer_t  <T>>();
+          else {
             bool is_mx = ion::is_mx<T>();
+            cstr curious0 = parse_fn(__PRETTY_FUNCTION__);
+            memory *mem  = raw_alloc(null, sizeof(idata));
+            type         = (idata*)mem_origin(mem);
+            type->name    = parse_fn(__PRETTY_FUNCTION__);
+            type->base_sz = sizeof(T);
+            type->traits  = (is_primitive<T> () ? traits::primitive : 0) |
+                            (is_integral <T> () ? traits::integral  : 0) |
+                            (is_realistic<T> () ? traits::realistic : 0) |
+                            (is_mx              ? traits::mx        : 0);
+
+            /// a bit more open ended, and common apis (return type must be checked as well)            
+            type->functions = function_table::probe<T>(type);
             ///
-                 if constexpr (std::is_const    <T>::value) return ident::for_type<std::remove_const_t    <T>>();
-            else if constexpr (std::is_reference<T>::value) return ident::for_type<std::remove_reference_t<T>>();
-            else if constexpr (std::is_pointer  <T>::value) return ident::for_type<std::remove_pointer_t  <T>>();
-            else if (!type) {
-                cstr curious0 = parse_fn(__PRETTY_FUNCTION__);
-                memory *mem  = raw_alloc(null, sizeof(idata));
-                type         = (idata*)mem_origin(mem);
-                //cstr curious7 = parse_fn(__PRETTY_FUNCTION__);
-                type->name    = parse_fn(__PRETTY_FUNCTION__);
-                type->base_sz = sizeof(T);
-                type->traits  = (is_primitive<T> () ? traits::primitive : 0) |
-                                (is_integral <T> () ? traits::integral  : 0) |
-                                (is_realistic<T> () ? traits::realistic : 0) |
-                                (is_mx              ? traits::mx        : 0) |
-                                (is_singleton<T> () ? traits::singleton : 0);
-                type->lambdas = lambda_table::set_lambdas<T>(type);
-                //type->defaults = memory::alloc(type);
-                /// including mx in vector because schema could be used by other bases
-                /// would be nice to implement in mx::read_schema<T>(type, (T*)null)
-
-                /// this helps basic types flow with array use cases
-                /// it makes the types a bit more array/not-of agnostic
-                if constexpr (!is_array<T>() && !identical<ion::mx, T>() && inherits<ion::mx, T>()) {
-                    type->schema = (alloc_schema*)calloc(1, sizeof(alloc_schema) * 16);
-                    alloc_schema &schema = *type->schema;
-                    
-                    schema.count = schema_info(&schema, 0, (T*)null, type);
-                    schema.composition = (context_bind*)calloc(schema.count, sizeof(context_bind) * 16);
-
-                    /// get schema type definitions (schema_info reads them in from top to bottom mx but writes from back to front)
-                    /// passing type avoid infinite-recursion
-                    schema_info(&schema, 0, (T*)null, type);
-                    size_t offset = 0;
-                    for (size_t i = 0; i < schema.count; i++) {
-                        context_bind &bind = schema.composition[i];
-                        bind.offset        = offset;
-                        offset            += bind.data_sz;
-                    }
-                    schema.total_bytes = offset;
-                    schema.bind = &schema.composition[schema.count - 1];
+            if constexpr (!is_array<T>() && !identical<ion::mx, T>() && inherits<ion::mx, T>()) {
+                type->schema         = (alloc_schema*)calloc(1, sizeof(alloc_schema) * 16);
+                alloc_schema &schema = *type->schema;
+                ///
+                if constexpr (has_instance_meta<T>()) {
+                    static T *def = new T();
+                    schema.meta   = def->meta();
+                    delete def;
+                } else if constexpr (has_static_meta<T>()) {
+                    static T *def = new T();
+                    schema.meta   = T::meta (*def);
+                    delete def;
                 }
+                if (schema.meta) {
+                    schema.meta_map  = prop_map(size_t(16));
+                    for (ion::prop &prop: schema.meta) {
+                        symbol prop_name = prop.name();
+                        schema.meta_map[prop_name] = prop;
+                    }
+                }
+                schema.count         = schema_info(&schema, 0, (T*)null, type);
+                schema.composition   = (context_bind*)calloc(schema.count, sizeof(context_bind) * 16);
+                /// get schema type definitions (schema_info reads them in from top to bottom mx but writes from back to front)
+                /// passing type avoid infinite-recursion
+                schema_info(&schema, 0, (T*)null, type);
+                size_t offset = 0;
+                for (size_t i = 0; i < schema.count; i++) {
+                    context_bind &bind = schema.composition[i];
+                    bind.offset        = offset;
+                    offset            += bind.data_sz;
+                }
+                schema.total_bytes = offset;
+                schema.bind = &schema.composition[schema.count - 1];
             }
         }
     }
@@ -4214,8 +3942,8 @@ idata *ident::for_type() {
 template <typename T>
 T *memory::data(size_t index) const {
     type_t queried_type = ident::for_type<T>();
-    size_t mxc = math::max(reserve, count);
-    static type_t mx_t = typeof(mx);
+    size_t mxc          = math::max(reserve, count);
+    static type_t mx_t  = typeof(mx);
 
     alloc_schema *schema = type->schema;
     if (queried_type != type && schema) { // dont insert schema for mx type duh
@@ -4240,211 +3968,24 @@ size_t ident::type_size() {
     return type_sz;
 }
 
-// Helper to detect a bool conversion operator
-template <typename T, typename = std::void_t<>>
-struct has_bool_op: std::false_type {};
-
 template <typename T>
-struct has_bool_op<T, std::void_t<decltype(static_cast<bool>(std::declval<T>()))>> : std::true_type {};
-
-// A utility function to use the custom type trait
-template <typename T>
-constexpr bool has_bool = has_bool_op<T>::value;
-
-
-template <typename T>
-lambda_table *lambda_table::set_lambdas(type_t ty) {
+lambda_table *lambda_table::probe(type_t ty) {
     static lambda_table gen;
     constexpr bool etype = has_etype<T>();
-    
-    /// steal if there is etype jag (enumerable standard)
-    if constexpr  (etype) {
-        gen.cp = [](type_t ctx, raw_t vdst, raw_t vsrc, size_t from, size_t to) {
-            using e = typename T::etype;
-            assert(vdst);
-            assert(vsrc);
-            e *dst = mdata<e>(vdst, from, ctx);
-            e *src = mdata<e>(vsrc, from, ctx);
-            for (num i = num(from); i < num(to); i++, dst++, src++)
-                *dst = *src;
-        };
-    } else if constexpr (is_opaque<T>() || is_primitive<T>()) {
-        gen.cp = [](type_t ctx, raw_t vdst, raw_t vsrc, size_t from, size_t to) {
-            assert(vdst && vsrc && (to >= from));
-            T *dst = mdata<T>(vdst, from, ctx);
-            T *src = mdata<T>(vsrc, from, ctx);
-            memcpy(dst, src, sizeof(T) * (to - from));
-        };
-    } else if constexpr (std::is_copy_constructible<T>::value) {
-        gen.cp = [](type_t ctx, raw_t vdst, raw_t vsrc, size_t from, size_t to) {
-            assert(vdst && vsrc && (to >= from));
-            T *dst = mdata<T>(vdst, from, ctx);
-            T *src = mdata<T>(vsrc, from, ctx);
-            for (num i = from; i < num(to); i++, dst++, src++)
-                inplace<T>(dst, *(T*)src, false);
-                //new (dst) T(*(T*)src);
-        };
-    }
-    
-    ///
-    if constexpr (etype) {
-        gen.assign_mx = [](void *inst, memory *mem) {
-            using e = typename T::etype;
-            T *sc = (T *)inst;
-            if (sc->mem != mem) {
-                if (mem)
-                    mem->refs++;
-                ///
-                e new_value = *(e*)mem->origin;
-                     sc -> ~T();
-                new (sc) T(new_value);
-            }
-        };
-    } else if constexpr (!identical<memory*, T>() && !is_primitive<T>() && is_convertible<memory*, T>()) {
-        gen.assign_mx = [](void *inst, memory *mem) {
-            T *sc = (T *)inst;
-            if (((mx*)sc)->mem != mem) {
-                bool call_dtr = false;
-                if (mem) {
-                    mem->refs++;
-                    call_dtr = true;
-                }
-                inplace<T, memory>(sc, mem, call_dtr);
-            }
-        };
-    }
-    
-    ///
-    if constexpr (!is_opaque<T>() && !is_primitive<T>() && is_convertible<memory*, T>()) {
-        gen.assign_tr = [](void *inst, void *inst_ref, bool call_dtr) {
-            T *sc = (T *)inst;
-            inplace<T>(sc, *(T *)inst_ref, call_dtr);
-            //new (sc) T(*(const T *)inst_ref); /// copy-constructor
-        };
-    }
 
-    ///
-    if constexpr (is_opaque<T>() || is_primitive<T>()) {
-        if constexpr (identical<float, T>() || identical<double, T>()) {
-            gen.from_mstr = [ty](memory *in) -> memory* {
-                T out = real_value<T>(in);
-                return memory::alloc((type_t)ty, typesize(T), 1, 0, &out);
-            };
-        } else if constexpr (std::is_integral<T>()) {
-            gen.from_mstr = [ty](memory *in) -> memory* {
-                T out = T(integer_value(in));
-                return memory::alloc((type_t)ty, typesize(T), 1, 0, &out);
-            };
-        }
-    } else {
-        /// do this with one generic?
-        if constexpr (identical<T, std::filesystem::path>()) { 
-            gen.from_mstr = [](memory *in) -> memory* {
-                std::filesystem::path path(symbol(in->origin));
-                return memory::alloc(typeof(std::filesystem::path), typesize(std::filesystem::path), 1, 0, &path);
-            };
-            gen.to_mstr = [](memory* in) -> memory* {
-                T &ref = *(T *)in;
-                std::string str = ref.string();
-                return memory::symbol(str.c_str()); /// constant!
-            };
-        } else {
-            constexpr bool converts_from_cstr = is_convertible<cstr, T>();
-            if constexpr  (converts_from_cstr) {
-                if constexpr (is_convertible<T, memory*>()) {
-                    gen.from_mstr = [](memory *in) -> memory* {
-                        if constexpr (is_convertible<symbol, T>()) {
-                            T     out = T(symbol(in->origin));
-                            memory *m = (memory*)out;
-                            return  m->grab();
-                        }
-                        return null;
-                    };
-                }
-            }
-            constexpr bool converts_to_cstr = has_string<T>::value;//  requires(const T& t) { (memory*)t.string(); };
-            if constexpr (converts_to_cstr) {
-                gen.to_mstr = [](memory* in) -> memory* {
-                    if constexpr (inherits<mx, T>()) {
-                        T   i = T(in);
-                        return (memory*)i.string();
-                    } else {
-                        T    i = T(in);
-                        auto v = i.string();
-                        /// control for cases of std::string
-                        if constexpr (identical<decltype(v), std::string>()) {
-                            memory *mstr = memory::string(v);
-                            return mstr;
-                        }
-                        return (memory*)null;
-                    }
-                };
-            }
-        }
-    }
+    /// common methods free, init to_string and compare, acting as you would expect
+    /// to_string could return different kinds and we can handle that but its just memory* now
+    if constexpr (has_static_free                <T>()) gen.free       =      (FreeFn)T::free;
+    if constexpr (has_static_init                <T>()) gen.init       =      (InitFn)T::init;
+    if constexpr (has_static_to_string           <T>()) gen.to_string  =     (ToStrFn)T::to_string;
+    if constexpr (has_static_compare             <T>()) gen.compare    =   (CompareFn)T::compare;
 
-    ///
-    if constexpr (!is_opaque<T>()) {
-        if constexpr (is_convertible<T, ion::hash>()) {
-            gen.hash = [](memory* in) -> ion::hash {
-                return u64(in->ref<T>());
-            };
-        } else if constexpr (identical<T, char>()) {
-            gen.hash = [](memory* in) -> ion::hash {
-                return djb2(in->data<char>(0));
-            };
-        }
-    }
-
-    ///
-    gen.construct = [](type_t ctx, void *origin, size_t from, size_t to) -> void {
-        T *d = mdata<T>(origin, from, ctx);
-        for (num i = from; i < num(to); i++, d++)
-            inplace<T>(d, false);//new (d) T();
-    };
-
-    ///
-    if constexpr (!is_singleton<T>() && std::is_destructible<T>()) {
-        gen.dtr = [](type_t ctx, void *origin, size_t from, size_t to) -> void {
-            T *d = mdata<T>(origin, from, ctx);
-            for (num i = from; d && i < num(to); i++, d++) {
-                (d) -> ~T();
-            }
-        };
-    }
-
-    /// implement a compare(const T &b) const { method on context or data
-    if constexpr (is_class<T>()) {
-        constexpr bool has_cmp = has_compare<T>();
-        if constexpr  (has_cmp && !identical<T, fs::path>())
-            gen.compare = [](T *a, T *b) -> int { return a->compare(b); };
-    } else if constexpr (is_primitive<T>()) {
-        /// these are not required for primitives since its not optimal for vector comparison
-        /*gen.compare = [](void* a, void *b) -> int {
-            if constexpr (identical<T, char>())
-                return strcmp((const char *)a, (const char *)b);
-            return int(*(T*)a - *(T*)b);
-        };*/
-    }
-    
-    ///
-    if constexpr (has_operator<T, bool>() || is_primitive<T>()) {
-        if constexpr (inherits<mx, T>()) {
-            gen.boolean = [ty](memory* mem) -> bool {
-                if constexpr (identical<typename T::DC, none>()) {
-                    return false;
-                } else {
-                    if constexpr (has_bool<typename T::DC>)
-                        return bool(*(typename T::DC *)mem->origin);
-                    else
-                        return false;
-                }
-            };
-        } else
-            gen.boolean = [](memory* mem) -> bool {
-                return bool(*(T *)mem->origin); /// otherwise T
-            };
-    }
+    /// namespaced for exclusivity w mx
+    if constexpr (has_bool                       <T>()) gen.boolean    =   (BooleanFn)T::_bool;
+    if constexpr (std::is_default_constructible_v<T>()) gen.ctr        = (ConstructFn)T::_ctr;
+    if constexpr (std::is_copy_constructible_v   <T>()) gen.copy       =  (DestructFn)T::_copy;
+    if constexpr (std::is_destructible_v         <T>()) gen.dtr        =  (DestructFn)T::_dtr;
+ 
     return &gen;
 }
 
@@ -4581,29 +4122,4 @@ memory *memory::wrap(T *m, size_t count) {
     mem->type       = typeof(T);
     mem->origin     = m;
     return mem;
-}
-
-/// needs a way to not create lambdas for lambdas and in recursive fashion.
-/// for now i am just bypassing memory type
-template <typename T>
-shared::shared(T *ptr) : ident(memory::wrap(raw_t(ptr), null)) { }
-
-/*
-template <typename T>
-T *shared::operator=(T *ptr) {
-    if (mem && mem->origin != raw_t(ptr) {
-        mem->drop();
-    }
-    if (ptr)
-        mem = memory::wrap_raw(ptr, typeof(T));
-    else
-        mem = null;
-    
-    return mem ? (T *)mem->origin : (T *)null;
-}
-*/
-
-template <typename T>
-T *shared::get() { return (T *)mem->origin; }
-
 }

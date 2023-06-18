@@ -467,7 +467,6 @@ void terminal::fill(graphics::shape sh) {
 /// and use the external attachment so the generics do not allocate or delete pointer
 #define palloc(MX, RES, PTR, ...)\
 do {\
-    static MX*abc_test = nullptr;\
     static bool proceed = identical<typename MX::MEM, mem_ptr_token>();\
     assert(proceed);\
     memory         *_mem = memory::alloc(typeof(MX));\
@@ -653,7 +652,7 @@ struct gfx_memory {
     VkvgDevice     vg_device;
     VkvgContext    ctx;
     VkeDevice      vke_device;
-    VkeImage       vkh_image;
+    VkeImage       vke_image;
     str            font_default;
     window        *win;
     Texture        tx;
@@ -661,8 +660,8 @@ struct gfx_memory {
 
     ~gfx_memory() {
         if (ctx)        vkvg_drop        (ctx);
-        if (vg_device)  vkvg_device_destroy(vg_device);
-        if (vg_surface) vkvg_surface_destroy(vg_surface);
+        if (vg_device)  vkvg_device_drop(vg_device);
+        if (vg_surface) vkvg_surface_drop(vg_surface);
     }
 };
 
@@ -693,10 +692,10 @@ gfx::gfx(ion::window &win) : gfx(mx::alloc<gfx>()) { /// this allocates both gfx
     /// not sure if the import is getting the VK_SAMPLE_COUNT_8_BIT and VkSampler, likely not.
     
     g->vg_device        = vkvg_device_create_multisample(win->vke_device, VK_SAMPLE_COUNT_8_BIT);
-    g->vkh_image        = vke_image_import(win->vke_device, tmem->vk_image, tmem->format, u32(tmem->sz[1]), u32(tmem->sz[0]));
+    g->vke_image        = vke_image_import(win->vke_device, tmem->vk_image, tmem->format, u32(tmem->sz[1]), u32(tmem->sz[0]));
 
-    vkh_image_create_view(g->vkh_image, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT); // VK_IMAGE_ASPECT_COLOR_BIT questionable bit
-    g->vg_surface       = vkvg_surface_create_for_VkhImage(g->vg_device, (void*)g->vkh_image); // attachment #0 in VkFramebufferCreateInfo has 8bit samples that do not match VkRenderPass's attachment at same rank
+    vke_image_create_view(g->vke_image, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT); // VK_IMAGE_ASPECT_COLOR_BIT questionable bit
+    g->vg_surface       = vkvg_surface_create_for_VkhImage(g->vg_device, (void*)g->vke_image); // attachment #0 in VkFramebufferCreateInfo has 8bit samples that do not match VkRenderPass's attachment at same rank
     g->ctx              = vkvg_create(g->vg_surface);
     push(); /// gfx just needs a push off the ledge. [/penguin-drops]
     defaults();
@@ -840,7 +839,7 @@ void gfx::image(ion::image img, graphics::shape sh, vec2 align, vec2 offset, vec
         VkvgSurface surf = vkvg_surface_create_from_bitmap(
             g->vg_device, (uint8_t*)img.pixels(), u32(img.width()), u32(img.height()));
         att = img.attach("vg-surf", surf, [surf]() {
-            vkvg_surface_destroy(surf);
+            vkvg_surface_drop(surf);
         });
         assert(att);
     }

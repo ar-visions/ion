@@ -1,9 +1,4 @@
-dep(ion:core ion:net ion:media vkvg:vkvg)
-
-# was:
-# dep(ion:core glfw:glfw3 ion:net ion:media vkvg:vkvg vkvg:vkh vkvg:glutess harfbuzz:harfbuzz freetype:freetyped bzip2:bz2 vma:VulkanMemoryAllocatord)
-# was encountering linker issues because public libs were not being forwarded for linking
-# will probably still need to fix a map
+dep(ion:net ion:media ion:vkg)
 
 if(APPLE)
     dep(moltenvk:MoltenVK IOSurface QuartzCore Metal AppKit CoreGraphics CoreFoundation Cocoa IOKit)

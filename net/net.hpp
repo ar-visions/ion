@@ -1,6 +1,6 @@
 #pragma once
 
-#include <core/core.hpp>
+#include <mx/mx.hpp>
 #include <async/async.hpp>
 
 struct WOLFSSL_CTX;
@@ -215,7 +215,6 @@ struct isock;
 struct sock:mx {
 private:
     inline static symbol pers = "ion:net";
-    isock *isc;
     //bool connect(str host, int port);
     bool bind(str adapter, int port);
     sock &establish();
@@ -223,7 +222,8 @@ private:
     void load_certs(str host);
     
 public:
-    ptr_decl(sock, mx, isock, isc);
+    using intern = isock;
+    ptr_declare(sock);
     
     enums(role, none,
           "none, client, server",
