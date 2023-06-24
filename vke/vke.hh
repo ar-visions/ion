@@ -157,6 +157,7 @@ struct VkeFence:mx {
 struct VkeQueue:mx {
     ptr_declare(VkeQueue, mx, struct vke_queue);
     VkeQueue(VkeDevice dev, uint32_t familyIndex, uint32_t qIndex);
+
     /// just using one of these.  make statics out of void args
     void submit(
 		VkeFence 					 fence,
@@ -357,49 +358,8 @@ void        dumpLayerExts();
 void        set_image_layout(VkeCommandBuffer cmdBuff, VkeImage image, VkeImageAspectFlags aspectMask, VkImageLayout old_image_layout, VkImageLayout new_image_layout, VkPipelineStageFlags src_stages, VkePipelineStageFlags dest_stages);
 void        set_image_layout_subres(VkeCommandBuffer cmdBuff, VkeImage image, VkeImageSubresourceRange subresourceRange, VkeImageLayout old_image_layout, VkeImageLayout new_image_layout, VkPipelineStageFlags src_stages, VkePipelineStageFlags dest_stages);
 
-/////////////////////
-VkeQueue    vke_queue_create    (VkeDevice dev, uint32_t familyIndex, uint32_t qIndex);
-VkeQueue    vke_queue_drop      (VkeQueue queue);
-VkeQueue    vke_queue_grab      (VkeQueue queue);
-//VkeQueue    vke_queue_find      (VkeDevice dev, VkQueueFlags flags);
-/////////////////////
-
-
 
 #define FENCE_TIMEOUT 100000000
-
-typedef struct _vk_engine_t* VkEngine;
-
-/// deprecate vk_engine_t 
-typedef struct _vk_engine_t {
-	VkeApp app;
-} vk_engine_t;
-
-
-/**
-vk_engine_t*        vkengine_create                     (VkPhysicalDeviceType preferedGPU, VkPresentModeKHR presentMode, uint32_t width, uint32_t height);
-void                vkengine_dump_available_layers      ();
-bool                vkengine_try_get_phyinfo            (VkePhyInfo* phys, uint32_t phyCount, VkPhysicalDeviceType gpuType, VkePhyInfo* phy);
-void                vkengine_destroy		            (VkEngine e);
-bool                vkengine_should_close	            (VkEngine e);
-void                vkengine_close			            (VkEngine e);
-
-void                vkengine_dump_Infos      	        (VkEngine e);
-void                vkengine_set_title		            (VkEngine e, const char* title);
-VkInstance			vkengine_get_instance		        (VkEngine e);
-VkDevice			vkengine_get_device			        (VkEngine e);
-VkPhysicalDevice	vkengine_get_physical_device        (VkEngine e);
-VkQueue				vkengine_get_queue			        (VkEngine e);
-uint32_t			vkengine_get_queue_fam_idx	        (VkEngine e);
-void                vkengine_get_queues_properties      (vk_engine_t* e, VkQueueFamilyProperties** qFamProps, uint32_t* count);
-void                vkengine_set_key_callback			(VkEngine e, GLFWkeyfun key_callback);
-void                vkengine_set_mouse_but_callback	    (VkEngine e, GLFWmousebuttonfun onMouseBut);
-void                vkengine_set_cursor_pos_callback	(VkEngine e, GLFWcursorposfun onMouseMove);
-void                vkengine_set_scroll_callback		(VkEngine e, GLFWscrollfun onScroll);
-void                vkengine_set_char_callback			(VkEngine e, GLFWcharfun onChar);
-
-void vkengine_wait_idle (VkEngine e);
-*/
 
 VkeDevice vke_select_device(VkPhysicalDeviceType);
 
