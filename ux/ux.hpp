@@ -28,14 +28,14 @@ struct ngon {
 using mesh = array<ngon>;
 
 struct text_metrics:mx {
-    struct data {
+    struct tmdata {
         real        w, h;
         real      ascent,
                  descent;
         real line_height,
               cap_height;
-    } &m;
-    ctr(text_metrics, mx, data, m);
+    };
+    ptr(text_metrics, mx, tmdata);
 };
 
 using tm_t = text_metrics;
@@ -50,239 +50,35 @@ namespace graphics {
        "miter, round, bevel",
         miter, round, bevel);
 
-    struct arc:mx {
-        struct data {
-            vec2 cen;
-            real radius;
-            vec2 degs; /// x:from [->y:distance]
-            vec2 origin;
-        } &m;
-        ctr(arc, mx, data, m);
-    };
-
-    struct line:mx {
-        struct data {
-            vec2 to;
-            vec2 origin;
-        } &m;
-        ctr(line, mx, data, m);
-    };
-
-    struct move:mx {
-        struct data {
-            vec2 to;
-        } &m;
-        ctr(move, mx, data, m);
-    };
-
-    struct bezier:mx {
-        struct data {
-            vec2 cp0;
-            vec2 cp1;
-            vec2 b;
-            vec2 origin;
-        } &m;
-        ctr(bezier, mx, data, m);
-    };
-
-    struct rect:mx {
-        using T  = real;
-        using r4 = ion::r4<T>;
-        using v2 = ion::v2<T>;
-
-        
-        
-        r4 &data;
-
-        ctr(rect, mx, r4, data); 
-
-        inline rect(T x, T y, T w, T h) : rect(r4 { x, y, w, h }) { }
-        inline rect(v2 p0, v2 p1)       : rect(p0.x, p0.y, p1.x, p1.y) { }
-
-        inline rect  offset(T a)               const { return data.offset(a); }
-        inline v2         size()               const { return data.size(); }
-        inline ion::size shape()               const { return { num(data.h), num(data.w) }; }
-        
-        inline v2            xy()              const { return data.xy();         }
-        inline v2        center()              const { return data.center();     }
-        inline bool    contains(vec2 p)        const { return data.contains(p);  }
-        inline bool  operator==(const rect &r) const { return   data == r.data;  }
-        inline bool  operator!=(const rect &r) const { return !(data == r.data); }
-        inline rect operator +(rect         r) const { return data + r.data;     }
-        inline rect operator -(rect         r) const { return data - r.data;     }
-        inline rect operator +(v2           v) const { return { data.x + v.x, data.y + v.y, data.w, data.h }; }
-        inline rect operator -(v2           v) const { return { data.x - v.x, data.y - v.y, data.w, data.h }; }
-        inline rect operator *(T            r) const { return data * r;          }
-        inline rect operator /(T            r) const { return data / r;          }
-        inline      operator  bool          () const { return bool(data);        }
-
-        array<v2> edge_points() const {
-            return { {data.x,data.y}, {data.x+data.w,data.y}, {data.x+data.w,data.y+data.h}, {data.x,data.y+data.h} };
-        }
-        
-        array<v2> clip(array<v2> &poly) const {
-            const rect  &clip = *this;
-            array<v2>        p = poly;
-            array<v2>   points = clip.edge_points();
-            ///
-            for (int i = 0; i < points.length(); i++) {
-                v2   &e0   = points[i];
-                v2   &e1   = points[(i + 1) % points.length()];
-                e2<T> edge = { e0, e1 };
-                array<v2> cl;
-                ///
-                for (int ii = 0; ii < p.length(); ii++) {
-                    const v2 &pi = p[(ii + 0)];
-                    const v2 &pk = p[(ii + 1) % p.length()];
-                    const bool    top = i == 0;
-                    const bool    bot = i == 2;
-                    const bool    lft = i == 3;
-                    ///
-                    if (top || bot) {
-                        const bool cci = top ? (edge.a.y <= pi.y) : (edge.a.y > pi.y);
-                        const bool cck = top ? (edge.a.y <= pk.y) : (edge.a.y > pk.y);
-                        if (cci) {
-                            cl += cck ? pk : v2 { edge.x(pi, pk), edge.a.y };
-                        } else if (cck) {
-                            cl += v2 { edge.x(pi, pk), edge.a.y };
-                            cl += pk;
-                        }
-                    } else {
-                        const bool cci = lft ? (edge.a.x <= pi.x) : (edge.a.x > pi.x);
-                        const bool cck = lft ? (edge.a.x <= pk.x) : (edge.a.x > pk.x);
-                        if (cci) {
-                            cl += cck ? pk : v2 { edge.a.x, edge.y(pi, pk) };
-                        } else if (cck) {
-                            cl += v2 { edge.a.x, edge.y(pi, pk) };
-                            cl += pk;
-                        }
-                    }
-                }
-                p = cl;
-            }
-            return p;
-        }
-    };
-
-    /// a more distortable primitive. its also distorted in code
-    /// from these you can form the args needed for bezier and line-paths
-    struct rounded:rect {
-        struct data {
-
-            v2r  p_tl, v_tl, d_tl;
-            real l_tl, l_tr, l_br, l_bl;
-            v2r  p_tr, v_tr, d_tr;
-            v2r  p_br, v_br, d_br;
-            v2r  p_bl, v_bl, d_bl;
-            v2r  r_tl, r_tr, r_br, r_bl;
-
-            /// pos +/- [ dir * scale ]
-            v2r tl_x, tl_y, tr_x, tr_y, br_x, br_y, bl_x, bl_y;
-            v2r c0, c1, p1, c0b, c1b, c0c, c1c, c0d, c1d;
-
-            data() { } /// this is implicit zero fill
-            data(v4r tl, v4r tr, v4r br, v4r bl) {
-                /// top-left
-                p_tl  = tl.xy();
-                v_tl  = tr.xy() - p_tl;
-                l_tl  = v_tl.length();
-                d_tl  = v_tl / l_tl;
-
-                /// top-right
-                p_tr  = tr.xy();
-                v_tr  = br.xy() - p_tr;
-                l_tr  = v_tr.length();
-                d_tr  = v_tr / l_tr;
-
-                // bottom-right
-                p_br  = br.xy();
-                v_br  = bl.xy() - p_br;
-                l_br  = v_br.length();
-                d_br  = v_br / l_br;
-
-                /// bottom-left
-                p_bl  = bl.xy();
-                v_bl  = tl.xy() - p_bl;
-                l_bl  = v_bl.length();
-                d_bl  = v_bl / l_bl;
-
-                /// set-radius
-                r_tl  = { math::min(tl.w, l_tl / 2), math::min(tl.z, l_bl / 2) };
-                r_tr  = { math::min(tr.w, l_tr / 2), math::min(tr.z, l_br / 2) };
-                r_br  = { math::min(br.w, l_br / 2), math::min(br.z, l_tr / 2) };
-                r_bl  = { math::min(bl.w, l_bl / 2), math::min(bl.z, l_tl / 2) };
-                
-                /// pos +/- [ dir * radius ]
-                tl_x = p_tl + d_tl * r_tl;
-                tl_y = p_tl - d_bl * r_tl;
-                tr_x = p_tr - d_tl * r_tr;
-                tr_y = p_tr + d_tr * r_tr;
-                br_x = p_br + d_br * r_br;
-                br_y = p_br + d_bl * r_br;
-                bl_x = p_bl - d_br * r_bl;
-                bl_y = p_bl - d_tr * r_bl;
-
-                c0   = (p_tr + tr_x) / 2;
-                c1   = (p_tr + tr_y) / 2;
-                p1   =  tr_y;
-                c0b  = (p_br + br_y) / 2;
-                c1b  = (p_br + br_x) / 2;
-                c0c  = (p_bl + bl_x) / 2;
-                c1c  = (p_bl + bl_y) / 2;
-                c0d  = (p_tl + bl_x) / 2;
-                c1d  = (p_bl + bl_y) / 2;
-            }
-
-            data(r4r &r, real rx, real ry)
-                : data(vec4 {r.x, r.y, rx, ry},             vec4 {r.x + r.w, r.y, rx, ry},
-                       vec4 {r.x + r.w, r.y + r.h, rx, ry}, vec4 {r.x, r.y + r.h, rx, ry}) { }
-            
-        } &m;
-        
-        ctr(rounded, rect, data, m);
-        
-        /// needs routines for all prims
-        inline bool contains(vec2 v) { return (v >= m.p_tl && v < m.p_br); }
-        ///
-        real  w() { return m.p_br.x - m.p_tl.x; }
-        real  h() { return m.p_br.y - m.p_tl.y; }
-        vec2 xy() { return m.p_tl; }
-
-        operator bool() { return m.l_tl <= 0; }
-
-        /// set og rect (r4r) and compute the bezier
-        rounded(r4r &r, real rx, real ry) : rounded(data { r, rx, ry }) {
-            rect::data = r;
-        }
-    };
-
-    struct movement:vec2 {
-        ictr(movement, vec2);
-    };
-
     struct shape:mx {
-        struct data {
-            rect       bounds;
-            doubly<mx> ops;
-        } &m;
+        using r4r     = rectd;
+        using vec2    = vec2d;
+        using Rect    = Rect   <r64>;
+        using Rounded = Rounded<r64>;
         ///
-        ctr(shape, mx, data, m);
+        struct sdata {
+            Rect       bounds; /// if the ops change the bounds must be re-eval'd
+            doubly<mx> ops;
+            vec2       mv;
+        };
+        ///
+        ptr(shape, mx, sdata);
 
-        bool contains(vec2 p) {
-            if (!m.bounds)
+        bool contains(vec2d p) {
+            if (!data->bounds)
                 bounds();
-            return m.bounds.contains(p);
+            return data->bounds->contains(p);
         }
         ///
-        rect bounds() {
+        rectd bounds() {
             real min_x = 0, max_x = 0;
             real min_y = 0, max_y = 0;
             int  index = 0;
             ///
-            if (!m.bounds && m.ops) {
+            if (!data->bounds && data->ops) {
                 /// get aabb from vec2
-                for (mx &v:m.ops) {
-                    v2r *vd = v.get<v2r>(0); 
+                for (mx &v:data->ops) {
+                    vec2d *vd = v.get<vec2d>(0); 
                     if (!vd) continue;
                     if (!index || vd->x < min_x) min_x = vd->x;
                     if (!index || vd->y < min_y) min_y = vd->y;
@@ -293,28 +89,34 @@ namespace graphics {
             }
             /// null bounds is possible and thats by design on shape,
             /// which, can simply have no shape at all
-            return m.bounds;
+            return data->bounds;
         }
 
-        shape(r4r r4, real rx = nan<real>(), real ry = nan<real>()) : shape() {
+        shape(rectd r4, real rx = nan<real>(), real ry = nan<real>()) : shape() {
             bool use_rect = std::isnan(rx) || rx == 0 || ry == 0;
-            m.bounds = use_rect ? graphics::rect(graphics::rect   (r4)) : 
-                                  graphics::rect(graphics::rounded(r4, rx, std::isnan(ry) ? rx : ry));
+            data->bounds = use_rect ? Rect(r4) : 
+                                      Rect(Rounded(r4, rx, std::isnan(ry) ? rx : ry)); /// type forwards
         }
 
+        bool is_rect () { return data->bounds.type() == typeof(r4r)            && !data->ops; }
+        bool is_round() { return data->bounds.type() == typeof(Rounded::rdata) && !data->ops; }    
 
+        /// following ops are easier this way than having a last position which has its exceptions for arc/line primitives
+        inline void line    (vec2d  l) {
+            data->ops += line(data->mv, l);
+            data->mv = l;
+        }
+        inline void bezier  (Bezier b) { data->ops += b; }
+        inline void move    (vec2d  v) {
+            data->mv = v;
+            data->ops += movement(v);
+        }
 
-        bool is_rect () { return m.bounds.type() == typeof(r4r)           && !m.ops; }
-        bool is_round() { return m.bounds.type() == typeof(rounded::data) && !m.ops; }    
-        void move    (vec2 v) { m.ops += movement(v); } /// following ops are easier this way than having a last position which has its exceptions for arc/line primitives
-        void line    (vec2 l) { m.ops += l; }
-        void bezier  (graphics::bezier b) { m.ops += b; }
-      //void quad    (graphics::quad   q) { m.ops += q; }
-        void arc     (graphics::arc    a) { m.ops += a; }
-        
-        operator       bool() { bounds(); return bool(m.bounds); }
-        bool      operator!() { return !operator bool(); }
-        shape::data *handle() { return &m; }
+      //void quad    (graphics::quad   q) { data->ops += q; }
+        inline void arc     (Arc a) { data->ops += a; }
+        operator        bool() { bounds(); return bool(data->bounds); }
+        bool       operator!() { return !operator bool(); }
+        shape::sdata *handle() { return data; }
     };
 
     struct border_data {
@@ -391,28 +193,28 @@ struct scalar:mx {
     ctr(scalar, mx, data, m);
 
     real operator()(real origin, real size) {
-        return origin + (m.is_percent ? (m.scale / 100.0 * size) : m.scale);
+        return origin + (data->is_percent ? (data->scale / 100.0 * size) : data->scale);
     }
 
     using p_type = typename P::etype;
     using s_type = typename S::etype;
 
-    inline bool operator>=(p_type p) const { return p >= m.prefix; }
-    inline bool operator> (p_type p) const { return p >  m.prefix; }
-    inline bool operator<=(p_type p) const { return p <= m.prefix; }
-    inline bool operator< (p_type p) const { return p <  m.prefix; }
-    inline bool operator>=(s_type s) const { return s >= m.suffix; }
-    inline bool operator> (s_type s) const { return s >  m.suffix; }
-    inline bool operator<=(s_type s) const { return s <= m.suffix; }
-    inline bool operator< (s_type s) const { return s <  m.suffix; }
-    inline bool operator==(p_type p) const { return p == m.prefix; }
-    inline bool operator==(s_type s) const { return s == m.suffix; }
-    inline bool operator!=(p_type p) const { return p != m.prefix; }
-    inline bool operator!=(s_type s) const { return s != m.suffix; }
+    inline bool operator>=(p_type p) const { return p >= data->prefix; }
+    inline bool operator> (p_type p) const { return p >  data->prefix; }
+    inline bool operator<=(p_type p) const { return p <= data->prefix; }
+    inline bool operator< (p_type p) const { return p <  data->prefix; }
+    inline bool operator>=(s_type s) const { return s >= data->suffix; }
+    inline bool operator> (s_type s) const { return s >  data->suffix; }
+    inline bool operator<=(s_type s) const { return s <= data->suffix; }
+    inline bool operator< (s_type s) const { return s <  data->suffix; }
+    inline bool operator==(p_type p) const { return p == data->prefix; }
+    inline bool operator==(s_type s) const { return s == data->suffix; }
+    inline bool operator!=(p_type p) const { return p != data->prefix; }
+    inline bool operator!=(s_type s) const { return s != data->suffix; }
 
-    inline operator    P() const { return p_type(m.prefix); }
-    inline operator    S() const { return s_type(m.suffix); }
-    inline operator real() const { return m.scale; }
+    inline operator    P() const { return p_type(data->prefix); }
+    inline operator    S() const { return s_type(data->suffix); }
+    inline operator real() const { return data->scale; }
 
     scalar(p_type prefix, real scale, s_type suffix) : scalar(data { prefix, scale, suffix, false }) { }
 
@@ -433,25 +235,25 @@ struct scalar:mx {
 
         try {
             if constexpr (identical<P, nil>()) {
-                m.scale  =   sp[0].real_value<real>();
+                data->scale  =   sp[0].real_value<real>();
                 if (sp[1]) {
-                    m.suffix = S(sp[1]);
+                    data->suffix = S(sp[1]);
                     if constexpr (identical<S, distance>())
-                        m.is_percent = m.suffix == distance::percent;
+                        data->is_percent = data->suffix == distance::percent;
                 }
             } else if (identical<S, nil>()) {
-                m.prefix = P(sp[0]);
-                m.scale  =   sp[1].real_value<real>();
+                data->prefix = P(sp[0]);
+                data->scale  =   sp[1].real_value<real>();
             } else {
-                m.prefix = P(sp[0]);
-                m.scale  =   sp[1].real_value<real>();
+                data->prefix = P(sp[0]);
+                data->scale  =   sp[1].real_value<real>();
                 if (sp[2]) {
-                    m.suffix = S(sp[2]);
+                    data->suffix = S(sp[2]);
                     if constexpr (identical<S, distance>())
-                        m.is_percent = m.suffix == distance::percent;
+                        data->is_percent = data->suffix == distance::percent;
                 }
-                m.prefix = P(sp[0]);
-                m.scale  =   sp[1].real_value<real>();
+                data->prefix = P(sp[0]);
+                data->scale  =   sp[1].real_value<real>();
             }
         } catch (P &e) {
             console.fault("type exception in scalar construction: prefix lookup failure: {0}", { str(e.mx::type()->name) });
@@ -517,22 +319,22 @@ struct region:mx {
     ///
     region(str s) : region() {
         array<str> a = s.trim().split();
-        m.tl = alignment { a[0], a[1] };
-        m.br = alignment { a[2], a[3] };
+        data->tl = alignment { a[0], a[1] };
+        data->br = alignment { a[2], a[3] };
     }
 
     /// when given a shape, this is in-effect a window which has static bounds
     /// this is used to convert shape abstract to a region
     region(graphics::shape sh) : region() {
         r4r &b = sh.bounds();
-        m.tl   = alignment { b.x,  b.y };
-        m.br   = alignment { b.x + b.w,
+        data->tl   = alignment { b.x,  b.y };
+        data->br   = alignment { b.x + b.w,
                              b.y + b.h };
     }
     
     ///
     r4<real> rect(r4<real> &win) {
-        return r4<real> { real(m.tl.plot(win)), real(m.br.plot(win)) };
+        return r4<real> { real(data->tl.plot(win)), real(data->br.plot(win)) };
     }
 };
 
@@ -678,37 +480,37 @@ using callback  = lambda<void(event)>;
 struct dispatch;
 
 struct listener:mx {
-    struct data {
+    struct ldata {
         dispatch *src;
         callback  cb;
         fn_stub   detatch;
         bool      detached;
         ///
         ~data() { printf("listener, ...destroyed\n"); }
-    } &m;
+    };
     
     ///
-    ctr(listener, mx, data, m);
+    ctr(listener, mx, ldata);
 
     void cancel() {
-        m.detatch();
-        m.detached = true;
+        data->detatch();
+        data->detached = true;
     }
 
     ///
     ~listener() {
-        if (!m.detached && mem->refs == 1) /// only reference is the binding reference, detect and make that ref:0, ~data() should be fired when its successfully removed from the list
+        if (!data->detached && mem->refs == 1) /// only reference is the binding reference, detect and make that ref:0, ~data() should be fired when its successfully removed from the list
             cancel();
     }
 };
 
 /// keep it simple for sending events, with a dispatch.  listen to them with listen()
 struct dispatch:mx {
-    struct data {
+    struct ddata {
         doubly<listener> listeners;
-    } &m;
+    };
     ///
-    ctr(dispatch, mx, data, m);
+    ptr(dispatch, mx, data);
     ///
     void operator()(event e);
     ///
@@ -759,12 +561,12 @@ struct OBJ:mx {
         for (strings &w: wlines) {
             if (w[0] == "g" || w[0] == "o") {
                 g = w[1];
-                m.groups[g].name  = g;
-                m.gcount[g]       = 0;
+                data->groups[g].name  = g;
+                data->gcount[g]       = 0;
             } else if (w[0] == "f") {
                 if (!g.length() || w.length() != 4)
                     console.fault("import requires triangles"); /// f pos/uv/norm pos/uv/norm pos/uv/norm
-                m.gcount[g]++;
+                data->gcount[g]++;
             }
         }
 
@@ -772,8 +574,8 @@ struct OBJ:mx {
         for (auto &w: wlines) {
             if (w[0] == "g" || w[0] == "o") {
                 g = w[1];
-                if (!m.groups[g].ibo)
-                     m.groups[g].ibo = array<u32>(m.gcount[g] * 3);
+                if (!data->groups[g].ibo)
+                     data->groups[g].ibo = array<u32>(data->gcount[g] * 3);
             }
             else if (w[0] == "v")  v  += vec3 { w[1].real_value<real>(), w[2].real_value<real>(), w[3].real_value<real>() };
             else if (w[0] == "vt") vt += vec2 { w[1].real_value<real>(), w[2].real_value<real>() };
@@ -788,11 +590,11 @@ struct OBJ:mx {
                         int      iv  = sp[0].integer_value();
                         int      ivt = sp[1].integer_value();
                         int      ivn = sp[2].integer_value();
-                        m.vbo       += fn(m.groups[g], iv ?  v[ iv-1] : null,
+                        data->vbo       += fn(data->groups[g], iv ?  v[ iv-1] : null,
                                                       ivt ? vt[ivt-1] : null,
                                                       ivn ? vn[ivn-1] : null);
                     }
-                    m.groups[g].ibo += indices[key];
+                    data->groups[g].ibo += indices[key];
                 }
             }
         }
@@ -805,9 +607,7 @@ enums(mode, regular,
 
 struct window_data;
 struct window:mx {
-    using intern = window_data;
-    ///
-    ptr_declare(window);
+    ptr_declare(window, mx, window_data);
     
     window(ion::size sz, mode::etype m, memory *control);
 
@@ -955,8 +755,8 @@ struct glyph:mx {
 
     str ansi();
     bool operator==(glyph &lhs) {
-        return   (m.border == lhs->border) && (m.chr == lhs->chr) &&
-                 (m.bg     == lhs->bg)     && (m.fg  == lhs->fg);
+        return   (data->border == lhs->border) && (data->chr == lhs->chr) &&
+                 (data->bg     == lhs->bg)     && (data->fg  == lhs->fg);
     }
     bool operator!=(glyph &lhs) { return !operator==(lhs); }
 };
@@ -994,14 +794,14 @@ struct cbase:mx {
     virtual void init() { }
     
     draw_state &cur() {
-        if (m.stack.length() == 0)
-            m.stack += draw_state(); /// this errors in graphics::cap initialize (type construction, Deallocate error indicates stack corruption?)
+        if (data->stack.length() == 0)
+            data->stack += draw_state(); /// this errors in graphics::cap initialize (type construction, Deallocate error indicates stack corruption?)
         
-        return m.stack.last();
+        return data->stack.last();
     }
 
     public:
-    ion::size &size() { return m.size; }
+    ion::size &size() { return data->size; }
 
     virtual void    outline(graphics::shape) { }
     virtual void       fill(graphics::shape) { }
@@ -1037,17 +837,17 @@ struct cbase:mx {
 
     /// these two arent virtual but draw_state_changed_is; do all of the things there.
     void push() {
-        m.stack +=  cur();
-        m.state  = &cur();
+        data->stack +=  cur();
+        data->state  = &cur();
         /// first time its pushed in more hacky dependency chain ways
-        draw_state_change(m.state, state_change::push);
+        draw_state_change(data->state, state_change::push);
     }
 
     void  pop() {
-        m.stack.pop();
-        m.state = &cur();
+        data->stack.pop();
+        data->state = &cur();
         ///
-        draw_state_change(m.state, state_change::pop);
+        draw_state_change(data->state, state_change::pop);
     }
 
     void    outline_sz(real sz)  { cur().outline_sz  = sz;  }
@@ -1063,7 +863,7 @@ struct cbase:mx {
     void         *data();
 
     /// boolean operator
-    inline operator bool() { return bool(m.size); }
+    inline operator bool() { return bool(data->size); }
 };
 
 struct gfx_memory;
@@ -1453,7 +1253,7 @@ struct style:mx {
         
         ///
         inline size_t count(str s) {
-            for (entry &p:m.entries)
+            for (entry &p:data->entries)
                 if (p->member == s)
                     return 1;
             return 0;
@@ -1461,7 +1261,7 @@ struct style:mx {
 
         ///
         inline entry *b_entry(mx member_name) {
-            for (entry &p:m.entries)
+            for (entry &p:data->entries)
                 if (p->member == member_name)
                     return &p;
             return null;
@@ -1469,7 +1269,7 @@ struct style:mx {
 
         size_t score(node *n) {
             double best_sc = 0;
-            for (qualifier &q:m.quals) {
+            for (qualifier &q:data->quals) {
                 qualifier::members &qd = q.data;
                 bool    id_match  = qd.id    &&  qd.id == n->e.id;
                 bool   id_reject  = qd.id    && !id_match;
@@ -1527,7 +1327,7 @@ struct style:mx {
         }
 
         ///
-        inline operator bool() { return m.quals || m.entries || m.blocks; }
+        inline operator bool() { return data->quals || data->entries || data->blocks; }
     };
 
     static inline map<style> cache;
@@ -1540,7 +1340,7 @@ struct style:mx {
     ctr(style, mx, data, m);
 
     array<block> &members(mx &s_member) {
-        return m.members[s_member];
+        return data->members[s_member];
     }
 
     ///
@@ -1584,23 +1384,23 @@ struct object:node {
       //UniformData     ubo;
       //VAttribs        attr      = { VA::Position, VA::UV, VA::Normal };
         rendition       render    = { rendition::shader };
-    } &m;
+
+        /// our interface
+        doubly<prop> meta() {
+            return {
+                prop { *this, "model",     model },
+                prop { *this, "skin",      skin },
+                prop { *this, "assets",    assets },
+                prop { *this, "shaders",   shaders },
+              //prop { *this, "ubo",       ubo },
+              //prop { *this, "attr",      attr },
+                prop { *this, "render",    render }
+            };
+        }
+    };
 
     /// make a node_constructors
-    ctr(object, node, members, m)
-    
-    /// our interface
-    doubly<prop> meta() {
-        return {
-            prop { m, "model",     m.model },
-            prop { m, "skin",      m.skin },
-            prop { m, "assets",    m.assets },
-            prop { m, "shaders",   m.shaders },
-          //prop { m, "ubo",       m.ubo },
-          //prop { m, "attr",      m.attr },
-            prop { m, "render",    m.render }
-        };
-    }
+    ptr(object, node, members)
     
     /// change management, we probably have to give prev values in a map.
     void changed(doubly<prop> list) {

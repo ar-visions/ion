@@ -6,7 +6,7 @@ namespace ion {
 
 template <typename T>
 struct color:rgba<T> {
-    using  base = ion::vec<T,4>;
+    using  base = ion::vec4<T>;
     using  data = ion::rgba<T>;
 
     color(cstr h) {
@@ -81,21 +81,24 @@ struct color:rgba<T> {
     }
 };
 
+/// always have a beginning, middle and end -- modules && classes && functions
 struct image:array<rgba8> {
     image(memory *m)       : array<rgba8>(m)  { }
     image(size   sz)       : array<rgba8>(sz) { }
     image(null_t n = null) : image(size { 1, 1 })  { }
     image(path p);
     image(size sz, rgba8 *px, int scanline = 0);
-    bool save(path p) const;
-    rgba8 *pixels() const { return elements; }
+    ///
+    bool    save(path p) const;
+    rgba8      *pixels() const { return array<rgba8>::data; }
     size_t       width() const { return (*mem->shape)[1]; }
     size_t      height() const { return (*mem->shape)[0]; }
     size_t      stride() const { return (*mem->shape)[1]; }
     recti         rect() const { return { 0, 0, int(width()), int(height()) }; }
+    ///
     rgba8 &operator[](size pos) const {
         size_t index = mem->shape->index_value(pos);
-        return elements[index];
+        return data[index];
     }
 };
 
@@ -103,12 +106,8 @@ mx inflate(mx);
 
 /// isolating the types and then designing from there brings the isolated types together
 /// i dont want these constructors implied, its a bit too much and a reduction effort should be of value
-
 struct audio:mx {
-    using intern = struct iaudio;
-    using parent = mx;
-    ///
-    ptr_declare(audio);
+    ptr_declare(audio, mx, struct iaudio);
     ///
     audio(path res, bool force_mono = false);
     void      convert_mono();

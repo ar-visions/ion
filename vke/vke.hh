@@ -1,14 +1,8 @@
-#ifndef VK_HELPERS_H
-#define VK_HELPERS_H
+#pragma once
+#include <mx/mx.hpp>
+#include <math/math.hpp>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-/// handlers wrappers
-#include <vke/vulkan.h>
-#include <io/io.h>
-
+namespace ion {
 enum VkeStatus {
 	VKE_STATUS_SUCCESS = 0,			    /// no error occurred.
 	VKE_STATUS_NO_MEMORY,				/// out of memory
@@ -43,12 +37,13 @@ enum VkeMemoryUsage {
     VKE_MEMORY_USAGE_GPU_LAZILY_ALLOCATED = 6,
     VKE_MEMORY_USAGE_MAX_ENUM = 0x7FFFFFFF
 };
+struct VkeWindow;
 ///
-typedef void (*VkeKeyEvent   )(VkeWindow, int, int, int, int);
-typedef void (*VkeCharEvent  )(VkeWindow, int);
-typedef void (*VkeButtonEvent)(VkeWindow, int, int, int);
-typedef void (*VkeCursorEvent)(VkeWindow, double, double, bool);
-typedef void (*VkeResizeEvent)(VkeWindow, int, int);
+typedef void (*VkeKeyEvent   )(void*, int, int, int, int);
+typedef void (*VkeCharEvent  )(void*, int);
+typedef void (*VkeButtonEvent)(void*, int, int, int);
+typedef void (*VkeCursorEvent)(void*, double, double, bool);
+typedef void (*VkeResizeEvent)(void*, int, int);
 ///
 extern uint32_t vke_log_level;
 extern FILE    *vke_out;
@@ -60,303 +55,315 @@ extern FILE    *vke_out;
 
 /// mx-compatible app
 /// mx doesnt require inheritance to it but getting an mx type can mean getting a referencable type with meta interface. dont need to inherit anything
-
 enums(VkeSelection, Undefined,
     "Undefined, IntegratedGPU, DiscreteGPU, VirtualGPU, CPU",
-     Undefined, IntegratedGPU, DiscreteGPU, VirtualGPU, CPU
-);
+     Undefined, IntegratedGPU, DiscreteGPU, VirtualGPU, CPU);
 
-/// interfacing types for simple vulkan types
-struct VkeSurface:mx {
-    using intern = VkSurfaceKHR;
-    ptr_declare(VkeSurface);
+struct VkeDevice;
+
+/// interfacing types for simple vulkan types (industrial-strength-hair-dryer-dragged-through-desert)
+/// aligned enumerables be alright but they will also be annoying to keep in sync.  just passing the enum through the mx portal for now
+struct VkeSurfaceKHR             :mx { ptr_declare(VkeSurfaceKHR,              mx, VkSurfaceKHR);             };
+struct VkeInstance               :mx { ptr_declare(VkeInstance,                mx, VkInstance);               };
+struct VkeFilter                 :mx { ptr_declare(VkeFilter,                  mx, VkFilter)                  };
+struct VkeSamplerMipmapMode      :mx { ptr_declare(VkeSamplerMipmapMode,       mx, VkSamplerMipmapMode)       };
+struct VkeSamplerAddressMode     :mx { ptr_declare(VkeSamplerAddressMode,      mx, VkSamplerAddressMode)      };
+
+bool _get_dev_extension_is_supported (VkExtensionProperties* pExtensionProperties, uint32_t extensionCount, const char* name) {
+	for (uint32_t i=0; i<extensionCount; i++) {
+		if (strcmp(name, pExtensionProperties[i].extensionName)==0)
+			return true;
+	}
+	return false;
+}
+
+struct VkeGPU:mx { ptr_declare(VkeGPU, mx, VkPhysicalDevice);
+    array<symbol> usable_extensions(array<symbol> input);
+};
+
+struct VkeDeviceCreateInfo              :mx { ptr_declare(VkeDeviceCreateInfo,               mx, VkDeviceCreateInfo)               };
+struct VkeObjectType                    :mx { ptr_declare(VkeObjectType,                     mx, VkObjectType)                     };
+struct VkePhysicalDeviceFeatures        :mx { ptr_declare(VkePhysicalDeviceFeatures,         mx, VkPhysicalDeviceFeatures)         };
+struct VkeSampleCountFlagBits           :mx { ptr_declare(VkeSampleCountFlagBits,            mx, VkSampleCountFlagBits)            };
+struct VkeImageType                     :mx { ptr_declare(VkeImageType,                      mx, VkImageType);                     };
+struct VkeFormat                        :mx { ptr_declare(VkeFormat,                         mx, VkFormat);                        };
+struct VkeImageUsageFlags               :mx { ptr_declare(VkeImageUsageFlags,                mx, VkImageUsageFlags);               };
+struct VkeImageTiling                   :mx { ptr_declare(VkeImageTiling,                    mx, VkImageTiling);                   };
+struct VkePipelineStageFlags            :mx { ptr_declare(VkePipelineStageFlags,             mx, VkPipelineStageFlags)             };
+struct VkeResult                        :mx { ptr_declare(VkeResult,                         mx, VkResult)                         };
+struct VkeImageViewType                 :mx { ptr_declare(VkeImageViewType,                  mx, VkImageViewType)                  };
+struct VkeImageAspectFlags              :mx { ptr_declare(VkeImageAspectFlags,               mx, VkImageAspectFlags)               };
+struct VkeImageLayout                   :mx { ptr_declare(VkeImageLayout,                    mx, VkImageLayout)                    };
+struct VkeImageSubresourceRange         :mx { ptr_declare(VkeImageSubresourceRange,          mx, VkImageSubresourceRange)          };
+struct VkeDescriptorImageInfo           :mx { ptr_declare(VkeDescriptorImageInfo,            mx, VkDescriptorImageInfo)            };
+struct VkeBufferUsageFlags              :mx { ptr_declare(VkeBufferUsageFlags,               mx, VkBufferUsageFlags)               };
+struct VkeDeviceSize                    :mx { ptr_declare(VkeDeviceSize,                     mx, VkDeviceSize)                     };
+struct VkeDescriptorBufferInfo          :mx { ptr_declare(VkeDescriptorBufferInfo,           mx, VkDescriptorBufferInfo)           };
+struct VkeCommandPoolCreateFlags        :mx { ptr_declare(VkeCommandPoolCreateFlags,         mx, VkCommandPoolCreateFlags)         };
+struct VkeCommandBufferLevel            :mx { ptr_declare(VkeCommandBufferLevel,             mx, VkCommandBufferLevel)             };
+struct VkeCommandBufferUsageFlags       :mx { ptr_declare(VkeCommandBufferUsageFlags,        mx, VkCommandBufferUsageFlags)        };
+struct VkePresentModeKHR                :mx { ptr_declare(VkePresentModeKHR,                 mx, VkPresentModeKHR)                 };
+struct VkeDeviceQueueCreateInfo         :mx { ptr_declare(VkeDeviceQueueCreateInfo,          mx, VkDeviceQueueCreateInfo)          };
+struct VkePhysicalDeviceProperties      :mx { ptr_declare(VkePhysicalDeviceProperties,       mx, VkPhysicalDeviceProperties)       }; 
+struct VkeQueueFamilyProperties         :mx { ptr_declare(VkeQueueFamilyProperties,          mx, VkQueueFamilyProperties)          }; 
+struct VkePhysicalDeviceMemoryProperties:mx { ptr_declare(VkePhysicalDeviceMemoryProperties, mx, VkPhysicalDeviceMemoryProperties) }; 
+
+struct VkeSemaphore:mx {
+    ptr_declare(VkeSemaphore, mx, VkSemaphore);
+    VkeSemaphore(VkeDevice &dev, uint64_t initialValue);
+    bool wait(VkeDevice &dev, VkeSemaphore timeline, const uint64_t wait);
+};
+
+struct VkeCommandPool:mx {
+    ptr_declare(VkeCommandPool, mx, VkCommandPool);
+    VkeCommandPool(VkeDevice &vke, uint32_t qFamIndex, VkeCommandPoolCreateFlags flags);
+};
+
+struct VkeCommandBuffer:mx {
+    ptr_declare(VkeCommandBuffer, mx, VkCommandBuffer);
+
+    VkeCommandBuffer    (VkeDevice &vke, VkeCommandPool cmdPool, VkeCommandBufferLevel level, uint32_t count = 1);
+    void cmd_begin      (VkeCommandBufferUsageFlags flags);
+    void cmd_end        ();
+    void label_start    (const char* name, const float color[4]);
+    void label_insert   (const char* name, const float color[4]);
+    void label_end      ();
 };
 
 /// interfacing types for simple vulkan types
 struct VkeMonitor:mx {
-    using intern = GLFWmonitor;
-    ptr_declare(VkeMonitor);
+    ptr_declare(VkeMonitor, mx, GLFWmonitor*);
     static array<VkeMonitor> enumerate();
 };
 
-/// Dont want this to conflict too much with VkePhysInfo
-struct VkeGPU:mx {
-    using intern = VkPhysicalDevice;
-    ptr_declare(VkeGPU);
-};
 ///
+struct VkeImageView:mx {
+    ptr_declare(VkeImageView, mx, VkImageView);
+};
 
+///
+struct VkeEvent:mx {
+    ptr_declare(VkeEvent, mx, VkEvent);
+    VkeEvent(VkeDevice vke);
+};
+
+///
+struct VkeFence:mx {
+    ptr_declare(VkeFence, mx, VkFence);
+    VkeFence(VkeDevice dev, bool signalled);
+};
+
+///
+struct VkeQueue:mx {
+    ptr_declare(VkeQueue, mx, struct vke_queue);
+    VkeQueue(VkeDevice dev, uint32_t familyIndex, uint32_t qIndex);
+    /// just using one of these.  make statics out of void args
+    void submit(
+		VkeFence 					 fence,
+		array<VkeCommandBuffer>  	 cmd_buffers,
+		array<VkePipelineStageFlags> wait_stages, /// --> must be size of wait_semaphores len() <--
+		array<VkeSemaphore> 		 wait_semaphores, array<VkeSemaphore> signal_semaphores,
+		array<u64> 					 wait_values, 	  array<u64> 		  signal_values);
+};
+
+///
+struct VkePhyInfo:mx {
+    ptr_declare(VkePhyInfo, mx, struct vke_phyinfo);
+    VkePhyInfo(VkeGPU gpu);
+
+    //operator VkPhysicalDevice &();
+
+    VkePhysicalDeviceProperties       get_properties       ();
+    VkePhysicalDeviceMemoryProperties get_memory_properties();
+    void                              get_queue_fam_indices(int* pQueue, int* gQueue, int* tQueue, int* cQueue);
+    VkeQueueFamilyProperties          get_queues_props     (uint32_t* qCount);
+
+    bool create_queues               (int qFam, uint32_t queueCount, const float* queue_priorities, VkDeviceQueueCreateInfo* const qInfo);
+    bool create_presentable_queues   (uint32_t queueCount, const float* queue_priorities, VkeDeviceQueueCreateInfo qInfo);
+    bool create_graphic_queues	     (uint32_t queueCount, const float* queue_priorities, VkeDeviceQueueCreateInfo qInfo);
+    bool create_transfer_queues		 (uint32_t queueCount, const float* queue_priorities, VkeDeviceQueueCreateInfo qInfo);
+    bool create_compute_queues		 (uint32_t queueCount, const float* queue_priorities, VkeDeviceQueueCreateInfo qInfo);
+    bool try_get_extension_properties(const char* name, const VkExtensionProperties* properties);
+    void  set_dpi                    (vec2i);
+    vec2i get_dpi                    ();
+
+    VkExtensionProperties *lookup_extension (symbol input);
+    array<symbol>          usable_extensions(array<symbol> input);
+
+    VkePhyInfo(VkeGPU gpu, VkeSurfaceKHR surface);
+};
+
+///
 struct VkeApp:mx {
-    using intern = struct vke_app; /// take data param out of ptr/ctr, its just intern for ptr and data for ctr
-    ptr_declare(VkeApp);
+    ptr_declare(VkeApp, mx, struct vke_app);
 
-    VkeApp(uint32_t v_major, uint32_t v_minor, const char* app_name,
-           uint32_t layersCount, const char **layers, uint32_t ext_count, const char* extentions[]);
+    array<VkePhyInfo> hardware(VkeSurfaceKHR surface);
 
-    array<VkePhyInfo> phyinfos(VkeSurfaceKHR surface);
+    VkeApp(
+        uint32_t v_major, uint32_t v_minor, const char* app_name,
+        array<symbol> layers = {}, array<symbol> ext_instance = {});
 
-    void enable_debug_messenger(VkeApp app, VkDebugUtilsMessageTypeFlagsEXT typeFlags, VkDebugUtilsMessageSeverityFlagsEXT severityFlags, PFN_vkDebugUtilsMessengerCallbackEXT callback);
+    void enable_debug();
+
     
-    static VkeApp main ();
+
+    static VkeApp main (array<symbol> layers = {}, array<symbol> ext_instance = {});
     static void   push (VkeApp app);
 };
 
-struct VkePhyInfo:mx {
-    VkePhyInfo(VkePhysicalDevice phy, VkeSurfaceKHR surface);
-    VkePhyInfo                       vke_phyinfo_grab                 (VkePhyInfo phy);
-    VkePhyInfo                       vke_phyinfo_drop                 (VkePhyInfo phy);
-    VkPhysicalDeviceProperties       vke_phyinfo_get_properties       (VkePhyInfo phy);
-    VkPhysicalDeviceMemoryProperties vke_phyinfo_get_memory_properties(VkePhyInfo phy);
-    void                             vke_phyinfo_get_queue_fam_indices(VkePhyInfo phy, int* pQueue, int* gQueue, int* tQueue, int* cQueue);
-    VkQueueFamilyProperties*         vke_phyinfo_get_queues_props(VkePhyInfo phy, uint32_t* qCount);
-
-    bool create_queues(int qFam, uint32_t queueCount, const float* queue_priorities, VkDeviceQueueCreateInfo* const qInfo);
-    bool create_presentable_queues(uint32_t queueCount, const float* queue_priorities, VkDeviceQueueCreateInfo* const qInfo);
-    bool create_graphic_queues	     (uint32_t queueCount, const float* queue_priorities, VkDeviceQueueCreateInfo* const qInfo);
-    bool create_transfer_queues		 (uint32_t queueCount, const float* queue_priorities, VkDeviceQueueCreateInfo* const qInfo);
-    bool create_compute_queues		 (uint32_t queueCount, const float* queue_priorities, VkDeviceQueueCreateInfo* const qInfo);
-    bool try_get_extension_properties(const char* name, const VkExtensionProperties* properties);
-    void set_dpi                     (int  hdpi, int  vdpi);
-    void get_dpi                     (int *hdpi, int *vdpi);
+struct VkeWindow:mx {
+    ptr_declare(VkeWindow, mx, struct vke_window);
+    ///
+    VkeWindow(
+		VkeDevice &dev, VkeMonitor mon,
+        void*, int w, int h, const char *title,
+		VkeResizeEvent resize_event,  VkeKeyEvent  key_event,
+		VkeCursorEvent cursor_event,  VkeCharEvent char_event,
+		VkeButtonEvent button_event);
+        
+    ///
+    bool        should_close  ();
+    bool        destroy       ();
+    const char *clipboard     ();
+    void        set_clipboard (const char*);
+    void        set_title     (const char*);
+    void        show          ();
+    void        hide          ();
+    void       *user_data     ();
+    void        poll_events   ();
 };
 
 /// interfacing types for simple vulkan types
 struct VkeSampler:mx {
-    using intern = VkSampler;
-    ptr_declare(VkeSampler);
-    void destructor();
+    ptr_declare(VkeSampler, mx, struct vke_sampler);
+    static VkeSampleCountFlagBits max_samples(VkeSampleCountFlagBits counts);
+    operator VkSampler &();
 };
 
+struct VkeImage:mx {
+    ptr_declare(VkeImage, mx, struct vke_image);
+    
+    /// consolidate into 2 or 3
+    VkeImage(VkeDevice dev,  VkeImage vkImg, VkeFormat format,
+             uint32_t width, uint32_t height);
+    
+    VkeImage(VkeDevice dev, VkeImageType imageType, VkeFormat format,
+             uint32_t               width,     uint32_t           height,
+             VkeMemoryUsage         memprops,  VkeImageUsageFlags usage,
+             VkeSampleCountFlagBits samples,   VkeImageTiling     tiling,
+		     uint32_t               mipLevels, uint32_t           arrayLayers);
+    
+    VkeImage(VkeDevice pDev, VkFormat format , VkSampleCountFlagBits num_samples,
+             uint32_t width, uint32_t height,  VkeMemoryUsage memprops, VkImageUsageFlags usage);
+    
+    /// this is 'basic'
+    VkeImage(VkeDevice dev, VkeFormat format, uint32_t width, uint32_t height, VkeImageTiling tiling,
+			 VkeMemoryUsage memprops, VkeImageUsageFlags usage);
+    
+    VkeImage(VkeDevice dev, VkeFormat format, VkeSampleCountFlagBits num_samples, uint32_t width, uint32_t height,
+			 VkeMemoryUsage memprops, VkeImageUsageFlags usage);
+
+    ///
+    static VkeImage tex2d_array_create(VkeDevice pDev, VkeFormat format, uint32_t width, uint32_t height, uint32_t layers, VkeMemoryUsage memprops, VkeImageUsageFlags usage);
+
+    void set_sampler      (VkeSampler       sampler);
+    void create_descriptor(VkeImageViewType viewType,  VkeImageAspectFlags aspectFlags, VkeFilter magFilter, VkeFilter minFilter, VkeSamplerMipmapMode mipmapMode, VkeSamplerAddressMode addressMode);
+    void create_view      (VkeImageViewType viewType,  VkeImageAspectFlags aspectFlags);
+    void create_sampler   (VkeFilter        magFilter, VkeFilter minFilter,  VkeSamplerMipmapMode mipmapMode, VkeSamplerAddressMode addressMode);
+    void set_layout       (VkeCommandBuffer cmdBuff,   VkeImageAspectFlags      aspectMask,       VkeImageLayout        old_image_layout, VkeImageLayout new_image_layout, VkePipelineStageFlags src_stages, VkePipelineStageFlags dest_stages);
+    void set_layout_subres(VkeCommandBuffer cmdBuff,   VkeImageSubresourceRange subresourceRange, VkeImageLayout        old_image_layout, VkeImageLayout new_image_layout, VkePipelineStageFlags src_stages, VkePipelineStageFlags dest_stages);
+
+    void     destroy_sampler();
+    VkeImage drop           ();
+    void     reference      ();
+    void*    map            ();
+    void     unmap          ();
+    void     set_name       (const char* name);
+    uint64_t get_stride	    ();
+
+    operator VkImage &();
+
+    VkeDescriptorImageInfo get_descriptor(VkeImageLayout imageLayout);
+};
+
+/// most should be reducable here.  using a extern / intern pattern containing the Vk internals
+/// we want a simplistic interface but not hindered; something that isolates vulkan
 
 struct VkeDevice:mx {
-    ptr_declare(VkeDevice);
+    ptr_declare(VkeDevice, mx, struct vke_device);
     ///
-    VkeDevice(VkeApp app, VkePhyInfo phyInfo, VkDeviceCreateInfo* pDevice_info);
-    VkeDevice(VkInstance inst, VkPhysicalDevice phy, VkDevice vkdev);
+    VkeDevice(VkeApp app, VkePhyInfo phyInfo, VkeDeviceCreateInfo pDevice_info);
+    VkeDevice(VkeInstance inst, VkeGPU gpu, VkeDevice vk);
     ///
-    VkeDevice        drop             (VkeDevice dev);
-    void             init_debug_utils (VkeDevice dev);
-    VkDevice         vk               (VkeDevice dev);
-    VkPhysicalDevice gpu              (VkeDevice dev);
-    VkePhyInfo       phyinfo          (VkeDevice dev);
-    VkeApp	         app              (VkeDevice dev);
-    void             set_object_name  (VkeDevice dev, VkObjectType objectType, uint64_t handle, const char *name);
-    VkeSampler       create_sampler   (VkeDevice dev, VkFilter magFilter, VkFilter minFilter, VkSamplerMipmapMode mipmapMode, VkSamplerAddressMode addressMode);
-    void             destroy_sampler  (VkeDevice dev, VkSampler sampler);
-    const void*      get_device_requirements (VkPhysicalDeviceFeatures* pEnabledFeatures);
-    int              device_present_index    (VkeDevice);
-    int              device_transfer_index   (VkeDevice);
-    int              device_graphics_index   (VkeDevice);
-    int              vke_device_compute_index    (VkeDevice);
+    operator VkDevice &();
+    ///
+    void              init_debug_utils       ();
+    VkeDevice         vk                     ();
+    VkeGPU            gpu                    ();
+    VkePhyInfo        phyinfo                ();
+    VkeApp	          app                    ();
+    void              set_object_name        (VkeObjectType objectType, uint64_t handle, const char *name);
+    VkeSampler        create_sampler         (VkeFilter magFilter, VkeFilter minFilter, VkeSamplerMipmapMode mipmapMode, VkeSamplerAddressMode addressMode);
+    void              destroy_sampler        (VkeSampler sampler);
+    const void*       get_device_requirements(VkePhysicalDeviceFeatures pEnabledFeatures);
+    int               present_index          ();
+    int               transfer_index         ();
+    int               graphics_index         ();
+    int               compute_index          ();
+
+    static bool layer_is_present(const char* layerName);
+    static VkeDevice select_device(VkeSelection selection, array<symbol> required_exts);
 };
 
-using VkeApp                    = vke_app*;
-
-using VkeDevice                 = vke_device*;
-using VkeImage                  = vke_image*;
-using VkeBuffer                 = vke_buffer*;
-using VkeQueue                  = vke_queue*;
-using VkePresenter              = vke_presenter*;
-using VkeWindow                 = vke_window*;
-using VkeMonitor                = vke_monitor*;
-
-///VkeDevice interface uses an internal type vke_device (data)
-using VkeDevice = sp<vke_device>;
-
-
-
-/**
- * @brief query required instance extensions for vkvg.
- *
- * @param pExtensions a valid pointer to the array of extension names to fill, the size may be queried
- * by calling this method with pExtension being a NULL pointer.
- * @param pExtCount a valid pointer to an integer that will be fill with the required extension count.
- */
+struct VkeBuffer:mx {
+    ptr_declare (VkeBuffer, mx, struct vke_buffer);
+    ///
+    VkeBuffer   (VkeDevice pDev, VkeBufferUsageFlags usage, VkeMemoryUsage memprops, VkeDeviceSize size, bool mapped);
+    ///
+    void resize	(VkeDeviceSize newSize, bool mapped);
+    void reset	();
+    ///
+    VkeDescriptorBufferInfo get_descriptor      ();
+    VkeResult               map  			    ();
+    void                    unmap		        ();
+    void*                   get_mapped_pointer  ();
+    void                    flush 			    ();
+};
 
 struct VkePresenter:mx {
-    void vke_get_required_instance_extensions (const char** pExtensions, uint32_t* pExtCount);
-
-    VkePresenter vke_presenter_create            (VkeDevice dev, uint32_t presentQueueFamIdx, VkSurfaceKHR surface, uint32_t width, uint32_t height, VkFormat preferedFormat, VkPresentModeKHR presentMode);
-    VkePresenter vke_presenter_drop              (VkePresenter r);
-    bool         vke_presenter_draw              (VkePresenter r);
-    bool         vke_presenter_acquireNextImage  (VkePresenter r, VkFence fence, VkSemaphore semaphore);
-    void         vke_presenter_build_blit_cmd    (VkePresenter r, VkImage blitSource, uint32_t width, uint32_t height);
-    void         vke_presenter_create_swapchain  (VkePresenter r);
-    void	        vke_presenter_get_size		    (VkePresenter r, uint32_t* pWidth, uint32_t* pHeight);
+    ptr_declare(VkePresenter, mx, struct vke_presenter);
+    ///
+    VkePresenter(VkeDevice dev,  uint32_t presentQueueFamIdx, VkeSurfaceKHR surface,
+                 uint32_t width, uint32_t height, VkeFormat preferedFormat, VkePresentModeKHR presentMode);
+    bool draw              ();
+    bool acquireNextImage  (VkeFence fence, VkeSemaphore semaphore);
+    void build_blit_cmd    (VkeImage blitSource, uint32_t width, uint32_t height);
+    void create_swapchain  ();
+    void get_size          (uint32_t* pWidth, uint32_t* pHeight);
+    void swapchain_destroy ();
 };
 
-
-struct VkeSamples {
-    VkSampleCountFlagBits max_samples(VkSampleCountFlagBits counts);
+/// timeline is VkeSemaphore with a time value
+struct VkeShaderModule:mx {
+    ptr_declare(VkeShaderModule, mx, VkShaderModule);
+    static VkeShaderModule load(VkeDevice vke, const char* path);
 };
 
+bool           vke_memory_type_from_properties(VkPhysicalDeviceMemoryProperties* memory_properties, uint32_t typeBits, VkeMemoryUsage requirements_mask, uint32_t *typeIndex);
 
-vke_public
-VkeImage vke_image_import       (VkeDevice pDev, VkImage vkImg, VkFormat format, uint32_t width, uint32_t height);
-
-
-vke_public
-VkeImage vke_image_create(VkeDevice pDev, VkImageType imageType,
-		VkFormat format, uint32_t width, uint32_t height,
-		VkeMemoryUsage memprops, VkImageUsageFlags usage,
-		VkSampleCountFlagBits samples, VkImageTiling tiling,
-		uint32_t mipLevels, uint32_t arrayLayers);
-
-vke_public
-VkeImage vke_image_ms_create    (VkeDevice pDev, VkFormat format, VkSampleCountFlagBits num_samples, uint32_t width, uint32_t height,
-                                                                        VkeMemoryUsage memprops, VkImageUsageFlags usage);
-vke_public
-VkeImage vke_tex2d_array_create (VkeDevice pDev, VkFormat format, uint32_t width, uint32_t height, uint32_t layers,
-                                                                        VkeMemoryUsage memprops, VkImageUsageFlags usage);
-vke_public
-void vke_image_set_sampler      (VkeImage img, VkSampler sampler);
-
-vke_public
-void vke_image_create_descriptor(VkeImage img, VkImageViewType viewType, VkImageAspectFlags aspectFlags, VkFilter magFilter, VkFilter minFilter,
-                                                                        VkSamplerMipmapMode mipmapMode, VkSamplerAddressMode addressMode);
-vke_public
-void vke_image_create_view      (VkeImage img, VkImageViewType viewType, VkImageAspectFlags aspectFlags);
-vke_public
-void vke_image_create_sampler   (VkeImage img, VkFilter magFilter, VkFilter minFilter,
-                                                                        VkSamplerMipmapMode mipmapMode, VkSamplerAddressMode addressMode);
-vke_public
-void vke_image_set_layout       (VkCommandBuffer cmdBuff, VkeImage image, VkImageAspectFlags aspectMask, VkImageLayout old_image_layout,
-                                                                        VkImageLayout new_image_layout, VkPipelineStageFlags src_stages, VkPipelineStageFlags dest_stages);
-vke_public
-void vke_image_set_layout_subres(VkCommandBuffer cmdBuff, VkeImage image, VkImageSubresourceRange subresourceRange, VkImageLayout old_image_layout,
-                                                                        VkImageLayout new_image_layout, VkPipelineStageFlags src_stages, VkPipelineStageFlags dest_stages);
-void     vke_image_destroy_sampler(VkeImage img);
-VkeImage vke_image_drop           (VkeImage img);
-void     vke_image_reference		 (VkeImage img);
-void*    vke_image_map            (VkeImage img);
-void     vke_image_unmap          (VkeImage img);
-void     vke_image_set_name       (VkeImage img, const char* name);
-uint64_t vke_image_get_stride	 (VkeImage img);
-
-vke_public
-VkImage                 vke_image_get_vkimage   (VkeImage img);
-vke_public
-VkImageView             vke_image_get_view      (VkeImage img);
-vke_public
-VkImageLayout           vke_image_get_layout    (VkeImage img);
-vke_public
-VkSampler               vke_image_get_sampler   (VkeImage img);
-vke_public
-VkDescriptorImageInfo   vke_image_get_descriptor(VkeImage img, VkImageLayout imageLayout);
-
-/*************
- * VkeBuffer *
- *************/
-vke_public
-void		vke_buffer_init		(VkeDevice pDev, VkBufferUsageFlags usage,
-                                                                        VkeMemoryUsage memprops, VkDeviceSize size, VkeBuffer buff, bool mapped);
-vke_public
-VkeBuffer   vke_buffer_create   (VkeDevice pDev, VkBufferUsageFlags usage,
-                                                                        VkeMemoryUsage memprops, VkDeviceSize size);
-
-vke_public
-void		vke_buffer_resize	(VkeBuffer buff, VkDeviceSize newSize, bool mapped);
-vke_public
-void		vke_buffer_reset	(VkeBuffer buff);
-vke_public
-VkResult    vke_buffer_map      (VkeBuffer buff);
-vke_public
-void        vke_buffer_unmap    (VkeBuffer buff);
-vke_public
-void		vke_buffer_flush	(VkeBuffer buff);
-
-vke_public
-VkBuffer    vke_buffer_get_vkbuffer			(VkeBuffer buff);
-vke_public
-void*       vke_buffer_get_mapped_pointer	(VkeBuffer buff);
-
-vke_public
-VkFence         vke_fence_create			(VkeDevice dev);
-vke_public
-VkFence         vke_fence_create_signaled	(VkeDevice dev);
-vke_public
-VkSemaphore     vke_semaphore_create		(VkeDevice dev);
-vke_public
-VkSemaphore		vke_timeline_create			(VkeDevice dev, uint64_t initialValue);
-vke_public
-VkResult		vke_timeline_wait			(VkeDevice dev, VkSemaphore timeline, const uint64_t wait);
-vke_public
-void			vke_cmd_submit_timelined	(VkeQueue queue, VkCommandBuffer *pCmdBuff, VkSemaphore timeline,
-                                                                                                 const uint64_t wait, const uint64_t signal);
-vke_public
-void			vke_cmd_submit_timelined2	(VkeQueue queue, VkCommandBuffer *pCmdBuff, VkSemaphore timelines[2],
-                                                                                                const uint64_t waits[2], const uint64_t signals[2]);
-vke_public
-VkEvent			vke_event_create				(VkeDevice dev);
-
-vke_public
-VkCommandPool   vke_cmd_pool_create (VkeDevice dev, uint32_t qFamIndex, VkCommandPoolCreateFlags flags);
-vke_public
-VkCommandBuffer vke_cmd_buff_create (VkeDevice dev, VkCommandPool cmdPool, VkCommandBufferLevel level);
-vke_public
-void vke_cmd_buffs_create (VkeDevice dev, VkCommandPool cmdPool, VkCommandBufferLevel level, uint32_t count, VkCommandBuffer* cmdBuffs);
-vke_public
-void vke_cmd_begin  (VkCommandBuffer cmdBuff, VkCommandBufferUsageFlags flags);
-vke_public
-void vke_cmd_end    (VkCommandBuffer cmdBuff);
-vke_public
-void vke_cmd_submit (VkeQueue queue, VkCommandBuffer *pCmdBuff, VkFence fence);
-vke_public
-void vke_cmd_submit_with_semaphores(VkeQueue queue, VkCommandBuffer *pCmdBuff, VkSemaphore waitSemaphore,
-                                                                        VkSemaphore signalSemaphore, VkFence fence);
-
-vke_public
-void vke_cmd_label_start   (VkCommandBuffer cmd, const char* name, const float color[4]);
-vke_public
-void vke_cmd_label_end     (VkCommandBuffer cmd);
-vke_public
-void vke_cmd_label_insert  (VkCommandBuffer cmd, const char* name, const float color[4]);
-
-vke_public
-VkShaderModule vke_load_module(VkeDevice vke, const char* path);
-
-vke_public
-bool        vke_memory_type_from_properties(VkPhysicalDeviceMemoryProperties* memory_properties, uint32_t typeBits,
-                                                                                VkeMemoryUsage requirements_mask, uint32_t *typeIndex);
-vke_public
 char *      read_spv(const char *filename, size_t *psize);
-vke_public
 uint32_t*   readFile(uint32_t* length, const char* filename);
+void        dumpLayerExts();
+void        set_image_layout(VkeCommandBuffer cmdBuff, VkeImage image, VkeImageAspectFlags aspectMask, VkImageLayout old_image_layout, VkImageLayout new_image_layout, VkPipelineStageFlags src_stages, VkePipelineStageFlags dest_stages);
+void        set_image_layout_subres(VkeCommandBuffer cmdBuff, VkeImage image, VkeImageSubresourceRange subresourceRange, VkeImageLayout old_image_layout, VkeImageLayout new_image_layout, VkPipelineStageFlags src_stages, VkePipelineStageFlags dest_stages);
 
-vke_public
-void dumpLayerExts ();
-
-vke_public
-void        set_image_layout(VkCommandBuffer cmdBuff, VkImage image, VkImageAspectFlags aspectMask, VkImageLayout old_image_layout,
-                                          VkImageLayout new_image_layout, VkPipelineStageFlags src_stages, VkPipelineStageFlags dest_stages);
-vke_public
-void        set_image_layout_subres(VkCommandBuffer cmdBuff, VkImage image, VkImageSubresourceRange subresourceRange, VkImageLayout old_image_layout,
-                                          VkImageLayout new_image_layout, VkPipelineStageFlags src_stages, VkPipelineStageFlags dest_stages);
 /////////////////////
-vke_public
 VkeQueue    vke_queue_create    (VkeDevice dev, uint32_t familyIndex, uint32_t qIndex);
-vke_public
 VkeQueue    vke_queue_drop      (VkeQueue queue);
 VkeQueue    vke_queue_grab      (VkeQueue queue);
 //VkeQueue    vke_queue_find      (VkeDevice dev, VkQueueFlags flags);
 /////////////////////
 
-vke_public
-bool vke_instance_extension_supported (const char* instanceName);
-vke_public
-void vke_instance_extensions_check_init ();
-vke_public
-void vke_instance_extensions_check_release ();
-vke_public
-bool vke_layer_is_present (const char* layerName);
-vke_public
-void vke_layers_check_init ();
-vke_public
-void vke_layers_check_release ();
-#ifdef __cplusplus
-}
-
-#endif
 
 
 #define FENCE_TIMEOUT 100000000
@@ -410,16 +417,4 @@ void vke_configure(bool _validation, bool _mesa_overlay, bool _render_doc);
 /// if they were called vke_grab() the user could make use of it
 
 
-
-VkeWindow   vke_create_window        (VkeDevice, VkeMonitor, int, int, const char *, VkeResizeEvent, VkeKeyEvent, VkeCursorEvent, VkeCharEvent, VkeButtonEvent);
-bool        vke_should_close         (VkeWindow);
-bool        vke_destroy_window       (VkeWindow);
-const char *vke_clipboard            (VkeWindow); /// user data integrity in streaming should be preserved; having a window is top level requirement but i think there would be more to do to facilitate
-void        vke_set_clipboard_string (VkeWindow, const char*);
-void        vke_set_window_title     (VkeWindow, const char*);
-void        vke_show_window          (VkeWindow win);
-void        vke_hide_window          (VkeWindow win);
-void       *vke_window_user_data     (VkeWindow win);
-void        vke_poll_events();
-
-#endif
+}

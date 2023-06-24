@@ -32,15 +32,6 @@ PFN_vkWaitForFences				WaitForFences;
 PFN_vkResetFences				ResetFences;
 PFN_vkResetCommandBuffer		ResetCommandBuffer;
 
-bool _device_try_get_phyinfo (VkePhyInfo* phys, uint32_t phyCount, VkPhysicalDeviceType gpuType, VkePhyInfo* phy) {
-	for (uint32_t i=0; i<phyCount; i++){
-		if (vke_phyinfo_get_properties(phys[i]).deviceType == gpuType) {
-			 *phy = phys[i];
-			 return true;
-		}
-	}
-	return false;
-}
 //TODO:save/reload cache in user temp directory
 void _device_create_pipeline_cache(VkvgDevice dev){
 

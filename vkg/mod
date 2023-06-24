@@ -1,9 +1,5 @@
 dep(ion:vke ion:glutess)
 
-if(DEBUG)
-    defines(VULKAN_VALIDATOR)
-endif()
-
 includes(${INSTALL_PREFIX}/include/freetype2)
 
 # perhaps if we have a @ infront they can become options; or, options() can also define but serve as a pass-through for defaults

@@ -90,7 +90,7 @@ void _fonts_cache_create (VkvgDevice dev) {
 #endif
 
 	cache->texLength = FONT_CACHE_INIT_LAYERS;
-	cache->texture = vke_tex2d_array_create (dev->vke, cache->texFormat, FONT_PAGE_SIZE, FONT_PAGE_SIZE,
+	cache->texture = VkeImage::tex2d_array_create (dev->vke, cache->texFormat, FONT_PAGE_SIZE, FONT_PAGE_SIZE,
 							cache->texLength ,VKE_MEMORY_USAGE_GPU_ONLY,
 							VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
 	vke_image_create_descriptor (cache->texture, VK_IMAGE_VIEW_TYPE_2D_ARRAY, VK_IMAGE_ASPECT_COLOR_BIT,

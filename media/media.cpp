@@ -39,10 +39,10 @@ extern "C" {
 namespace ion {
 
 /// load an image into 32bit rgba format
-image::image(size sz, rgba::data *px, int scanline) : array() {
+image::image(size sz, rgba8 *px, int scanline) : array() {
     mem->shape  = new size(sz);
     mem->origin = px;
-    elements    = px;
+    data        = px;
     assert(scanline == 0 || scanline == sz[1]);
 }
 
@@ -79,12 +79,12 @@ bool image::save(path p) const {
     png_set_IHDR(png, info, w, h, 8, PNG_COLOR_TYPE_RGBA, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
     png_write_info(png, info);
 
-    const unsigned char** rows = new const unsigned char*[h];
+    const u8** rows = new const u8*[h];
     for (int y = 0; y < h; ++y) {
-        rows[y] = (unsigned char *)&elements[y * w];
+        rows[y] = (u8*)&data[y * w];
     }
 
-    png_write_image(png, const_cast<unsigned char**>(rows));
+    png_write_image(png, const_cast<u8**>(rows));
     png_write_end(png, NULL);
 
     delete[] rows;
@@ -167,14 +167,14 @@ image::image(path p) : array() {
     /// Create array to hold image data
     mem->count = h * w;
     mem->shape = new size { h, w };
-    elements = new rgba::data[mem->count];
+    data = new rgba8[mem->count];
 
     /// Copy image data to elements array
     for (int y = 0; y < h; ++y) {
         png_bytep row = rows[y];
         for (int x = 0; x < w; ++x) {
             png_bytep px = &(row[x * 4]);
-            elements[y * w + x] = rgba::data(px[0], px[1], px[2], px[3]);
+            data[y * w + x] = rgba8 { px[0], px[1], px[2], px[3] };
         }
     }
     /// Clean up and free resources
@@ -184,7 +184,7 @@ image::image(path p) : array() {
     delete[] rows;
     png_destroy_read_struct(&png, &info, NULL);
     fclose(file);
-    mem->origin = elements;
+    mem->origin = data;
 }
 
     
@@ -327,21 +327,21 @@ static bool mp3_set_id3(path p, str artist, str title) {
 }
 
 /// use this to hide away the data and isolate its dependency
-ptr_impl(audio, mx, iaudio, p);
+ptr_implement(audio, mx);
 
 void audio::convert_mono() {
-    if (p->channels == 1)
+    if (data->channels == 1)
         return;
-    i16   *n_samples = new short[p->total_samples]; /// now its 1:1 with total_samples because new channels = 1
-    for (int       i = 0; i < p->total_samples; i++) {
+    i16   *n_samples = new short[data->total_samples]; /// now its 1:1 with total_samples because new channels = 1
+    for (int       i = 0; i < data->total_samples; i++) {
         float    sum = 0;
-        for (int   c = 0; c < p->channels; c++)
-                sum += p->samples[i * p->channels + c];
-        n_samples[i] = sum / p->channels;
+        for (int   c = 0; c < data->channels; c++)
+                sum += data->samples[i * data->channels + c];
+        n_samples[i] = sum / data->channels;
     }
-    delete[]     p->samples;  /// delete previous data
-    p->samples  = n_samples; /// set new data
-    p->channels = 1;        /// set to 1 channel
+    delete[] data->samples;  /// delete previous data
+    data->samples  = n_samples; /// set new data
+    data->channels = 1;        /// set to 1 channel
 }
 
 /// save / export to destination format (.mp3 .opus .wav support)
@@ -352,15 +352,15 @@ bool audio::save(path dest, i64 bitrate) {
     /// conversion to opus
     if (ext == ".opus") {
         const i64        latency    = 20; /// compute 20ms frame size
-        const i64        frame_size = p->sample_rate / (1000 / latency);
+        const i64        frame_size = data->sample_rate / (1000 / latency);
         OggOpusEnc      *enc;
         OggOpusComments *comments;
         int              error;
         
         comments = ope_comments_create();
-        ope_comments_add(comments, "ARTIST", p->artist.cs());
-        ope_comments_add(comments, "TITLE",  p->title.cs());
-        enc = ope_encoder_create_file(s_path, comments, p->sample_rate, p->channels, 0, &error);
+        ope_comments_add(comments, "ARTIST", data->artist.cs());
+        ope_comments_add(comments, "TITLE",  data->title.cs());
+        enc = ope_encoder_create_file(s_path, comments, data->sample_rate, data->channels, 0, &error);
         ope_encoder_ctl(enc, OPUS_SET_BITRATE(bitrate));
         
         if (!enc) {
@@ -369,9 +369,9 @@ bool audio::save(path dest, i64 bitrate) {
             return false;
         }
         
-        for (i64 i = 0; i < p->total_samples; i += frame_size) {
-            i64 remain = p->total_samples - i;
-            ope_encoder_write(enc, &p->samples[i * p->channels], int(math::min(remain, frame_size))); // number of frames to write
+        for (i64 i = 0; i < data->total_samples; i += frame_size) {
+            i64 remain = data->total_samples - i;
+            ope_encoder_write(enc, &data->samples[i * data->channels], int(math::min(remain, frame_size))); // number of frames to write
         }
         ope_encoder_drain(enc); /// drain? flush!
         ope_encoder_destroy(enc);
@@ -384,22 +384,22 @@ bool audio::save(path dest, i64 bitrate) {
 
         /// set defaults
         shine_set_config_mpeg_defaults(&config.mpeg);
-        config.wave.channels   = (enum channels)p->channels;
-        config.wave.samplerate = p->sample_rate;
+        config.wave.channels   = (enum channels)data->channels;
+        config.wave.samplerate = data->sample_rate;
         config.mpeg.bitr       = int(bitrate / 1000);
         config.mpeg.emph       = NONE; /// no emphasis
         config.mpeg.original   = 1;    /// original
-        config.mpeg.mode       = p->channels == 2 ? STEREO : MONO;
+        config.mpeg.mode       = data->channels == 2 ? STEREO : MONO;
         
         /// init shine
         if (!(s = shine_initialise(&config))) console.fault("cannot init shine");
 
         /// read pcm into shine, encode and write to output
         const size_t samples_per_frame = 1152;
-        for (i64 i = 0; i < p->total_samples; i += samples_per_frame) {
+        for (i64 i = 0; i < data->total_samples; i += samples_per_frame) {
             int n_bytes = 0;
             u8 *encoded = shine_encode_buffer_interleaved(
-                s, &p->samples[i * p->channels], &n_bytes);
+                s, &data->samples[i * data->channels], &n_bytes);
             fwrite(encoded, sizeof(u8), n_bytes, mp3_file);
         }
         /// cleanup
@@ -407,7 +407,7 @@ bool audio::save(path dest, i64 bitrate) {
         fclose(mp3_file);
         
         /// set id3 info separate
-        mp3_set_id3(s_path, p->artist, p->title);
+        mp3_set_id3(s_path, data->artist, data->title);
         ///
     } else if (ext == ".wav") {
         /// hiii everybody!
@@ -415,8 +415,8 @@ bool audio::save(path dest, i64 bitrate) {
         drwav_data_format format {
             .container      = drwav_container_riff,
             .format         = DR_WAVE_FORMAT_PCM,
-            .channels       = u32(p->channels),
-            .sampleRate     = u32(p->sample_rate),
+            .channels       = u32(data->channels),
+            .sampleRate     = u32(data->sample_rate),
             .bitsPerSample  = 16
         };
         drwav wav;
@@ -424,15 +424,15 @@ bool audio::save(path dest, i64 bitrate) {
             console.fault("failed to open output wav file for writing.");
         /// write the PCM frames to the WAV file
         /// drwav_write_pcm_frames(pWav, frameCount, pSamples)
-        drwav_uint64 w = drwav_write_pcm_frames(&wav, u64(p->total_samples), p->samples);
-        if (w != p->total_samples)
+        drwav_uint64 w = drwav_write_pcm_frames(&wav, u64(data->total_samples), data->samples);
+        if (w != data->total_samples)
             console.fault("failed to write all pcm frames to the wav file.");
         drwav_uninit(&wav);
     }
     return true;
 }
 
-audio::audio(path res, bool force_mono) : audio(mx::alloc<audio>()) {
+audio::audio(path res, bool force_mono) : mx(&data) {
     str  ext = res.ext();
     cstr s_path = res.cs();
     int  error;
@@ -444,34 +444,34 @@ audio::audio(path res, bool force_mono) : audio(mx::alloc<audio>()) {
 
        OpusTags* tags = (OpusTags*)op_tags(opus_file, 0);
         if (tags != NULL) {
-            p->artist = opus_tags_query(tags, "ARTIST", 0);
-            p->title  = opus_tags_query(tags, "TITLE",  0);
+            data->artist = opus_tags_query(tags, "ARTIST", 0);
+            data->title  = opus_tags_query(tags, "TITLE",  0);
         }
         
         /// allocate samples
         const int buffer_size = 1024;
         opus_int16 buffer[buffer_size];
-        p->channels = op_channel_count(opus_file, -1);
-        p->total_samples = op_pcm_total(opus_file, -1);
-        p->samples = new i16[p->total_samples * p->channels];
+        data->channels = op_channel_count(opus_file, -1);
+        data->total_samples = op_pcm_total(opus_file, -1);
+        data->samples = new i16[data->total_samples * data->channels];
         const OpusHead *head = op_head(opus_file, -1);
         if (!head) console.fault("failed to read opus head");
-        p->sample_rate = i32(head->input_sample_rate);
+        data->sample_rate = i32(head->input_sample_rate);
         
         /// read samples
         size_t t = 0;
         int samples_read = 0;
         do {
-            samples_read = op_read(opus_file, &p->samples[t], buffer_size, NULL);
+            samples_read = op_read(opus_file, &data->samples[t], buffer_size, NULL);
             if (samples_read < 0)
                 console.fault("error reading file: {0}", { samples_read });
             
-            t += samples_read * p->channels;
+            t += samples_read * data->channels;
         } while (samples_read != 0);
         op_free(opus_file);
         
         /// this will always result in exactly total_samples read -- or a crash
-        if (t != p->total_samples) console.fault("sample count mismatch: {0}", { str(res) });
+        if (t != data->total_samples) console.fault("sample count mismatch: {0}", { str(res) });
         
     } else if (ext == ".mp3") {
         /// open file
@@ -479,13 +479,13 @@ audio::audio(path res, bool force_mono) : audio(mx::alloc<audio>()) {
         mp3dec_ex_t      api;
         mp3dec_init(&dec);
         assert(!mp3dec_ex_open(&api, s_path, MP3D_SEEK_TO_SAMPLE));
-        p->total_samples = api.samples / p->channels;
-        p->channels      = api.info.channels;
-        p->sample_rate   = api.info.hz;
+        data->total_samples = api.samples / data->channels;
+        data->channels      = api.info.channels;
+        data->sample_rate   = api.info.hz;
         
         /// read samples
-        p->samples       = new short[p->total_samples * p->channels];
-        assert(mp3dec_ex_read(&api, p->samples, api.samples) == p->total_samples * p->channels);
+        data->samples       = new short[data->total_samples * data->channels];
+        assert(mp3dec_ex_read(&api, data->samples, api.samples) == data->total_samples * data->channels);
         mp3dec_ex_close(&api);
         ///
     } else if (ext == ".wav") {
@@ -494,38 +494,38 @@ audio::audio(path res, bool force_mono) : audio(mx::alloc<audio>()) {
             console.fault("killer wav: {0}", { str(s_path) });
         }
         ///
-        p->channels      = w.channels;
-        p->sample_rate   = w.sampleRate;
-        p->total_samples = w.totalPCMFrameCount;
-        p->samples       = new i16[p->total_samples * p->channels];
+        data->channels      = w.channels;
+        data->sample_rate   = w.sampleRate;
+        data->total_samples = w.totalPCMFrameCount;
+        data->samples       = new i16[data->total_samples * data->channels];
         int t = 0;
 
         /// put faith in dr wav
         for (;;) {
-            u64 read = drwav_read_pcm_frames_s16(&w, 2048, &p->samples[t]);
+            u64 read = drwav_read_pcm_frames_s16(&w, 2048, &data->samples[t]);
             if (read == 0) break;
-            t += read * p->channels;
+            t += read * data->channels;
         }
         /// mirror handed to you.  check mirror
-        console.test(t == (p->total_samples * p->channels), "data integrity error");
+        console.test(t == (data->total_samples * data->channels), "data integrity error");
     } else {
         console.fault("extension not supported: {0}", { ext });
     }
     
     /// convert to mono if we feel like it.
-    if (p && p->channels > 1 && force_mono)
+    if (data && data->channels > 1 && force_mono)
         convert_mono();
 }
 
 /// obtain short waves from skinny aliens
 array<short> audio::pcm_data() {
-    return memory::wrap<short>(p->samples, p->total_samples * p->channels);
+    return mx::wrap<short>(data->samples, data->total_samples * data->channels);
 }
 
-int           audio::channels() { return  p->channels;                    }
-audio::operator          bool() { return  p->total_samples >  0;          }
-bool         audio::operator!() { return  p->total_samples == 0;          }
-size_t            audio::size() { return  p->total_samples * p->channels; }
-size_t       audio::mono_size() { return  p->total_samples;               }
+int           audio::channels() { return  data->channels;                    }
+audio::operator          bool() { return  data->total_samples >  0;          }
+bool         audio::operator!() { return  data->total_samples == 0;          }
+size_t            audio::size() { return  data->total_samples * data->channels; }
+size_t       audio::mono_size() { return  data->total_samples;               }
 
 }

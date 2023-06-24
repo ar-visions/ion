@@ -1,5 +1,9 @@
 #pragma once
 
+#include <mx/mx.hpp>
+#include <condition_variable>
+#include <future>
+
 namespace ion {
 
 /// executables are different types, and require async
@@ -31,7 +35,7 @@ struct completer:mx {
         fn_success = [&cd](mx d) { /// should not need a grab and drop; if
             cd.completed = true;
             for (mx &s: cd.l_success) {
-                FnFuture lambda = s.mem->grab();
+                FnFuture &lambda = s.mem->ref<FnFuture>();
                 lambda(d);
             }
         };
@@ -39,7 +43,7 @@ struct completer:mx {
         fn_failure = [&cd](mx d) {
             cd.completed = true;
             for (mx &f: cd.l_failure) {
-                FnFuture lambda = f.mem->grab();
+                FnFuture &lambda = f.mem->ref<FnFuture>();
                 lambda(d);
             }
         };
@@ -85,7 +89,7 @@ struct future:mx {
 };
 
 struct runtime;
-typedef lambda<mx(runtime&, int)> FnProcess;
+typedef lambda<mx(runtime*, int)> FnProcess;
 
 typedef std::condition_variable ConditionV;
 struct runtime {
@@ -110,13 +114,16 @@ protected:
 public:
     inline static ConditionV       cv_cleanup;
     inline static std::thread      th_manager;
-    inline static std::mutex       mtx_global;
-    inline static std::mutex       mtx_list;
+    inline static mutex            mtx_global;
+    inline static mutex            mtx_list;
     inline static doubly<runtime*> procs;
     inline static int              exit_code = 0;
 
+    ///
+    ptr(process, mx, runtime);
+
     static inline void manager() {
-        std::unique_lock<std::mutex> lock(mtx_list);
+        std::unique_lock<mutex> lock(mtx_list);
         for (bool quit = false; !quit;) {
             cv_cleanup.wait(lock);
             bool cycle    = false;
@@ -140,8 +147,8 @@ public:
                         ps.join = true;
 
                         /// 
-                        procs.remove(index); /// remove -1 should return the one on the end, if it exists; this is a bool result not some integer of index to treat as.
-                        (procs.len() == 0) ?
+                        procs->remove(index); /// remove -1 should return the one on the end, if it exists; this is a bool result not some integer of index to treat as.
+                       (procs->len() == 0) ?
                             (quit = true) : (cycle = true);
                         lock.lock();
                         ps.mtx_self.unlock();
@@ -156,56 +163,51 @@ public:
         lock.unlock();
     }
 
-    /// this is 1 time alloc per async and i want to isolate all of this to 1 lambda service
-    runtime &state;
-
     static void run(runtime *rt, int w) {
-        runtime &state = *rt;
+        runtime *data = rt;
         /// run (fn) the work (p) on this thread (i)
-        mx r = state.fn(state, w);
-        state.mtx_self.lock();
+        mx r = data->fn(data, w);
+        data->mtx_self.lock();
 
-        state.failure |= !r;
-        state.results[w] = r;
+        data->failure |= !r;
+        data->results[w] = r;
         
         /// wait for completion of one (we coudl combine c check inside but not willing to stress test that atm)
         mtx_global.lock();
-        bool im_last = (++state.done >= state.count);
+        bool im_last = (++data->done >= data->count);
         mtx_global.unlock();
 
         /// if all complete, notify condition var after calling completer/failure methods
         if (im_last) {
-            if (state.on_done) {
-                if (state.failure)
-                    state.on_fail(state.results);
+            if (data->on_done) {
+                if (data->failure)
+                    data->on_fail(data->results);
                 else
-                    state.on_done(state.results);
+                    data->on_done(data->results);
             }
             mtx_global.lock();
             cv_cleanup.notify_all();
             mtx_global.unlock();
         }
-        state.mtx_self.unlock();
+        data->mtx_self.unlock();
 
         /// wait for job set to complete
-        for (; state.done != state.count;)
+        for (; data->done != data->count;)
             yield();
     }
-
     ///
-    ctr(process, mx, runtime, state);
     process(size_t count, FnProcess fn) : process(alloc<runtime>()) {
         if(!init) {
             init       = true;
             th_manager = std::thread(manager);
         }
-        state.fn = fn;
+        data->fn = fn;
         if (count) {
-            state.count   = count;
-            state.results = array<mx> { count, count, [](num) -> mx { return mx(); } };
+            data->count   = count;
+            data->results = array<mx> { count, count, [](num) -> mx { return mx(); } };
         }
     }
-    inline bool joining() const { return state.join; }
+    inline bool joining() const { return data->join; }
 };
 
 /// async is out of sync with the other objects.

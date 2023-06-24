@@ -10,17 +10,46 @@ template <typename T> using vec3 = glm::tvec3<T>;
 template <typename T> using vec4 = glm::tvec4<T>;
 template <typename T> using rgba = glm::tvec4<T>;
 
-template <typename T> using m44 = glm::tmat4x4<T>;
-template <typename T> using m33 = glm::tmat3x3<T>;
-template <typename T> using m22 = glm::tmat2x2<T>;
+template <typename T> using m44  = glm::tmat4x4<T>;
+template <typename T> using m33  = glm::tmat3x3<T>;
+template <typename T> using m22  = glm::tmat2x2<T>;
+
+
+/// vkg must use doubles!
+using m44d    = m44 <r64>;
+using m44f    = m44 <r32>;
+
+using m33d    = m33 <r64>;
+using m33f    = m33 <r32>;
+
+using m22d    = m22 <r64>;
+using m22f    = m22 <r32>;
+
+using vec2i   = vec2 <i32>;
+using vec2d   = vec2 <r64>;
+using vec2f   = vec2 <r32>;
+
+using vec3i   = vec3 <i32>;
+using vec3d   = vec3 <r64>;
+using vec3f   = vec3 <r32>;
+
+using vec4i   = vec4 <i32>;
+using vec4d   = vec4 <r64>;
+using vec4f   = vec4 <r32>;
+
+using rgb8    = vec3 <u8>;
+using rgbd    = vec3 <r64>;
+using rgbf    = vec3 <r32>;
+
+using rgba8   = vec4 <u8>;
+using rgbad   = vec4 <r64>;
+using rgbaf   = vec4 <r32>;
 
 /// would be nice to have bezier/composite-offsets
-
 template <typename T>
 struct edge {
     using vec2 = ion::vec2<T>;
     using vec4 = ion::vec4<T>;
-
     vec2 a, b;
 
     /// returns x-value of intersection of two lines
@@ -91,39 +120,151 @@ struct rect {
     inline       operator rect<float> ()    const { return {  float(x),  float(y),  float(w),  float(h) }; }
     inline       operator rect<double>()    const { return { double(x), double(y), double(w), double(h) }; }
     inline       operator bool()            const { return w > 0 && h > 0; }
+
+    rect clip(rect &input) const {
+        return rect {
+            math::max(x, input.x),
+            math::max(y, input.y),
+            math::min(x + w, input.x + input.w) - math::max(x, input.x),
+            math::min(y + h, input.y + input.h) - math::max(y, input.y),
+        };
+    }
 };
-
-using m44d    = m44 <r64>;
-using m44f    = m44 <r32>;
-
-using m33d    = m33 <r64>;
-using m33f    = m33 <r32>;
-
-using m22d    = m22 <r64>;
-using m22f    = m22 <r32>;
-
-using vec2i   = vec2 <i32>;
-using vec2d   = vec2 <r64>;
-using vec2f   = vec2 <r32>;
-
-using vec3i   = vec3 <i32>;
-using vec3d   = vec3 <r64>;
-using vec3f   = vec3 <r32>;
-
-using vec4i   = vec4 <i32>;
-using vec4d   = vec4 <r64>;
-using vec4f   = vec4 <r32>;
-
-using rgb8    = vec3 <u8>;
-using rgbd    = vec3 <r64>;
-using rgbf    = vec3 <r32>;
-
-using rgba8   = vec4 <u8>;
-using rgbad   = vec4 <r64>;
-using rgbaf   = vec4 <r32>;
 
 using recti   = rect <i32>;
 using rectd   = rect <r64>;
 using rectf   = rect <r32>;
+
+/// high level class begins with Capitalisation, spelling words properly
+/// try to express in 1 word when succinct
+template <typename T>
+struct Rect:mx {
+    ptr(Rect, mx, rect<T>);
+    movable(Rect);
+};
+
+template <typename T>
+struct Rounded:Rect<T> {
+    using vec2 = ion::vec2<T>;
+    using vec4 = ion::vec4<T>;
+    using rect = ion::rect<T>;
+
+    struct rdata {
+        vec2  p_tl, v_tl, d_tl;
+        T     l_tl, l_tr, l_br, l_bl;
+        vec2  p_tr, v_tr, d_tr;
+        vec2  p_br, v_br, d_br;
+        vec2  p_bl, v_bl, d_bl;
+        vec2  r_tl, r_tr, r_br, r_bl;
+
+        /// pos +/- [ dir * scale ]
+        vec2 tl_x, tl_y, tr_x, tr_y, br_x, br_y, bl_x, bl_y;
+        vec2 c0, c1, p1, c0b, c1b, c0c, c1c, c0d, c1d;
+
+        inline rdata() { } /// this is implicit zero fill
+        inline rdata(vec4 tl, vec4 tr, vec4 br, vec4 bl) {
+            /// top-left
+            p_tl  = tl.xy();
+            v_tl  = tr.xy() - p_tl;
+            l_tl  = v_tl.length();
+            d_tl  = v_tl / l_tl;
+
+            /// top-right
+            p_tr  = tr.xy();
+            v_tr  = br.xy() - p_tr;
+            l_tr  = v_tr.length();
+            d_tr  = v_tr / l_tr;
+
+            // bottom-right
+            p_br  = br.xy();
+            v_br  = bl.xy() - p_br;
+            l_br  = v_br.length();
+            d_br  = v_br / l_br;
+
+            /// bottom-left
+            p_bl  = bl.xy();
+            v_bl  = tl.xy() - p_bl;
+            l_bl  = v_bl.length();
+            d_bl  = v_bl / l_bl;
+
+            /// set-radius
+            r_tl  = { math::min(tl.w, l_tl / 2), math::min(tl.z, l_bl / 2) };
+            r_tr  = { math::min(tr.w, l_tr / 2), math::min(tr.z, l_br / 2) };
+            r_br  = { math::min(br.w, l_br / 2), math::min(br.z, l_tr / 2) };
+            r_bl  = { math::min(bl.w, l_bl / 2), math::min(bl.z, l_tl / 2) };
+            
+            /// pos +/- [ dir * radius ]
+            tl_x = p_tl + d_tl * r_tl;
+            tl_y = p_tl - d_bl * r_tl;
+            tr_x = p_tr - d_tl * r_tr;
+            tr_y = p_tr + d_tr * r_tr;
+            br_x = p_br + d_br * r_br;
+            br_y = p_br + d_bl * r_br;
+            bl_x = p_bl - d_br * r_bl;
+            bl_y = p_bl - d_tr * r_bl;
+
+            c0   = (p_tr + tr_x) / 2;
+            c1   = (p_tr + tr_y) / 2;
+            p1   =  tr_y;
+            c0b  = (p_br + br_y) / 2;
+            c1b  = (p_br + br_x) / 2;
+            c0c  = (p_bl + bl_x) / 2;
+            c1c  = (p_bl + bl_y) / 2;
+            c0d  = (p_tl + bl_x) / 2;
+            c1d  = (p_bl + bl_y) / 2;
+        }
+
+        inline rdata(rect &r, T rx, T ry)
+             : rdata(vec4 {r.x, r.y, rx, ry},             vec4 {r.x + r.w, r.y, rx, ry},
+                     vec4 {r.x + r.w, r.y + r.h, rx, ry}, vec4 {r.x, r.y + r.h, rx, ry}) { }
+        
+    };
+    ptr(Rounded, Rect<T>, rdata);
+
+    /// needs routines for all prims
+    inline bool contains(vec2 v) { return (v >= data->p_tl && v < data->p_br); }
+    ///
+    T           w() { return data->p_br.x - data->p_tl.x; }
+    T           h() { return data->p_br.y - data->p_tl.y; }
+    vec2       xy() { return data->p_tl; }
+    operator bool() { return data->l_tl <= 0; }
+
+    /// set og rect (r4r) and compute the bezier
+    Rounded(rect &r, T rx, T ry) : Rounded(rdata(r, rx, ry)) { *Rect<T>::data = r; }
+};
+
+struct Arc:mx {
+    struct adata {
+        vec2d cen;
+        real radius;
+        vec2d degs; /// x:from [->y:distance]
+        vec2d origin;
+    };
+    ptr(Arc, mx, adata);
+};
+
+struct Line:mx {
+    struct ldata {
+        vec2d to;
+        vec2d origin;
+    };
+    ptr(Line, mx, ldata);
+};
+
+struct Movement:mx {
+    ptr(Movement, mx, vec2d);
+    movable(Movement); /// makes a certain amount of sense
+};
+
+struct Bezier:mx {
+    struct bdata {
+        vec2d cp0;
+        vec2d cp1;
+        vec2d b;
+        vec2d origin;
+    };
+    ptr(Bezier, mx, bdata);
+};
+
 
 }

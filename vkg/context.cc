@@ -3390,8 +3390,8 @@ void vkvg_save (VkvgContext ctx){
 									.dstSubresource = {VK_IMAGE_ASPECT_STENCIL_BIT, 0, 0, 1},
 									.extent = {ctx->pSurf->width,ctx->pSurf->height,1}};
 			vkCmdCopyImage(ctx->cmd,
-						   vke_image_get_vkimage (ctx->pSurf->stencil),VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-						   vke_image_get_vkimage (savStencil),		 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+						   vke_image_get_vkimage(ctx->pSurf->stencil),VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+						   vke_image_get_vkimage(savStencil),		 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 						   1, &cregion);
 
 			vke_image_set_layout (ctx->cmd, ctx->pSurf->stencil, dev->stencilAspectFlag,

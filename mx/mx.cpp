@@ -1,9 +1,8 @@
 #include <mx/mx.hpp>
 
 namespace ion {
+    
 logger console;
-
-ptr_implement(mutex);
 
 size_t length(std::ifstream& in) {
     std::streamsize base = in.tellg();
@@ -15,7 +14,7 @@ size_t length(std::ifstream& in) {
 
 ///
 int str::index_of(MatchType ct, symbol mp) const {
-    int index = 0;
+    int  index = 0;
     
     using Fn = func<bool(const char &)>;
     static umap<MatchType, Fn> match_table {
@@ -40,7 +39,7 @@ int str::index_of(MatchType ct, symbol mp) const {
     return -1;
 }
 
-int snprintf(char *str, size_t size, const char *format, ...) {
+int snprintf(cstr str, size_t size, const char *format, ...) {
     int n;
     va_list args;
     va_start(args, format);
@@ -64,7 +63,7 @@ str path::mime_type() {
     mx e = ext().symbolize();
     static path  data = "data/mime-type.json";
     static map<mx> js =  data.read<var>();
-    return js.count(e) ? ((memory*)js[e])->grab() : ((memory*)js["default"])->grab();
+    return js->count(e) ? ((memory*)js[e])->grab() : ((memory*)js["default"])->grab();
 }
 
 i64 integer_value(memory *mem) {
@@ -95,9 +94,10 @@ i64 millis() {
 /// attach arbs to memory (uses a pointer)
 attachment *memory::attach(::symbol id, void *data, func<void()> release) {
     if (!atts)
-        atts = new doubly<attachment>();
-    atts->push(attachment {id, data, release});
-    return &atts->last();
+         atts = new doubly<attachment>();
+    doubly<attachment> &a = *atts;
+    a->push(attachment {id, data, release});
+    return &a->last();
 }
 
 attachment *memory::find_attachment(::symbol id) {
@@ -109,61 +109,58 @@ attachment *memory::find_attachment(::symbol id) {
     return nullptr;
 }
 
-void *mx::realloc(size_t alloc_sz, bool set_sz) {
-    type_t ty = mem->type;
-    ty->
-}
-
-
-void *mx::realloc(size_t to, bool fill_default) {
-    type_t data_type = mem->type;
-        size_t    sz = data_type->base_sz
-    /// 
-    u8    *dst      = (u8*)calloc(to, sz);
-    size_t mn       = math::min(to, mem->count);
-    u8    *elements = (u8*)origin;
-
-    function_table *func = data_type->functions;
-
-    const bool prim = (data_type->traits & traits::primitive) != 0;
-    
+void *memory::realloc(size_t alloc_reserve, bool fill_default) {
+    size_t          sz        = type->base_sz; /// this function 
+    u8             *dst       = (u8*)calloc(alloc_reserve, sz);
+    u8             *src       = (u8*)origin;
+    size_t          mn        = math::min(alloc_reserve, count);
+    const bool      prim      = (type->traits & traits::primitive) != 0;
     ///
     if (prim) {
-        memcpy(dst, elements, sz * mn);
+        memcpy(dst, src, sz * mn);
     } else {
-        data_type->vcopy_fn(data_type, dst, elements, 0, mn);
-        data_type->vdestruct_fn(data_type, origin, 0, count);
-    }
-    /// free if its an already a reallocation
-    //if ((memory*)elements != &this[1])
-    //    free(elements);
-
-    if (fill_default) {
-        count = to;
-        if (prim)
-            memset(&dst[sz * mn], 0, sz * (to - mn));
-        else {
-            for (size_t i = mn; i < to; i++)
-                data_type->lambdas->construct(data_type, dst, mn, to);
+        alloc_schema *mx = type->schema;
+        /// 1-depth of mx here; not supporting schema
+        if (mx) {
+            for (size_t i = 0; i < mx->bind_count; i++) {
+                context_bind &c  = mx->composition[i];
+                c.data->functions->copy    (&dst[c.offset], &src[c.offset], mn); /// copy prior data
+                c.data->functions->destruct(&src[c.offset], mn); /// destruct prior data
+            }
+        } else {
+            type->functions->copy    (dst, origin, mn);
+            type->functions->destruct(origin, mn);
         }
-    } else {
-        count = mn;
     }
-    origin = raw_t(dst);
-    reserve = to;
-    return (T*)origin;
+    /// this controls the 'count' which is in-effect the constructed count.  if we are not constructing, no updating count
+    if (fill_default) {
+        count = alloc_reserve;
+        if (prim)
+            memset(&dst[sz * mn], 0, sz * (alloc_reserve - mn));
+        else /// subtract off constructed-already
+            type->functions->construct(&dst[mn], alloc_reserve - mn);
+    }
+    free(origin);
+    origin  = raw_t(dst);
+    reserve = alloc_reserve;
+    return origin;
 }
 
 /// mx-objects are clearable which brings their count to 0 after destruction
-void clear() {
-    type->lambdas->dtr(type, origin, 0, count);
+void memory::clear() {
+    alloc_schema *mx  = type->schema; ///
+    u8           *dst = (u8*)origin;
+    /// 1-depth of mx here; not supporting schema
+    if (mx) {
+        for (size_t i = 0; i < mx->bind_count; i++) { /// count should be called bind_count or something; its too ambiguous with memory
+            context_bind &c  = mx->composition[i];
+            c.data->functions->destruct(&dst[c.offset], count); /// destruct prior data
+        }
+    } else
+        type->functions->destruct(dst, count);
+    
     count = 0;
 }
-
-
-
-
-
 
 memory *memory::stringify(cstr cs, size_t len, size_t rsv, bool constant, type_t ctype, i64 id) {
     ::symbol sym = (::symbol)(cs ? cs : "");
@@ -174,17 +171,17 @@ memory *memory::stringify(cstr cs, size_t len, size_t rsv, bool constant, type_t
         memory *&m = ctype->symbols->djb2[h_sym];
         if (!m) {
             size_t ln = (len == memory::autolen) ? strlen(sym) : len; /// like auto-wash
-            m = memory::alloc(typeof(char), typesize(char), len, len + 1, raw_t(sym));
+            m = memory::alloc(typeof(char), len, len + 1, raw_t(sym));
             m->attrs = attr::constant;
             ctype->symbols->ids[id] = m; /// was not hashing by id, it was the djb2 again (incorrect)
             //ctype->symbol_djb2[h_sym] = m; 'redundant due to the setting of the memory*& (which [] operator always inserts item)
-            ctype->symbols->list.push(m);
+            ctype->symbols->list->push(m);
         }
         return m->grab();
     } else {
         size_t     ln = (len == memory::autolen) ? strlen(sym) : len;
         size_t     al = rsv ? rsv : (strlen(sym) + 1);
-        memory*   mem = memory::alloc(typeof(char), typesize(char), ln, al, raw_t(sym));
+        memory*   mem = memory::alloc(typeof(char), ln, al, raw_t(sym));
         cstr  start   = mem->data<char>(0);
         start[ln]     = 0;
         return mem;
@@ -208,7 +205,7 @@ memory *memory::raw_alloc(type_t type, size_t sz, size_t count, size_t res) {
     mem->origin     = (void*)&mem[1];
     return mem;
 }
-
+/*
 memory *memory::wrap(raw_t m, type_t ty) {
     memory*     mem = (memory*)calloc(1, sizeof(memory)); /// there was a 16 multiplier prior.  todo: add address sanitizer support with appropriate clang stuff
     mem->count      = 1;
@@ -217,19 +214,12 @@ memory *memory::wrap(raw_t m, type_t ty) {
     mem->type       = ty;
     mem->origin     = m;
     return mem;
-}   
-
-memory::memory() : refs(1) { }
-
+}
+*/
 
 /// starting at 1, it should remain active.  shall not be freed as a result
-static memory m_null = { 1, u64(0), typeof(mx), 0, 0, null, 0, null };
-
 void memory::drop() {
     if (--refs <= 0 && !constant) { /// <= because ptr does a defer on the actual construction of the container class
-        assert(this != &m_null);
-        /// call destructor on memory payload, if defined
-
         origin = null;
         // delete attachment lambda after calling it
         if (atts) {
@@ -249,53 +239,44 @@ void memory::drop() {
 }
 
 /// now we start allocating the total_size (or type->base_sz if not schema-bound (mx classes accept schema.  they say, icanfly.. imapilot))
-memory *memory::alloc(type_t type, size_t type_sz, size_t count, size_t reserve, raw_t src_origin, bool call_ctr) {
-    /// must specify a type_sz if there is a copy operation
-    assert(!src_origin || type_sz);
+memory *memory::alloc(type_t type, size_t count, size_t reserve, raw_t v_src) {
+    memory *result = null;
     size_t type_sz = type->size();
-    memory    *mem = null;
+
+    if (type->singleton)
+        return type->singleton->grab();
     
-    /// memory::alloc with a type of mx has no data-type payload
-    /// when doing default allocation of mx, this mx type arg is passed and routes to m_null
-    /// there isnt much of a point to allocate multiple stateless objects however there could be attrib differences
-    /// as a simple solution it seems best to tokenize rather than return null
-    if (!type_sz) {
-        mem = &m_null;
-        mem->refs++; /// token or not, use its refs.  otherwise you need to check that during life-cycle
-    } else {
-        mem = raw_alloc(type, type_sz, count, reserve);
-    }
+    memory *mem = memory::raw_alloc(type, type_sz, count, reserve);
+
+    if (type->singleton)
+        type->singleton = mem;
     
     /// schema needs to have if its a ptr or not
     /// if allocating a schema-based object (mx being first user of this)
-    if (type->schema && type->schema->total_bytes) {
-        assert(type_sz == type->schema->total_bytes);
-        ///
-        if (call_ctr) {
-            if (src_origin) {
+    if (count > 0) {
+        if (type->schema) {
+            if (v_src) {
                 /// if schema-copy-construct (call cpctr for each data type in composition)
-                for (size_t i = 0; i < type->schema->count; i++) {
-                    context_bind &bind    = type->schema->composition[i];
-                    u8 *offset_origin     = &((u8*)mem->origin)[bind.offset];
-                    u8 *src_origin_offset = &((u8*) src_origin)[bind.offset];
-                    if (bind.data) bind.data->lambdas->cp(bind.data, offset_origin, src_origin_offset, 0, count);
+                for (size_t i = 0; i < type->schema->bind_count; i++) {
+                    context_bind &bind = type->schema->composition[i];
+                    u8 *dst = &((u8*)mem->origin)[bind.offset];
+                    u8 *src = &((u8*)      v_src)[bind.offset];
+                    if (bind.data) bind.data->functions->copy(dst, src, count);
                 }
             } else {
                 /// ctr: call construct across the composition
-                for (size_t i = 0; i < type->schema->count; i++) {
+                for (size_t i = 0; i < type->schema->bind_count; i++) {
                     context_bind &bind = type->schema->composition[i];
-                    u8 *offset_origin  = &((u8*)mem->origin)[bind.offset];
-                    if (bind.data) bind.data->lambdas->construct(bind.data, offset_origin, 0, count); /// issue is origin passed and effectively reused memory! /// probably good to avoid the context bind at all if there is no data; in some cases it may not be required and the context does offer some insight by itself
+                    u8 *dst  = &((u8*)mem->origin)[bind.offset];
+                    if (bind.data) bind.data->functions->construct(dst, count); /// issue is origin passed and effectively reused memory! /// probably good to avoid the context bind at all if there is no data; in some cases it may not be required and the context does offer some insight by itself
                 }
             }
-        }
-    } else {
-        if (call_ctr) {
+        } else {
             const bool prim = (type->traits & traits::primitive);
-            if (src_origin)
-                type->lambdas->cp(type, mem->origin, src_origin, 0, count);
-            else if (!prim) /// no need. tis zero.
-                type->lambdas->construct(type, mem->origin, 0, count);
+            if (v_src)
+                type->functions->copy(mem->origin, v_src, count);
+            else if (!prim)
+                type->functions->construct(mem->origin, count);
         }
     }
     return mem;
@@ -332,10 +313,6 @@ memory* mem_symbol(::symbol cs, type_t ty, i64 id) {
     return memory::symbol(cs, ty, id);
 }
 
-memory* raw_alloc(idata *ty, size_t sz) {
-    return memory::raw_alloc(ty, sz);
-}
-
 void *mem_origin(memory *mem) {
     return mem->origin;
 }
@@ -343,4 +320,4 @@ void *mem_origin(memory *mem) {
 memory *cstring(cstr cs, size_t len, size_t reserve, bool is_constant) {
     return memory::stringify(cs, len, 0, is_constant, typeof(char), 0);
 }
-
+}

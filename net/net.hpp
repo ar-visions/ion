@@ -25,20 +25,18 @@ struct uri:mx {
         map<mx> args;
         str     version;
     };
-    ///
-    components& a;
     /// singular container type used for 'enumeration' and containment of value: method
     /// enum = method::mtype
     /// default = undefined, then the arg list
     ///
-    method & mtype() { return a.mtype;    }
-    str &     host() { return a.host;     }
-    str &    proto() { return a.proto;    }
-    int &     port() { return a.port;     }
-    str &   string() { return a.query;    }
-    str & resource() { return a.resource; }
-    map<mx> & args() { return a.args;     }
-    str &  version() { return a.version;  }
+    method & mtype() { return data->mtype;    }
+    str &     host() { return data->host;     }
+    str &    proto() { return data->proto;    }
+    int &     port() { return data->port;     }
+    str &   string() { return data->query;    }
+    str & resource() { return data->resource; }
+    map<mx> & args() { return data->args;     }
+    str &  version() { return data->version;  }
 
     ///
     static str encode_fields(map<mx> fields) {
@@ -56,13 +54,13 @@ struct uri:mx {
         return post;
     }
 
-    ctr(uri, mx, components, a);
+    ptr(uri, mx, components);
 
     static memory *convert(memory *mem) { return parse(str(mem)); }
 
     uri(str                s) : uri(parse(s))   { }
     uri(symbol           sym) : uri(parse(sym)) { } 
-    uri(uri &r, method mtype) : uri(r.copy()) { a.mtype = mtype; }
+    uri(uri &r, method mtype) : uri(r.copy()) { data->mtype = mtype; }
 
     ///
     operator str () {
@@ -73,30 +71,30 @@ struct uri:mx {
         
         array<def>   defs = {{ "https", 443 }, { "http", 80 }};
         bool       is_def = defs.select_first<bool>([&](def& d) -> bool {
-            return a.port == d.port && a.proto == d.proto;
+            return data->port == d.port && data->proto == d.proto;
         });
 
-        str      s_port   = !is_def ? str::format(":{0}", { a.port })                : "";
-        str      s_fields =  a.args ? str::format("?{0}", { encode_fields(a.args) }) : "";
+        str      s_port   = !is_def ? str::format(":{0}", { data->port })                : "";
+        str      s_fields =  data->args ? str::format("?{0}", { encode_fields(data->args) }) : "";
         
         /// return string uri
-        return str::format("{0}://{1}{2}{3}{4}", { a.proto, a.host, s_port, a.query, s_fields });
+        return str::format("{0}://{1}{2}{3}{4}", { data->proto, data->host, s_port, data->query, s_fields });
     }
 
     uri methodize(method mtype) const {
-        a.mtype = mtype;
+        data->mtype = mtype;
         return *this;
     }
 
-    bool operator==(method::etype m) { return a.mtype.value == m; }
-    bool operator!=(method::etype m) { return a.mtype.value != m; }
-    operator           bool() { return a.mtype.value != method::undefined; }
+    bool operator==(method::etype m) { return data->mtype.value == m; }
+    bool operator!=(method::etype m) { return data->mtype.value != m; }
+    operator           bool() { return data->mtype.value != method::undefined; }
 
     /// can contain: GET/PUT/POST/DELETE uri [PROTO] (defaults to GET)
     static memory *parse(str raw, uri* ctx = null) {
-        array<str> sp   = raw.split(" ");
-        uri    result;
-        components& ra  = result.a;
+        uri         result;
+        array<str>  sp  = raw.split(" ");
+        components& ra  = *result.data;
         bool   has_meth = sp.len() > 1;
         str lc = sp.len() > 0 ? sp[0].lcase() : str();
         method m { str(has_meth ? lc.cs() : cstr("get")) };
@@ -123,9 +121,9 @@ struct uri:mx {
             }
         } else {
             /// return default
-            ra.proto    = ctx ? ctx->a.proto : "";
-            ra.host     = ctx ? ctx->a.host  : "";
-            ra.port     = ctx ? ctx->a.port  : 0;
+            ra.proto    = ctx ? ctx->data->proto : "";
+            ra.host     = ctx ? ctx->data->host  : "";
+            ra.port     = ctx ? ctx->data->port  : 0;
             ra.query    = u;
         }
         /// parse resource and query
@@ -180,7 +178,7 @@ struct uri:mx {
             if (c == '%')
                 v += '%';
         }
-        return str(v.data(), int(v.len()));
+        return str(v.data, int(v.len()));
     }
 
     static str decode(str e) {
@@ -206,7 +204,7 @@ struct uri:mx {
                 v += (c0 == '+') ? ' ' : c0;
             i++;
         }
-        return str(v.data(), int(v.len()));
+        return str(v.data, int(v.len()));
     }
 };
 
@@ -222,8 +220,7 @@ private:
     void load_certs(str host);
     
 public:
-    using intern = isock;
-    ptr_declare(sock);
+    ptr_declare(sock, mx, isock);
     
     enums(role, none,
           "none, client, server",
@@ -255,13 +252,13 @@ struct message:mx {
         mx      code = int(0);
         map<mx> headers;
         mx      content; /// best to store as mx, so we can convert directly in lambda arg, functionally its nice to have delim access in var.
-    } &m;
+    };
 
     method method_type() {
-        return m.query.mtype();
+        return data->query.mtype();
     }
 
-    ctr(message, mx, members, m);
+    ptr(message, mx, members);
 
     message(int server_code);
     message(symbol text);
@@ -280,7 +277,7 @@ struct message:mx {
     static message query(uri server, map<mx> headers, mx content);
 
     /// response construction, uri is not needed
-    static message response(uri query, mx code, mx content, map<mx> headers = null);
+    static message response(uri query, mx code, mx content, map<mx> headers = {});
 
     explicit operator bool();
     bool operator!();

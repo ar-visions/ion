@@ -10,17 +10,17 @@ async::async(size_t count, FnProcess fn) : async() {
     std::unique_lock<std::mutex> lock(process::mtx_list);
     
     /// create empty results [dynamic] vector [we need to couple the count into process, or perhaps bring it into async]
-    d.proc      = process { count, fn };
-    runtime &ps = d.proc.state;
-    ps.handle   = d.proc.mem->grab();
+    d.proc       = process { count, fn };
+    runtime  *ps = d.proc.data;
+    ps->handle   = d.proc.mem->grab();
     
     /// measure d.proc.rt address here
-    ps.threads = new std::vector<std::thread>();
-    ps.threads->reserve(count);
+    ps->threads = new std::vector<std::thread>();
+    ps->threads->reserve(count);
     for (size_t i = 0; i < count; i++)
-        ps.threads->emplace_back(std::thread(process::run, &ps, int(i)));
+        ps->threads->emplace_back(std::thread(process::run, ps, int(i)));
     ///
-    process::procs.push(&ps);
+    process::procs->push(ps);
 }
 
 /// path to execute, we dont host a bunch of environment vars. ar.
@@ -47,7 +47,7 @@ async::async(exec command) : async(1, [&](runtime &proc, int i) -> mx {
     return exit_code;
 }) { }
 
-async::async(lambda<mx(runtime &, int)> fn) : async(1, fn) {}
+async::async(lambda<mx(runtime *, int)> fn) : async(1, fn) {}
 
 array<mx> async::sync() {
     /// wait for join to complete, set results internal and return
@@ -60,14 +60,14 @@ array<mx> async::sync() {
         d.mtx.unlock();
         yield();
     }
-    return d.proc.state.results;
+    return d.proc->results;
 }
 
 /// await all async processes to complete
 int async::await() {
     for (;;) {
         process::mtx_global.lock();
-        if (!process::procs.len()) {
+        if (!process::procs->len()) {
             process::mtx_global.unlock();
             break;
         }
@@ -83,11 +83,11 @@ async::operator future() {
     lambda<void(mx)>   s, f;
     completer    c = { s, f };
     assert( d.proc);
-    assert(!d.proc.state.on_done);
-    d.proc.state.on_done = [s, f](mx v) {
+    assert(!d.proc->on_done);
+    d.proc->on_done = [s, f](mx v) {
         s(v);
     };
-    d.proc.state.on_fail = [s, f](mx v) {
+    d.proc->on_fail = [s, f](mx v) {
         f(v);
     };
     return future(c);

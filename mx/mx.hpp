@@ -21,8 +21,8 @@
 #include <functional>
 #include <atomic>
 #include <filesystem>
-#include <condition_variable>
-#include <future>
+//#include <condition_variable>
+//#include <future>
 #include <mutex>
 #include <shared_mutex>
 #include <thread>
@@ -44,15 +44,13 @@
 #include <queue>
 #include <utility>
 #include <type_traits>
-
 #include <string.h>
 #include <stdarg.h>
 #ifndef _WIN32
-#include <unistd.h>
+#   include <unistd.h>
 #endif
 
 #include <assert.h>
-
 #include <io/io.h>
 
 namespace ion {
@@ -68,13 +66,10 @@ using type_t = idata *;
 memory*       grab(memory *mem);
 memory*       drop(memory *mem);
 memory* mem_symbol(symbol cs, type_t ty, i64 id);
-memory*  raw_alloc(idata *ty, size_t sz);
 void*   mem_origin(memory *mem);
 memory*    cstring(cstr cs, size_t len, size_t reserve, bool is_constant);
 
-
-
-
+template <typename T> T *mdata(memory *mem, size_t index);
 
 /*
 /// i8 -> 64
@@ -251,82 +246,110 @@ static void breakp() {
         return (X &)mx::data<typename C::intern>();\
     }\
 
-/// who needs to copy?
-
-#define _data_lifecycle(C, B, D) \
-    static bool _ctx_bool(C *ctx) {\
-        if constexpr (has_bool<C>) return bool(*ctx);\
-        return false;\
+#define register(C)\
+    static size_t _type_sz(C *src) {\
+        static type_t type    = typeof(C);\
+        static size_t type_sz = (type->schema) ? type->schema->total_bytes : type->base_sz;\
+        assert(type_sz > 0);\
+        return        type_sz;\
     }\
-    static bool _data_bool(D *data) {\
-        if(data && has_bool<D>) return bool(*data);\
-        return false;\
-    }\
-    static void _data_ctr(D *data) {\
-             if constexpr ( has_static_init<D>()) D::init(data);\
-        else if constexpr (      !is_opaque<D>())    new (data) D();\
-    }\
-    static void _data_dtr(D *data, size_t count) {\
+    static bool boolean(C *src) { if constexpr (has_bool_op<C>::value) return bool(*ctx); else return false; }\
+    static void    free(C *dst, size_t count) {\
         for (size_t i = 0; i < count; i++) {\
-                 if constexpr ( has_static_free<D>()) D::free(data);\
-            else if constexpr (      !is_opaque<D>()) data -> ~D();\
+                 if constexpr ( has_static_free<C>()) C::free(dst);\
+            else if constexpr (      !is_opaque<C>()) dst -> ~C();\
         }\
     }\
-    static void _ctr(C *addr, D *data) {\
-        *addr = C(data);\
+    static void assign(C *dst, C *src) {\
+        if constexpr (!is_opaque<C>()) {\
+            dst -> ~C();\
+            new (dst)(*src);\
+        }\
+    }\
+    static void copy(C *dst, C *src, size_t count) { \
+        if constexpr (std::is_assignable_v<C&, const C&>) for (size_t i = 0; i < count; i++) dst[i] = src[i];\
+        else assert(false);\
+    }\
+    static void construct(C *dst) {\
+        if constexpr (      !is_opaque<C>()) new (dst) C();\
+        if constexpr ( has_static_init<C>()) C::init(dst);\
     }\
 
-static null_t abc = null;
+template<typename T, typename = void>
+struct has_intern : std::false_type { };
+
+template<typename T>
+struct has_intern<T, std::void_t<typename T::intern>> : std::true_type { };
 
 #define ptr_declare(C, B, D) \
-    using parent_class   = B;\
-    using context_class  = C;\
-    using intern         = D;\
-    C(memory* mem);\
-    C(intern* data);\
+    using parent_class  = B;\
+    using context_class = C;\
+    using intern        = D;\
+    C(intern&  data);\
+    C(intern&& data);\
+    C(memory*  mem);\
+    C(intern*  data);\
     C(mx o);\
     C();\
-    _data_lifecycle(C, B, D)\
     intern *data;\
-    intern *operator->() { return data; }\
-       operator intern *();\
-    C &operator=(const C b);\
+    intern &operator *();\
+    intern *operator->();\
+    intern *operator &();\
+            operator intern *();\
+            operator intern &();\
+    C      &operator=(const C b);\
     intern *operator=(const intern *b);
 
 #define ptr_implement(C, B) \
-    C::C(memory* mem)  : B(mem), data(mem ? mx::data<intern>() : null) { }\
-    C::C(mx      o)    : C(o.mem->grab())   { }\
-    C::C()             : C(mx::alloc<C>()) { }\
-    C::C(intern *data) : C(memory::wrap<intern>(data, 1)) { }\
-    C::operator m_type * () { return data; }\
-    C &C::operator=(const C b) { return (C &)assign_mx(*this, b); }\
-    intern *C::operator=(const intern *b) {\
+    C::C(memory*   mem) : B(mem), data(mdata<intern>(mem, 0)) { }\
+    C::C(mx          o) : C(o.mem->grab()) { }\
+    C::C()              : C(mx::alloc<C>()) { }\
+    C::C(intern  *data) : C(mx::wrap<intern>(data, 1)) { }\
+    C::C(intern  &data) : C(mx::alloc<C>(&data)) { }\
+    C::C(intern &&data) : C(mx::alloc<C>(&data)) { }\
+    C::intern  &C::operator *() { return *data; }\
+    C::intern  *C::operator->() { return  data; }\
+    C::intern  *C::operator &() { return  data; }\
+    C::operator C::intern   *() { return  data; }\
+    C::operator C::intern   &() { return *data; }\
+    C &C::operator=(const C b) { mem->type->functions->assign((void*)this, (void*)&b); return *this; }\
+    C::intern *C::operator=(const C::intern *b) {\
         drop();\
-        mem = memory::wrap<intern>((intern*)b, 1);\
-        data = (m_type*)mem->origin;\
+        mem = mx::wrap<C>(raw_t(b), 1);\
+        data = (C::intern*)mem->origin;\
         return data;\
     }
 
 /// for templates in header
+/// the following is delegated to movable(C): (array<T> blows up for good reason)
+///     inline C(intern    ref) : B(mx::alloc<C>(&ref)), data(mx::data<D>()) { }
 #define ptr(C, B, D) \
     using parent_class   = B;\
     using context_class  = C;\
     using intern         = D;\
-    C(memory* mem)  : B(mem), data(mem ? mx::data<intern>() : null) { }\
-    C(mx      o)    : C(o.mem->grab())   { }\
-    C()             : C(mx::alloc<C>()) { }\
-    C(intern *data) : C(memory::wrap<intern>(data, 1)) { }\
-    _data_lifecycle(C, B, D)\
-    intern *data;\
-    intern *operator->() { return data; }\
-       operator intern *();\
-    C &operator=(const C b);\
+    intern*    data;\
+    C(memory*   mem) : B(mem), data(mx::data<D>()) { }\
+    C(intern** memb) : B(mx::alloc<C>()),     data(mx::data<D>()) { assert(memb == &data); }\
+    C(intern*  data) : C(mx::wrap <C>(raw_t(data), 1)) { }\
+    C(mx          o) : C(o.mem->grab()) { }\
+    C()              : C(mx::alloc<C>()) { }\
+    intern    &operator *() { return *data; }\
+    intern    *operator->() { return  data; }\
+    intern    *operator &() { return  data; }\
+    operator     intern *() { return  data; }\
+    operator     intern &() { return *data; }\
+    C      &operator=(const C b) { mx::mem->type->functions->assign((void*)this, (void*)&b); return *this; }\
     intern *operator=(const intern *b) {\
-        drop();\
-        mem = memory::wrap<intern>((intern*)b, 1);\
-        data = (intern*)mem->origin;\
+        if (data != b) {\
+            mx::drop();\
+            mx::mem = mx::wrap<C>(raw_t(b), 1);\
+            data = (intern*)mx::mem->origin;\
+        }\
         return data;\
     }
+
+#define movable(C)\
+    inline C(intern data) : C(mx::alloc<C>((raw_t)&data, 1)) { }\
 
 template <typename DC>
 static constexpr void inplace(DC *p, bool dtr) {
@@ -423,8 +446,9 @@ struct traits {
         primitive = 1,
         integral  = 2,
         realistic = 4,
-        mx        = 8,
-        opaque    = 16
+        singleton = 8,
+        mx        = 16,
+        opaque    = 32 /// may simply check for sizeof() in completeness check, unless we want complete types as opaque too which i dont see point of
     };
 };
 
@@ -482,15 +506,9 @@ struct false_type {
     constexpr operator bool() const noexcept { return value; }
 };
 
-struct memory;
-
-
-
-
 template <typename> struct is_opaque    : false_type { };
 template <typename> struct is_singleton : false_type { };
 
-/// just one of those associated to the type; nobody would ever write to this
 template <> struct is_singleton<std::nullptr_t> : true_type { };
 
 template <typename A, typename B, typename = void>
@@ -498,13 +516,8 @@ struct has_operator : false_type { };
 template <typename A, typename B>
 struct has_operator <A, B, decltype((void)(void (A::*)(B))& A::operator())> : true_type { };
 
-
-template<typename, typename = void>
-constexpr bool type_complete = false;
-
-template<typename T>
-constexpr bool type_complete <T, std::void_t<decltype(sizeof(T))>> = true;
-
+template<typename, typename = void> constexpr bool type_complete = false;
+template<typename T>                constexpr bool type_complete <T, std::void_t<decltype(sizeof(T))>> = true;
 
 template <typename T, typename = void>
 struct has_convert : std::false_type {};
@@ -516,32 +529,13 @@ struct has_compare : std::false_type {};
 template <typename T>
 struct has_compare<T, std::void_t<decltype(std::declval<T>().compare((T &)*(T*)nullptr))>> : std::true_type {};
 
-//template <typename T, typename = void>
-//struct is_array : std::false_type {};
-//template <typename T>
-//struct is_array<T, std::void_t<decltype(std::declval<T>().element_type())>> : std::true_type {};
 
-template <typename>
-struct is_array           : std::false_type {};
-
-template <typename T, typename = void>
-struct is_map : std::false_type {};
-template <typename T>
-struct is_map<T, std::void_t<decltype(std::declval<T>().value_type())>> : std::true_type {};
+template <typename T> struct is_array : std::false_type {};
+template <typename T> struct is_map   : std::false_type {};
 
 void chdir(std::string c);
 
-struct memory;
 struct ident;
-template <typename T>
-T *mdata(memory *mem, size_t index);
-
-template <typename T>
-T &mref(memory *mem);
-
-template <typename T>
-memory *talloc(size_t count = 1, size_t res = 1, bool call_ctr = true);
-
 
 template <typename T, const size_t SZ>
 struct buffer {
@@ -648,17 +642,21 @@ struct size:buffer<num, 16> {
     }
 };
 
+template <typename T>
+memory *talloc(size_t count = 1, size_t reserve = 0);
+
 /// doubly is usable two ways. vector patterns are the same with v2 [struct] vs vector2 [mx-struct]
 template <typename T>
 struct doubly {
     memory *mem;
-    
-    struct data {
+    /// memory should have a struct *marker and if you are reading that, you are at origin header
+    /// so you allocate type+micro_header which is just the memory* origin; again when it equals the same address space one may read into it
+    struct ldata { /// the reduced form of that is just read the pointer
         size_t   icount;
         item<T> *ifirst, *ilast;
 
         /// life-cycle on items, in data destructor
-        ~data() {
+        ~ldata() {
             item<T>* d = ifirst;
             while   (d) {
                 item<T>* dn = d->next;
@@ -715,13 +713,8 @@ struct doubly {
             return i;
         }
 
-        size_t len() {
-            return icount;
-        }
-        
-        size_t length() {
-            return icount;
-        }
+        size_t    len() { return icount; }
+        size_t length() { return icount; }
 
         bool remove(item<T> *i) {
             if (i) {
@@ -754,35 +747,23 @@ struct doubly {
         liter<T>             end() const { return { null  }; }
         T   &operator+=    (T   v)       { return push  (v); }
         bool operator-=    (num i)       { return remove(i); }
-    } &m;
+    } *data;
 
-    doubly(memory *mem) : mem(mem), m(mref<data>(mem)) { }
-    doubly() : doubly(talloc<data>()) { }
+    doubly(memory *mem) : mem(mem), data(mdata<ldata>(mem, 0)) { }
+    
+    doubly() : doubly(talloc<ldata>()) { }
     doubly(initial<T> a) : doubly() { for (auto &v: a) push(v); }
 
-    operator bool() const { return bool(m); }
+    operator bool() const { return bool(*data); }
+    
+    ldata &operator *() { return *data; }
+    ldata *operator->() { return  data; }
 
-    inline T &push(T v) { return m.push(v); }
-    inline T &push()    { return m.push(); }
-    inline item<T> *get(num index) const { return m.get(index); }
-
-    inline size_t  len()              { return m.len(); }
-    inline bool    remove(item<T> *i) { return m.remove(i); }
-    inline bool    remove(num index)  { return m.remove(index); }
-
-    inline size_t   count() const { return m.count(); }
-    inline T       &first() const { return m.first(); }
-    inline T        &last() const { return m.last();  }
-    ///
-    inline void   pop(T *prev = null)    { return m.pop(prev);   }
-    inline void shift(T *prev = null)    { return m.shift(prev); }
-    inline T                  pop_v()       { return m.pop_v();     }
-    inline T                shift_v()       { return m.shift_v();   }
-    inline T   &operator[]   (num ix) const { return m[ix];         }
-    inline liter<T>           begin() const { return m.begin();     }
-	inline liter<T>             end() const { return m.end();       }
-    inline T   &operator+=    (T   v)       { return m += v;        }
-    inline bool operator-=    (num i)       { return m -= i;        }
+    inline T   &operator[]   (num ix) const { return (*data)[ix];         }
+    inline liter<T>           begin() const { return (*data).begin();     }
+	inline liter<T>             end() const { return (*data).end();       }
+    inline T   &operator+=    (T   v)       { return (*data) += v;        }
+    inline bool operator-=    (num i)       { return (*data) -= i;        }
 
     inline doubly<T>& operator=(const doubly<T> &b) {
              this -> ~doubly( ); /// destruct this
@@ -846,29 +827,30 @@ template <typename K, typename V>
 struct hmap {
   //using hmap   = ion::hmap <K,V>;
     using pair   = ion::pair <K,V>;
-    using bucket = typename doubly<pair>::data; /// no reason i should have to put typename. theres no conflict on data.
+    using bucket = typename doubly<pair>::ldata; /// no reason i should have to put typename. theres no conflict on data.
     memory *mem  = null;
 
-    struct data {
+    struct hmdata {
         bucket *h_pairs;
         size_t sz;
 
         /// i'll give you a million quid, or, This Bucket.
         bucket &operator[](u64 k) {
-            if (!h_pairs) {
-                h_pairs = (bucket*)calloc(sz, sizeof(bucket) * 16);
-            }
+            if (!h_pairs)
+                 h_pairs = (bucket*)calloc(sz, sizeof(bucket) * 16);
             return h_pairs[k];
         }
         
-        ~data() {
+        ~hmdata() {
             for (size_t  i = 0; i < sz; i++) h_pairs[i]. ~ bucket(); // data destructs but does not construct and thats safe to do
-            //free(h_pairs);
+            free(h_pairs);
         }
-    } &m;
+    };
 
-    hmap(memory     *mem) : mem(mem), m(mref<data>(mem)) { }
-    hmap(size_t   sz = 0) : hmap(talloc<data>()) { m.sz = sz; }
+    hmdata *data;
+
+    hmap(memory     *mem) : mem(mem), data(mdata<hmdata>(mem, 0)) { }
+    hmap(size_t   sz = 0) : hmap(talloc<hmdata>()) { data->sz = sz; }
     hmap(initial<pair> a) : hmap() { for (auto &v: a) push(v); }
 
     hmap& operator=(hmap a) {
@@ -882,8 +864,8 @@ struct hmap {
     V* lookup(K input, u64 *pk = null, bucket **b = null) const;
     V &operator[](K key);
 
-    inline size_t    len() { return m.sz; }
-    inline operator bool() { return m.sz > 0; }
+    inline size_t    len() { return data->sz; }
+    inline operator bool() { return data->sz > 0; }
 };
 
 #undef min
@@ -891,14 +873,11 @@ struct hmap {
 
 struct math {
     template <typename T>
-    static inline T min (T a, T b) { return a <= b ? a : b; }
+    static inline T min (T a, T b)                             { return a <= b ? a : b; }
     template <typename T> static inline T max  (T a, T b)      { return a >= b ? a : b; }
     template <typename T> static inline T clamp(T v, T m, T x) { return v >= x ? x : x < m ? m : v; }
     template <typename T> static inline T round(T v)           { return std::round(v);  }
 };
-
-struct lambda_table;
-struct memory;
 
 /// mx-mock-type
 struct ident {
@@ -940,13 +919,12 @@ using symbol_ids   = hmap<i64, memory*>;
 using     prop_map = hmap<symbol, prop>;
 
 struct context_bind;
-///
 
 struct alloc_schema {
     doubly<prop>  meta;
     bool          pointer; /// allocate enough space for a pointer to be stored
     prop_map      meta_map;
-    size_t        count;       /// bind-count
+    size_t        bind_count;  /// bind-count
     size_t        total_bytes; /// total-allocation-size
     context_bind *composition; /// vector-of-pairs (context and its data struct; better to store the data along with it!)
     context_bind *bind; // this is a pointer to the top bind
@@ -968,136 +946,83 @@ static inline u64 djb2(cstr str) {
     return  h;
 }
 
-using      FreeFn =    void(*)(void*);                /// class*
-using      InitFn =    void(*)(void*);                /// class*
-using   CompareFn =     int(*)(void*, void*);         /// class*, class*
-using   BooleanFn =    bool(*)(void*);                /// class*
-using     ToStrFn = memory*(*)(void*);                /// class*
-using  DestructFn =    void(*)(void*, size_t);        /// src, count
-using ConstructFn =    void(*)(void*, size_t);        /// src, count
-using      HashFn =  size_t(*)(void*, size_t);        /// src, count
-using      MetaFn =  doubly<prop>(*)(void*);
+template <typename T> using        FreeFn =          void(*)(T*);              /// src
+template <typename T> using        InitFn =          void(*)(T*);              /// src
+template <typename T> using     CompareFn =           int(*)(T*, T*);          /// a, b
+template <typename T> using     BooleanFn =          bool(*)(T*);              /// src
+template <typename T> using    ToStringFn =       memory*(*)(T*);              /// src
+template <typename T> using  FromStringFn =            T*(*)(cstr);            /// src-cstring
+template <typename T> using        CopyFn =          void(*)(T*, T*, size_t);  /// dst, src, count (realloc case)
+template <typename T> using    DestructFn =          void(*)(T*, size_t);      /// src, count
+template <typename T> using   ConstructFn =          void(*)(T*, size_t);      /// src, count
+template <typename T> using      AssignFn =          void(*)(T*, T*);          /// dst, src
+template <typename T> using        HashFn =        size_t(*)(T*, size_t);      /// src, count
+template <typename T> using        MetaFn =  doubly<prop>(*)(T*);
 
-template <typename T, typename D, typename = void>
-struct has_static_compare : std::false_type { 
-    bool operator()() const { return value; } 
-};
+/// type-api-check
+/// typeof usage need not apply registration, registration is about ops on the object not its identification; that only requires a name)
+template <typename T, typename = void> struct registered             : std::false_type { bool operator()() const { return value; }};
 
-template <typename T, typename D>
-struct has_static_compare<T, D, std::enable_if_t<std::is_same_v<decltype(T::compare(std::declval<D*>(), std::declval<D*>())), void>>> : std::true_type { 
-    bool operator()() const { return value; } 
-};
+/// granular-checks
+template <typename T, typename = void> struct registered_assign      : std::false_type { bool operator()() const { return value; }};
+template <typename T, typename = void> struct registered_compare     : std::false_type { bool operator()() const { return value; }};
+template <typename T, typename = void> struct registered_bool        : std::false_type { bool operator()() const { return value; }};
+template <typename T, typename = void> struct registered_copy        : std::false_type { bool operator()() const { return value; }};
+template <typename T, typename = void> struct registered_to_string   : std::false_type { bool operator()() const { return value; }};
+template <typename T, typename = void> struct registered_from_string : std::false_type { bool operator()() const { return value; }};
+template <typename T, typename = void> struct registered_init        : std::false_type { bool operator()() const { return value; }};
+template <typename T, typename = void> struct registered_free        : std::false_type { bool operator()() const { return value; }};
+template <typename T, typename = void> struct registered_meta        : std::false_type { bool operator()() const { return value; }};
+template <typename T, typename = void> struct registered_hash        : std::false_type { bool operator()() const { return value; }};
 
-template <typename T, typename D, typename = void>
-struct has_static_to_string : std::false_type { 
-    bool operator()() const { return value; } 
-};
+template <typename T> struct registered            <T, std::enable_if_t<std::is_same_v<decltype(_type_sz    (std::declval<T*>  ())),
+    size_t>>>       : std::true_type { bool operator()() const { return value; }};
+template <typename T> struct registered_assign     <T, std::enable_if_t<std::is_same_v<decltype(assign      (std::declval<T*>  (), std::declval<T*>())),
+    void>>>         : std::true_type { bool operator()() const { return value; }};
+template <typename T> struct registered_compare    <T, std::enable_if_t<std::is_same_v<decltype(compare     (std::declval<T*>  (), std::declval<T*>())),
+    int>>>          : std::true_type { bool operator()() const { return value; }};
+template <typename T> struct registered_bool       <T, std::enable_if_t<std::is_same_v<decltype(boolean     (std::declval<T*>  ())),
+    bool>>>         : std::true_type { bool operator()() const { return value; }};
+template <typename T> struct registered_copy       <T, std::enable_if_t<std::is_same_v<decltype(copy        (std::declval<T*>  (), 
+    std::declval<T*>(), size_t(0))), void>>>         : std::true_type { bool operator()() const { return value; }};
 
-template <typename T, typename D>
-struct has_static_to_string<T, D, std::enable_if_t<std::is_same_v<decltype(T::to_string(std::declval<D*>())), void>>> : std::true_type { 
-    bool operator()() const { return value; } 
-};
+/// merge dtr and free
+/// dtr called from free.
 
-template <typename T, typename D, typename = void>
-struct has_static_init : std::false_type { 
-    bool operator()() const { return value; } 
-};
 
-template <typename T, typename D>
-struct has_static_init<T, D, std::enable_if_t<std::is_same_v<decltype(T::init(std::declval<D*>())), void>>> : std::true_type { 
-    bool operator()() const { return value; } 
-};
+static int *from_string(cstr in) {
+    return null;
+}
 
-template <typename T, typename D, typename = void>
-struct has_static_free : std::false_type { 
-    bool operator()() const { return value; } 
-};
 
-template <typename T, typename D>
-struct has_static_free<T, D, std::enable_if_t<std::is_same_v<decltype(T::free(std::declval<D*>())), void>>> : std::true_type { 
-    bool operator()() const { return value; } 
-};
-
-template <typename T, typename D, typename = void>
-struct has_instance_meta : std::false_type {
-    bool operator()() const { return value; }
-};
-
-template <typename T>
-struct has_instance_meta <T, std::void_t<decltype(std::declval<T>().meta())>> : std::true_type { 
-    bool operator()() const { return value; }
-};
-
-template <typename T, typename = void>
-struct has_static_meta : std::false_type {
-    bool operator()() const { return value; }
-};
-
-template <typename T>
-struct has_static_meta<T, std::enable_if_t<std::is_same<decltype(T::meta(std::declval<T&>())), void>::value>> : std::true_type {
-    bool operator()() const { return value; }
-};
+template <typename T> struct registered_to_string  <T, std::enable_if_t<std::is_same_v<decltype(  to_string (std::declval<T*>  ())), memory*>>>      : std::true_type { bool operator()() const { return value; }};
+template <typename T> struct registered_from_string<T, std::enable_if_t<std::is_same_v<decltype(from_string (std::declval<cstr>())), T*>>>           : std::true_type { bool operator()() const { return value; }};
+template <typename T> struct registered_init       <T, std::enable_if_t<std::is_same_v<decltype(init        (std::declval<T*>  ())), void>>>         : std::true_type { bool operator()() const { return value; }};
+template <typename T> struct registered_free       <T, std::enable_if_t<std::is_same_v<decltype(free        (std::declval<T*>  ())), void>>>         : std::true_type { bool operator()() const { return value; }};
+template <typename T> struct registered_meta       <T, std::enable_if_t<std::is_same_v<decltype(meta        (std::declval<T*>  ())), doubly<prop>>>> : std::true_type { bool operator()() const { return value; }};
+template <typename T> struct registered_hash       <T, std::enable_if_t<std::is_same_v<decltype(meta        (std::declval<T*>  ())), size_t>>>       : std::true_type { bool operator()() const { return value; }};
 
 /// djb2 should be the hash_fn for char/8bit
 
 /// use functions, not lambdas
-struct function_table {
-         FreeFn free;
-         InitFn init;
-      CompareFn compare;
-      BooleanFn boolean;
-        ToStrFn to_string;
-     DestructFn destruct;
-    ConstructFn construct;
-         HashFn hash;
-         MetaFn meta;
-
-    template <typename T>
-    static function_table *set_functionality(type_t ty);
+template <typename T>
+struct ops {
+         FreeFn<T> free;
+         InitFn<T> init;
+      CompareFn<T> compare;
+      BooleanFn<T> boolean;
+     ToStringFn<T> to_string;
+   FromStringFn<T> from_string;
+         CopyFn<T> copy;
+     DestructFn<T> destruct;
+    ConstructFn<T> construct;
+       AssignFn<T> assign;
+         HashFn<T> hash;
+         MetaFn<T> meta;
 };
 
-template <typename D, typename = void>
-struct has_global_compare : std::false_type {
-    bool operator()() const { return value; }
-};
-
-template <typename D>
-struct has_global_compare<D, std::void_t<decltype(compare(std::declval<D*>(), std::declval<D*>()))>> : std::true_type {
-    bool operator()() const { return value; }
-};
-
-template <typename D, typename = void>
-struct has_global_to_string : std::false_type {
-    bool operator()() const { return value; }
-};
-
-template <typename D>
-struct has_global_to_string<D, std::void_t<decltype(to_string(std::declval<D*>()))>> : std::true_type {
-    bool operator()() const { return value; }
-};
-
-template <typename D, typename = void>
-struct has_global_init : std::false_type {
-    bool operator()() const { return value; }
-};
-
-template <typename D>
-struct has_global_init<D, std::void_t<decltype(init(std::declval<D*>()))>> : std::true_type {
-    bool operator()() const { return value; }
-};
-
-template <typename D, typename = void>
-struct has_global_free : std::false_type {
-    bool operator()() const { return value; }
-};
-
-template <typename D>
-struct has_global_free<D, std::void_t<decltype(free(std::declval<D*>()))>> : std::true_type {
-    bool operator()() const { return value; }
-};
-
-// going without copy; those are redundant and best not to have them lol.
-//using      CopyFn = void(*)(void*, void*, size_t); /// dst, src, count
+template <typename T>
+static ops<T> *ftable();
 
 ///
 struct idata {
@@ -1106,8 +1031,9 @@ struct idata {
     size_t           base_sz; /// a types base sz is without regards to pointer state
     size_t           traits;
     alloc_schema    *schema;  /// primitives dont need this one
-    function_table  *functions;
+    ops<void>       *functions;
     symbol_data     *symbols;
+    memory          *singleton;
 
     size_t size() {
         return schema ? schema->total_bytes : base_sz;
@@ -1138,9 +1064,6 @@ struct context_bind {
     size_t        offset;
 };
 
-memory *wrap_alloc(raw_t m, size_t sz);
-memory* raw_alloc(type_t ty, size_t sz);
-
 i64 integer_value(memory *mem);
 
 template <typename T>
@@ -1169,23 +1092,19 @@ size_t schema_info(alloc_schema *schema, int depth, T *p, idata *ctx_type) {
     ///
     if constexpr (!identical<T, none>()) {
         /// count is set to schema_info after first return
-        if (schema->count) {
-            context_bind &bind = schema->composition[schema->count - 1 - depth]; /// would be not-quite-ideal casting-wise to go the other way, lol.
+        if (schema->bind_count) {
+            context_bind &bind = schema->composition[schema->bind_count - 1 - depth]; /// would be not-quite-ideal casting-wise to go the other way, lol.
             bind.ctx     = ctx_type ? ctx_type : typeof(T);
-            bind.data    = identical<typename T::DC, none>() ? null : typeof(typename T::DC);
-            bind.data_sz = bind.data ? typesize(typename T::DC)     : 0;
+            bind.data    = identical<typename T::intern, none>() ? null : typeof(typename T::intern);
+            bind.data_sz = bind.data ? typesize(typename T::intern) : 0;
             ///
             //if constexpr (!identical<typename T::DC, none>() && identical<typename T::MEM, mem_ptr_token>()) {
-
             if constexpr (identical<typename T::intern, none>()) {
                 bind.ref_sz = sizeof(T*);
                 schema->total_bytes += bind.ref_sz;
             }
-
-            //} else {
-            //    schema->total_bytes += bind.data_sz;
-            //}
         }
+        
         typename T::parent_class *placeholder = null;
         return schema_info(schema, depth + 1, placeholder, null);
         ///
@@ -1193,7 +1112,38 @@ size_t schema_info(alloc_schema *schema, int depth, T *p, idata *ctx_type) {
         return depth;
 }
 
-#if 1
+
+template <typename T>
+void schema_populate(idata *type, T *p) {
+    type->schema         = (alloc_schema*)calloc(1, sizeof(alloc_schema) * 16);
+    alloc_schema &schema = *type->schema;
+    ///
+    if constexpr (registered_meta<T>()) {
+        static T *def = new T();
+        schema.meta   = T::meta (*def);
+        delete def;
+    }
+    if (schema.meta) {
+        schema.meta_map  = prop_map(size_t(16));
+        for (ion::prop &prop: schema.meta) {
+            symbol prop_name = prop.name();
+            schema.meta_map[prop_name] = prop;
+        }
+    }
+    ///
+    schema.bind_count    = schema_info(&schema, 0, (T*)null, type);
+    schema.composition   = (context_bind*)calloc(schema.bind_count, sizeof(context_bind) * 16);
+    schema_info(&schema, 0, (T*)null, type);
+    /// summarize recursion
+    size_t offset = 0;
+    for (size_t i = 0; i < schema.bind_count; i++) {
+        context_bind &bind = schema.composition[i];
+        bind.offset        = offset;
+        offset            += bind.data_sz;
+    }
+    schema.total_bytes = offset;
+    schema.bind = &schema.composition[schema.bind_count - 1];
+}
 
 template <typename T>
 u64 hash_value(T &key) {
@@ -1204,7 +1154,7 @@ u64 hash_value(T &key) {
     } else if constexpr (is_convertible<hash, T>()) {
         return hash(key);
     } else if constexpr (inherits<mx, T>() || is_mx<T>()) {
-        return key.mx::mem->type->functions->hash(key.mem->origin);
+        return key.mx::mem->type->functions->hash(key.mem->origin, 1);
     } else {
         return 0;
     }
@@ -1241,10 +1191,7 @@ struct attachment {
     func<void()>   release;
 };
 
-struct mutex;
-
-/// schema vs single
-/// 
+using mutex = std::mutex;
 
 struct memory {
     enum attr { constant = 1 };
@@ -1260,21 +1207,17 @@ struct memory {
 
     size_t type_size() { return type->base_sz; } /// base_sz is the sizeof(context_class)
 
-    memory(
-        size_t refs,    u64 attrs,                type_t type, size_t count,
-        size_t reserve, doubly<attachment> *atts, size_t id,   void *origin) :
-        refs(refs),       attrs(attrs), type(type), count(count),
-        reserve(reserve), atts(atts),   id(id),     origin(origin)  { }
+    static memory *raw_alloc(type_t type, size_t sz, size_t count, size_t res);
+    static memory *    alloc(type_t type, size_t count, size_t reserve, raw_t src);
+           void   *  realloc(size_t res,  bool fill_default);
 
-    static memory *wrap(raw_t m, type_t ty);
-
-    template <typename T>
-    static memory *wrap(T *m, size_t count);
+    /// destruct data and set count to 0
+    void clear();
 
     void drop();
     attachment *attach(symbol id, void *data, func<void()> release);
     attachment *find_attachment(symbol id);
-
+    
     static inline const size_t autolen = UINT64_MAX;
 
     static memory *stringify(cstr cs, size_t len = autolen, size_t rsv = 0, bool constant = false, type_t ctype = typeof(char), i64 id = 0);
@@ -1285,8 +1228,6 @@ struct memory {
     ::symbol symbol() {
         return ::symbol(origin);
     }
-
-    memory();
 
     operator ::symbol*() {
         assert(attrs & constant);
@@ -1304,6 +1245,11 @@ struct memory {
     template <typename T>
     T &ref() const { return *data<T>(0); }
 };
+
+template <typename T>
+memory *talloc(size_t count, size_t reserve) {
+    return memory::alloc(typeof(T), count, reserve, (T*)null);
+}
 
 symbol prop::name() const {
     return symbol(key->origin);
@@ -1329,16 +1275,11 @@ T &defaults() {
     return   def_instance; //typeof(T)->defaults->ref<T>();
 }
 
-template <typename T> T* mdata(memory *mem, size_t index) { return mem->data<T>(index); }
+template <typename T> T* mdata(memory *mem, size_t index) { return mem ? mem->data<T>(index) : null; }
 
 template <typename T>
 inline T &assign_mx(T &a, const T &b) {
-    typeof(T)->lambdas->assign_mx((void *)&a, b.mem); return a;
-}
-
-template <typename T>
-inline T &assign_tr(T &a, const T &b, bool call_dtr) {
-    typeof(T)->assign_tr((void *)&a, (void *)&b, call_dtr);
+    typeof(T)->functions->assign((void *)&a, b.mem);
     return a;
 }
 
@@ -1394,10 +1335,40 @@ struct mx {
     using parent_class  = none;
     using context_class = none;
     using intern        = none;
+
+    void *realloc(size_t reserve, bool fill_default);
+
+    template <typename T>
+    static inline memory *wrap(void *m, size_t count = 1, T *placeholder = (T*)null) {
+        memory*     mem = (memory*)calloc(1, sizeof(memory));
+        mem->count      = count;
+        mem->reserve    = 0;
+        mem->refs       = 1;
+        mem->type       = typeof(T);
+        mem->origin     = m;
+        return mem;
+    }
+
+    /// T is context, not always the data type.  sometimes it is for simple cases, but not in context -> data 
+    template <typename T>
+    static inline memory *alloc(void *cp, size_t count = 1, size_t reserve = 1, T *ph = null) {
+        return memory::alloc(typeof(T), count, reserve, raw_t(cp));
+    }
+
+    template <typename T>
+    static inline memory *alloc(T *cp = null) {
+        return memory::alloc(typeof(T), 1, 1, raw_t(cp));
+    }
+
+    template <typename DP>
+    inline mx(DP **dptr) {
+        mx::alloc((DP*)null);
+        *dptr = (DP*)mem->origin;
+    }
     
     ///
-    inline mx(std::string s) : mem(memory::string(s)) { }
-    inline mx(cstr s)        : mem(memory::cstring(s)) { }
+    inline mx(std::string s) : mem(memory:: string(s)) { }
+    inline mx(cstr        s) : mem(memory::cstring(s)) { }
 
     template <typename T>
     static memory *alloc(size_t count, size_t reserve) {
@@ -1419,14 +1390,6 @@ struct mx {
         return mem;
     }
 
-    template <typename T>
-    static memory *singleton() {
-        static memory* mem;
-        if (!mem)
-            mem = alloc<T>(1, 1); /// there was a 16 multiplier prior.  todo: add address sanitizer support with appropriate clang stuff
-        return mem;
-    }
-
     /// must move lambda code away from lambda table, and into constructor code gen
     template <typename T>
     memory *copy(T *src, size_t count, size_t reserve) {
@@ -1438,7 +1401,7 @@ struct mx {
         mem->managed    = true;
         mem->origin     = (T*)calloc(mem->reserve, sizeof(T));
         ///
-        if (is_primitive<T>()) {
+        if constexpr (is_primitive<T>()) {
             memcpy(mem->origin, src, sizeof(T) * count);
         } else {
             for (size_t i = 0; i < count; i++)
@@ -1481,7 +1444,7 @@ struct mx {
     
 
     /// interop with shared; needs just base type functionality for lambda
-    inline mx(null_t n = null): mem(singleton<null_t>()) { }
+    inline mx(null_t n = null): mem(alloc<null_t>()) { }
     inline mx(memory *mem)    : mem(mem) { }
     inline mx(symbol ccs, type_t type = typeof(char)) : mx(mem_symbol(ccs, type)) { }
     inline mx(  cstr  cs, type_t type = typeof(char)) : mx(memory::stringify(cs, memory::autolen, 0, false, type)) { }
@@ -1623,16 +1586,19 @@ struct mx {
             if (ty == typeof(null_t))
                 return false;
 
+            /// always try context first. in theory gives more context
             if (ty->functions->boolean) {
-                BooleanFn ctx_bool = ty->schema->bind->data->functions->boolean;
-                return    ctx_bool((void*)this);
+                BooleanFn<void> ctx = ty->functions->boolean;
+                return    ctx((void*)this);
             }
             
+            /// then try this chain necklace
             if (ty->schema) {
-                BooleanFn data_bool = ty->schema->bind->data->functions->boolean;
-                return    data_bool((void*)mem->origin);
+                BooleanFn<void> data = ty->schema->bind->data->functions->boolean;
+                return    data((void*)mem->origin);
             }
             
+            /// then we've got backup.  if you got count i got an op
             return mem->count > 0;
         } else
             return false;
@@ -1660,21 +1626,14 @@ constexpr bool is_mx() {
     return identical<T, mx>();
 }
 
+//struct mutex:mx { ptr_declare(mutex, mx, std::shared_mutex); };
+
 template <typename T>
 struct lambda;
 
-
-// Helper to detect a bool conversion operator
-template <typename T, typename = std::void_t<>>
-struct has_bool_op: std::false_type {};
-
-template <typename T>
-struct has_bool_op<T, std::void_t<decltype(static_cast<bool>(std::declval<T>()))>> : std::true_type {};
-
-// A utility function to use the custom type trait
-template <typename T>
-constexpr bool has_bool = has_bool_op<T>::value;
-
+template <typename T, typename = std::void_t<>> struct has_bool_op: std::false_type {};
+template <typename T>                           struct has_bool_op<T, std::void_t<decltype(static_cast<bool>(std::declval<T>()))>> : std::true_type {};
+template <typename T> constexpr bool has_bool        = has_bool_op<T>::value;
 
 template <typename> struct is_lambda : false_type { };
 
@@ -1784,13 +1743,14 @@ protected:
 
 public:
     static inline type_t element_type() { return typeof(T); }
+    ///
     ptr(array, mx, T);
 
     /// push an element, return its reference
     T &push(T &v) {
         size_t csz = mem->count;
         if (csz + 1 > alloc_size())
-            data = mx::realloc(csz + 1, false); /// when you realloc you must have a pointer. 
+            data = (T*)mem->realloc(csz + 1, false); /// when you realloc you must have a pointer. 
         ///
         new (&data[csz]) T(v);
         mem->count++;
@@ -1800,7 +1760,7 @@ public:
     T &push() {
         size_t csz = mem->count;
         if (csz + 1 > alloc_size())
-            data = mx::realloc(csz + 1, false);
+            data = mem->realloc(csz + 1, false);
 
         new (&data[csz]) T();
         mem->count++;
@@ -1814,7 +1774,7 @@ public:
         size_t rsv = size_t(mem->reserve);
 
         if (usz + push_count > rsv)
-            data = mem->realloc(usz + push_count, false);
+            data = (T*)mem->realloc(usz + push_count, false);
         
         if constexpr (is_primitive<T>()) {
             memcpy(&data[usz], pv, sizeof(T) * push_count);
@@ -1848,10 +1808,11 @@ public:
             if constexpr (identical<T, S>()) {
                 dst = src->grab();
             } else {
+                type_t ty = typeof(T);
                 size_t sz = a_src.len();
-                dst  = memory::alloc(typeof(T), sz, sz, (T*)null, false);
-                T* b = dst->data<T>(0);
-                S* a = src->data<S>(0);
+                dst       = memory::alloc(ty, sz, sz, (T*)null);
+                T*      b = dst->data<T>(0);
+                S*      a = src->data<S>(0);
                 for (size_t i = 0; i < sz; i++)
                     new (&b[i]) T(a[i]);
             }
@@ -1874,7 +1835,7 @@ public:
 
     inline void set_size(size sz) {
         if (mem->reserve < sz)
-            data = mem->realloc<T>(sz, true);
+            data = (T*)mem->realloc(sz, true);
     }
 
     ///
@@ -1965,33 +1926,32 @@ public:
         //free(refs);
         return result;
     }
-
-    /// needs to support shape when its suitable in mx
-    inline size     shape() const { return size(mem->count); }
+    
+    inline size     shape() const { return mem->shape ? *mem->shape : size(mem->count); }
     inline size_t     len() const { return mem->count; }
     inline size_t  length() const { return mem->count; }
     inline size_t reserve() const { return mem->reserve; }
 
-    array(T* d, size_t sz, size_t al = 0) : array(alloc<T>((T*)null, sz, al, false)) {
+    array(T* d, size_t sz, size_t al = 0) : array(talloc<T>(0, sz)) {
         for (size_t i = 0; i < sz; i++)
             new (&data[i]) T(d[i]);
     }
 
     array(size al, size sz = size(0), lambda<T(size_t)> fn = lambda<T(size_t)>(nullptr)) : 
-            array(alloc<T>((T*)null, sz, al, !fn)) { /// call-ctr = false
+            array(talloc<T>(sz, al)) {
         if (al.count != 1)
             mem->shape = new size(al); /// only allocate a shape in the shaped cases; a 0 count is not valid atm.
         if (fn)
             for (size_t i = 0; i < size_t(sz); i++)
-                new (&data[i]) T { fn(i) };
+                data[i] = T(fn(i));
     }
 
     /// constructor for allocating with a space to fill (and construct; this allocation does not run the constructor (if non-primitive) until append)
     /// indexing outside of shape space does cause error
-    array(size_t  reserve) : array(size(reserve), size(0)) { }
-    array(   u32  reserve) : array(size(reserve), size(0)) { }
-    array(   i32  reserve) : array(size(reserve), size(0)) { }
-    array(   i64  reserve) : array(size(reserve), size(0)) { }
+    array(size_t  reserve) : array(talloc<T>(0, size_t(reserve))) { }
+    array(   u32  reserve) : array(talloc<T>(0, size_t(reserve))) { }
+    array(   i32  reserve) : array(talloc<T>(0, size_t(reserve))) { }
+    array(   i64  reserve) : array(talloc<T>(0, size_t(reserve))) { }
 
     inline T &push_default()  { return push();  }
 
@@ -2082,12 +2042,9 @@ public:
     }
 
     void clear() {
-        data = mem->realloc(1, false);
+        data = (T*)mem->realloc(1, false);
     }
 };
-
-template <typename T>
-struct is_array<array<T>> : std::true_type {};
 
 using ichar = int;
 
@@ -2171,9 +2128,7 @@ struct str:mx {
     };
 
     cstr data;
-
-    using MEM = mem_ptr_token;
-
+    
     operator std::string() { return std::string(data); }
 
     memory * symbolize() { return mem_symbol(data, typeof(char)); } 
@@ -2750,12 +2705,12 @@ struct map:mx {
         size_t    count(mx k) {
             type_t tk = k.type();
             memory *b = k.mem;
-            if (true || (!(k.mem->attrs & memory::constant) && (tk->traits & traits::primitive))) {
+            if (!(k.mem->attrs & memory::constant) && (tk->traits & traits::primitive)) {
                 size_t res = 0;
                 for (field<V> &f:fields) {
                     memory *a = f.key.mem;
-                    assert(a->type_size() == b->type_size());
-                    if (a == b || (a->count == b->count && memcmp(a->origin, b->origin, a->count * a->type_size()) == 0)) // think of new name instead of type_* ; worse yet is handle base types in type
+                    assert(a->type->size() == b->type->size());
+                    if (a == b || (a->count == b->count && memcmp(a->origin, b->origin, a->count * a->type->size()) == 0)) // think of new name instead of type_* ; worse yet is handle base types in type
                         res++;
                 }
                 return res;
@@ -2805,7 +2760,7 @@ struct map:mx {
             if (f) return *f;
             ///
             fields += { k, V() };
-            field<V> &last = fields.last();
+            field<V> &last = fields->last();
 
             if (hash_map)
               (*hash_map)[k] = &last;
@@ -2813,64 +2768,52 @@ struct map:mx {
             return last;
         }
 
-        operator bool() { return ((hash_map && hash_map->len() > 0) || (fields.len() > 0)); }
-
-    } &m;
+        operator bool() { return ((hash_map && hash_map->len() > 0) || (fields->len() > 0)); }
+    };
     
     void print();
 
     /// props bypass dependency with this operator returning a list of field, which is supported by mx (map would not be)
-    operator doubly<field<V>> &() { return m.fields; }
+    operator doubly<field<V>> &() { return data->fields; }
+    bool       operator()(mx key) { return (*data)(key); }
+    operator               bool() { return mx::mem && *data; }
 
-    /// boolean operator for key
-    bool operator()(mx key)  { return m(key); }
+    template <typename K>  K &get(K k) const { return lookup(k)->value; }
+    inline liter<field<V>>     begin() const { return data->fields->begin(); }
+    inline liter<field<V>>       end() const { return data->fields->end();   }
 
-    inline field<V> &first() { return m.first(); }
-    inline field<V> & last() { return m. last(); }
-
-    operator bool() { return mx::mem && m; }
-
-    ctr(map, mx, mdata, m);
+    ptr(map, mx, mdata);
 
     /// when a size is specified to map, it engages hash map mode
     map(size sz) : map() {
-        m.fields = doubly<field<V>>();
-        if (sz) m.hash_map = new hmap(sz);
+        data->fields = doubly<field<V>>();
+        if (sz) data->hash_map = new hmap(sz);
     }
 
     map(size_t sz) : map() {
-        m.fields = doubly<field<V>>();
-        if (sz) m.hash_map = new hmap(sz);
+        data->fields = doubly<field<V>>();
+        if (sz) data->hash_map = new hmap(sz);
     }
 
     map(initial<field<V>> args) : map(size(0)) {
-        for(auto &f:args) m.fields += f;
+        for(auto &f:args) data->fields += f;
     }
 
     map(array<field<V>> arr) : map(size(default_hash_size)) {
-        for(field<V> &f:arr)  m.fields += f;
+        for(field<V> &f:arr)  data->fields += f;
     }
 
     map(doubly<field<V>> li) : map(size(default_hash_size)) {
-        for(field<V> &f:li)   m.fields += f;
+        for(field<V> &f:li)   data->fields += f;
     }
-
-    size_t        count()            { return m.count();   }
-    size_t        count(mx k)        { return m.count(k);  }
-    size_t        count(symbol cs)   { return m.count(cs); }
-
-    field<V>    *lookup(mx &k) const { return m.lookup(k); }
-    bool         remove(field<V> &f) { return m.remove(f); }
-    bool         remove(mx &k)       { return m.remove(k); }
-    field<V>     &fetch(mx &k)       { return m.fetch(k);  }
     
+    /// pass through key operator
     template <typename K>
-    inline V &operator[](K k) { return m[k]; }
-
-    template <typename K>  K &get(K k) const { return lookup(k)->value; }
-    inline liter<field<V>>     begin() const { return m.fields.begin(); }
-    inline liter<field<V>>       end() const { return m.fields.end();   }
+    inline V &operator[](K k) { return (*data)[k]; }
 };
+
+template <typename T> struct is_array<array<T>> : std::true_type  {};
+template <typename T> struct is_map  <map  <T>> : std::true_type  {};
 
 template <typename T>
 map<T> args(int argc, cstr *argv, map<mx> &def) {
@@ -2894,12 +2837,12 @@ map<T> args(int argc, cstr *argv, map<mx> &def) {
                         break;
                     }
                 }
-            } else found = def.lookup(key);
+            } else found = def->lookup(key);
             
             if (found) {
                 str     aval = str(argv[ai + 1]);
                 type_t  type = found->value.type();
-                iargs[key]   = type->lambdas->from_mstr(aval.mem);
+                iargs[key]   = type->functions->from_string((cstr)aval.mem->origin);
             } else {
                 printf("arg not found: %s\n", str(key.mem).data);
                 return null;
@@ -2909,9 +2852,9 @@ map<T> args(int argc, cstr *argv, map<mx> &def) {
     ///
     /// return results in order of defaults, with default value given
     map res = map<T>();
-    for(field<T> &df:def.m.fields) {
+    for(field<T> &df:def.data->fields) {
         field<mx> *ov = iargs.lookup(df.key);
-        res.m.fields += { df.key, T(ov ? ov->value : df.value) };
+        res.data->fields += { df.key, T(ov ? ov->value : df.value) };
     }
     return res;
 }
@@ -2948,32 +2891,29 @@ public:
     enum { value = sizeof(test<T>(0)) == sizeof(char) };
 };
 
-//#define ctr(C, B, m_type, data) \
-//    inline C(memory*     mem) : B(mem), data(mx::ref<m_type>()) { }\
-
 template <typename T>
 struct states:mx {
     struct fdata {
         type_t type;
         u64    bits;
-    } &a;
+    };
 
     /// get the bitmask (1 << value); 0 = 1bit set
     inline static u64 to_flag(u64 v) { return u64(1) << v; }
 
-    ctr(states, mx, fdata, a);
+    ptr(states, mx, fdata);
     
     /// initial states with initial list of values
     inline states(initial<T> args) : states() {
         for (auto  v:args) {
             u64 ord = u64(v); /// from an enum type
             u64 fla = to_flag(ord);
-            a.bits |= fla;
+            data->bits |= fla;
         }
     }
 
     memory *string() const {
-        if (!a.bits)
+        if (!data->bits)
             return memory::symbol("null");
 
         if constexpr (has_count<T>::value) {
@@ -2982,7 +2922,7 @@ struct states:mx {
             ///
             doubly<memory*> &symbols = T::symbols();
             ///
-            u64    v     = a.bits;
+            u64    v     = data->bits;
             size_t c_id  = 0;
             size_t c_len = 0;
             bool   first = true;
@@ -3019,12 +2959,12 @@ struct states:mx {
             [&](bool &from_assign) -> void {
                 u64 f = to_flag(from_assign);
                 if (from_assign)
-                    a.bits |=  f;
+                    data->bits |=  f;
                 else
-                    a.bits &= ~f;
+                    data->bits &= ~f;
             }
         };
-        return { bool((a.bits & f) == f), fn };
+        return { bool((data->bits & f) == f), fn };
     }
 
     operator memory*() { return grab(); }
@@ -3087,12 +3027,10 @@ struct logger {
 
     template <typename T>
     static T input() {
-        str     s = str(size_t(1024)); /// strip integer conversions from constructors here in favor of converting to reserve alone.  that is simple.
+        str      s  = str(size_t(1024)); /// strip integer conversions from constructors here in favor of converting to reserve alone.  that is simple.
         sscanf(s.data, "%s", s.reserve());
-        ///
-        type_t ty = typeof(T);
-        mx     rs = ty->lambdas->from_mstr(s.mem);
-        ///
+        type_t   ty = typeof(T);
+        mx       rs = ty->functions->from_string((cstr)s.mem->origin);
         return T(rs);
     }
 
@@ -3124,94 +3062,92 @@ struct path:mx {
         st = fs::current_path().string();
         return str(st);
     }
+    ///
+    ptr(path, mx, fs::path);
+    movable(path);
 
-    fs::path &p;
-    ctr(path, mx, std::filesystem::path, p);
-
-    inline path(str     s) : path(fs::path(symbol(s.cs()))) { }
-    inline path(symbol cs) : path(fs::path(cs)) { }
+    inline path(str      s) : path(new fs::path(symbol(s.cs()))) { }
+    inline path(symbol  cs) : path(new fs::path(cs)) { }
 
     template <typename T> T     read() const;
     template <typename T> bool write(T input) const;
 
     str        mime_type();
-    str             stem() const { return !p.empty() ? str(p.stem().string()) : str(null);    }
-    bool      remove_all() const { std::error_code ec;          return fs::remove_all(p, ec); }
-    bool          remove() const { std::error_code ec;          return fs::remove(p, ec);     }
-    bool       is_hidden() const { auto st = p.stem().string(); return st.length() > 0 && st[0] == '.'; }
-    bool          exists() const {                              return fs::exists(p);                   }
-    bool          is_dir() const {                              return fs::is_directory(p);             }
-    bool        make_dir() const { std::error_code ec;          return !p.empty() ? fs::create_directories(p, ec) : false; }
-    path remove_filename()       {                              return path(p.remove_filename());                          }
-    bool    has_filename() const {                              return p.has_filename();                                   }
-    path            link() const {                              return fs::is_symlink(p) ? path(p) : path(null);           }
-    bool         is_file() const {                              return !fs::is_directory(p) && fs::is_regular_file(p);     }
+    str             stem() const { return !data->empty() ? str(data->stem().string()) : str(null);    }
+    bool      remove_all() const { std::error_code ec;          return fs::remove_all(*data, ec); }
+    bool          remove() const { std::error_code ec;          return fs::remove(*data, ec); }
+    bool       is_hidden() const { auto st = data->stem().string(); return st.length() > 0 && st[0] == '.'; }
+    bool          exists() const {                              return fs::exists(*data); }
+    bool          is_dir() const {                              return fs::is_directory(*data); }
+    bool        make_dir() const { std::error_code ec;          return !data->empty() ? fs::create_directories(*data, ec) : false; }
+    path remove_filename()       {
+        fs::path p = data->remove_filename();
+        return path(p);
+    }
+    bool    has_filename() const {                              return data->has_filename(); }
+    path            link() const {                              return fs::is_symlink(*data) ? path(*data) : path(); }
+    bool         is_file() const {                              return !fs::is_directory(*data) && fs::is_regular_file(*data); }
     char             *cs() const {
         static std::string static_thing;
-        static_thing = p.string();
+        static_thing = data->string();
         return (char*)static_thing.c_str();
     }
     operator cstr() const {
         return cstr(cs());
     }
-    str             ext () const { return str(p.extension().string()); }
-    str             ext4() const { return p.extension().string(); }
-    path            file() const { return fs::is_regular_file(p) ? path(p) : path(null); }
-    bool     copy(path to) const {
-        assert(!p.empty());
+    str         ext () const { return str(data->extension().string()); }
+    str         ext4() const { return data->extension().string(); }
+    path        file() const { return fs::is_regular_file(*data) ? path(*data) : path(); }
+    bool copy(path to) const {
+        assert(!data->empty());
         assert(exists());
         if (!to.exists())
             (to.has_filename() ?
                 to.remove_filename() : to).make_dir();
 
         std::error_code ec;
-        fs::copy(p, (to.is_dir() ? to / path(str(p.filename().string())) : to).p, ec);
+        fs::copy(*data, *(to.is_dir() ? to / path(str(data->filename().string())) : to), ec);
         return ec.value() == 0;
     }
     
     path &assert_file() {
-        assert(fs::is_regular_file(p) && exists());
+        assert(fs::is_regular_file(*data) && exists());
         return *this;
     }
 
     /// create an alias; if successful return its location
     path link(path alias) const {
-        fs::path &ap = p;
-        fs::path &bp = alias.p;
+        fs::path &ap = *data;
+        fs::path &bp = *alias;
         if (ap.empty() || bp.empty())
-            return null;
-
+            return {};
         std::error_code ec;
-        is_dir() ?
-            fs::create_directory_symlink(ap, bp) :
-            fs::create_symlink(ap, bp, ec);
-        ///
-        return alias.exists() ? alias : path(null);
+        is_dir() ? fs::create_directory_symlink(ap, bp) : fs::create_symlink(ap, bp, ec);
+        return alias.exists() ? alias : path();
     }
 
     /// operators
-    operator        bool()         const { return p.string().length() > 0; }
-    operator         str()         const { return str(p.string()); }
-    operator    fs::path()         const { return p; } /// take out this operator
-    path          parent()         const { return p.parent_path(); }
+    operator        bool()         const { return data->string().length() > 0; }
+    operator         str()         const { return str(data->string()); }
+    path          parent()         const { return  data->parent_path(); }
     
-    path operator / (path       s) const { return path(p / s.p); }
-    path operator / (symbol     s) const { return path(p / fs::path(s)); }
-    path operator / (const str& s) const { return path(p / fs::path((symbol)s.data)); }
-    path relative   (path    from) const { return path(fs::relative(p, from.p)); }
+    path operator / (path       s) const { return path(*data / *s); }
+    path operator / (symbol     s) const { return path(*data /  s); }
+    path operator / (const str& s) const { return path(*data / fs::path(s.data)); }
+    path relative   (path    from) const { return path(fs::relative(*data, *from)); }
     
-    bool  operator==(path&      b) const { return  p == b.p; }
+    bool  operator==(path&      b) const { return  *data == *b; }
     bool  operator!=(path&      b) const { return !(operator==(b)); }
     
-    bool  operator==(symbol     b) const { return p == b; }
+    bool  operator==(symbol     b) const { return *data == b; }
     bool  operator!=(symbol     b) const { return !(operator==(b)); }
 
     ///
     static path uid(path b) {
-        auto     rand = [](num i) -> str { return rand::uniform('a', 'z'); };
-        path        p = null;
-        do        { p = path(str::fill(6, rand)); }
-        while ((b / p).exists());
+        auto rand = [](num i) -> str { return rand::uniform('a', 'z'); };
+        fs::path p { };
+        do { p = fs::path(str::fill(6, rand)); }
+        while (fs::exists(*b / p));
         return  p;
     }
 
@@ -3221,8 +3157,8 @@ struct path:mx {
 
     int64_t modified_at() const {
         using namespace std::chrono_literals;
-        std::string ps = p.string();
-        auto        wt = fs::last_write_time(p);
+        std::string ps = data->string();
+        auto        wt = fs::last_write_time(*data);
         const auto  ms = wt.time_since_epoch().count(); // offset needed atm
         return int64_t(ms);
     }
@@ -3231,17 +3167,17 @@ struct path:mx {
         cstr  buf = new char[bs];
         try {
             std::error_code ec;
-            size_t rsize = fs::file_size(p, ec);
+            size_t rsize = fs::file_size(*data, ec);
             /// dont throw in the towel. no-exceptions.
             if (!ec)
                 return false;
-            std::ifstream f(p);
+            std::ifstream f(*data);
             for (num i = 0, n = (rsize / bs) + (rsize % bs != 0); i < n; i++) {
                 size_t sz = i == (n - 1) ? rsize - (rsize / bs * bs) : bs;
                 fn((symbol)buf, sz);
             }
         } catch (std::ofstream::failure e) {
-            std::cerr << "read failure: " << p.string();
+            std::cerr << "read failure: " << data->string();
         }
         delete[] buf;
         return true;
@@ -3250,36 +3186,36 @@ struct path:mx {
     bool append(array<uint8_t> bytes) {
         try {
             size_t sz = bytes.len();
-            std::ofstream f(p, std::ios::out | std::ios::binary | std::ios::app);
+            std::ofstream f(*data, std::ios::out | std::ios::binary | std::ios::app);
             if (sz)
-                f.write((symbol)bytes.elements, sz);
+                f.write((symbol)bytes.data, sz);
         } catch (std::ofstream::failure e) {
-            std::cerr << "read failure on resource: " << p.string() << std::endl;
+            std::cerr << "read failure on resource: " << data->string() << std::endl;
         }
         return true;
     }
 
-    bool same_as  (path b) const { std::error_code ec; return fs::equivalent(p, b.p, ec); }
+    bool same_as  (path b) const { std::error_code ec; return fs::equivalent(*data, *b, ec); }
 
     void resources(array<str> exts, states<option> states, Fn fn) {
         bool use_gitignore	= states[ option::use_git_ignores ];
         bool recursive		= states[ option::recursion       ];
         bool no_hidden		= states[ option::no_hidden       ];
-        array<str> ignore   = states[ option::use_git_ignores ] ? path(p / ".gitignore").read<str>().split("\n") : null;
+        array<str> ignore   = states[ option::use_git_ignores ] ? path(*data / ".gitignore").read<str>().split("\n") : array<str>();
         lambda<void(path)> res;
         map<mx>    fetched_dir;  /// this is temp and map needs a hash lambdas pronto
-        fs::path   parent   = p; /// parent relative to the git-ignore index; there may be multiple of these things.
-        fs::path&  fsp		= p;
+        fs::path   parent   = *data; /// parent relative to the git-ignore index; there may be multiple of these things.
+        fs::path&  fsp		= *data;
         
         ///
         res = [&](path a) {
             auto fn_filter = [&](path p) -> bool {
-                str      ext = p.ext4();
+                str      ext = ext4();
                 bool proceed = false;
                 /// proceed if the extension is matching one, or no extensions are given
                 for (size_t i = 0; i < exts.len(); i++)
                     if (!exts || ext == (const str)exts[i]) {
-                        proceed = !no_hidden || !p.is_hidden();
+                        proceed = !no_hidden || !is_hidden();
                         break;
                     }
 
@@ -3288,7 +3224,7 @@ struct path:mx {
                 
                 if (proceed && use_gitignore) {
                     path    pp = path(parent);
-                    path   rel = p.relative(pp); // original parent, not resource parent
+                    path   rel = pp.relative(pp); // original parent, not resource parent
                     str   srel = rel;
                     ///
                     for (str& i: ignore)
@@ -3309,14 +3245,14 @@ struct path:mx {
             /// directory of resources
             if (a.is_dir()) {
                 if (!no_hidden || !a.is_hidden())
-                    for (fs::directory_entry e: fs::directory_iterator(a.p)) {
+                    for (fs::directory_entry e: fs::directory_iterator(*a)) {
                         path p  = path(e.path());
                         path li = p.link();
                         if (li)
                             continue;
                         path pp = li ? li : p;
                         if (recursive && pp.is_dir()) {
-                            if (fetched_dir.lookup(pp))
+                            if (fetched_dir.lookup(mx(pp)))
                                 return;
                             fetched_dir[pp] = mx(true);
                             res(pp);
@@ -3329,7 +3265,7 @@ struct path:mx {
             else if (a.exists())
                 fn_filter(a);
         };
-        return res(path(p));
+        return res(path(*data));
     }
 
     array<path> matching(array<str> exts) {
@@ -3413,7 +3349,7 @@ struct base64 {
         *alloc_sz = b64_len / 4 * 3;
 
         array<u8> out(size_t(*alloc_sz + 1));
-        u8     *o = out.data();
+        u8     *o = out.data;
         size_t  n = 0;
         size_t  e = 0;
         /// --------------------------------------
@@ -3546,7 +3482,7 @@ protected:
 
         /// symbol can be undefined or null.  stored as instance of null_t
         skip_alpha(start);
-        return memory::alloc(typeof(null_t), sizeof(null_t), 1, 0, null);
+        return memory::alloc(typeof(null_t), 1, 1, null);
     }
 
     static str parse_numeric(cstr * cursor, bool &floaty) {
@@ -3698,7 +3634,7 @@ protected:
     var(map<mx> m) : mx(m.mem->grab()) { }
 
     template <typename T>
-    var(const T b) : mx(alloc(&b, size_t(1))) { }
+    var(const T b) : mx(alloc(&b)) { }
 
     // abstract between array and map based on the type
     template <typename KT>
@@ -3810,33 +3746,20 @@ protected:
         return false;
     }
 
-    inline liter<field<var>> begin() const { return map<var>(mx::mem->grab()).m.fields.begin(); }
-    inline liter<field<var>>   end() const { return map<var>(mx::mem->grab()).m.fields.end();   }
+    inline liter<field<var>> begin() const { return map<var>(mx::mem->grab())->fields.begin(); }
+    inline liter<field<var>>   end() const { return map<var>(mx::mem->grab())->fields.end();   }
 };
 
 using FnFuture = lambda<void(mx)>;
 
-/// required for hash-map and multi-threaded list
-struct mutex:mx {
-    using intern = std::mutex;
-    ptr_declare(mutex);
-    void   lock() const { data->lock();   }
-    void unlock() const { data->unlock(); }
-};
 
 template <typename T>
 struct sp:mx {
-    T *data;
-    ///
-    ptr(sp, mx, T, data);
-    ///
-    T *operator=(T *v) { return (data = v); }
-    T *operator->()    { return data; }
+    ptr(sp, mx, T);
 };
 
 void         chdir(std::string c);
 memory* mem_symbol(::symbol cs, type_t ty, i64 id);
-memory*  raw_alloc(idata *ty, size_t sz);
 void *  mem_origin(memory *mem);
 memory *   cstring(cstr cs, size_t len, size_t reserve, bool is_constant);
 
@@ -3869,70 +3792,39 @@ idata *ident::for_type() {
     if (!type) {
         ///
         if constexpr (std::is_function_v<T>) {
-            memory         *mem = raw_alloc(null, sizeof(idata));
+            memory         *mem = memory::raw_alloc(null, sizeof(idata), 1, 1);
             type                = (idata*)mem_origin(mem);
             type->src           = type;
             type->name          = parse_fn(__PRETTY_FUNCTION__);
             type->base_sz       = sizeof(T);
-        } else if constexpr (is_opaque<T>()) {
+        } else if constexpr (!type_complete<T> || is_opaque<T>()) {
             /// minimal processing on 'opaque'; certain std design-time calls blow up the vulkan types
-            memory         *mem = raw_alloc(null, sizeof(idata));
+            memory         *mem = memory::raw_alloc(null, sizeof(idata), 1, 1);
             type                = (idata*)mem_origin(mem);
             type->src           = type;
             type->name          = parse_fn(__PRETTY_FUNCTION__);
-            type->base_sz       = sizeof(T*);
-            type->lambdas       = function_table::probe<T>(type);
+            type->base_sz       = sizeof(T*); /// must retain a flag of sort
+            type->traits        = traits::opaque;
         } else if constexpr (std::is_const    <T>::value) return ident::for_type<std::remove_const_t    <T>>();
           else if constexpr (std::is_reference<T>::value) return ident::for_type<std::remove_reference_t<T>>();
           else if constexpr (std::is_pointer  <T>::value) return ident::for_type<std::remove_pointer_t  <T>>();
           else {
             bool is_mx = ion::is_mx<T>();
             cstr curious0 = parse_fn(__PRETTY_FUNCTION__);
-            memory *mem  = raw_alloc(null, sizeof(idata));
+            memory *mem  = memory::raw_alloc(null, sizeof(idata), 1, 1);
             type         = (idata*)mem_origin(mem);
             type->name    = parse_fn(__PRETTY_FUNCTION__);
             type->base_sz = sizeof(T);
             type->traits  = (is_primitive<T> () ? traits::primitive : 0) |
                             (is_integral <T> () ? traits::integral  : 0) |
-                            (is_realistic<T> () ? traits::realistic : 0) |
+                            (is_realistic<T> () ? traits::realistic : 0) | // if references radioshack catalog
+                            (is_singleton<T> () ? traits::singleton : 0) |
                             (is_mx              ? traits::mx        : 0);
-
             /// a bit more open ended, and common apis (return type must be checked as well)            
-            type->functions = function_table::probe<T>(type);
+            type->functions = (ops<void>*)ftable<T>();
             ///
             if constexpr (!is_array<T>() && !identical<ion::mx, T>() && inherits<ion::mx, T>()) {
-                type->schema         = (alloc_schema*)calloc(1, sizeof(alloc_schema) * 16);
-                alloc_schema &schema = *type->schema;
-                ///
-                if constexpr (has_instance_meta<T>()) {
-                    static T *def = new T();
-                    schema.meta   = def->meta();
-                    delete def;
-                } else if constexpr (has_static_meta<T>()) {
-                    static T *def = new T();
-                    schema.meta   = T::meta (*def);
-                    delete def;
-                }
-                if (schema.meta) {
-                    schema.meta_map  = prop_map(size_t(16));
-                    for (ion::prop &prop: schema.meta) {
-                        symbol prop_name = prop.name();
-                        schema.meta_map[prop_name] = prop;
-                    }
-                }
-                schema.count         = schema_info(&schema, 0, (T*)null, type);
-                schema.composition   = (context_bind*)calloc(schema.count, sizeof(context_bind) * 16);
-                /// get schema type definitions (schema_info reads them in from top to bottom mx but writes from back to front)
-                /// passing type avoid infinite-recursion
-                schema_info(&schema, 0, (T*)null, type);
-                size_t offset = 0;
-                for (size_t i = 0; i < schema.count; i++) {
-                    context_bind &bind = schema.composition[i];
-                    bind.offset        = offset;
-                    offset            += bind.data_sz;
-                }
-                schema.total_bytes = offset;
-                schema.bind = &schema.composition[schema.count - 1];
+                schema_populate(type, (T*)null);
             }
         }
     }
@@ -3941,52 +3833,46 @@ idata *ident::for_type() {
 
 template <typename T>
 T *memory::data(size_t index) const {
-    type_t queried_type = ident::for_type<T>();
-    size_t mxc          = math::max(reserve, count);
-    static type_t mx_t  = typeof(mx);
-
-    alloc_schema *schema = type->schema;
-    if (queried_type != type && schema) { // dont insert schema for mx type duh
-        size_t offset = 0;
-        for (size_t i = 0; i < schema->count; i++) {
-            context_bind &c = schema->composition[i];
-            if (c.data == queried_type)
-                return (T*)&cstr(origin)[c.offset * mxc + c.data->base_sz * index];
-        }
-        console.fault("type not found in schema: {0}", { str(queried_type->name) });
-        return (T*)null;
-    } else
-        return &((T *)origin)[index];
+    if constexpr (type_complete<T>) {
+        type_t queried_type = ident::for_type<T>();
+        size_t mxc          = math::max(reserve, count);
+        static type_t mx_t  = typeof(mx);
+        alloc_schema *schema = type->schema;
+        if (queried_type != type && schema) { // dont insert schema for mx type duh
+            size_t offset = 0;
+            for (size_t i = 0; i < schema->bind_count; i++) {
+                context_bind &c = schema->composition[i];
+                if (c.data == queried_type)
+                    return (T*)&cstr(origin)[c.offset * mxc + c.data->base_sz * index];
+            }
+            console.fault("type not found in schema: {0}", { str(queried_type->name) });
+            return (T*)null;
+        } else
+            return (T*)origin + index;
+    } else {
+        assert(index == 0);
+        return (T*)origin;
+    }
 }
 
 template <typename T>
 size_t ident::type_size() {
     static type_t type    = typeof(T);
-    static size_t type_sz = std::is_pointer<T>::value ? sizeof(T) : 
-        (type->schema && type->schema->total_bytes)
-            ? type->schema->total_bytes : type->base_sz;
-    return type_sz;
+    if constexpr (type_complete<T>) {
+        static size_t type_sz = std::is_pointer<T>::value ? sizeof(T) : 
+            (type->schema && type->schema->total_bytes)
+        ? type->schema->total_bytes : type->base_sz;
+        return type_sz;
+    } else {
+        return sizeof(T*);
+    }
 }
 
 template <typename T>
-lambda_table *lambda_table::probe(type_t ty) {
-    static lambda_table gen;
-    constexpr bool etype = has_etype<T>();
-
-    /// common methods free, init to_string and compare, acting as you would expect
-    /// to_string could return different kinds and we can handle that but its just memory* now
-    if constexpr (has_static_free                <T>()) gen.free       =      (FreeFn)T::free;
-    if constexpr (has_static_init                <T>()) gen.init       =      (InitFn)T::init;
-    if constexpr (has_static_to_string           <T>()) gen.to_string  =     (ToStrFn)T::to_string;
-    if constexpr (has_static_compare             <T>()) gen.compare    =   (CompareFn)T::compare;
-
-    /// namespaced for exclusivity w mx
-    if constexpr (has_bool                       <T>()) gen.boolean    =   (BooleanFn)T::_bool;
-    if constexpr (std::is_default_constructible_v<T>()) gen.ctr        = (ConstructFn)T::_ctr;
-    if constexpr (std::is_copy_constructible_v   <T>()) gen.copy       =  (DestructFn)T::_copy;
-    if constexpr (std::is_destructible_v         <T>()) gen.dtr        =  (DestructFn)T::_dtr;
- 
-    return &gen;
+ops<T> *ftable() {
+    static ops<T> gen;
+    if constexpr (registered_free<T>()) gen.free = FreeFn<T>(free);
+    return (ops<T>*)&gen;
 }
 
 template <typename V>
@@ -4003,7 +3889,8 @@ V &hmap<K,V>::operator[](K input) {
     u64 k;
     
     /// lookup a pointer to V
-    typename doubly<pair>::data *b = null;
+    using ldata = typename doubly<pair>::ldata;
+    ldata *b = null;
     V*  pv = lookup(input, &k, &b); /// this needs to lock in here
     if (pv) return *pv;
     
@@ -4023,9 +3910,9 @@ V &hmap<K,V>::operator[](K input) {
 
 template <typename K, typename V>
 V* hmap<K,V>::lookup(K input, u64 *pk, bucket **pbucket) const {
-    u64 k = hash_index(input, m.sz);
+    u64 k = hash_index(input, data->sz);
     if (pk) *pk  =   k;
-    bucket &hist = m[k];
+    bucket &hist = (*data)[k];
     
     for (pair &p: hist)
         if (p.key == input) {
@@ -4038,20 +3925,20 @@ V* hmap<K,V>::lookup(K input, u64 *pk, bucket **pbucket) const {
 
 template <typename T>
 bool path::write(T input) const {
-    if (!fs::is_regular_file(p))
+    if (!fs::is_regular_file(*data))
         return false;
 
     if constexpr (is_array<T>()) {
-        std::ofstream f(p, std::ios::out | std::ios::binary);
+        std::ofstream f(*data, std::ios::out | std::ios::binary);
         if (input.len() > 0)
-            f.write((symbol)input.data(), input.data_type()->base_sz * input.len());
+            f.write((symbol)input.data, input.data_type()->base_sz * input.len());
     } else if constexpr (identical<T, var>()) {
         str    v  = input.stringify(); /// needs to escape strings
-        std::ofstream f(p, std::ios::out | std::ios::binary);
+        std::ofstream f(*data, std::ios::out | std::ios::binary);
         if (v.len() > 0)
             f.write((symbol)v.data, v.len());
     } else if constexpr (identical<T,str>()) {
-        std::ofstream f(p, std::ios::out | std::ios::binary);
+        std::ofstream f(*data, std::ios::out | std::ios::binary);
         if (input.len() > 0)
             f.write((symbol)input.cs(), input.len());
     } else {
@@ -4074,7 +3961,7 @@ T path::read() const {
     const bool nullable = std::is_constructible<T, std::nullptr_t>::value;
     const bool integral = !has_int_conversion<T>::value || std::is_integral<T>::value;
     
-    if (!fs::is_regular_file(p)) {
+    if (!fs::is_regular_file(*data)) {
         if constexpr (nullable)
             return null;
         else if constexpr (integral)
@@ -4084,12 +3971,12 @@ T path::read() const {
     }
 
     if constexpr (identical<T, array<u8>>()) {
-        std::ifstream input(p, std::ios::binary);
+        std::ifstream input(*data, std::ios::binary);
         std::vector<char> buffer(std::istreambuf_iterator<char>(input), { });
         return array<u8>((u8*)buffer.data(), buffer.size());
     } else {
         std::ifstream fs;
-        fs.open(p);
+        fs.open(*data);
         std::ostringstream sstr;
         sstr << fs.rdbuf();
         fs.close();
@@ -4111,15 +3998,4 @@ T path::read() const {
     }
 }
 
-#endif
-
-template <typename T>
-memory *memory::wrap(T *m, size_t count) {
-    memory*     mem = (memory*)calloc(1, sizeof(memory));
-    mem->count      = count;
-    mem->reserve    = 0;
-    mem->refs       = 1;
-    mem->type       = typeof(T);
-    mem->origin     = m;
-    return mem;
 }

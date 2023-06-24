@@ -1,16 +1,21 @@
 {
 	"version": "2.0.0",
 	"tasks": [
-	  {
-		"label": "build",
-		"type": "shell",
-		"options": {"cwd": "${workspaceFolder}/../hyperspace/build"},
-		"command": "make -j10 ai-yt",
-		"presentation": {
-		  "reveal": "silent",
-		  "panel": "shared",
-		  "clear": true
+		{
+			"label": "build",
+			"type": "shell",
+			"options": {
+				"cwd": "${workspaceFolder}/../hyperspace/build"
+			},
+			"command": "make -j10 ai-yt",
+			"presentation": {
+				"reveal": "silent",
+				"panel": "shared",
+				"clear": true
+			},
+			"problemMatcher": [
+				"$nvcc"
+			]
 		}
-	  }
 	]
 }

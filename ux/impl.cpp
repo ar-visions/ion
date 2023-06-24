@@ -463,40 +463,8 @@ void terminal::fill(graphics::shape sh) {
     }
 }
 
-/// allocate memory with reference space (recycleable) 
-/// and use the external attachment so the generics do not allocate or delete pointer
-#define palloc(MX, RES, PTR, ...)\
-do {\
-    static bool proceed = identical<typename MX::MEM, mem_ptr_token>();\
-    assert(proceed);\
-    memory         *_mem = memory::alloc(typeof(MX));\
-    typename MX::DC *_tm = new typename MX::DC(__VA_ARGS__);\
-    _mem->origin         = (void*)_tm;\
-    _mem->attach("intern", _tm, [_tm]() -> void { delete _tm; });\
-    RES = _mem;\
-    PTR = _tm;\
-} while (0);
-
 struct memory;
 struct Texture;
-
-/**
-Texture::Stage::Stage(Stage::Type value) : value(value) { }
-struct StageData {
-    enum Texture::Stage::Type value  = Texture::Stage::Undefined;
-    VkImageLayout           layout = VK_IMAGE_LAYOUT_UNDEFINED;
-    uint64_t                access = 0;
-    VkPipelineStageFlagBits stage;
-    inline bool operator==(StageData &b) { return layout == b.layout; }
-};
-static const StageData stage_types[5] = {
-    { Texture::Stage::Undefined, VK_IMAGE_LAYOUT_UNDEFINED,                0,                            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT },
-    { Texture::Stage::Transfer,  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,     VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT },
-    { Texture::Stage::Shader,    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_SHADER_READ_BIT,    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT  },
-    { Texture::Stage::Color,     VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_ACCESS_COLOR_ATTACHMENT_READ_BIT|VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT },
-    { Texture::Stage::Depth,     VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_ACCESS_COLOR_ATTACHMENT_READ_BIT|VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT }
-};
-*/
 
 /**
  * integrate similarly:

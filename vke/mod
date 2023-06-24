@@ -1,5 +1,4 @@
-# vkengine is to wrap vulkan.  its deadly to include vulkan again and again in iterative builds.  
-# no its much better to make 2 sides; one is just an opaque pointer
+# vkengine is to wrap vulkan.  better to get a handle on it than to overlay api utility.
 
 cpp(17)
 dep(ion:mx ion:math)

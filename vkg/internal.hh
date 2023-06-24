@@ -236,7 +236,6 @@ typedef struct _cached_ctx_t {
 	struct _cached_ctx*	pNext;
 } _cached_ctx;
 
-bool _device_try_get_phyinfo			(VkePhyInfo* phys, uint32_t phyCount, VkPhysicalDeviceType gpuType, VkePhyInfo* phy);
 bool _device_init_function_pointers		(VkvgDevice dev);
 void _device_create_empty_texture		(VkvgDevice dev, VkFormat format, VkImageTiling tiling);
 void _device_get_best_image_tiling		(VkvgDevice dev, VkFormat format, VkImageTiling* pTiling);
