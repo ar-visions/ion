@@ -661,7 +661,7 @@ void _show_texture (vkvg_context* ctx){
 
 	_check_vertex_cache_size(ctx);
 
-	_add_tri_indices_for_rect(ctx, firstIdx);
+	add_tri_indices_for_rect(ctx, firstIdx);
 }
 #endif
 void _font_cache_show_text_run (VkvgContext ctx, VkvgText tr) {
@@ -701,23 +701,23 @@ void _font_cache_show_text_run (VkvgContext ctx, VkvgText tr) {
 		v.uv[X] = cr->bounds[X];
 		v.uv[Y] = cr->bounds[Y];
 		v.uv[Z] = cr->pageIdx;
-		_add_vertex(ctx,v);
+		add_vertex(ctx,v);
 
 		v.pos[Y] += cr->bounds.height;
 		v.uv[Y] += uvHeight;
-		_add_vertex(ctx,v);
+		add_vertex(ctx,v);
 
 		v.pos[X] += cr->bounds.width;
 		v.pos[Y] = p0[Y];
 		v.uv[X] += uvWidth;
 		v.uv[Y] = cr->bounds[Y];
-		_add_vertex(ctx,v);
+		add_vertex(ctx,v);
 
 		v.pos[Y] += cr->bounds.height;
 		v.uv[Y] += uvHeight;
-		_add_vertex(ctx,v);
+		add_vertex(ctx,v);
 
-		_add_tri_indices_for_rect (ctx, firstIdx);
+		add_tri_indices_for_rect (ctx, firstIdx);
 
 		pen[X] += (tr->glyphs[i].x_advance >> 6);
 		pen[Y] -= (tr->glyphs[i].y_advance >> 6);

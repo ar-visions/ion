@@ -18,45 +18,45 @@
 #endif
 
 void VkvgContext::resize_vertex_cache (uint32_t newSize) {
-	Vertex* tmp = (Vertex*) realloc (ctx->vertexCache, (size_t)newSize * sizeof(Vertex));
+	Vertex* tmp = (Vertex*) realloc (data->vertexCache, (size_t)newSize * sizeof(Vertex));
 	vke_log(VKE_LOG_DBG_ARRAYS, "resize vertex cache (vx count=%u): old size: %u -> new size: %u size(byte): %zu Ptr: %p -> %p\n",
-		ctx->vertCount, ctx->sizeVertices, newSize, (size_t)newSize * sizeof(Vertex), ctx->vertexCache, tmp);
+		data->vertCount, data->sizeVertices, newSize, (size_t)newSize * sizeof(Vertex), data->vertexCache, tmp);
 	if (tmp == NULL){
-		ctx->status = VKE_STATUS_NO_MEMORY;
+		data->status = VKE_STATUS_NO_MEMORY;
 		vke_log(VKE_LOG_ERR, "resize vertex cache failed: vert count: %u byte size: %zu\n", newSize, newSize * sizeof(Vertex));
 		return;
 	}
-	ctx->vertexCache = tmp;
-	ctx->sizeVertices = newSize;
+	data->vertexCache = tmp;
+	data->sizeVertices = newSize;
 }
 
 void VkvgContext::resize_index_cache (uint32_t newSize) {
-	VKVG_IBO_INDEX_TYPE* tmp = (VKVG_IBO_INDEX_TYPE*) realloc (ctx->indexCache, (size_t)newSize * sizeof(VKVG_IBO_INDEX_TYPE));
-	vke_log(VKE_LOG_DBG_ARRAYS, "resize IBO: new size: %lu Ptr: %p -> %p\n", (size_t)newSize * sizeof(VKVG_IBO_INDEX_TYPE), ctx->indexCache, tmp);
+	VKVG_IBO_INDEX_TYPE* tmp = (VKVG_IBO_INDEX_TYPE*) realloc (data->indexCache, (size_t)newSize * sizeof(VKVG_IBO_INDEX_TYPE));
+	vke_log(VKE_LOG_DBG_ARRAYS, "resize IBO: new size: %lu Ptr: %p -> %p\n", (size_t)newSize * sizeof(VKVG_IBO_INDEX_TYPE), data->indexCache, tmp);
 	if (tmp == NULL){
-		ctx->status = VKE_STATUS_NO_MEMORY;
+		data->status = VKE_STATUS_NO_MEMORY;
 		vke_log(VKE_LOG_ERR, "resize IBO failed: idx count: %u size(byte): %zu\n", newSize, (size_t)newSize * sizeof(VKVG_IBO_INDEX_TYPE));
 		return;
 	}
-	ctx->indexCache = tmp;
-	ctx->sizeIndices = newSize;
+	data->indexCache = tmp;
+	data->sizeIndices = newSize;
 }
 
 void VkvgContext::ensure_vertex_cache_size (uint32_t addedVerticesCount) {
-	if (ctx->sizeVertices - ctx->vertCount > VKVG_ARRAY_THRESHOLD + addedVerticesCount)
+	if (data->sizeVertices - data->vertCount > VKVG_ARRAY_THRESHOLD + addedVerticesCount)
 		return;
-	uint32_t newSize = ctx->sizeVertices + addedVerticesCount;
+	uint32_t newSize = data->sizeVertices + addedVerticesCount;
 	uint32_t modulo = addedVerticesCount % VKVG_VBO_SIZE;
 	if (modulo > 0)
 		newSize += VKVG_VBO_SIZE - modulo;
-	_resize_vertex_cache (ctx, newSize);
+	_resize_vertex_cache (newSize);
 }
 
 void VkvgContext::check_vertex_cache_size () {
 	assert(ctx->sizeVertices > ctx->vertCount);
 	if (ctx->sizeVertices - VKVG_ARRAY_THRESHOLD > ctx->vertCount)
 		return;
-	_resize_vertex_cache (ctx, ctx->sizeVertices + VKVG_VBO_SIZE);
+	_resize_vertex_cache (ctx->sizeVertices + VKVG_VBO_SIZE);
 }
 
 void VkvgContext::ensure_index_cache_size (uint32_t addedIndicesCount) {
@@ -67,13 +67,13 @@ void VkvgContext::ensure_index_cache_size (uint32_t addedIndicesCount) {
 	uint32_t modulo = addedIndicesCount % VKVG_IBO_SIZE;
 	if (modulo > 0)
 		newSize += VKVG_IBO_SIZE - modulo;
-	_resize_index_cache (ctx, newSize);
+	_resize_index_cache (newSize);
 }
 
 void VkvgContext::check_index_cache_size () {
 	if (ctx->sizeIndices - VKVG_ARRAY_THRESHOLD > ctx->indCount)
 		return;
-	_resize_index_cache (ctx, ctx->sizeIndices + VKVG_IBO_SIZE);
+	_resize_index_cache (ctx->sizeIndices + VKVG_IBO_SIZE);
 }
 
 //check host path array size, return true if error. pathPtr is already incremented
@@ -125,7 +125,7 @@ void VkvgContext::set_curve_start () {
 		//check if current segment has points (straight)
 		if ((ctx->pathes [ctx->pathPtr + ctx->segmentPtr]&PATH_ELT_MASK) > 0)
 			ctx->segmentPtr++;
-	}else{
+	} else {
 		//not yet segmented path, first segment length is copied
 		if (ctx->pathes [ctx->pathPtr] > 0){//create first straight segment first
 			ctx->pathes [ctx->pathPtr + 1] = ctx->pathes [ctx->pathPtr];
@@ -219,13 +219,13 @@ void VkvgContext::add_point (float x, float y){
 	if (check_point_array(ctx))
 		return;
 	if (isnan(x) || isnan(y)) {
-		vke_log(VKE_LOG_DEBUG, "_add_point: (%f, %f)\n", x, y);
+		vke_log(VKE_LOG_DEBUG, "add_point: (%f, %f)\n", x, y);
 		return;
 	}
 	vec2f v = {x,y};
-	/*if (!_current_path_is_empty(ctx) && vec2f_len(vec2f_sub(ctx->points[ctx->pointCount-1], v))<1.f)
+	/*if (!current_path_is_empty(ctx) && vec2f_len(vec2f_sub(ctx->points[ctx->pointCount-1], v))<1.f)
 		return;*/
-	vke_log(VKE_LOG_INFO_PTS, "_add_point: (%f, %f)\n", x, y);
+	vke_log(VKE_LOG_INFO_PTS, "add_point: (%f, %f)\n", x, y);
 
 	ctx->points[ctx->pointCount] = v;
 	ctx->pointCount++;//total point count of pathes, (for array bounds check)
@@ -325,7 +325,7 @@ void VkvgContext::set_vertex(uint32_t idx, Vertex v){
 }
 
 #ifdef VKVG_FILL_NZ_GLUTESS
-void _add_indice (VKVG_IBO_INDEX_TYPE i) {
+void add_indice (VKVG_IBO_INDEX_TYPE i) {
 	ctx->indexCache[ctx->indCount++] = i;
 	_check_index_cache_size(ctx);
 }
@@ -339,7 +339,7 @@ void _add_indice_for_fan (VKVG_IBO_INDEX_TYPE i) {
 	_check_index_cache_size(ctx);
 }
 
-void _add_indice_for_strip (VKVG_IBO_INDEX_TYPE i, bool odd) {
+void add_indice_for_strip (VKVG_IBO_INDEX_TYPE i, bool odd) {
 	VKVG_IBO_INDEX_TYPE* inds = &ctx->indexCache[ctx->indCount];
 	if (odd) {
 		inds[0] = ctx->indexCache[ctx->indCount-2];
@@ -405,12 +405,12 @@ void VkvgContext::vao_add_rectangle (float x, float y, float width, float height
 
 	_check_vertex_cache_size(ctx);
 
-	_add_tri_indices_for_rect(ctx, firstIdx);
+	add_tri_indices_for_rect(firstIdx);
 }
 
 //start render pass if not yet started or update push const if requested
 void VkvgContext::ensure_renderpass_is_started () {
-	vke_log(VKE_LOG_INFO, "_ensure_renderpass_is_started\n");
+	vke_log(VKE_LOG_INFO, "ensure_renderpass_is_started\n");
 	if (!ctx->cmdStarted)
 		_start_cmd_for_render_pass(ctx);
 	else if (ctx->pushCstDirty)
@@ -569,9 +569,9 @@ void VkvgContext::check_vao_size () {
 			//instead we flush, and clear vbo and ibo caches
 			_flush_cmd_until_vx_base (ctx);
 		if (ctx->vertCount > ctx->sizeVBO)		
-			_resize_vbo(ctx, ctx->sizeVertices);
+			_resize_vbo(ctx->sizeVertices);
 		if (ctx->indCount > ctx->sizeIBO)
-			_resize_ibo(ctx, ctx->sizeIndices);
+			_resize_ibo(ctx->sizeIndices);
 	}
 }
 
@@ -582,7 +582,7 @@ void VkvgContext::emit_draw_cmd_undrawn_vertices (){
 
 	_check_vao_size (ctx);
 
-	_ensure_renderpass_is_started (ctx);
+	ensure_renderpass_is_started (ctx);
 
 #ifdef VKVG_WIRED_DEBUG
 	if (vkvg_wired_debug&vkvg_wired_debug_mode_normal)
@@ -618,7 +618,7 @@ void VkvgContext::flush_cmd_until_vx_base (){
 	_wait_and_submit_cmd (ctx);
 }
 void VkvgContext::flush_cmd_buff (){
-	_emit_draw_cmd_undrawn_vertices (ctx);
+	emit_draw_cmd_undrawn_vertices (ctx);
 	if (!ctx->cmdStarted)
 		return;
 	_end_render_pass		(ctx);
@@ -691,7 +691,7 @@ void VkvgContext::start_cmd_for_render_pass () {
 
 	_update_push_constants	(ctx);
 
-	_bind_draw_pipeline (ctx);
+	bind_draw_pipeline (ctx);
 	CmdSetStencilCompareMask(ctx->cmd, VK_STENCIL_FRONT_AND_BACK, STENCIL_CLIP_BIT);
 	ctx->cmdStarted = true;
 }
@@ -727,11 +727,11 @@ void VkvgContext::update_cur_pattern (VkvgPattern pat) {
 		if (!_wait_ctx_flush_end (ctx))
 			return;
 		if (lastPat->type == VKVG_PATTERN_TYPE_SURFACE)//unbind current source surface by replacing it with empty texture
-			_update_descriptor_set		(ctx, ctx->dev->emptyImg, ctx->dsSrc);
+			_update_descriptor_set		(ctx->dev->emptyImg, ctx->dsSrc);
 		break;
 	case VKVG_PATTERN_TYPE_SURFACE:
 	{
-		_emit_draw_cmd_undrawn_vertices(ctx);
+		emit_draw_cmd_undrawn_vertices(ctx);
 
 		VkvgSurface surf = (VkvgSurface)pat->data;
 
@@ -782,7 +782,7 @@ void VkvgContext::update_cur_pattern (VkvgPattern pat) {
 		vke_image_create_sampler (surf->img, filter, filter,
 									VK_SAMPLER_MIPMAP_MODE_NEAREST, addrMode);
 
-		_update_descriptor_set (ctx, surf->img, ctx->dsSrc);
+		_update_descriptor_set (surf->img, ctx->dsSrc);
 
 		if (pat->hasMatrix) {
 
@@ -799,7 +799,7 @@ void VkvgContext::update_cur_pattern (VkvgPattern pat) {
 			return;
 
 		if (lastPat && lastPat->type == VKVG_PATTERN_TYPE_SURFACE)
-			_update_descriptor_set (ctx, ctx->dev->emptyImg, ctx->dsSrc);
+			_update_descriptor_set (ctx->dev->emptyImg, ctx->dsSrc);
 
 		vec4 bounds = {{(float)ctx->pSurf->width}, {(float)ctx->pSurf->height}, {0}, {0}};//store img bounds in unused source field
 		ctx->pushConsts.source = bounds;
@@ -948,7 +948,7 @@ void VkvgContext::release_context_ressources () {
 	free(ctx);
 }
 //populate vertice buff for stroke
-bool VkvgContext::build_vb_step(stroke_context_t* str, bool isCurve){
+bool VkvgContext::build_vb_step(stroke_context* str, bool isCurve){
 	Vertex v = {{0},ctx->curColor, {0,0,-1}};
 	vec2f p0 = ctx->points[str->cp];
 	vec2f v0 = vec2f_sub(p0, ctx->points[str->iL]);
@@ -974,13 +974,13 @@ bool VkvgContext::build_vb_step(stroke_context_t* str, bool isCurve){
 		VKVG_IBO_INDEX_TYPE idx = (VKVG_IBO_INDEX_TYPE)(ctx->vertCount - ctx->curVertOffset);
 	
 		vec2f_add(v.pos, p0, vPerp);
-		_add_vertex(ctx, v);
+		add_vertex(v);
 
 		vec2f_sub(v.pos, p0, vPerp); // seriously whack but i dont believe its dangerous
-		_add_vertex(ctx, v);
+		add_vertex(v);
 
-		_add_triangle_indices(ctx, idx, idx+1, idx+2);
-		_add_triangle_indices(ctx, idx, idx+2, idx+3);
+		add_triangle_indices(idx, idx+1, idx+2);
+		add_triangle_indices(idx, idx+2, idx+3);
 		vke_log(VKE_LOG_STROKE, "vb_step cusp, dot==-1\n");
 		return true;
 	}
@@ -1076,56 +1076,56 @@ bool VkvgContext::build_vb_step(stroke_context_t* str, bool isCurve){
 			bisec = vec2f_scale (bisec_n_perp, str->lhMax);
 			if (det < 0) {
 				v.pos = rlh_inside_pos;
-				_add_vertex(ctx, v);
+				add_vertex(v);
 
 				vec2f p;
 				vec2f_sub(p, p0, bisec);
 
 				vec2f_sub(v.pos, p, bisecPerp);
-				_add_vertex(ctx, v);
+				add_vertex(v);
 				vec2f_add(v.pos, p, bisecPerp);
-				_add_vertex(ctx, v);
+				add_vertex(v);
 
-				_add_triangle_indices(ctx, idx, idx+2, idx+1);
-				_add_triangle_indices(ctx, idx+2, idx+4, idx);
-				_add_triangle_indices(ctx, idx, idx+3, idx+4);
+				add_triangle_indices(idx, idx+2, idx+1);
+				add_triangle_indices(idx+2, idx+4, idx);
+				add_triangle_indices(idx, idx+3, idx+4);
 				return true;
 			} else {
 				vec2f p;
 				vec2f_add(p, p0, bisec);
 				vec2f_sub(v.pos, p, bisecPerp);
-				_add_vertex(ctx, v);
+				add_vertex(v);
 
 				v.pos = rlh_inside_pos;
-				_add_vertex(ctx, v);
+				add_vertex(v);
 
 				vec2f_add(v.pos, p, bisecPerp);
-				_add_vertex(ctx, v);
+				add_vertex(v);
 
-				_add_triangle_indices(ctx, idx, idx+2, idx+1);
-				_add_triangle_indices(ctx, idx+2, idx+3, idx+1);
-				_add_triangle_indices(ctx, idx+1, idx+3, idx+4);
+				add_triangle_indices(idx, idx+2, idx+1);
+				add_triangle_indices(idx+2, idx+3, idx+1);
+				add_triangle_indices(idx+1, idx+3, idx+4);
 				return false;
 			}
 
 		} else {//normal miter
 			if (det < 0) {
 				v.pos = rlh_inside_pos;
-				_add_vertex(ctx, v);
+				add_vertex(v);
 
 				v.pos = rlh_outside_pos;
-				_add_vertex(ctx, v);
+				add_vertex(v);
 			} else {
 				v.pos = rlh_outside_pos;
-				_add_vertex(ctx, v);
+				add_vertex(v);
 
 				v.pos = rlh_inside_pos;
-				_add_vertex(ctx, v);
+				add_vertex(v);
 			}
-			_add_tri_indices_for_rect(ctx, idx);
+			add_tri_indices_for_rect(idx);
 			return false;
 		}
-	}else{
+	} else {
 		vec2f vp = vec2f_perp(v0n);
 
 		if (det<0){
@@ -1134,7 +1134,7 @@ bool VkvgContext::build_vb_step(stroke_context_t* str, bool isCurve){
 			else
 				vec2f_add(v.pos, p0, bisec);
 			///
-			_add_vertex	 (ctx, v);
+			add_vertex	 (v);
 			vec2f ms;
 			vec2f_scale (ms, vp, str->hw)
 			vec2f_sub 	 (v.pos, p0, ms);
@@ -1142,27 +1142,27 @@ bool VkvgContext::build_vb_step(stroke_context_t* str, bool isCurve){
 			vec2f ms;
 			vec2f_scale (ms, vp, str->hw);
 			vec2f_add 	 (v.pos, p0, ms);
-			_add_vertex  (ctx, v);
+			add_vertex  (v);
 			if (dot < 0 && rlh < lh)
 				v.pos = rlh_inside_pos;
 			else
 				v.pos = vec2f_sub (p0, bisec);
 		}
-		_add_vertex(ctx, v);
+		add_vertex(v);
 
 		if (join == VKVG_LINE_JOIN_BEVEL){
 			if (det<0){
-				_add_triangle_indices(ctx, idx, idx+2, idx+1);
-				_add_triangle_indices(ctx, idx+2, idx+4, idx+0);
-				_add_triangle_indices(ctx, idx, idx+3, idx+4);
-			}else{
-				_add_triangle_indices(ctx, idx, idx+2, idx+1);
-				_add_triangle_indices(ctx, idx+2, idx+3, idx+1);
-				_add_triangle_indices(ctx, idx+1, idx+3, idx+4);
+				add_triangle_indices(idx, idx+2, idx+1);
+				add_triangle_indices(idx+2, idx+4, idx+0);
+				add_triangle_indices(idx, idx+3, idx+4);
+			} else {
+				add_triangle_indices(idx, idx+2, idx+1);
+				add_triangle_indices(idx+2, idx+3, idx+1);
+				add_triangle_indices(idx+1, idx+3, idx+4);
 			}
 		}else if (join == VKVG_LINE_JOIN_ROUND){
 			if (!str->arcStep)
-				str->arcStep = _get_arc_step (ctx, str->hw);
+				str->arcStep = _get_arc_step (str->hw);
 			float a = acosf(vp[X]);
 			if (vp[Y] < 0)
 				a = -a;
@@ -1172,29 +1172,29 @@ bool VkvgContext::build_vb_step(stroke_context_t* str, bool isCurve){
 				float a1 = a + alpha;
 				a-=str->arcStep;
 				while (a > a1){
-					_add_vertexf(ctx, cosf(a) * str->hw + p0[X], sinf(a) * str->hw + p0[Y]);
+					add_vertexf(cosf(a) * str->hw + p0[X], sinf(a) * str->hw + p0[Y]);
 					a-=str->arcStep;
 				}
-			}else{
+			} else {
 				float a1 = a + alpha;
 				a+=str->arcStep;
 				while (a < a1){
-					_add_vertexf(ctx, cosf(a) * str->hw + p0[X], sinf(a) * str->hw + p0[Y]);
+					add_vertexf(cosf(a) * str->hw + p0[X], sinf(a) * str->hw + p0[Y]);
 					a+=str->arcStep;
 				}
 			}
 			VKVG_IBO_INDEX_TYPE p0Idx = (VKVG_IBO_INDEX_TYPE)(ctx->vertCount - ctx->curVertOffset);
-			_add_triangle_indices(ctx, idx, idx+2, idx+1);
+			add_triangle_indices(idx, idx+2, idx+1);
 			if (det < 0){
 				for (VKVG_IBO_INDEX_TYPE p = idx+2; p < p0Idx; p++)
-					_add_triangle_indices(ctx, p, p+1, idx);
-				_add_triangle_indices(ctx, p0Idx, p0Idx+2, idx);
-				_add_triangle_indices(ctx, idx, p0Idx+1, p0Idx+2);
-			}else{
+					add_triangle_indices(p, p+1, idx);
+				add_triangle_indices(p0Idx, p0Idx+2, idx);
+				add_triangle_indices(idx, p0Idx+1, p0Idx+2);
+			} else {
 				for (VKVG_IBO_INDEX_TYPE p = idx+2; p < p0Idx; p++)
-					_add_triangle_indices(ctx, p, p+1, idx+1);
-				_add_triangle_indices(ctx, p0Idx, p0Idx+1, idx+1);
-				_add_triangle_indices(ctx, idx+1, p0Idx+1, p0Idx+2);
+					add_triangle_indices(p, p+1, idx+1);
+				add_triangle_indices(p0Idx, p0Idx+1, idx+1);
+				add_triangle_indices(idx+1, p0Idx+1, p0Idx+2);
 			}
 		}
 
@@ -1203,7 +1203,7 @@ bool VkvgContext::build_vb_step(stroke_context_t* str, bool isCurve){
 			vec2f_sub (v.pos, p0, vp);
 		else
 			vec2f_add (v.pos, p0, vp);
-		_add_vertex(ctx, v);
+		add_vertex(v);
 	}
 
 /*
@@ -1225,7 +1225,7 @@ bool VkvgContext::build_vb_step(stroke_context_t* str, bool isCurve){
 	return (det < 0);
 }
 
-void VkvgContext::draw_stoke_cap (stroke_context_t *str, vec2f p0, vec2f n, bool isStart) {
+void VkvgContext::draw_stoke_cap (stroke_context *str, vec2f p0, vec2f n, bool isStart) {
 	Vertex v = {{0},ctx->curColor,{0,0,-1}};
 
 	VKVG_IBO_INDEX_TYPE firstIdx = (VKVG_IBO_INDEX_TYPE)(ctx->vertCount - ctx->curVertOffset);
@@ -1241,7 +1241,7 @@ void VkvgContext::draw_stoke_cap (stroke_context_t *str, vec2f p0, vec2f n, bool
 
 		if (ctx->lineCap == VKVG_LINE_CAP_ROUND){
 			if (!str->arcStep)
-				str->arcStep = _get_arc_step (ctx, str->hw);
+				str->arcStep = _get_arc_step (str->hw);
 
 			float a = acosf(n[X]) + M_PIF_2;
 			if (n[Y] < 0)
@@ -1250,22 +1250,22 @@ void VkvgContext::draw_stoke_cap (stroke_context_t *str, vec2f p0, vec2f n, bool
 
 			a += str->arcStep;
 			while (a < a1){
-				_add_vertexf (ctx, cosf(a) * str->hw + p0[X], sinf(a) * str->hw + p0[Y]);
+				add_vertexf (cosf(a) * str->hw + p0[X], sinf(a) * str->hw + p0[Y]);
 				a += str->arcStep;
 			}
 			VKVG_IBO_INDEX_TYPE p0Idx = (VKVG_IBO_INDEX_TYPE)(ctx->vertCount - ctx->curVertOffset);
 			for (VKVG_IBO_INDEX_TYPE p = firstIdx; p < p0Idx; p++)
-				_add_triangle_indices (ctx, p0Idx+1, p, p+1);
+				add_triangle_indices (p0Idx+1, p, p+1);
 			firstIdx = p0Idx;
 		}
 
 		v.pos = vec2f_add (p0, vhw);
-		_add_vertex (ctx, v);
+		add_vertex (v);
 		v.pos = vec2f_sub (p0, vhw);
-		_add_vertex (ctx, v);
+		add_vertex (v);
 
-		_add_tri_indices_for_rect (ctx, firstIdx);
-	}else{
+		add_tri_indices_for_rect (firstIdx);
+	} else {
 		vec2f vhw = vec2f_scale (n, str->hw);
 
 		if (ctx->lineCap == VKVG_LINE_CAP_SQUARE)
@@ -1274,15 +1274,15 @@ void VkvgContext::draw_stoke_cap (stroke_context_t *str, vec2f p0, vec2f n, bool
 		vhw = vec2f_perp (vhw);
 
 		v.pos = vec2f_add (p0, vhw);
-		_add_vertex (ctx, v);
+		add_vertex (v);
 		v.pos = vec2f_sub (p0, vhw);
-		_add_vertex (ctx, v);
+		add_vertex (v);
 
 		firstIdx = (VKVG_IBO_INDEX_TYPE)(ctx->vertCount - ctx->curVertOffset);
 
 		if (ctx->lineCap == VKVG_LINE_CAP_ROUND){
 			if (!str->arcStep)
-				str->arcStep = _get_arc_step (ctx, str->hw);
+				str->arcStep = _get_arc_step (str->hw);
 
 			float a = acosf(n[X])+ M_PIF_2;
 			if (n[Y] < 0)
@@ -1291,23 +1291,23 @@ void VkvgContext::draw_stoke_cap (stroke_context_t *str, vec2f p0, vec2f n, bool
 
 			a -= str->arcStep;
 			while ( a > a1){
-				_add_vertexf (ctx, cosf(a) * str->hw + p0[X], sinf(a) * str->hw + p0[Y]);
+				add_vertexf (cosf(a) * str->hw + p0[X], sinf(a) * str->hw + p0[Y]);
 				a -= str->arcStep;
 			}
 
 			VKVG_IBO_INDEX_TYPE p0Idx = (VKVG_IBO_INDEX_TYPE)(ctx->vertCount - ctx->curVertOffset - 1);
 			for (VKVG_IBO_INDEX_TYPE p = firstIdx-1 ; p < p0Idx; p++)
-				_add_triangle_indices (ctx, p+1, p, firstIdx-2);
+				add_triangle_indices (p+1, p, firstIdx-2);
 		}
 	}
 }
-float VkvgContext::draw_dashed_segment (stroke_context_t* str, dash_context_t* dc, bool isCurve) {
+float VkvgContext::draw_dashed_segment (stroke_context* str, dash_context_t* dc, bool isCurve) {
 	//vec2f pL = ctx->points[str->iL];
 	vec2f p = ctx->points[str->cp];
 	vec2f pR = ctx->points[str->iR];
 
 	if (!dc->dashOn)//we test in fact the next dash start, if dashOn = true => next segment is a void.
-		_build_vb_step (ctx, str, isCurve);
+		build_vb_step (str, isCurve);
 
 	vec2f d = vec2f_sub (pR, p);
 	dc->normal = vec2f_norm (d);
@@ -1316,7 +1316,7 @@ float VkvgContext::draw_dashed_segment (stroke_context_t* str, dash_context_t* d
 	while (dc->curDashOffset < segmentLength){
 		vec2f p0 = vec2f_add (p, vec2f_scale(dc->normal, dc->curDashOffset));
 
-		_draw_stoke_cap (ctx, str, p0, dc->normal, dc->dashOn);
+		_draw_stoke_cap (str, p0, dc->normal, dc->dashOn);
 		dc->dashOn ^= true;
 		dc->curDashOffset += ctx->dashes[dc->curDash];
 		if (++dc->curDash == ctx->dashCount)
@@ -1326,21 +1326,21 @@ float VkvgContext::draw_dashed_segment (stroke_context_t* str, dash_context_t* d
 	dc->curDashOffset = fmodf(dc->curDashOffset, dc->totDashLength);
 	return segmentLength;
 }
-void VkvgContext::draw_segment (stroke_context_t* str, dash_context_t* dc, bool isCurve) {
+void VkvgContext::draw_segment (stroke_context* str, dash_context_t* dc, bool isCurve) {
 	str->iR = str->cp + 1;
 	if (ctx->dashCount > 0)
-		_draw_dashed_segment(ctx, str, dc, isCurve);
+		draw_dashed_segment(str, dc, isCurve);
 	else
-		_build_vb_step (ctx, str, isCurve);
+		build_vb_step (str, isCurve);
 	str->iL = str->cp++;
 	if (ctx->vertCount - ctx->curVertOffset > VKVG_IBO_MAX / 3) {
 		Vertex v0 = ctx->vertexCache[ctx->curVertOffset + str->firstIdx];
 		Vertex v1 = ctx->vertexCache[ctx->curVertOffset + str->firstIdx + 1];
-		_emit_draw_cmd_undrawn_vertices(ctx);
+		emit_draw_cmd_undrawn_vertices(ctx);
 		//repeat first 2 vertices for closed pathes
 		str->firstIdx = (VKVG_IBO_INDEX_TYPE)(ctx->vertCount - ctx->curVertOffset);
-		_add_vertex(ctx, v0);
-		_add_vertex(ctx, v1);
+		add_vertex(v0);
+		add_vertex(v1);
 		ctx->curVertOffset = ctx->vertCount;//prevent redrawing them at the start of the batch
 	}
 }
@@ -1375,10 +1375,11 @@ void _free_ctx_save (vkvg_context_save* sav){
 #define CURVE_ANGLE_TOLERANCE_EPSILON 0.001
 //no floating point arithmetic operation allowed in macro.
 #pragma warning(disable:4127)
-void _recursive_bezier (float distanceTolerance,
-						float x1, float y1, float x2, float y2,
-						float x3, float y3, float x4, float y4,
-						unsigned level) {
+static void recursive_bezier (
+	float distanceTolerance,
+		float x1, float y1, float x2, float y2,
+		float x3, float y3, float x4, float y4,
+		unsigned level) {
 	if(level > CURVE_RECURSION_LIMIT)
 	{
 		return;
@@ -1421,7 +1422,7 @@ void _recursive_bezier (float distanceTolerance,
 				// we tend to finish subdivisions.
 				//----------------------
 				if (M_ANGLE_TOLERANCE < CURVE_ANGLE_TOLERANCE_EPSILON) {
-					_add_point(ctx, x1234, y1234);
+					add_point(x1234, y1234);
 					return;
 				}
 
@@ -1437,7 +1438,7 @@ void _recursive_bezier (float distanceTolerance,
 				{
 					// Finally we can stop the recursion
 					//----------------------
-					_add_point (ctx, x1234, y1234);
+					add_point (x1234, y1234);
 					return;
 				}
 
@@ -1445,13 +1446,13 @@ void _recursive_bezier (float distanceTolerance,
 				{
 					if(da1 > M_CUSP_LIMIT)
 					{
-						_add_point (ctx, x2, y2);
+						add_point (x2, y2);
 						return;
 					}
 
 					if(da2 > M_CUSP_LIMIT)
 					{
-						_add_point (ctx, x3, y3);
+						add_point (x3, y3);
 						return;
 					}
 				}
@@ -1465,7 +1466,7 @@ void _recursive_bezier (float distanceTolerance,
 				{
 					if(M_ANGLE_TOLERANCE < CURVE_ANGLE_TOLERANCE_EPSILON)
 					{
-						_add_point (ctx, x1234, y1234);
+						add_point (x1234, y1234);
 						return;
 					}
 
@@ -1476,8 +1477,8 @@ void _recursive_bezier (float distanceTolerance,
 
 					if(da1 < M_ANGLE_TOLERANCE)
 					{
-						_add_point (ctx, x2, y2);
-						_add_point (ctx, x3, y3);
+						add_point (x2, y2);
+						add_point (x3, y3);
 						return;
 					}
 
@@ -1485,7 +1486,7 @@ void _recursive_bezier (float distanceTolerance,
 					{
 						if(da1 > M_CUSP_LIMIT)
 						{
-							_add_point (ctx, x2, y2);
+							add_point (x2, y2);
 							return;
 						}
 					}
@@ -1497,7 +1498,7 @@ void _recursive_bezier (float distanceTolerance,
 				{
 					if(M_ANGLE_TOLERANCE < CURVE_ANGLE_TOLERANCE_EPSILON)
 					{
-						_add_point (ctx, x1234, y1234);
+						add_point (x1234, y1234);
 						return;
 					}
 
@@ -1508,8 +1509,8 @@ void _recursive_bezier (float distanceTolerance,
 
 					if(da1 < M_ANGLE_TOLERANCE)
 					{
-						_add_point (ctx, x2, y2);
-						_add_point (ctx, x3, y3);
+						add_point (x2, y2);
+						add_point (x3, y3);
 						return;
 					}
 
@@ -1517,7 +1518,7 @@ void _recursive_bezier (float distanceTolerance,
 					{
 						if(da1 > M_CUSP_LIMIT)
 						{
-							_add_point (ctx, x3, y3);
+							add_point (x3, y3);
 							return;
 						}
 					}
@@ -1531,7 +1532,7 @@ void _recursive_bezier (float distanceTolerance,
 				dy = y1234 - (y1 + y4) / 2;
 				if(dx*dx + dy*dy <= distanceTolerance)
 				{
-					_add_point (ctx, x1234, y1234);
+					add_point (x1234, y1234);
 					return;
 				}
 			}
@@ -1540,18 +1541,18 @@ void _recursive_bezier (float distanceTolerance,
 
 	// Continue subdivision
 	//----------------------
-	_recursive_bezier (ctx, distanceTolerance, x1, y1, x12, y12, x123, y123, x1234, y1234, level + 1);
-	_recursive_bezier (ctx, distanceTolerance,x1234, y1234, x234, y234, x34, y34, x4, y4, level + 1);
+	recursive_bezier (distanceTolerance, x1, y1, x12, y12, x123, y123, x1234, y1234, level + 1);
+	recursive_bezier (distanceTolerance,x1234, y1234, x234, y234, x34, y34, x4, y4, level + 1);
 }
 #pragma warning(default:4127)
 void VkvgContext::line_to (float x, float y) {
 	vec2f p = {x,y};
-	if (!_current_path_is_empty (ctx)){
+	if (!current_path_is_empty (ctx)){
 		//prevent adding the same point
 		if (vec2f_equ (_get_current_position (ctx), p))
 			return;
 	}
-	_add_point (ctx, x, y);
+	add_point (x, y);
 	ctx->simpleConvex = false;
 }
 void VkvgContext::elliptic_arc (float x1, float y1, float x2, float y2, bool largeArc, bool counterClockWise, float _rx, float _ry, float phi) {
@@ -1559,7 +1560,7 @@ void VkvgContext::elliptic_arc (float x1, float y1, float x2, float y2, bool lar
 		return;
 
 	if (_rx==0||_ry==0) {
-		if (_current_path_is_empty(ctx))
+		if (current_path_is_empty(ctx))
 			move_to(x1, y1);
 		line_to(x2, y2);
 		return;
@@ -1629,7 +1630,7 @@ void VkvgContext::elliptic_arc (float x1, float y1, float x2, float y2, bool lar
 	double theta = sa;
 	double ea = sa + delta_theta;
 
-	float step = fmaxf(0.001f, fminf(M_PIF, _get_arc_step(ctx, fminf (rx, ry))*0.1f));
+	float step = fmaxf(0.001f, fminf(M_PIF, _get_arc_step(fminf (rx, ry))*0.1f));
 
 	p = (vec2f) {
 		rx * cosf (theta),
@@ -1637,20 +1638,20 @@ void VkvgContext::elliptic_arc (float x1, float y1, float x2, float y2, bool lar
 	};
 	vec2f xy = vec2f_add (mat2_mult_vec2 (m, p), c);
 
-	if (_current_path_is_empty(ctx)){
-		_set_curve_start (ctx);
-		_add_point (ctx, xy[X], xy[Y]);
+	if (current_path_is_empty(ctx)){
+		set_curve_start (ctx);
+		add_point (xy[X], xy[Y]);
 		if (!ctx->pathPtr)
 			ctx->simpleConvex = true;
 		else
 			ctx->simpleConvex = false;
-	}else{
-		_line_to(ctx, xy[X], xy[Y]);
-		_set_curve_start (ctx);
+	} else {
+		line_to(xy[X], xy[Y]);
+		set_curve_start (ctx);
 		ctx->simpleConvex = false;
 	}
 
-	_set_curve_start (ctx);
+	set_curve_start (ctx);
 
 	if (sa < ea) {
 		theta += step;
@@ -1660,7 +1661,7 @@ void VkvgContext::elliptic_arc (float x1, float y1, float x2, float y2, bool lar
 				ry * sinf (theta)
 			};
 			xy = vec2f_add (mat2_mult_vec2 (m, p), c);
-			_add_point (ctx, xy[X], xy[Y]);
+			add_point (xy[X], xy[Y]);
 			theta += step;
 		}
 	} else {
@@ -1671,7 +1672,7 @@ void VkvgContext::elliptic_arc (float x1, float y1, float x2, float y2, bool lar
 				ry * sinf (theta)
 			};
 			xy = vec2f_add (mat2_mult_vec2 (m, p), c);
-			_add_point (ctx, xy[X], xy[Y]);
+			add_point (xy[X], xy[Y]);
 			theta -= step;
 		}
 	}
@@ -1680,8 +1681,8 @@ void VkvgContext::elliptic_arc (float x1, float y1, float x2, float y2, bool lar
 		ry * sinf (ea)
 	};
 	xy = vec2f_add (mat2_mult_vec2 (m, p), c);
-	_add_point (ctx, xy[X], xy[Y]);
-	_set_curve_end(ctx);
+	add_point (xy[X], xy[Y]);
+	set_curve_end(ctx);
 }
 
 
@@ -1698,18 +1699,18 @@ void VkvgContext::poly_fill (vec4* bounds){
 			_wait_and_submit_cmd (ctx);
 			_wait_ctx_flush_end (ctx);
 			if (ctx->sizeVBO - VKVG_ARRAY_THRESHOLD < ctx->pointCount){
-				_resize_vbo (ctx, ctx->pointCount + VKVG_ARRAY_THRESHOLD);
-				_resize_vertex_cache (ctx, ctx->sizeVBO);
+				_resize_vbo (ctx->pointCount + VKVG_ARRAY_THRESHOLD);
+				_resize_vertex_cache (ctx->sizeVBO);
 			}
-		}else{
-			_resize_vbo (ctx, ctx->vertCount + ctx->pointCount + VKVG_ARRAY_THRESHOLD);
-			_resize_vertex_cache (ctx, ctx->sizeVBO);
+		} else {
+			_resize_vbo (ctx->vertCount + ctx->pointCount + VKVG_ARRAY_THRESHOLD);
+			_resize_vertex_cache (ctx->sizeVBO);
 		}
 
 		_start_cmd_for_render_pass(ctx);
 	} else {
-		_ensure_vertex_cache_size (ctx, ctx->pointCount);
-		_ensure_renderpass_is_started (ctx);
+		_ensure_vertex_cache_size (ctx->pointCount);
+		ensure_renderpass_is_started (ctx);
 	}
 
 	CmdBindPipeline (ctx->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->dev->pipelinePolyFill);
@@ -1747,7 +1748,7 @@ void VkvgContext::poly_fill (vec4* bounds){
 		}
 		firstPtIdx += pathPointCount;
 
-		if (_path_has_curves (ctx, ptrPath)) {
+		if (path_has_curves (ptrPath)) {
 			//skip segments lengths used in stroke
 			ptrPath++;
 			uint32_t totPts = 0;
@@ -1763,17 +1764,17 @@ void fan_vertex2(VKVG_IBO_INDEX_TYPE v, VkvgContext ctx) {
 	VKVG_IBO_INDEX_TYPE i = (VKVG_IBO_INDEX_TYPE)v;
 	switch (ctx->tesselator_idx_counter) {
 	case 0:
-		_add_indice(ctx, i);
+		add_indice(i);
 		ctx->tesselator_fan_start = i;
 		ctx->tesselator_idx_counter ++;
 		break;
 	case 1:
 	case 2:
-		_add_indice(ctx, i);
+		add_indice(i);
 		ctx->tesselator_idx_counter ++;
 		break;
 	default:
-		_add_indice_for_fan (ctx, i);
+		_add_indice_for_fan (i);
 		break;
 	}
 }
@@ -1781,15 +1782,15 @@ void fan_vertex2(VKVG_IBO_INDEX_TYPE v, VkvgContext ctx) {
 void strip_vertex2(VKVG_IBO_INDEX_TYPE v, VkvgContext ctx) {
 	VKVG_IBO_INDEX_TYPE i = (VKVG_IBO_INDEX_TYPE)v;
 	if (ctx->tesselator_idx_counter < 3) {
-		_add_indice(ctx, i);
+		add_indice(i);
 	} else
-		_add_indice_for_strip(ctx, i, ctx->tesselator_idx_counter % 2);
+		add_indice_for_strip(i, ctx->tesselator_idx_counter % 2);
 	ctx->tesselator_idx_counter ++;
 }
 
 void triangle_vertex2 (VKVG_IBO_INDEX_TYPE v, VkvgContext ctx) {
 	VKVG_IBO_INDEX_TYPE i = (VKVG_IBO_INDEX_TYPE)v;
-	_add_indice(ctx, i);
+	add_indice(i);
 }
 void skip_vertex2 (VKVG_IBO_INDEX_TYPE v, VkvgContext ctx) {}
 void begin2(GLenum which, void *poly_data)
@@ -1820,7 +1821,7 @@ void combine2(const GLdouble newVertex[3],
 	VkvgContext ctx = (VkvgContext)poly_data;
 	Vertex v = {{newVertex[0],newVertex[1]},ctx->curColor, {0,0,-1}};
 	*outData = (void*)((unsigned long)(ctx->vertCount - ctx->curVertOffset));
-	_add_vertex(ctx, v);
+	add_vertex(v);
 }
 
 
@@ -1838,7 +1839,7 @@ void vertex2(void *vertex_data, void *poly_data)
 	ctx->vertex_cb(i, ctx);
 }
 
-void _fill_non_zero (){
+void fill_non_zero (){
 	Vertex v = {{0},ctx->curColor, {0,0,-1}};
 
 	uint32_t ptrPath = 0;
@@ -1849,18 +1850,18 @@ void _fill_non_zero (){
 		VKVG_IBO_INDEX_TYPE firstVertIdx = (VKVG_IBO_INDEX_TYPE)(ctx->vertCount - ctx->curVertOffset);
 		uint32_t pathPointCount = ctx->pathes[ptrPath] & PATH_ELT_MASK;
 
-		_ensure_vertex_cache_size(ctx, pathPointCount);
-		_ensure_index_cache_size(ctx, (pathPointCount-2)*3);
+		_ensure_vertex_cache_size(pathPointCount);
+		_ensure_index_cache_size((pathPointCount-2)*3);
 
 		VKVG_IBO_INDEX_TYPE i = 0;
 		while (i < 2){
 			v.pos = ctx->points [i++];
-			_set_vertex (ctx, ctx->vertCount++, v);
+			_set_vertex (ctx->vertCount++, v);
 		}
 		while (i < pathPointCount){
 			v.pos = ctx->points [i];
-			_set_vertex (ctx, ctx->vertCount++, v);
-			_add_triangle_indices_unchecked(ctx, firstVertIdx, firstVertIdx + i - 1, firstVertIdx + i);
+			_set_vertex (ctx->vertCount++, v);
+			_add_triangle_indices_unchecked(firstVertIdx, firstVertIdx + i - 1, firstVertIdx + i);
 			i++;
 		}
 		return;
@@ -1887,7 +1888,7 @@ void _fill_non_zero (){
 			while (i < pathPointCount){
 				v.pos = ctx->points[i+firstPtIdx];
 				double dp[] = {v.pos[X],v.pos[Y],0};
-				_add_vertex(ctx, v);
+				add_vertex(v);
 				gluTessVertex(tess, dp, (void*)((unsigned long)firstVertIdx + i));
 				i++;
 			}
@@ -1895,11 +1896,11 @@ void _fill_non_zero (){
 
 			//limit batch size here to 1/3 of the ibo index type ability
 			//if (ctx->vertCount - ctx->curVertOffset > VKVG_IBO_MAX / 3)
-			//	_emit_draw_cmd_undrawn_vertices(ctx);
+			//	emit_draw_cmd_undrawn_vertices(ctx);
 		}
 
 		firstPtIdx += pathPointCount;
-		if (_path_has_curves (ctx, ptrPath)) {
+		if (path_has_curves (ptrPath)) {
 			//skip segments lengths used in stroke
 			ptrPath++;
 			uint32_t totPts = 0;
@@ -1935,14 +1936,14 @@ void VkvgContext::fill_non_zero (){
 				v.pos = ctx->points[i+firstPtIdx];
 				ear_clip_point ecp = {v.pos, firstVertIdx+i, &ecps[i+1]};
 				ecps[i] = ecp;
-				_add_vertex(ctx, v);
+				add_vertex(v);
 				i++;
 			}
 
 			v.pos = ctx->points[i+firstPtIdx];
 			ear_clip_point ecp = {v.pos, firstVertIdx+i, ecps};
 			ecps[i] = ecp;
-			_add_vertex(ctx, v);
+			add_vertex(v);
 
 			ear_clip_point* ecp_current = ecps;
 			uint32_t tries = 0;
@@ -1968,26 +1969,26 @@ void VkvgContext::fill_non_zero (){
 					vP = vP->next;
 				}
 				if (isEar){
-					_add_triangle_indices (ctx, v0->idx, v1->idx, v2->idx);
+					add_triangle_indices (v0->idx, v1->idx, v2->idx);
 					v1->next = v2;
 					ecps_count --;
 					tries = 0;
-				}else{
+				} else {
 					ecp_current = ecp_current->next;
 					tries++;
 				}
 			}
 			if (ecps_count == 3)
-				_add_triangle_indices(ctx, ecp_current->next->idx, ecp_current->idx, ecp_current->next->next->idx);
+				add_triangle_indices(ecp_current->next->idx, ecp_current->idx, ecp_current->next->next->idx);
 			free (ecps);
 
 			//limit batch size here to 1/3 of the ibo index type ability
 			if (ctx->vertCount - ctx->curVertOffset > VKVG_IBO_MAX / 3)
-				_emit_draw_cmd_undrawn_vertices(ctx);
+				emit_draw_cmd_undrawn_vertices(ctx);
 		}
 
 		firstPtIdx += pathPointCount;
-		if (_path_has_curves (ctx, ptrPath)) {
+		if (path_has_curves (ptrPath)) {
 			//skip segments lengths used in stroke
 			ptrPath++;
 			uint32_t totPts = 0;
@@ -2018,7 +2019,7 @@ void VkvgContext::path_extents (bool transformed, float *x1, float *y1, float *x
 		}
 
 		firstPtIdx += pathPointCount;
-		if (_path_has_curves (ctx, ptrPath)) {
+		if (path_has_curves (ptrPath)) {
 			//skip segments lengths used in stroke
 			ptrPath++;
 			uint32_t totPts = 0;
@@ -2036,7 +2037,7 @@ void VkvgContext::path_extents (bool transformed, float *x1, float *y1, float *x
 
 void VkvgContext::draw_full_screen_quad (vec4* scissor) {
 #if defined(DEBUG) && defined (VKVG_DBG_UTILS)
-	vke_cmd_label_start(ctx->cmd, "_draw_full_screen_quad", DBG_LAB_COLOR_FSQ);
+	vke_cmd_label_start(ctx->cmd, "draw_full_screen_quad", DBG_LAB_COLOR_FSQ);
 #endif
 	if (scissor) {
 		VkRect2D r = {
@@ -2047,11 +2048,11 @@ void VkvgContext::draw_full_screen_quad (vec4* scissor) {
 	}
 
 	uint32_t firstVertIdx = ctx->vertCount;
-	_ensure_vertex_cache_size (ctx, 3);
+	_ensure_vertex_cache_size (3);
 
-	_add_vertexf_unchecked (ctx, -1, -1);
-	_add_vertexf_unchecked (ctx,  3, -1);
-	_add_vertexf_unchecked (ctx, -1,  3);
+	_add_vertexf_unchecked (-1, -1);
+	_add_vertexf_unchecked ( 3, -1);
+	_add_vertexf_unchecked (-1,  3);
 
 	ctx->curVertOffset = ctx->vertCount;
 
@@ -2173,7 +2174,7 @@ void VkvgContext::clear_context () {
 	}else if (ctx->pPrev == NULL){
 		//first elmt, and it's not last one so pnext is not null
 		ctx->pNext->pPrev = NULL;
-	}else{
+	} else {
 		ctx->pPrev->pNext = ctx->pNext;
 		ctx->pNext->pPrev = ctx->pPrev;
 	}*/
@@ -2246,7 +2247,7 @@ VkvgContext::VkvgContext(VkvgSurface surf)
 		}
 
 		_init_ctx (ctx);
-		_update_descriptor_set (ctx, surf->dev->emptyImg, ctx->dsSrc);
+		_update_descriptor_set (surf->dev->emptyImg, ctx->dsSrc);
 		_clear_path	(ctx);
 		ctx->cmd = ctx->cmdBuffers[0];//current recording buffer
 		ctx->status = VKE_STATUS_SUCCESS;
@@ -2308,7 +2309,7 @@ VkvgContext::VkvgContext(VkvgSurface surf)
 	_createDescriptorPool	(ctx);
 	_init_descriptor_sets	(ctx);
 	_font_cache_update_context_descset (ctx);
-	_update_descriptor_set	(ctx, surf->dev->emptyImg, ctx->dsSrc);
+	_update_descriptor_set	(surf->dev->emptyImg, ctx->dsSrc);
 	_update_gradient_desc_set(ctx);
 
 	_clear_path				(ctx);
@@ -2352,11 +2353,11 @@ void VkvgContext::flush (VkvgContext ctx){
 
 	int j = 0;
 	while (j < dlpCount) {
-		add_line(ctx, debugLinePoints[j], debugLinePoints[j+1],green);
+		add_line(debugLinePoints[j], debugLinePoints[j+1],green);
 		j+=2;
-		add_line(ctx, debugLinePoints[j], debugLinePoints[j+1],red);
+		add_line(debugLinePoints[j], debugLinePoints[j+1],red);
 		j+=2;
-		add_line(ctx, debugLinePoints[j], debugLinePoints[j+1],white);
+		add_line(debugLinePoints[j], debugLinePoints[j+1],white);
 		j+=2;
 	}
 	dlpCount = 0;
@@ -2374,7 +2375,7 @@ void VkvgContext::set_opacity (float opacity) {
 	if (EQUF(ctx->pushConsts.opacity, opacity))
 		return;
 
-	_emit_draw_cmd_undrawn_vertices (ctx);
+	emit_draw_cmd_undrawn_vertices (ctx);
 	ctx->pushConsts.opacity = opacity;
 	ctx->pushCstDirty = true;
 }
@@ -2391,10 +2392,10 @@ void VkvgContext::new_sub_path (VkvgContext ctx){
 	if (ctx->status)
 		return;
 
-	RECORD(ctx, VKVG_CMD_NEW_SUB_PATH);
+	RECORD(data, VKVG_CMD_NEW_SUB_PATH);
 	vke_log(VKE_LOG_INFO_CMD, "\tCMD: new_sub_path:\n");
 
-	_finish_path(ctx);
+	finish_path(ctx);
 }
 void VkvgContext::new_path (VkvgContext ctx){
 	if (ctx->status)
@@ -2403,13 +2404,13 @@ void VkvgContext::new_path (VkvgContext ctx){
 	vke_log(VKE_LOG_INFO_CMD, "\tCMD: new_path:\n");
 
 	_clear_path(ctx);
-	RECORD(ctx, VKVG_CMD_NEW_PATH);
+	RECORD(data, VKVG_CMD_NEW_PATH);
 }
 void VkvgContext::close_path (VkvgContext ctx){
 	if (ctx->status)
 		return;
 
-	RECORD(ctx, VKVG_CMD_CLOSE_PATH);
+	RECORD(data, VKVG_CMD_CLOSE_PATH);
 	vke_log(VKE_LOG_INFO_CMD, "\tCMD: close_path:\n");
 
 	if (ctx->pathes[ctx->pathPtr] & PATH_CLOSED_BIT) //already closed
@@ -2428,34 +2429,34 @@ void VkvgContext::close_path (VkvgContext ctx){
 
 	ctx->pathes[ctx->pathPtr] |= PATH_CLOSED_BIT;
 
-	_finish_path(ctx);
+	finish_path(ctx);
 }
 void VkvgContext::rel_line_to (float dx, float dy){
 	if (ctx->status)
 		return;
 
-	RECORD(ctx, VKVG_CMD_REL_LINE_TO, dx, dy);
+	RECORD(data, VKVG_CMD_REL_LINE_TO, dx, dy);
 	vke_log(VKE_LOG_INFO_CMD, "\tCMD: rel_line_to: %f, %f\n", dx, dy);
 
-	if (_current_path_is_empty(ctx))
-		_add_point(ctx, 0, 0);
+	if (current_path_is_empty(ctx))
+		add_point(0, 0);
 	vec2f cp = _get_current_position(ctx);
-	_line_to(ctx, cp[X] + dx, cp[Y] + dy);
+	line_to(cp[X] + dx, cp[Y] + dy);
 }
 void VkvgContext::line_to (float x, float y)
 {
 	if (ctx->status)
 		return;
 
-	RECORD(ctx, VKVG_CMD_LINE_TO, x, y);
+	RECORD(data, VKVG_CMD_LINE_TO, x, y);
 	vke_log(VKE_LOG_INFO_CMD, "\tCMD: line_to: %f, %f\n", x, y);
-	_line_to(ctx, x, y);
+	line_to(x, y);
 }
 void VkvgContext::arc (float xc, float yc, float radius, float a1, float a2){
 	if (ctx->status)
 		return;
 
-	RECORD(ctx, VKVG_CMD_ARC, xc, yc, radius, a1, a2);
+	RECORD(data, VKVG_CMD_ARC, xc, yc, radius, a1, a2);
 	vke_log(VKE_LOG_INFO_CMD, "\tCMD: arc: %f,%f %f %f %f\n", xc, yc, radius, a1, a2);
 
 	while (a2 < a1)//positive arc must have a1<a2
@@ -2466,19 +2467,19 @@ void VkvgContext::arc (float xc, float yc, float radius, float a1, float a2){
 
 	vec2f v = {cosf(a1)*radius + xc, sinf(a1)*radius + yc};
 
-	float step = _get_arc_step(ctx, radius);
+	float step = _get_arc_step(radius);
 	float a = a1;
 
-	if (_current_path_is_empty(ctx)){
-		_set_curve_start (ctx);
-		_add_point (ctx, v[X], v[Y]);
+	if (current_path_is_empty(ctx)){
+		set_curve_start (ctx);
+		add_point (v[X], v[Y]);
 		if (!ctx->pathPtr)
 			ctx->simpleConvex = true;
 		else
 			ctx->simpleConvex = false;
-	}else{
-		_line_to(ctx, v[X], v[Y]);
-		_set_curve_start (ctx);
+	} else {
+		line_to(v[X], v[Y]);
+		set_curve_start (ctx);
 		ctx->simpleConvex = false;
 	}
 
@@ -2490,7 +2491,7 @@ void VkvgContext::arc (float xc, float yc, float radius, float a1, float a2){
 	while(a < a2){
 		v[X] = cosf(a)*radius + xc;
 		v[Y] = sinf(a)*radius + yc;
-		_add_point (ctx, v[X], v[Y]);
+		add_point (v[X], v[Y]);
 		a+=step;
 	}
 
@@ -2502,13 +2503,13 @@ void VkvgContext::arc (float xc, float yc, float radius, float a1, float a2){
 	a = a2;
 	v[X] = cosf(a)*radius + xc;
 	v[Y] = sinf(a)*radius + yc;
-	add_point (ctx, v[X], v[Y]);
+	add_point (v[X], v[Y]);
 	set_curve_end(ctx);
 }
 void VkvgContext::arc_negative (float xc, float yc, float radius, float a1, float a2) {
 	if (ctx->status)
 		return;
-	RECORD(ctx, VKVG_CMD_ARC_NEG, xc, yc, radius, a1, a2);
+	RECORD(data, VKVG_CMD_ARC_NEG, xc, yc, radius, a1, a2);
 	vke_log(VKE_LOG_INFO_CMD, "\tCMD: %f,%f %f %f %f\n", xc, yc, radius, a1, a2);
 	while (a2 > a1)
 		a2 -= 2.f*M_PIF;
@@ -2517,18 +2518,18 @@ void VkvgContext::arc_negative (float xc, float yc, float radius, float a1, floa
 
 	vec2f v = {cosf(a1)*radius + xc, sinf(a1)*radius + yc};
 
-	float step = _get_arc_step(ctx, radius);
+	float step = _get_arc_step(radius);
 	float a = a1;
 
-	if (_current_path_is_empty(ctx)){
+	if (current_path_is_empty(ctx)){
 		set_curve_start (ctx);
-		add_point (ctx, v[X], v[Y]);
+		add_point (v[X], v[Y]);
 		if (!ctx->pathPtr)
 			ctx->simpleConvex = true;
 		else
 			ctx->simpleConvex = false;
-	}else{
-		line_to(ctx, v[X], v[Y]);
+	} else {
+		line_to(v[X], v[Y]);
 		set_curve_start (ctx);
 		ctx->simpleConvex = false;
 	}
@@ -2556,37 +2557,37 @@ void VkvgContext::arc_negative (float xc, float yc, float radius, float a1, floa
 	v[X] = cosf(a)*radius + xc;
 	v[Y] = sinf(a)*radius + yc;
 	//if (!vec2f_equ (v,lastP))
-		_add_point (ctx, v[X], v[Y]);
-	_set_curve_end(ctx);
+		add_point (v[X], v[Y]);
+	set_curve_end(ctx);
 }
 void VkvgContext::rel_move_to (float x, float y)
 {
 	if (ctx->status)
 		return;
-	RECORD(ctx, VKVG_CMD_REL_MOVE_TO, x, y);
+	RECORD(data, VKVG_CMD_REL_MOVE_TO, x, y);
 	vke_log(VKE_LOG_INFO_CMD, "\tCMD: rel_mote_to: %f, %f\n", x, y);
-	if (_current_path_is_empty(ctx))
-		_add_point(ctx, 0, 0);
+	if (current_path_is_empty(ctx))
+		add_point(0, 0);
 	vec2f cp = _get_current_position(ctx);
-	_finish_path(ctx);
-	_add_point (ctx, cp[X] + x, cp[Y] + y);
+	finish_path(ctx);
+	add_point (cp[X] + x, cp[Y] + y);
 }
 void VkvgContext::move_to (float x, float y)
 {
 	if (ctx->status)
 		return;
-	RECORD(ctx, VKVG_CMD_MOVE_TO, x, y);
+	RECORD(data, VKVG_CMD_MOVE_TO, x, y);
 	vke_log(VKE_LOG_INFO_CMD, "\tCMD: move_to: %f,%f\n", x, y);
-	_finish_path(ctx);
-	_add_point (ctx, x, y);
+	finish_path(ctx);
+	add_point (x, y);
 }
 bool VkvgContext::has_current_point () {
 	if (ctx->status)
 		return false;
-	return !_current_path_is_empty(ctx);
+	return !current_path_is_empty(ctx);
 }
 void VkvgContext::get_current_point (float* x, float* y) {
-	if (ctx->status || _current_path_is_empty(ctx)) {
+	if (ctx->status || current_path_is_empty(ctx)) {
 		*x = *y = 0;
 		return;
 	}
@@ -2595,15 +2596,15 @@ void VkvgContext::get_current_point (float* x, float* y) {
 	*y = cp[Y];
 }
 void VkvgContext::curve_to (float x1, float y1, float x2, float y2, float x3, float y3) {
-	//prevent running _recursive_bezier when all 4 curve points are equal
+	//prevent running recursive_bezier when all 4 curve points are equal
 	if (EQUF(x1,x2) && EQUF(x2,x3) && EQUF(y1,y2) && EQUF(y2,y3)) {
-		if (_current_path_is_empty(ctx) || (EQUF(_get_current_position(ctx)[X],x1) && EQUF(_get_current_position(ctx)[Y],y1)))
+		if (current_path_is_empty(ctx) || (EQUF(_get_current_position(ctx)[X],x1) && EQUF(_get_current_position(ctx)[Y],y1)))
 			return;
 	}
 	ctx->simpleConvex = false;
-	_set_curve_start (ctx);
-	if (_current_path_is_empty(ctx))
-		_add_point(ctx, x1, y1);
+	set_curve_start (ctx);
+	if (current_path_is_empty(ctx))
+		add_point(x1, y1);
 
 	vec2f cp = _get_current_position(ctx);
 
@@ -2613,21 +2614,21 @@ void VkvgContext::curve_to (float x1, float y1, float x2, float y2, float x3, fl
 
 	float distanceTolerance = fabs(0.25f / fmaxf(sx,sy));
 
-	_recursive_bezier (ctx, distanceTolerance, cp[X], cp[Y], x1, y1, x2, y2, x3, y3, 0);
+	recursive_bezier (distanceTolerance, cp[X], cp[Y], x1, y1, x2, y2, x3, y3, 0);
 	/*cp[X] = x3;
 	cp[Y] = y3;
 	if (!vec2f_equ(ctx->points[ctx->pointCount-1],cp))*/
-		_add_point(ctx,x3,y3);
-	_set_curve_end (ctx);
+		add_point(ctx,x3,y3);
+	set_curve_end (ctx);
 }
 const double quadraticFact = 2.0/3.0;
 void VkvgContext::quadratic_to (float x1, float y1, float x2, float y2) {
 	float x0, y0;
-	if (_current_path_is_empty(ctx)) {
+	if (current_path_is_empty(ctx)) {
 		x0 = x1;
 		y0 = y1;
 	} else
-		vkvg_get_current_point (ctx, &x0, &y0);
+		vkvg_get_current_point (&x0, &y0);
 	_curve_to (ctx,
 					x0 + (x1 - x0) * quadraticFact,
 					y0 + (y1 - y0) * quadraticFact,
@@ -2638,70 +2639,70 @@ void VkvgContext::quadratic_to (float x1, float y1, float x2, float y2) {
 void VkvgContext::quadratic_to (float x1, float y1, float x2, float y2) {
 	if (ctx->status)
 		return;
-	RECORD(ctx, VKVG_CMD_QUADRATIC_TO, x1, y1, x2, y2);
+	RECORD(data, VKVG_CMD_QUADRATIC_TO, x1, y1, x2, y2);
 	vke_log(VKE_LOG_INFO_CMD, "\tCMD: quadratic_to: %f, %f, %f, %f\n", x1, y1, x2, y2);
-	_quadratic_to(ctx, x1, y1, x2, y2);
+	quadratic_to(x1, y1, x2, y2);
 }
 void VkvgContext::rel_quadratic_to (float x1, float y1, float x2, float y2) {
 	if (ctx->status)
 		return;
-	RECORD(ctx, VKVG_CMD_REL_QUADRATIC_TO, x1, y1, x2, y2);
+	RECORD(data, VKVG_CMD_REL_QUADRATIC_TO, x1, y1, x2, y2);
 	vke_log(VKE_LOG_INFO_CMD, "\tCMD: rel_quadratic_to: %f, %f, %f, %f\n", x1, y1, x2, y2);
 	vec2f cp = _get_current_position(ctx);
-	_quadratic_to (ctx, cp[X] + x1, cp[Y] + y1, cp[X] + x2, cp[Y] + y2);
+	quadratic_to (cp[X] + x1, cp[Y] + y1, cp[X] + x2, cp[Y] + y2);
 }
 void VkvgContext::curve_to (float x1, float y1, float x2, float y2, float x3, float y3) {
 	if (ctx->status)
 		return;
-	RECORD(ctx, VKVG_CMD_CURVE_TO, x1, y1, x2, y2, x3, y3);
+	RECORD(data, VKVG_CMD_CURVE_TO, x1, y1, x2, y2, x3, y3);
 	vke_log(VKE_LOG_INFO_CMD, "\tCMD: curve_to %f,%f %f,%f %f,%f:\n", x1, y1, x2, y2, x3, y3);
-	_curve_to (ctx, x1, y1, x2, y2, x3, y3);
+	_curve_to (x1, y1, x2, y2, x3, y3);
 }
 void VkvgContext::rel_curve_to (float x1, float y1, float x2, float y2, float x3, float y3) {
 	if (ctx->status)
 		return;
-	if (_current_path_is_empty(ctx)) {
+	if (current_path_is_empty(ctx)) {
 		ctx->status = VKE_STATUS_NO_CURRENT_POINT;
 		return;
 	}
-	RECORD(ctx, (uint32_t)VKVG_CMD_REL_CURVE_TO, x1, y1, x2, y2, x3, y3);
+	RECORD(data, (uint32_t)VKVG_CMD_REL_CURVE_TO, x1, y1, x2, y2, x3, y3);
 	vke_log(VKE_LOG_INFO_CMD, "\tCMD: rel curve_to %f,%f %f,%f %f,%f:\n", x1, y1, x2, y2, x3, y3);
 	vec2f cp = _get_current_position(ctx);
-	_curve_to (ctx, cp[X] + x1, cp[Y] + y1, cp[X] + x2, cp[Y] + y2, cp[X] + x3, cp[Y] + y3);
+	_curve_to (cp[X] + x1, cp[Y] + y1, cp[X] + x2, cp[Y] + y2, cp[X] + x3, cp[Y] + y3);
 }
 void VkvgContext::fill_rectangle (float x, float y, float w, float h){
 	if (ctx->status)
 		return;
 	vke_log(VKE_LOG_INFO_CMD, "\tCMD: fill_rectangle:\n");
-	_vao_add_rectangle (ctx,x,y,w,h);
+	vao_add_rectangle (ctx,x,y,w,h);
 	//_record_draw_cmd(ctx);
 }
 
 VkeStatus VkvgContext::rectangle (float x, float y, float w, float h){
 	if (ctx->status)
 		return ctx->status;
-	RECORD2(ctx, VKVG_CMD_RECTANGLE, x, y, w, h);
+	RECORD2(data, VKVG_CMD_RECTANGLE, x, y, w, h);
 	vke_log(VKE_LOG_INFO_CMD, "\tCMD: rectangle: %f,%f,%f,%f\n", x, y, w, h);
-	_finish_path (ctx);
+	finish_path (ctx);
 
 	if (w <= 0 || h <= 0)
 		return VKE_STATUS_INVALID_RECT;
 
-	_add_point (ctx, x, y);
-	_add_point (ctx, x + w, y);
-	_add_point (ctx, x + w, y + h);
-	_add_point (ctx, x, y + h);	
+	add_point (x, y);
+	add_point (x + w, y);
+	add_point (x + w, y + h);
+	add_point (x, y + h);	
 
 	ctx->pathes[ctx->pathPtr] |= (PATH_CLOSED_BIT|PATH_IS_CONVEX_BIT);
 
-	_finish_path(ctx);
+	finish_path(ctx);
 	return VKE_STATUS_SUCCESS;
 }
 VkeStatus VkvgContext::rounded_rectangle (float x, float y, float w, float h, float radius){
 	if (ctx->status)
 		return ctx->status;
 	vke_log(VKE_LOG_INFO_CMD, "CMD: rounded_rectangle:\n");
-	_finish_path (ctx);
+	finish_path (ctx);
 
 	if (w <= 0 || h <= 0)
 		return VKE_STATUS_INVALID_RECT;
@@ -2709,15 +2710,15 @@ VkeStatus VkvgContext::rounded_rectangle (float x, float y, float w, float h, fl
 	if ((radius > w / 2.0f) || (radius > h / 2.0f))
 		radius = fmin (w / 2.0f, h / 2.0f);
 
-	move_to(ctx, x, y + radius);
-	arc(ctx, x + radius, y + radius, radius, M_PIF, -M_PIF_2);
-	line_to(ctx, x + w - radius, y);
-	arc(ctx, x + w - radius, y + radius, radius, -M_PIF_2, 0);
-	line_to(ctx, x + w, y + h - radius);
-	arc(ctx, x + w - radius, y + h - radius, radius, 0, M_PIF_2);
-	line_to(ctx, x + radius, y + h);
-	arc(ctx, x + radius, y + h - radius, radius, M_PIF_2, M_PIF);
-	line_to(ctx, x, y + radius);
+	move_to(x, y + radius);
+	arc(x + radius, y + radius, radius, M_PIF, -M_PIF_2);
+	line_to(x + w - radius, y);
+	arc(x + w - radius, y + radius, radius, -M_PIF_2, 0);
+	line_to(x + w, y + h - radius);
+	arc(x + w - radius, y + h - radius, radius, 0, M_PIF_2);
+	line_to(x + radius, y + h);
+	arc(x + radius, y + h - radius, radius, M_PIF_2, M_PIF);
+	line_to(x, y + radius);
 	close_path(ctx);
 
 	return VKE_STATUS_SUCCESS;
@@ -2726,18 +2727,18 @@ void VkvgContext::rounded_rectangle2 (float x, float y, float w, float h, float 
 	if (ctx->status)
 		return;
 	vke_log(VKE_LOG_INFO_CMD, "CMD: rounded_rectangle2:\n");
-	move_to (ctx, x+rx, y);
-	line_to (ctx, x+w-rx, y);
-	elliptic_arc_to(ctx, x+w, y+ry, false, true, rx, ry, 0);
+	move_to (x+rx, y);
+	line_to (x+w-rx, y);
+	elliptic_arc_to(x+w, y+ry, false, true, rx, ry, 0);
 
-	line_to (ctx, x+w, y+h-ry);
-	elliptic_arc_to(ctx, x+w-rx, y+h, false, true, rx, ry, 0);
+	line_to (x+w, y+h-ry);
+	elliptic_arc_to(x+w-rx, y+h, false, true, rx, ry, 0);
 
-	line_to (ctx, x+rx, y+h);
-	elliptic_arc_to(ctx, x, y+h-ry , false, true, rx, ry, 0);
+	line_to (x+rx, y+h);
+	elliptic_arc_to(x, y+h-ry , false, true, rx, ry, 0);
 
-	line_to (ctx, x, y+ry);
-	elliptic_arc_to(ctx, x+rx, y , false, true, rx, ry, 0);
+	line_to (x, y+ry);
+	elliptic_arc_to(x+rx, y , false, true, rx, ry, 0);
 
 	close_path(ctx);
 }
@@ -2745,7 +2746,7 @@ void VkvgContext::path_extents (float *x1, float *y1, float *x2, float *y2) {
 	if (ctx->status)
 		return;
 
-	_finish_path(ctx);
+	finish_path(ctx);
 
 	if (!ctx->pathPtr) {//no path
 		*x1 = *x2 = *y1 = *y2 = 0;
@@ -2764,7 +2765,7 @@ static const VkClearAttachment clearStencil		   = {VK_IMAGE_ASPECT_STENCIL_BIT, 
 static const VkClearAttachment clearColorAttach	   = {VK_IMAGE_ASPECT_COLOR_BIT,   0, {{{0}}}};
 
 void VkvgContext::reset_clip () {
-	_emit_draw_cmd_undrawn_vertices(ctx);
+	emit_draw_cmd_undrawn_vertices(ctx);
 	if (!ctx->cmdStarted) {
 		//if command buffer is not already started and in a renderpass, we use the renderpass
 		//with the loadop clear for stencil
@@ -2780,7 +2781,7 @@ void VkvgContext::reset_clip() {
 	if (ctx->status)
 		return;
 
-	RECORD(ctx, VKVG_CMD_RESET_CLIP);
+	RECORD(data, VKVG_CMD_RESET_CLIP);
 
 	if (ctx->curClipState == vkvg_clip_state_clear)
 		return;
@@ -2795,14 +2796,14 @@ void VkvgContext::clear (){
 	if (ctx->status)
 		return;
 
-	RECORD(ctx, VKVG_CMD_CLEAR);
+	RECORD(data, VKVG_CMD_CLEAR);
 
 	if (_get_previous_clip_state(ctx) == vkvg_clip_state_clear)
 		ctx->curClipState = vkvg_clip_state_none;
 	else
 		ctx->curClipState = vkvg_clip_state_clear;
 
-	_emit_draw_cmd_undrawn_vertices(ctx);
+	emit_draw_cmd_undrawn_vertices(ctx);
 	if (!ctx->cmdStarted) {
 		ctx->renderPassBeginInfo.renderPass = ctx->dev->renderPass_ClearAll;
 		_start_cmd_for_render_pass(ctx);
@@ -2812,39 +2813,39 @@ void VkvgContext::clear (){
 	vkCmdClearAttachments(ctx->cmd, 2, ca, 1, &ctx->clearRect);
 }
 void VkvgContext::clip_preserve (){
-	_finish_path(ctx);
+	finish_path(ctx);
 
 	if (!ctx->pathPtr)//nothing to clip
 		return;
 
-	_emit_draw_cmd_undrawn_vertices(ctx);
+	emit_draw_cmd_undrawn_vertices(ctx);
 
 	vke_log(VKE_LOG_INFO, "CLIP: ctx = %p; path cpt = %d;\n", ctx, ctx->pathPtr / 2);
 
-	_ensure_renderpass_is_started(ctx);
+	ensure_renderpass_is_started(ctx);
 
 #if defined(DEBUG) && defined (VKVG_DBG_UTILS)
 	vke_cmd_label_start(ctx->cmd, "clip", DBG_LAB_COLOR_CLIP);
 #endif
 
 	if (ctx->curFillRule == VKVG_FILL_RULE_EVEN_ODD){
-		_poly_fill				(ctx, NULL);
+		poly_fill				(NULL);
 		CmdBindPipeline			(ctx->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->dev->pipelineClipping);
-	}else{
+	} else {
 		CmdBindPipeline			(ctx->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->dev->pipelineClipping);
 		CmdSetStencilReference	(ctx->cmd, VK_STENCIL_FRONT_AND_BACK, STENCIL_FILL_BIT);
 		CmdSetStencilCompareMask(ctx->cmd, VK_STENCIL_FRONT_AND_BACK, STENCIL_CLIP_BIT);
 		CmdSetStencilWriteMask	(ctx->cmd, VK_STENCIL_FRONT_AND_BACK, STENCIL_FILL_BIT);
-		_fill_non_zero(ctx);
-		_emit_draw_cmd_undrawn_vertices(ctx);
+		fill_non_zero(ctx);
+		emit_draw_cmd_undrawn_vertices(ctx);
 	}
 	CmdSetStencilReference	(ctx->cmd, VK_STENCIL_FRONT_AND_BACK, STENCIL_CLIP_BIT);
 	CmdSetStencilCompareMask(ctx->cmd, VK_STENCIL_FRONT_AND_BACK, STENCIL_FILL_BIT);
 	CmdSetStencilWriteMask	(ctx->cmd, VK_STENCIL_FRONT_AND_BACK, STENCIL_ALL_BIT);
 
-	_draw_full_screen_quad (ctx, NULL);
+	draw_full_screen_quad (NULL);
 
-	_bind_draw_pipeline (ctx);
+	bind_draw_pipeline (ctx);
 	CmdSetStencilCompareMask (ctx->cmd, VK_STENCIL_FRONT_AND_BACK, STENCIL_CLIP_BIT);
 
 #if defined(DEBUG) && defined (VKVG_DBG_UTILS)
@@ -2854,7 +2855,7 @@ void VkvgContext::clip_preserve (){
 	ctx->curClipState = vkvg_clip_state_clip;
 }
 void _fill_preserve (VkvgContext ctx){
-	_finish_path(ctx);
+	finish_path(ctx);
 
 	if (!ctx->pathPtr)//nothing to fill
 		return;
@@ -2862,33 +2863,33 @@ void _fill_preserve (VkvgContext ctx){
 	vke_log(VKE_LOG_INFO, "FILL: ctx = %p; path cpt = %d;\n", ctx, ctx->subpathCount);
 
 	 if (ctx->curFillRule == VKVG_FILL_RULE_EVEN_ODD){
-		 _emit_draw_cmd_undrawn_vertices(ctx);
+		 emit_draw_cmd_undrawn_vertices(ctx);
 		vec4 bounds = {FLT_MAX,FLT_MAX,FLT_MIN,FLT_MIN};
-		_poly_fill				(ctx, &bounds);
-		_bind_draw_pipeline		(ctx);
+		poly_fill				(&bounds);
+		bind_draw_pipeline		(ctx);
 		CmdSetStencilCompareMask(ctx->cmd, VK_STENCIL_FRONT_AND_BACK, STENCIL_FILL_BIT);
-		_draw_full_screen_quad	(ctx, &bounds);
+		draw_full_screen_quad	(&bounds);
 		CmdSetStencilCompareMask(ctx->cmd, VK_STENCIL_FRONT_AND_BACK, STENCIL_CLIP_BIT);
 		return;
 	}
 
 	if (ctx->vertCount - ctx->curVertOffset + ctx->pointCount > VKVG_IBO_MAX)
-		_emit_draw_cmd_undrawn_vertices(ctx);//limit draw call to addressable vx with choosen index type
+		emit_draw_cmd_undrawn_vertices(ctx);//limit draw call to addressable vx with choosen index type
 
 	if (ctx->pattern)//if not solid color, source img or gradient has to be bound
-		_ensure_renderpass_is_started(ctx);
-	_fill_non_zero(ctx);
+		ensure_renderpass_is_started(ctx);
+	fill_non_zero(ctx);
 }
 void _stroke_preserve (VkvgContext ctx)
 {
-	_finish_path(ctx);
+	finish_path(ctx);
 
 	if (!ctx->pathPtr)//nothing to stroke
 		return;
 
 	vke_log(VKE_LOG_INFO, "STROKE: ctx = %p; path ptr = %d;\n", ctx, ctx->pathPtr);
 
-	stroke_context_t str = {0};
+	stroke_context str = {0};
 	str.hw = ctx->lineWidth * 0.5f;
 	str.lhMax = ctx->miterLimit * ctx->lineWidth;
 	uint32_t ptrPath = 0;
@@ -2901,7 +2902,7 @@ void _stroke_preserve (VkvgContext ctx)
 
 		dash_context_t dc = {0};
 
-		if (_path_has_curves (ctx,ptrPath)) {
+		if (path_has_curves (ctx,ptrPath)) {
 			ptrSegment = 1;
 			lastSegmentPointIdx = str.cp + (ctx->pathes[ptrPath+ptrSegment]&PATH_ELT_MASK)-1;
 		}
@@ -2925,19 +2926,19 @@ void _stroke_preserve (VkvgContext ctx)
 			str.iL = lastPathPointIdx;
 		} else if (_path_is_closed(ctx,ptrPath)){
 			str.iL = lastPathPointIdx;
-		}else{
-			_draw_stoke_cap(ctx, &str, ctx->points[str.cp], vec2f_line_norm(ctx->points[str.cp], ctx->points[str.cp+1]), true);
+		} else {
+			_draw_stoke_cap(&str, ctx->points[str.cp], vec2f_line_norm(ctx->points[str.cp], ctx->points[str.cp+1]), true);
 			str.iL = str.cp++;
 		}
 
-		if (_path_has_curves (ctx,ptrPath)) {
+		if (path_has_curves (ctx,ptrPath)) {
 			while (str.cp < lastPathPointIdx){
 
 				bool curved = ctx->pathes [ptrPath + ptrSegment] & PATH_HAS_CURVES_BIT;
 				if (lastSegmentPointIdx == lastPathPointIdx)//last segment of path, dont draw end point here
 					lastSegmentPointIdx--;
 				while (str.cp <= lastSegmentPointIdx)
-					_draw_segment(ctx, &str, &dc, curved);
+					_draw_segment(&str, &dc, curved);
 
 				ptrSegment ++;
 				uint32_t cptSegPts = ctx->pathes [ptrPath + ptrSegment]&PATH_ELT_MASK;
@@ -2949,13 +2950,13 @@ void _stroke_preserve (VkvgContext ctx)
 				}
 			}
 		}else while (str.cp < lastPathPointIdx)
-			_draw_segment(ctx, &str, &dc, false);
+			_draw_segment(&str, &dc, false);
 
 		if (ctx->dashCount > 0) {
 			if (_path_is_closed(ctx,ptrPath)){
 				str.iR = firstPathPointIdx;
 
-				_draw_dashed_segment(ctx, &str, &dc, false);
+				draw_dashed_segment(&str, &dc, false);
 
 				str.iL++;
 				str.cp++;
@@ -2968,11 +2969,11 @@ void _stroke_preserve (VkvgContext ctx)
 					dc.curDash = ctx->dashCount-1;
 				float m = fminf (ctx->dashes[prevDash] - dc.curDashOffset, ctx->dashes[dc.curDash]);
 				vec2f p = vec2f_sub(ctx->points[str.iR], vec2f_scale(dc.normal, m));
-				_draw_stoke_cap (ctx, &str, p, dc.normal, false);
+				_draw_stoke_cap (&str, p, dc.normal, false);
 			}
 		} else if (_path_is_closed(ctx,ptrPath)){
 			str.iR = firstPathPointIdx;
-			bool inverse = _build_vb_step (ctx, &str, false);
+			bool inverse = build_vb_step (&str, false);
 
 			VKVG_IBO_INDEX_TYPE* inds = &ctx->indexCache [ctx->indCount-6];
 			VKVG_IBO_INDEX_TYPE ii = str.firstIdx;
@@ -2980,14 +2981,14 @@ void _stroke_preserve (VkvgContext ctx)
 				inds[1] = ii+1;
 				inds[4] = ii+1;
 				inds[5] = ii;
-			}else{
+			} else {
 				inds[1] = ii;
 				inds[4] = ii;
 				inds[5] = ii+1;
 			}
 			str.cp++;
 		}else
-			_draw_stoke_cap (ctx, &str, ctx->points[str.cp], vec2f_line_norm(ctx->points[str.cp-1], ctx->points[str.cp]), false);
+			_draw_stoke_cap (&str, ctx->points[str.cp], vec2f_line_norm(ctx->points[str.cp-1], ctx->points[str.cp]), false);
 
 		str.cp = firstPathPointIdx + pathPointCount;
 
@@ -2998,7 +2999,7 @@ void _stroke_preserve (VkvgContext ctx)
 
 		//limit batch size here to 1/3 of the ibo index type ability
 		if (ctx->vertCount - ctx->curVertOffset > VKVG_IBO_MAX / 3)
-			_emit_draw_cmd_undrawn_vertices (ctx);
+			emit_draw_cmd_undrawn_vertices (ctx);
 	}
 
 }
@@ -3006,7 +3007,7 @@ void _stroke_preserve (VkvgContext ctx)
 void VkvgContext::clip (){
 	if (ctx->status)
 		return;
-	RECORD(ctx, VKVG_CMD_CLIP);
+	RECORD(data, VKVG_CMD_CLIP);
 	_clip_preserve(ctx);
 	_clear_path(ctx);
 }
@@ -3014,41 +3015,41 @@ void VkvgContext::stroke ()
 {
 	if (ctx->status)
 		return;
-	RECORD(ctx, VKVG_CMD_STROKE);
+	RECORD(data, VKVG_CMD_STROKE);
 	_stroke_preserve(ctx);
 	_clear_path(ctx);
 }
 void VkvgContext::fill (){
 	if (ctx->status)
 		return;
-	RECORD(ctx, VKVG_CMD_FILL);
+	RECORD(data, VKVG_CMD_FILL);
 	_fill_preserve(ctx);
 	_clear_path(ctx);
 }
 void VkvgContext::clip_preserve () {
 	if (ctx->status)
 		return;
-	RECORD(ctx, VKVG_CMD_CLIP_PRESERVE);
+	RECORD(data, VKVG_CMD_CLIP_PRESERVE);
 	_clip_preserve (ctx);
 }
 void VkvgContext::fill_preserve () {
 	if (ctx->status)
 		return;
-	RECORD(ctx, VKVG_CMD_FILL_PRESERVE);
+	RECORD(data, VKVG_CMD_FILL_PRESERVE);
 	_fill_preserve (ctx);
 }
 void VkvgContext::stroke_preserve () {
 	if (ctx->status)
 		return;
-	RECORD(ctx, VKVG_CMD_STROKE_PRESERVE);
+	RECORD(data, VKVG_CMD_STROKE_PRESERVE);
 	_stroke_preserve (ctx);
 }
 
 void VkvgContext::paint (){
 	if (ctx->status)
 		return;
-	RECORD(ctx, VKVG_CMD_PAINT);
-	_finish_path (ctx);
+	RECORD(data, VKVG_CMD_PAINT);
+	finish_path (ctx);
 
 	if (ctx->pathPtr) {
 		fill();
@@ -3061,29 +3062,29 @@ void VkvgContext::paint (){
 void VkvgContext::set_source_color (uint32_t c) {
 	if (ctx->status)
 		return;
-	RECORD(ctx, VKVG_CMD_SET_SOURCE_COLOR, c);
+	RECORD(data, VKVG_CMD_SET_SOURCE_COLOR, c);
 	ctx->curColor = c;
-	_update_cur_pattern (ctx, NULL);
+	_update_cur_pattern (NULL);
 }
 void VkvgContext::set_source_rgb (float r, float g, float b) {
 	if (ctx->status)
 		return;
-	RECORD(ctx, VKVG_CMD_SET_SOURCE_RGB, r, g, b);
+	RECORD(data, VKVG_CMD_SET_SOURCE_RGB, r, g, b);
 	ctx->curColor = CreateRgbaf(r,g,b,1);
-	_update_cur_pattern (ctx, NULL);
+	_update_cur_pattern (NULL);
 }
 void VkvgContext::set_source_rgba (float r, float g, float b, float a)
 {
 	if (ctx->status)
 		return;
-	RECORD(ctx, VKVG_CMD_SET_SOURCE_RGBA, r, g, b, a);
+	RECORD(data, VKVG_CMD_SET_SOURCE_RGBA, r, g, b, a);
 	ctx->curColor = CreateRgbaf(r,g,b,a);
-	_update_cur_pattern (ctx, NULL);
+	_update_cur_pattern (NULL);
 }
 void VkvgContext::set_source_surface(VkvgSurface surf, float x, float y){
 	if (ctx->status || surf->status)
 		return;
-	RECORD(ctx, VKVG_CMD_SET_SOURCE_SURFACE, x, y, surf);
+	RECORD(data, VKVG_CMD_SET_SOURCE_SURFACE, x, y, surf);
 	ctx->pushConsts.source[X] = x;
 	ctx->pushConsts.source[Y] = y;
 	update_cur_pattern (VkvgPattern(surf));
@@ -3092,38 +3093,38 @@ void VkvgContext::set_source_surface(VkvgSurface surf, float x, float y){
 void VkvgContext::set_source (VkvgPattern pat){
 	if (ctx->status || pat->status)
 		return;
-	RECORD(ctx, VKVG_CMD_SET_SOURCE, pat);
+	RECORD(VKVG_CMD_SET_SOURCE, pat);
 	update_cur_pattern (pat);
 	vkvg_pattern_grab	(pat);
 }
 void VkvgContext::set_line_width (float width){
 	if (ctx->status)
 		return;
-	RECORD(ctx, VKVG_CMD_SET_LINE_WIDTH, width);
+	RECORD(data, VKVG_CMD_SET_LINE_WIDTH, width);
 	ctx->lineWidth = width;
 }
 void VkvgContext::set_miter_limit (float limit){
 	if (ctx->status)
 		return;
-	RECORD(ctx, VKVG_CMD_SET_LINE_WIDTH, limit);
+	RECORD(data, VKVG_CMD_SET_LINE_WIDTH, limit);
 	ctx->miterLimit = limit;
 }
 void VkvgContext::set_line_cap (vkvg_line_cap_t cap){
 	if (ctx->status)
 		return;
-	RECORD(ctx, VKVG_CMD_SET_LINE_CAP, cap);
+	RECORD(data, VKVG_CMD_SET_LINE_CAP, cap);
 	ctx->lineCap = cap;
 }
 void VkvgContext::set_line_join (vkvg_line_join_t join){
 	if (ctx->status)
 		return;
-	RECORD(ctx, VKVG_CMD_SET_LINE_JOIN, join);
+	RECORD(data, VKVG_CMD_SET_LINE_JOIN, join);
 	ctx->lineJoin = join;
 }
 void VkvgContext::set_operator (vkvg_operator_t op){
 	if (ctx->status)
 		return;
-	RECORD(ctx, VKVG_CMD_SET_OPERATOR, op);
+	RECORD(data, VKVG_CMD_SET_OPERATOR, op);
 	if (op == ctx->curOperator)
 		return;
 
@@ -3132,13 +3133,13 @@ void VkvgContext::set_operator (vkvg_operator_t op){
 	ctx->curOperator = op;
 
 	if (ctx->cmdStarted)
-		_bind_draw_pipeline (ctx);
+		bind_draw_pipeline (ctx);
 }
 void VkvgContext::set_fill_rule (vkvg_fill_rule_t fr){
 	if (ctx->status)
 		return;
 #ifndef __APPLE__
-	RECORD(ctx, VKVG_CMD_SET_FILL_RULE, fr);
+	RECORD(data, VKVG_CMD_SET_FILL_RULE, fr);
 	ctx->curFillRule = fr;
 #endif
 }
@@ -3157,7 +3158,7 @@ void VkvgContext::set_dash (const float* dashes, uint32_t num_dashes, float offs
 		return;
 	if (ctx->dashCount > 0)
 		free (ctx->dashes);
-	RECORD(ctx, VKVG_CMD_SET_DASH, num_dashes, offset, dashes);
+	RECORD(data, VKVG_CMD_SET_DASH, num_dashes, offset, dashes);
 	ctx->dashCount = num_dashes;
 	ctx->dashOffset = offset;
 	if (ctx->dashCount == 0)
@@ -3201,34 +3202,34 @@ VkvgPattern VkvgContext::get_source (VkvgContext ctx){
 void VkvgContext::select_font_face (const char* name){
 	if (ctx->status)
 		return;
-	RECORD(ctx, VKVG_CMD_SET_FONT_FACE, name);
-	_select_font_face (ctx, name);
+	RECORD(data, VKVG_CMD_SET_FONT_FACE, name);
+	select_font_face (name);
 }
 void VkvgContext::load_font_from_path (const char* path, const char* name){
 	if (ctx->status)
 		return;
-	RECORD(ctx, VKVG_CMD_SET_FONT_PATH, name);
-	_vkvg_font_identity_t* fid = _font_cache_add_font_identity(ctx, path, name);
+	RECORD(data, VKVG_CMD_SET_FONT_PATH, name);
+	_vkvg_font_identity_t* fid = _font_cache_add_font_identity(path, name);
 	if (!_font_cache_load_font_file_in_memory (fid)) {
 		ctx->status = VKE_STATUS_FILE_NOT_FOUND;
 		return;
 	}
-	_select_font_face (ctx, name);
+	select_font_face (name);
 }
 void VkvgContext::load_font_from_memory (unsigned char* fontBuffer, long fontBufferByteSize, const char* name) {
 	if (ctx->status)
 		return;
-	//RECORD(ctx, VKVG_CMD_SET_FONT_PATH, name);
-	_vkvg_font_identity_t* fid = _font_cache_add_font_identity (ctx, NULL, name);
+	//RECORD(data, VKVG_CMD_SET_FONT_PATH, name);
+	_vkvg_font_identity_t* fid = _font_cache_add_font_identity (NULL, name);
 	fid->fontBuffer = fontBuffer;
 	fid->fontBufSize = fontBufferByteSize;
 
-	_select_font_face (ctx, name);
+	select_font_face (name);
 }
 void VkvgContext::set_font_size (uint32_t size){
 	if (ctx->status)
 		return;
-	RECORD(ctx, VKVG_CMD_SET_FONT_SIZE, size);
+	RECORD(data, VKVG_CMD_SET_FONT_SIZE, size);
 #ifdef VKVG_USE_FREETYPE
 	long newSize = size << 6;
 #else
@@ -3248,10 +3249,10 @@ void VkvgContext::set_text_direction (vkvg_context* ctx, vkvg_direction_t direct
 void VkvgContext::show_text (const char* text){
 	if (ctx->status)
 		return;
-	RECORD(ctx, VKVG_CMD_SHOW_TEXT, text);
+	RECORD(data, VKVG_CMD_SHOW_TEXT, text);
 	vke_log(VKE_LOG_INFO_CMD, "CMD: show_text:\n");
-	//_ensure_renderpass_is_started(ctx);
-	_font_cache_show_text (ctx, text);
+	//ensure_renderpass_is_started(ctx);
+	_font_cache_show_text (text);
 	//_flush_undrawn_vertices (ctx);
 }
 
@@ -3264,22 +3265,17 @@ void VkvgContext::show_text (const char* text){
 // restrict to 1 caller vars and only ones that are referenced
 // add namespaces of course, replace with namespace_*.  the compiler will bark at you instead of naming it an alternate
 
-void VkvgContext::text_run_free(vkvg_text_run *tr) {
-}
-
 VkvgText VkvgContext::text_run_create (const char* text) {
 	if (ctx->status)
 		return NULL;
-	vkvg_text_run *tr = io_new(vkvg_text_run);
-	_font_cache_create_text_run(ctx, text, -1, tr);
-	return tr;
+	return font_cache_create_text_run(text, -1);
 }
 
 VkvgText VkvgContext::text_run_create_with_length (const char* text, uint32_t length) {
 	if (ctx->status)
 		return NULL;
 	vkvg_text_run *tr = io_new(vkvg_text_run);
-	_font_cache_create_text_run(ctx, text, length, tr);
+	font_cache_create_text_run(text, length, tr);
 	return tr;
 }
 
@@ -3309,7 +3305,7 @@ void VkvgContext::text_run_destroy(VkvgText textRun) {
 void VkvgContext::show_text_run (VkvgText textRun) {
 	if (ctx->status)
 		return;
-	_font_cache_show_text_run(ctx, textRun);
+	_font_cache_show_text_run(textRun);
 }
 
 void VkvgContext::text_run_get_extents (VkvgText textRun, vkvg_text_extents_t* extents) {
@@ -3319,19 +3315,19 @@ void VkvgContext::text_run_get_extents (VkvgText textRun, vkvg_text_extents_t* e
 void VkvgContext::text_extents (const char* text, vkvg_text_extents_t* extents) {
 	if (ctx->status)
 		return;
-	_font_cache_text_extents(ctx, text, -1, extents);
+	_font_cache_text_extents(text, -1, extents);
 }
 
 void VkvgContext::font_extents (vkvg_font_extents_t* extents) {
 	if (ctx->status)
 		return;
-	_font_cache_font_extents(ctx, extents);
+	_font_cache_font_extents(extents);
 }
 
 void VkvgContext::save (VkvgContext ctx){
 	if (ctx->status)
 		return;
-	RECORD(ctx, VKVG_CMD_SAVE);
+	RECORD(data, VKVG_CMD_SAVE);
 	vke_log(VKE_LOG_INFO, "SAVE CONTEXT: ctx = %p\n", ctx);
 
 	VkvgDevice dev = ctx->dev;
@@ -3412,9 +3408,9 @@ void VkvgContext::save (VkvgContext ctx){
 		CmdSetStencilCompareMask(ctx->cmd, VK_STENCIL_FRONT_AND_BACK, STENCIL_CLIP_BIT);
 		CmdSetStencilWriteMask	(ctx->cmd, VK_STENCIL_FRONT_AND_BACK, curSaveBit);
 
-		_draw_full_screen_quad (ctx, NULL);
+		draw_full_screen_quad (NULL);
 
-		_bind_draw_pipeline (ctx);
+		bind_draw_pipeline (ctx);
 		CmdSetStencilCompareMask(ctx->cmd, VK_STENCIL_FRONT_AND_BACK, STENCIL_CLIP_BIT);
 
 	#if defined(DEBUG) && defined (VKVG_DBG_UTILS)
@@ -3459,7 +3455,7 @@ void VkvgContext::restore (VkvgContext ctx){
 	if (ctx->status)
 		return;
 
-	RECORD(ctx, VKVG_CMD_RESTORE);
+	RECORD(data, VKVG_CMD_RESTORE);
 
 	if (ctx->pSavedCtxs == NULL){
 		ctx->status = VKE_STATUS_INVALID_RESTORE;
@@ -3497,9 +3493,9 @@ void VkvgContext::restore (VkvgContext ctx){
 			CmdSetStencilCompareMask(ctx->cmd, VK_STENCIL_FRONT_AND_BACK, curSaveBit);
 			CmdSetStencilWriteMask	(ctx->cmd, VK_STENCIL_FRONT_AND_BACK, STENCIL_CLIP_BIT);
 
-			_draw_full_screen_quad (ctx, NULL);
+			draw_full_screen_quad (NULL);
 
-			_bind_draw_pipeline (ctx);
+			bind_draw_pipeline (ctx);
 			CmdSetStencilCompareMask (ctx->cmd, VK_STENCIL_FRONT_AND_BACK, STENCIL_CLIP_BIT);
 
 #if defined(DEBUG) && defined (VKVG_DBG_UTILS)
@@ -3595,36 +3591,36 @@ void VkvgContext::restore (VkvgContext ctx){
 void VkvgContext::translate (float dx, float dy){
 	if (ctx->status)
 		return;
-	RECORD(ctx, VKVG_CMD_TRANSLATE, dx, dy);
+	RECORD(data, VKVG_CMD_TRANSLATE, dx, dy);
 	vke_log(VKE_LOG_INFO_CMD, "CMD: translate: %f, %f\n", dx, dy);
-	_emit_draw_cmd_undrawn_vertices(ctx);
+	emit_draw_cmd_undrawn_vertices(ctx);
 	vkvg_matrix_translate (&ctx->pushConsts.mat, dx, dy);
 	_set_mat_inv_and_vkCmdPush (ctx);
 }
 void VkvgContext::scale (float sx, float sy){
 	if (ctx->status)
 		return;
-	RECORD(ctx, VKVG_CMD_SCALE, sx, sy);
+	RECORD(data, VKVG_CMD_SCALE, sx, sy);
 	vke_log(VKE_LOG_INFO_CMD, "CMD: scale: %f, %f\n", sx, sy);
-	_emit_draw_cmd_undrawn_vertices(ctx);
+	emit_draw_cmd_undrawn_vertices(ctx);
 	vkvg_matrix_scale (&ctx->pushConsts.mat, sx, sy);
 	_set_mat_inv_and_vkCmdPush (ctx);
 }
 void VkvgContext::rotate (float radians){
 	if (ctx->status)
 		return;
-	RECORD(ctx, VKVG_CMD_ROTATE, radians);
+	RECORD(data, VKVG_CMD_ROTATE, radians);
 	vke_log(VKE_LOG_INFO_CMD, "CMD: rotate: %f\n", radians);
-	_emit_draw_cmd_undrawn_vertices(ctx);
+	emit_draw_cmd_undrawn_vertices(ctx);
 	vkvg_matrix_rotate (&ctx->pushConsts.mat, radians);
 	_set_mat_inv_and_vkCmdPush (ctx);
 }
 void VkvgContext::transform (const vkvg_matrix_t* matrix) {
 	if (ctx->status)
 		return;
-	RECORD(ctx, VKVG_CMD_TRANSFORM, matrix);
+	RECORD(data, VKVG_CMD_TRANSFORM, matrix);
 	vke_log(VKE_LOG_INFO_CMD, "CMD: transform: %f, %f, %f, %f, %f, %f\n", matrix->xx, matrix->yx, matrix->xy, matrix->yy, matrix->x0, matrix->y0);
-	_emit_draw_cmd_undrawn_vertices(ctx);
+	emit_draw_cmd_undrawn_vertices(ctx);
 	vkvg_matrix_t res;
 	vkvg_matrix_multiply (&res, &ctx->pushConsts.mat, matrix);
 	ctx->pushConsts.mat = res;
@@ -3633,9 +3629,9 @@ void VkvgContext::transform (const vkvg_matrix_t* matrix) {
 void VkvgContext::identity_matrix (VkvgContext ctx) {
 	if (ctx->status)
 		return;
-	RECORD(ctx, VKVG_CMD_IDENTITY_MATRIX);
+	RECORD(data, VKVG_CMD_IDENTITY_MATRIX);
 	vke_log(VKE_LOG_INFO_CMD, "CMD: identity_matrix:\n");
-	_emit_draw_cmd_undrawn_vertices(ctx);
+	emit_draw_cmd_undrawn_vertices(ctx);
 	vkvg_matrix_t im = VKVG_IDENTITY_MATRIX;
 	ctx->pushConsts.mat = im;
 	_set_mat_inv_and_vkCmdPush (ctx);
@@ -3643,9 +3639,9 @@ void VkvgContext::identity_matrix (VkvgContext ctx) {
 void VkvgContext::set_matrix (const vkvg_matrix_t* matrix){
 	if (ctx->status)
 		return;
-	RECORD(ctx, VKVG_CMD_SET_MATRIX, matrix);
+	RECORD(data, VKVG_CMD_SET_MATRIX, matrix);
 	vke_log(VKE_LOG_INFO_CMD, "CMD: set_matrix: %f, %f, %f, %f, %f, %f\n", matrix->xx, matrix->yx, matrix->xy, matrix->yy, matrix->x0, matrix->y0);
-	_emit_draw_cmd_undrawn_vertices(ctx);
+	emit_draw_cmd_undrawn_vertices(ctx);
 	ctx->pushConsts.mat = (*matrix);
 	_set_mat_inv_and_vkCmdPush (ctx);
 }
@@ -3656,7 +3652,7 @@ void VkvgContext::get_matrix (vkvg_matrix_t* const matrix){
 void VkvgContext::elliptic_arc_to (float x2, float y2, bool largeArc, bool sweepFlag, float rx, float ry, float phi) {
 	if (ctx->status)
 		return;
-	RECORD(ctx, VKVG_CMD_ELLIPTICAL_ARC_TO, x2, y2, rx, ry, phi, largeArc, sweepFlag);
+	RECORD(data, VKVG_CMD_ELLIPTICAL_ARC_TO, x2, y2, rx, ry, phi, largeArc, sweepFlag);
 	vke_log(VKE_LOG_INFO_CMD, "\tCMD: elliptic_arc_to: x2:%10.5f y2:%10.5f large:%d sweep:%d rx:%10.5f ry:%10.5f phi:%10.5f \n", x2,y2,largeArc,sweepFlag,rx,ry,phi);
 	float x1, y1;
 	vkvg_get_current_point(ctx, &x1, &y1);
@@ -3665,7 +3661,7 @@ void VkvgContext::elliptic_arc_to (float x2, float y2, bool largeArc, bool sweep
 void VkvgContext::rel_elliptic_arc_to (float x2, float y2, bool largeArc, bool sweepFlag, float rx, float ry, float phi) {
 	if (ctx->status)
 		return;
-	RECORD(ctx, VKVG_CMD_REL_ELLIPTICAL_ARC_TO, x2, y2, rx, ry, phi, largeArc, sweepFlag);
+	RECORD(data, VKVG_CMD_REL_ELLIPTICAL_ARC_TO, x2, y2, rx, ry, phi, largeArc, sweepFlag);
 	vke_log(VKE_LOG_INFO_CMD, "\tCMD: rel_elliptic_arc_to: x2:%10.5f y2:%10.5f large:%d sweep:%d rx:%10.5f ry:%10.5f phi:%10.5f \n", x2,y2,largeArc,sweepFlag,rx,ry,phi);
 
 	float x1, y1;
@@ -3699,14 +3695,14 @@ void VkvgContext::ellipse (float radiusX, float radiusY, float x, float y, float
 	float bottomLeftX = bottomCenterX - dx2;
 	float bottomLeftY = bottomCenterY - dy2;
 
-	_finish_path(ctx);
-	_add_point (ctx, bottomCenterX, bottomCenterY);
+	finish_path(ctx);
+	add_point (ctx, bottomCenterX, bottomCenterY);
 
 	_curve_to (ctx, bottomRightX, bottomRightY, topRightX, topRightY, topCenterX, topCenterY);
 	_curve_to (ctx, topLeftX, topLeftY, bottomLeftX, bottomLeftY, bottomCenterX, bottomCenterY);
 
 	ctx->pathes[ctx->pathPtr] |= PATH_CLOSED_BIT;
-	_finish_path(ctx);
+	finish_path(ctx);
 }
 
 VkvgSurface VkvgContext::get_target (VkvgContext ctx) {

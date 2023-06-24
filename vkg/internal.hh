@@ -137,7 +137,7 @@ typedef struct {
 }_vkvg_font_t;
 
 /* Font identification structure */
-typedef struct {
+struct vkvg_font_identity {
 	char**				names;		/* Resolved Input names to this font by fontConfig or custom name set by @ref vkvg_load_from_path*/
 	uint32_t			namesCount;	/* Count of resolved names by fontConfig */
 	unsigned char*		fontBuffer;	/* stb_truetype in memory buffer */
@@ -151,10 +151,10 @@ typedef struct {
 #endif
 	uint32_t			sizeCount;	/* available font size loaded */
 	_vkvg_font_t*		sizes;		/* loaded font size array */
-}_vkvg_font_identity_t;
+};
 
 // Font cache global structure, entry point for all font related operations.
-typedef struct _font_cache_t {
+struct font_cache_t {
 #ifdef VKVG_USE_FREETYPE
 	FT_Library		library;		/* FreeType library*/
 #else
@@ -188,7 +188,7 @@ bool _font_cache_load_font_file_in_memory (_vkvg_font_identity_t* fontId);
 void _font_cache_show_text				(struct _vkvg_context *ctx, const char* text);
 void _font_cache_text_extents			(struct _vkvg_context *ctx, const char* text, int length, vkvg_text_extents_t *extents);
 void _font_cache_font_extents			(struct _vkvg_context *ctx, vkvg_font_extents_t* extents);
-void _font_cache_create_text_run		(struct _vkvg_context *ctx, const char* text, int length, VkvgText textRun);
+VkvgText _font_cache_create_text_run		(struct _vkvg_context *ctx, const char* text, int length, VkvgText textRun);
 void _font_cache_destroy_text_run		(VkvgText textRun);
 void _font_cache_show_text_run			(struct _vkvg_context *ctx, VkvgText tr);
 void _font_cache_update_context_descset (struct _vkvg_context *ctx);
@@ -230,7 +230,7 @@ extern PFN_vkWaitForFences				WaitForFences;
 extern PFN_vkResetFences				ResetFences;
 extern PFN_vkResetCommandBuffer			ResetCommandBuffer;
 
-typedef struct _cached_ctx_t {
+struct cached_ctx_t {
 	thrd_t				thread;
 	VkvgContext			ctx;
 	struct _cached_ctx*	pNext;
@@ -262,7 +262,7 @@ void _device_store_context				(VkvgContext ctx);
 	#define CreateRgbaf(r, g, b, a) (((int)(a * 255.0f) << 24) | ((int)(b * 255.0f) << 16) | ((int)(g * 255.0f) << 8) | (int)(r * 255.0f))
 #endif
 
-typedef struct _vkvg_context_save_t {
+struct vkvg_context_save_t {
 	struct _vkvg_context_save_t* pNext;
 	float					lineWidth;
 	float					miterLimit;
@@ -286,21 +286,21 @@ typedef struct _vkvg_context_save_t {
 
 io_declare(vkvg_context_save);
 
-typedef struct _ear_clip_point {
+struct ear_clip_point {
 	vec2f					pos;
 	VKVG_IBO_INDEX_TYPE		idx;
 	struct _ear_clip_point*	next;
-} ear_clip_point;
+};
 
-typedef struct {
+struct dash_context {
 	bool					dashOn;
 	uint32_t				curDash;		//current dash index
 	float					curDashOffset;	//cur dash offset between defined path point and last dash segment(on/off) start
 	float					totDashLength;	//total length of dashes
 	vec2f					normal;
-} dash_context_t;
+};
 
-typedef struct {
+struct stroke_context {
 	uint32_t	iL;
 	uint32_t	iR;
 	uint32_t	cp;//current point
@@ -308,7 +308,7 @@ typedef struct {
 	float		hw;				//stroke half width, computed once.
 	float		lhMax;			//miter limit * line width
 	float		arcStep;		//cached arcStep, prevent compute multiple times for same stroke, 0 if not yet computed
-} stroke_context_t;
+};
 
 void _check_vertex_cache_size	(VkvgContext ctx);
 void _ensure_vertex_cache_size	(VkvgContext ctx, uint32_t addedVerticesCount);
@@ -327,7 +327,7 @@ void _remove_last_point			(VkvgContext ctx);
 bool _path_is_closed			(VkvgContext ctx, uint32_t ptrPath);
 void _set_curve_start			(VkvgContext ctx);
 void _set_curve_end				(VkvgContext ctx);
-bool _path_has_curves			(VkvgContext ctx, uint32_t ptrPath);
+bool path_has_curves			(VkvgContext ctx, uint32_t ptrPath);
 
 float _normalizeAngle			(float a);
 float _get_arc_step				(VkvgContext ctx, float radius);
@@ -337,10 +337,10 @@ void _add_point					(VkvgContext ctx, float x, float y);
 
 void _resetMinMax				(VkvgContext ctx);
 void _vkvg_path_extents			(VkvgContext ctx, bool transformed, float *x1, float *y1, float *x2, float *y2);
-void _draw_stoke_cap			(VkvgContext ctx, stroke_context_t* str, vec2f p0, vec2f n, bool isStart);
-void _draw_segment				(VkvgContext ctx, stroke_context_t* str, dash_context_t* dc, bool isCurve);
-float _draw_dashed_segment		(VkvgContext ctx, stroke_context_t *str, dash_context_t* dc, bool isCurve);
-bool _build_vb_step				(VkvgContext ctx, stroke_context_t *str, bool isCurve);
+void _draw_stoke_cap			(VkvgContext ctx, stroke_context* str, vec2f p0, vec2f n, bool isStart);
+void _draw_segment				(VkvgContext ctx, stroke_context* str, dash_context_t* dc, bool isCurve);
+float draw_dashed_segment		(VkvgContext ctx, stroke_context *str, dash_context_t* dc, bool isCurve);
+bool build_vb_step				(VkvgContext ctx, stroke_context *str, bool isCurve);
 
 void _poly_fill					(VkvgContext ctx, vec4f *bounds);
 void _fill_non_zero				(VkvgContext ctx);
@@ -348,11 +348,11 @@ void _draw_full_screen_quad		(VkvgContext ctx, vec4f *scissor);
 
 void _create_gradient_buff		(VkvgContext ctx);
 void _create_vertices_buff		(VkvgContext ctx);
-void _add_vertex				(VkvgContext ctx, Vertex v);
-void _add_vertexf				(VkvgContext ctx, float x, float y);
+void add_vertex				(VkvgContext ctx, Vertex v);
+void add_vertexf				(VkvgContext ctx, float x, float y);
 void _set_vertex				(VkvgContext ctx, uint32_t idx, Vertex v);
-void _add_triangle_indices		(VkvgContext ctx, VKVG_IBO_INDEX_TYPE i0, VKVG_IBO_INDEX_TYPE i1, VKVG_IBO_INDEX_TYPE i2);
-void _add_tri_indices_for_rect	(VkvgContext ctx, VKVG_IBO_INDEX_TYPE i);
+void add_triangle_indices		(VkvgContext ctx, VKVG_IBO_INDEX_TYPE i0, VKVG_IBO_INDEX_TYPE i1, VKVG_IBO_INDEX_TYPE i2);
+void add_tri_indices_for_rect	(VkvgContext ctx, VKVG_IBO_INDEX_TYPE i);
 
 void _vao_add_rectangle			(VkvgContext ctx, float x, float y, float width, float height);
 
@@ -483,15 +483,15 @@ void				_destroy_recording	(vkvg_recording* rec);
 void				_replay_command		(VkvgContext ctx, VkvgRecording rec, uint32_t index);
 void				_record				(vkvg_recording* rec,...);
 
-#define RECORD(ctx,...) {\
-	if (ctx->recording)	{\
-		_record (ctx->recording,__VA_ARGS__);\
+#define RECORD(data,...) {\
+	if (data->recording)	{\
+		_record (data->recording,__VA_ARGS__);\
 		return;\
 	}\
 }
-#define RECORD2(ctx,...) {\
-	if (ctx->recording)	{\
-		_record (ctx->recording,__VA_ARGS__);\
+#define RECORD2(data,...) {\
+	if (data->recording)	{\
+		_record (data->recording,__VA_ARGS__);\
 		return 0;\
 	}\
 }
