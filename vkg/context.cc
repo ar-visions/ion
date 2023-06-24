@@ -2610,7 +2610,7 @@ void VkvgContext::curve_to (float x1, float y1, float x2, float y2, float x3, fl
 	//compute dyn distanceTolerance depending on current scale
 	float sx = 1, sy = 1;
 	ctx->pushConsts.mat.matrix_get_scale (&sx, &sy);
-	
+
 	float distanceTolerance = fabs(0.25f / fmaxf(sx,sy));
 
 	_recursive_bezier (ctx, distanceTolerance, cp[X], cp[Y], x1, y1, x2, y2, x3, y3, 0);
@@ -2709,16 +2709,16 @@ VkeStatus VkvgContext::rounded_rectangle (float x, float y, float w, float h, fl
 	if ((radius > w / 2.0f) || (radius > h / 2.0f))
 		radius = fmin (w / 2.0f, h / 2.0f);
 
-	vkvg_move_to(ctx, x, y + radius);
-	vkvg_arc(ctx, x + radius, y + radius, radius, M_PIF, -M_PIF_2);
-	vkvg_line_to(ctx, x + w - radius, y);
-	vkvg_arc(ctx, x + w - radius, y + radius, radius, -M_PIF_2, 0);
-	vkvg_line_to(ctx, x + w, y + h - radius);
-	vkvg_arc(ctx, x + w - radius, y + h - radius, radius, 0, M_PIF_2);
-	vkvg_line_to(ctx, x + radius, y + h);
-	vkvg_arc(ctx, x + radius, y + h - radius, radius, M_PIF_2, M_PIF);
-	vkvg_line_to(ctx, x, y + radius);
-	vkvg_close_path(ctx);
+	move_to(ctx, x, y + radius);
+	arc(ctx, x + radius, y + radius, radius, M_PIF, -M_PIF_2);
+	line_to(ctx, x + w - radius, y);
+	arc(ctx, x + w - radius, y + radius, radius, -M_PIF_2, 0);
+	line_to(ctx, x + w, y + h - radius);
+	arc(ctx, x + w - radius, y + h - radius, radius, 0, M_PIF_2);
+	line_to(ctx, x + radius, y + h);
+	arc(ctx, x + radius, y + h - radius, radius, M_PIF_2, M_PIF);
+	line_to(ctx, x, y + radius);
+	close_path(ctx);
 
 	return VKE_STATUS_SUCCESS;
 }
@@ -2726,20 +2726,20 @@ void VkvgContext::rounded_rectangle2 (float x, float y, float w, float h, float 
 	if (ctx->status)
 		return;
 	vke_log(VKE_LOG_INFO_CMD, "CMD: rounded_rectangle2:\n");
-	vkvg_move_to (ctx, x+rx, y);
-	vkvg_line_to (ctx, x+w-rx, y);
-	vkvg_elliptic_arc_to(ctx, x+w, y+ry, false, true, rx, ry, 0);
+	move_to (ctx, x+rx, y);
+	line_to (ctx, x+w-rx, y);
+	elliptic_arc_to(ctx, x+w, y+ry, false, true, rx, ry, 0);
 
-	vkvg_line_to (ctx, x+w, y+h-ry);
-	vkvg_elliptic_arc_to(ctx, x+w-rx, y+h, false, true, rx, ry, 0);
+	line_to (ctx, x+w, y+h-ry);
+	elliptic_arc_to(ctx, x+w-rx, y+h, false, true, rx, ry, 0);
 
-	vkvg_line_to (ctx, x+rx, y+h);
-	vkvg_elliptic_arc_to(ctx, x, y+h-ry , false, true, rx, ry, 0);
+	line_to (ctx, x+rx, y+h);
+	elliptic_arc_to(ctx, x, y+h-ry , false, true, rx, ry, 0);
 
-	vkvg_line_to (ctx, x, y+ry);
-	vkvg_elliptic_arc_to(ctx, x+rx, y , false, true, rx, ry, 0);
+	line_to (ctx, x, y+ry);
+	elliptic_arc_to(ctx, x+rx, y , false, true, rx, ry, 0);
 
-	vkvg_close_path(ctx);
+	close_path(ctx);
 }
 void VkvgContext::path_extents (float *x1, float *y1, float *x2, float *y2) {
 	if (ctx->status)
@@ -2752,7 +2752,7 @@ void VkvgContext::path_extents (float *x1, float *y1, float *x2, float *y2) {
 		return;
 	}
 
-	_vkvg_path_extents(ctx, false, x1, y1, x2, y2);
+	path_extents(false, x1, y1, x2, y2);
 }
 
 vkvg_clip_state_t VkvgContext::get_previous_clip_state () {
@@ -3051,12 +3051,12 @@ void VkvgContext::paint (){
 	_finish_path (ctx);
 
 	if (ctx->pathPtr) {
-		vkvg_fill(ctx);
+		fill();
 		return;
 	}
 
-	_ensure_renderpass_is_started (ctx);
-	_draw_full_screen_quad (ctx, NULL);
+	ensure_renderpass_is_started ();
+	draw_full_screen_quad (NULL);
 }
 void VkvgContext::set_source_color (uint32_t c) {
 	if (ctx->status)
@@ -3086,14 +3086,14 @@ void VkvgContext::set_source_surface(VkvgSurface surf, float x, float y){
 	RECORD(ctx, VKVG_CMD_SET_SOURCE_SURFACE, x, y, surf);
 	ctx->pushConsts.source[X] = x;
 	ctx->pushConsts.source[Y] = y;
-	_update_cur_pattern (ctx, vkvg_pattern_create_for_surface(surf));
+	update_cur_pattern (VkvgPattern(surf));
 	ctx->pushCstDirty = true;
 }
 void VkvgContext::set_source (VkvgPattern pat){
 	if (ctx->status || pat->status)
 		return;
 	RECORD(ctx, VKVG_CMD_SET_SOURCE, pat);
-	_update_cur_pattern (ctx, pat);
+	update_cur_pattern (pat);
 	vkvg_pattern_grab	(pat);
 }
 void VkvgContext::set_line_width (float width){
@@ -3108,7 +3108,7 @@ void VkvgContext::set_miter_limit (float limit){
 	RECORD(ctx, VKVG_CMD_SET_LINE_WIDTH, limit);
 	ctx->miterLimit = limit;
 }
-void VkvgContext::set_line_cap (Vvkvg_line_cap_t cap){
+void VkvgContext::set_line_cap (vkvg_line_cap_t cap){
 	if (ctx->status)
 		return;
 	RECORD(ctx, VKVG_CMD_SET_LINE_CAP, cap);
@@ -3120,14 +3120,14 @@ void VkvgContext::set_line_join (vkvg_line_join_t join){
 	RECORD(ctx, VKVG_CMD_SET_LINE_JOIN, join);
 	ctx->lineJoin = join;
 }
-void VkvgContext::_set_operator (vkvg_operator_t op){
+void VkvgContext::set_operator (vkvg_operator_t op){
 	if (ctx->status)
 		return;
 	RECORD(ctx, VKVG_CMD_SET_OPERATOR, op);
 	if (op == ctx->curOperator)
 		return;
 
-	_emit_draw_cmd_undrawn_vertices(ctx);//draw call with different ops cant be combined, so emit draw cmd for previous vertices.
+	emit_draw_cmd_undrawn_vertices();//draw call with different ops cant be combined, so emit draw cmd for previous vertices.
 
 	ctx->curOperator = op;
 
