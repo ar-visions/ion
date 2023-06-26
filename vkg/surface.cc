@@ -20,7 +20,7 @@
  * THE SOFTWARE.
  */
 
-#include <vkg/vkvg_internal.h>
+#include <vkg/internal.hh>
 #include <vke/image.h>
 #include <vke/queue.h>
 #include <vke/device.h>
@@ -32,7 +32,7 @@
 
 
 
-void _explicit_ms_resolve (VkvgSurface surf){
+void _explicit_ms_resolve (VkgSurface surf){
 	io_sync(surf);
 
 	VkCommandBuffer cmd = surf->cmd;
@@ -65,7 +65,7 @@ void _explicit_ms_resolve (VkvgSurface surf){
 	io_unsync(surf);
 }
 
-void _clear_surface (VkvgSurface surf, VkImageAspectFlags aspect)
+void _clear_surface (VkgSurface surf, VkImageAspectFlags aspect)
 {
 	io_sync(surf);
 
@@ -114,7 +114,7 @@ void _clear_surface (VkvgSurface surf, VkImageAspectFlags aspect)
 	io_unsync(surf);
 }
 
-void _create_surface_main_image (VkvgSurface surf){
+void _create_surface_main_image (VkgSurface surf){
 	surf->img = vke_image_create_basic(
 		surf->dev->vke,surf->format,surf->width,surf->height,surf->dev->supportedTiling,VKE_MEMORY_USAGE_GPU_ONLY,
 		VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT);
@@ -127,7 +127,7 @@ void _create_surface_main_image (VkvgSurface surf){
 #endif
 }
 //create multisample color img if sample count > 1 and the stencil buffer multisampled or not
-void _create_surface_secondary_images (VkvgSurface surf) {
+void _create_surface_secondary_images (VkgSurface surf) {
 	VkeDevice vke = surf->dev->vke;
 	if (surf->dev->samples > VK_SAMPLE_COUNT_1_BIT){
 		surf->imgMS = vke_image_ms_create(vke,surf->format,surf->dev->samples,surf->width,surf->height,VKE_MEMORY_USAGE_GPU_ONLY,
@@ -149,7 +149,7 @@ void _create_surface_secondary_images (VkvgSurface surf) {
 	vke_device_set_object_name(vke, VK_OBJECT_TYPE_SAMPLER, (uint64_t)vke_image_get_sampler(surf->stencil), "SURF stencil SAMPLER");
 #endif
 }
-void _create_framebuffer (VkvgSurface surf) {
+void _create_framebuffer (VkgSurface surf) {
 	VkImageView attachments[] = {
 		vke_image_get_view (surf->img),
 		vke_image_get_view (surf->stencil),
@@ -173,7 +173,7 @@ void _create_framebuffer (VkvgSurface surf) {
 	vke_device_set_object_name(surf->dev->vke, VK_OBJECT_TYPE_FRAMEBUFFER, (uint64_t)surf->fb, "SURF FB");
 #endif
 }
-void _create_surface_images (VkvgSurface surf) {
+void _create_surface_images (VkgSurface surf) {
 	_create_surface_main_image		(surf);
 	_create_surface_secondary_images(surf);
 	_create_framebuffer				(surf);
@@ -184,8 +184,8 @@ void _create_surface_images (VkvgSurface surf) {
 #endif
 }
 
-VkvgSurface _create_surface(VkvgDevice dev, VkFormat format) {	
-	VkvgSurface surf = io_new(vkvg_surface); // todo: create with sync if device has sync
+VkgSurface _create_surface(VkgDevice dev, VkFormat format) {	
+	VkgSurface surf = io_new(vkg_surface); // todo: create with sync if device has sync
 
 	if (dev->status != VKE_STATUS_SUCCESS) {
 		surf->status = VKE_STATUS_DEVICE_ERROR;
@@ -209,7 +209,7 @@ VkvgSurface _create_surface(VkvgDevice dev, VkFormat format) {
 }
 
 //if fence sync, surf mutex must be locked.
-/*bool _surface_wait_cmd (VkvgSurface surf) {
+/*bool _surface_wait_cmd (VkgSurface surf) {
 	vke_log(VKE_LOG_INFO, "SURF: _surface__wait_flush_fence\n");
 #ifdef VKVG_ENABLE_VK_TIMELINE_SEMAPHORE
 	if (vke_timeline_wait (surf->dev->vke, surf->timeline, surf->timelineStep) == VK_SUCCESS)
@@ -225,8 +225,8 @@ VkvgSurface _create_surface(VkvgDevice dev, VkFormat format) {
 	return false;
 }*/
 //surface mutex must be locked to call this method, locking to guard also the surf->cmd local buffer usage.
-void _surface_submit_cmd (VkvgSurface surf) {
-	VkvgDevice dev = surf->dev;
+void _surface_submit_cmd (VkgSurface surf) {
+	VkgDevice dev = surf->dev;
 #ifdef VKVG_ENABLE_VK_TIMELINE_SEMAPHORE
 	io_sync(dev);
 	vke_cmd_submit_timelined (dev->gQueue, &surf->cmd, surf->timeline, surf->timelineStep, surf->timelineStep+1);
@@ -244,9 +244,9 @@ void _surface_submit_cmd (VkvgSurface surf) {
 
 
 #define max(x,y)
-void _transition_surf_images (VkvgSurface surf) {
+void _transition_surf_images (VkgSurface surf) {
 	io_sync(surf);
-	VkvgDevice dev = surf->dev;
+	VkgDevice dev = surf->dev;
 
 	//_surface_wait_cmd (surf);
 
@@ -270,14 +270,14 @@ void _transition_surf_images (VkvgSurface surf) {
 	io_unsync(surf);
 }
 
-void vkvg_surface_clear (VkvgSurface surf) {
+void vkg_surface_clear (VkgSurface surf) {
 	if (surf->status)
 		return;
 	_clear_surface(surf, VK_IMAGE_ASPECT_STENCIL_BIT|VK_IMAGE_ASPECT_COLOR_BIT);
 }
 
-VkvgSurface vkvg_surface_create (VkvgDevice dev, uint32_t width, uint32_t height){
-	VkvgSurface surf = _create_surface(dev, FB_COLOR_FORMAT);
+VkgSurface vkg_surface_create (VkgDevice dev, uint32_t width, uint32_t height){
+	VkgSurface surf = _create_surface(dev, FB_COLOR_FORMAT);
 	if (surf->status)
 		return surf;
 
@@ -290,12 +290,12 @@ VkvgSurface vkvg_surface_create (VkvgDevice dev, uint32_t width, uint32_t height
 	_transition_surf_images (surf);
 
 	surf->status = VKE_STATUS_SUCCESS;
-	vkvg_device_reference (surf->dev);
+	vkg_device_reference (surf->dev);
 	return surf;
 }
 
-VkvgSurface vkvg_surface_create_for_VkhImage (VkvgDevice dev, void* vkhImg) {
-	VkvgSurface surf = _create_surface(dev, FB_COLOR_FORMAT);
+VkgSurface vkg_surface_create_for_VkhImage (VkgDevice dev, void* vkhImg) {
+	VkgSurface surf = _create_surface(dev, FB_COLOR_FORMAT);
 	if (surf->status)
 		return surf;
 
@@ -320,13 +320,13 @@ VkvgSurface vkvg_surface_create_for_VkhImage (VkvgDevice dev, void* vkhImg) {
 	//_clear_surface						(surf, VK_IMAGE_ASPECT_STENCIL_BIT);
 
 	surf->status = VKE_STATUS_SUCCESS;
-	vkvg_device_reference (surf->dev);
+	vkg_device_reference (surf->dev);
 	return surf;
 }
 
 //TODO: it would be better to blit in original size and create ms final image with dest surf dims
-VkvgSurface vkvg_surface_create_from_bitmap (VkvgDevice dev, unsigned char* img, uint32_t width, uint32_t height) {
-	VkvgSurface surf = _create_surface(dev, FB_COLOR_FORMAT);
+VkgSurface vkg_surface_create_from_bitmap (VkgDevice dev, unsigned char* img, uint32_t width, uint32_t height) {
+	VkgSurface surf = _create_surface(dev, FB_COLOR_FORMAT);
 	if (surf->status)
 		return surf;
 	if (!img || width <= 0 || height <= 0) {
@@ -405,7 +405,7 @@ VkvgSurface vkvg_surface_create_from_bitmap (VkvgDevice dev, unsigned char* img,
 	surf->newSurf = false;
 
 	//create tmp context with rendering pipeline to create the multisample img
-	VkvgContext ctx = vkvg_create (surf);
+	VkgContext ctx = vkg_create (surf);
 
 /*	  VkClearAttachment ca = {VK_IMAGE_ASPECT_COLOR_BIT,0, { 0.0f, 0.0f, 0.0f, 0.0f }};
 	VkClearRect cr = {{{0,0},{surf->width,surf->height}},0,1};
@@ -419,34 +419,34 @@ VkvgSurface vkvg_surface_create_from_bitmap (VkvgDevice dev, unsigned char* img,
 	_update_descriptor_set (ctx, tmpImg, ctx->dsSrc);
 	_ensure_renderpass_is_started  (ctx);
 
-	vkvg_paint			(ctx);
-	vkvg_drop		(ctx);
+	vkg_paint			(ctx);
+	vkg_drop		(ctx);
 
 	vke_image_drop	(tmpImg);
 
 	surf->status = VKE_STATUS_SUCCESS;
-	vkvg_device_reference (surf->dev);
+	vkg_device_reference (surf->dev);
 	return surf;
 }
 
-VkvgSurface vkvg_surface_create_from_image (VkvgDevice dev, const char* filePath) {
+VkgSurface vkg_surface_create_from_image (VkgDevice dev, const char* filePath) {
 	int w = 0,
 		h = 0,
 		channels = 0;
 	unsigned char *img = stbi_load(filePath, &w, &h, &channels, 4);//force 4 components per pixel
 	if (!img){
 		vke_log(VKE_LOG_ERR, "Could not load texture from %s, %s\n", filePath, stbi_failure_reason());
-		return (VkvgSurface)&_no_mem_status;
+		return (VkgSurface)&_no_mem_status;
 	}
 
-	VkvgSurface surf = vkvg_surface_create_from_bitmap(dev, img, (uint32_t)w, (uint32_t)h);
+	VkgSurface surf = vkg_surface_create_from_bitmap(dev, img, (uint32_t)w, (uint32_t)h);
 
 	stbi_image_free (img);
 
 	return surf;
 }
 
-void vkvg_surface_drop(VkvgSurface surf)
+void vkg_surface_drop(VkgSurface surf)
 {
 	vkDestroyCommandPool(surf->dev->vke->vkdev, surf->cmdPool, NULL);
 	vkDestroyFramebuffer(surf->dev->vke->vkdev, surf->fb, NULL);
@@ -466,18 +466,18 @@ void vkvg_surface_drop(VkvgSurface surf)
 	vkDestroyFence (surf->dev->vke->vkdev, surf->flushFence, NULL);
 #endif
 
-	vkvg_device_drop(surf->dev);
+	vkg_device_drop(surf->dev);
 }
 
-VkvgSurface vkvg_surface_reference (VkvgSurface surf) {
-	return (VkvgSurface)io_grab(surf);
+VkgSurface vkg_surface_reference (VkgSurface surf) {
+	return (VkgSurface)io_grab(surf);
 }
 
-uint32_t vkvg_surface_get_reference_count (VkvgSurface surf) {
+uint32_t vkg_surface_get_reference_count (VkgSurface surf) {
 	return mx_refs(surf);
 }
 
-VkImage vkvg_surface_get_vk_image(VkvgSurface surf)
+VkImage vkg_surface_get_vk_image(VkgSurface surf)
 {
 	if (surf->status)
 		return NULL;
@@ -485,35 +485,35 @@ VkImage vkvg_surface_get_vk_image(VkvgSurface surf)
 		_explicit_ms_resolve(surf);
 	return vke_image_get_vkimage (surf->img);
 }
-void vkvg_surface_resolve (VkvgSurface surf){
+void vkg_surface_resolve (VkgSurface surf){
 	if (surf->status || !surf->dev->deferredResolve)
 		return;
 	_explicit_ms_resolve(surf);
 }
-VkFormat vkvg_surface_get_vk_format(VkvgSurface surf)
+VkFormat vkg_surface_get_vk_format(VkgSurface surf)
 {
 	if (surf->status)
 		return VK_FORMAT_UNDEFINED;
 	return surf->format;
 }
-uint32_t vkvg_surface_get_width (VkvgSurface surf) {
+uint32_t vkg_surface_get_width (VkgSurface surf) {
 	if (surf->status)
 		return 0;
 	return surf->width;
 }
-uint32_t vkvg_surface_get_height (VkvgSurface surf) {
+uint32_t vkg_surface_get_height (VkgSurface surf) {
 	if (surf->status)
 		return 0;
 	return surf->height;
 }
 
-VkeStatus vkvg_surface_write_to_png (VkvgSurface surf, const char* path){
+VkeStatus vkg_surface_write_to_png (VkgSurface surf, const char* path){
 	if (surf->status) {
-		vke_log(VKE_LOG_ERR, "vkvg_surface_write_to_png failed, invalid status: %d\n", surf->status);
+		vke_log(VKE_LOG_ERR, "vkg_surface_write_to_png failed, invalid status: %d\n", surf->status);
 		return VKE_STATUS_INVALID_STATUS;
 	}
 	if (surf->dev->status) {
-		vke_log(VKE_LOG_ERR, "vkvg_surface_write_to_png failed, invalid device status: %d\n", surf->dev->status);
+		vke_log(VKE_LOG_ERR, "vkg_surface_write_to_png failed, invalid device status: %d\n", surf->dev->status);
 		return VKE_STATUS_INVALID_STATUS;
 	}
 	if (surf->dev->pngStagFormat == VK_FORMAT_UNDEFINED) {
@@ -521,12 +521,12 @@ VkeStatus vkvg_surface_write_to_png (VkvgSurface surf, const char* path){
 		return VKE_STATUS_INVALID_FORMAT;
 	}
 	if (!path) {
-		vke_log(VKE_LOG_ERR, "vkvg_surface_write_to_png failed, null path\n");
+		vke_log(VKE_LOG_ERR, "vkg_surface_write_to_png failed, null path\n");
 		return VKE_STATUS_WRITE_ERROR;
 	}
 	io_sync(surf);
 	VkImageSubresourceLayers imgSubResLayers = {VK_IMAGE_ASPECT_COLOR_BIT,0,0,1};
-	VkvgDevice dev = surf->dev;
+	VkgDevice dev = surf->dev;
 
 	//RGBA to blit to, surf img is bgra
 	VkeImage stagImg;
@@ -607,20 +607,20 @@ VkeStatus vkvg_surface_write_to_png (VkvgSurface surf, const char* path){
 	return VKE_STATUS_SUCCESS;
 }
 
-VkeStatus vkvg_surface_write_to_memory (VkvgSurface surf, unsigned char* const bitmap){
+VkeStatus vkg_surface_write_to_memory (VkgSurface surf, unsigned char* const bitmap){
 	if (surf->status) {
-		vke_log(VKE_LOG_ERR, "vkvg_surface_write_to_memory failed, invalid status: %d\n", surf->status);
+		vke_log(VKE_LOG_ERR, "vkg_surface_write_to_memory failed, invalid status: %d\n", surf->status);
 		return VKE_STATUS_INVALID_STATUS;
 	}
 	if (!bitmap) {
-		vke_log(VKE_LOG_ERR, "vkvg_surface_write_to_memory failed, null path\n");
+		vke_log(VKE_LOG_ERR, "vkg_surface_write_to_memory failed, null path\n");
 		return VKE_STATUS_INVALID_IMAGE;
 	}
 
 	io_sync(surf);
 
 	VkImageSubresourceLayers imgSubResLayers = {VK_IMAGE_ASPECT_COLOR_BIT,0,0,1};
-	VkvgDevice dev = surf->dev;
+	VkgDevice dev = surf->dev;
 
 	//RGBA to blit to, surf img is bgra
 	VkeImage stagImg= vke_image_create ((VkeDevice)surf->dev,VK_FORMAT_B8G8R8A8_UNORM ,surf->width,surf->height,VK_IMAGE_TILING_LINEAR,

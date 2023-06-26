@@ -61,19 +61,19 @@ float vec2_slope (vec2 a, vec2 b) { return (b.y - a.y) / (b.x - a.x); }
 
 
 // convert double precision vector to single precision
-vkvg_inline	vec2 vec2d_to_vec2(vec2d vd){
+vkg_inline	vec2 vec2d_to_vec2(vec2d vd){
 	return (vec2){(float)vd.x,(float)vd.y};
 }
-vkvg_inline	bool vec4_equ (vec4 a, vec4 b){
+vkg_inline	bool vec4_equ (vec4 a, vec4 b){
 	return (EQUF(a.x,b.x)&EQUF(a.y,b.y)&EQUF(a.z,b.z)&EQUF(a.w,b.w));
 }
-vkvg_inline	vec2 mat2_mult_vec2 (mat2 m, vec2 v) {
+vkg_inline	vec2 mat2_mult_vec2 (mat2 m, vec2 v) {
 	return (vec2){
 		(m.row0.x * v.x) + (m.row0.y * v.y),
 		(m.row1.x * v.x) + (m.row1.y * v.y)
 	};
 }
-vkvg_inline	float mat2_det (mat2* m) {
+vkg_inline	float mat2_det (mat2* m) {
 	return (m->row0.x * m->row1.y) - (m->row0.y * m->row1.y);
 }
 

@@ -148,16 +148,16 @@ struct isock {
     }
 };
 
-ptr_impl(sock, mx, isock, isc);
+ptr_implement(sock, mx);
 
 sock::~sock() {
     close();
-    isc->ssl_cleanup();
+    data->ssl_cleanup();
 }
 
 ///
 void sock::set_timeout(i64 t) {
-    isc->timeout_ms = t;
+    data->timeout_ms = t;
 }
 
 sock &sock::establish() {
@@ -204,9 +204,9 @@ async sock::listen(uri url, lambda<bool(sock&)> fn) {
 }
 
 void sock::close() {
-    if (isc->connected) {
-        mbedtls_ssl_close_notify(&isc->ssl);
-        isc->connected = false;
+    if (data->connected) {
+        mbedtls_ssl_close_notify(&data->ssl);
+        data->connected = false;
     }
 }
 
@@ -214,7 +214,7 @@ bool sock::read_sz(u8 *v, size_t sz) {
     int st = 0;
     ///
     for (int len = int(sz); len > 0;) {
-        int rcv = mbedtls_ssl_read(&isc->ssl, &v[st], len);
+        int rcv = mbedtls_ssl_read(&data->ssl, &v[st], len);
         if (rcv <= 0)
             return false;
         len -= rcv;
@@ -241,22 +241,22 @@ array<char> sock::read_until(str s, int max_len) {
 }
 
 sock::operator bool() {
-    return isc->connected;
+    return data->connected;
 }
 
 bool sock::bind(str adapter, int port) {
     str    str_port = str::from_integer(port);
     symbol sym_port = symbol(str_port);
-    int res = mbedtls_net_bind(&isc->ctx, adapter ? adapter.cs() : "0.0.0.0",
+    int res = mbedtls_net_bind(&data->ctx, adapter ? adapter.cs() : "0.0.0.0",
                      sym_port, MBEDTLS_NET_PROTO_TCP);
     return res != 0;
 }
 
 sock sock::connect(uri url) {
-    str host = url.host();
-    int port = url.port();
-    sock res { sock::role::client, url };
-    isock *isc = res.isc;
+    str    host = url.host();
+    int    port = url.port();
+    sock   res { sock::role::client, url };
+    isock *isc  = res.data;
     /// this operation runs first and its cache is used by mbed
     int ret = mbedtls_ssl_setup(&isc->ssl, &isc->conf);
     if (ret != 0) {
@@ -294,8 +294,8 @@ sock sock::connect(uri url) {
 
 
 sock::sock(role r, uri addr) : sock() {
-    isc->role  = r;
-    isc->query = addr;
+    data->role  = r;
+    data->query = addr;
     ///
     assert(addr.proto() == "https");
     ///
@@ -303,21 +303,21 @@ sock::sock(role r, uri addr) : sock() {
     int i_port = addr.port();
     load_certs(s_addr);
     
-    if (isc->role == role::server)
+    if (data->role == role::server)
         bind(s_addr, i_port);
 }
 
 ssize_t sock::recv(unsigned char* buf, size_t len) {
-    return mbedtls_ssl_read(&isc->ssl, buf, len);
+    return mbedtls_ssl_read(&data->ssl, buf, len);
 }
 
 ssize_t sock::send(const unsigned char* buf, size_t len) {
-    return mbedtls_ssl_write(&isc->ssl, buf, len);
+    return mbedtls_ssl_write(&data->ssl, buf, len);
 }
 
 ssize_t sock::send(str templ, array<mx> args) {
     str val = str::format(templ.cs(), args);
-    return mbedtls_ssl_write(&isc->ssl, (const unsigned char*)val.cs(), val.len());
+    return mbedtls_ssl_write(&data->ssl, (const unsigned char*)val.cs(), val.len());
 }
 
 /// for already string-like memory; this could do something with the type on mx
@@ -326,32 +326,32 @@ ssize_t sock::send(mx &v) {
 }
 
 void sock::load_certs(str host) {
-    mbedtls_ssl_conf_dbg(&isc->conf, mbedtls_debug, stdout);
+    mbedtls_ssl_conf_dbg(&data->conf, mbedtls_debug, stdout);
     mbedtls_debug_set_threshold(4);
     
     int ret = mbedtls_ssl_config_defaults(
-        &isc->conf,
+        &data->conf,
         MBEDTLS_SSL_IS_CLIENT,
         MBEDTLS_SSL_TRANSPORT_STREAM,
         MBEDTLS_SSL_PRESET_DEFAULT);
     
     if (ret != 0) console.fault("mbedtls_ssl_config_defaults failed: {0}", { ret });
     
-    ret = mbedtls_ctr_drbg_seed(&isc->ctr_drbg, mbedtls_entropy_func, &isc->entropy,
+    ret = mbedtls_ctr_drbg_seed(&data->ctr_drbg, mbedtls_entropy_func, &data->entropy,
         (const unsigned char *)pers, strlen(pers));
     
-    mbedtls_ssl_conf_authmode(&isc->conf, MBEDTLS_SSL_VERIFY_REQUIRED);
-    mbedtls_ssl_conf_ca_chain(&isc->conf, &isc->cert_chain, NULL);
-    mbedtls_ssl_conf_rng(&isc->conf, mbedtls_ctr_drbg_random, &isc->ctr_drbg);
-    mbedtls_ssl_conf_min_version(&isc->conf, MBEDTLS_SSL_MAJOR_VERSION_3, MBEDTLS_SSL_MINOR_VERSION_3);  // TLS 1.2
+    mbedtls_ssl_conf_authmode(&data->conf, MBEDTLS_SSL_VERIFY_REQUIRED);
+    mbedtls_ssl_conf_ca_chain(&data->conf, &data->cert_chain, NULL);
+    mbedtls_ssl_conf_rng(&data->conf, mbedtls_ctr_drbg_random, &data->ctr_drbg);
+    mbedtls_ssl_conf_min_version(&data->conf, MBEDTLS_SSL_MAJOR_VERSION_3, MBEDTLS_SSL_MINOR_VERSION_3);  // TLS 1.2
     
     /// load cert and key based on role
-    if (isc->role == role::server) {
+    if (data->role == role::server) {
         /// replace "root_cert.pem" and "intermediate_cert.pem" with your actual file paths
-        if (mbedtls_x509_crt_parse_file(&isc->cert_chain, "ssl/public.pem") != 0)
+        if (mbedtls_x509_crt_parse_file(&data->cert_chain, "ssl/public.pem") != 0)
             console.fault("failed to parse public cert");
         /// private key
-        if (mbedtls_pk_parse_keyfile(&isc->pkey, "ssl/private.pem", null, null, null) != 0)
+        if (mbedtls_pk_parse_keyfile(&data->pkey, "ssl/private.pem", null, null, null) != 0)
             console.fault("failed to parse private key");
 
     } else {
@@ -364,54 +364,54 @@ void sock::load_certs(str host) {
                 break;
             }
             symbol file = symbol(p.cs());
-            if (mbedtls_x509_crt_parse_file(&isc->cert_chain, file) != 0)
+            if (mbedtls_x509_crt_parse_file(&data->cert_chain, file) != 0)
                 console.fault("failed to parse trust: {0}", { file });
         }
     }
 }
 
 message::message(int server_code) : message() {
-    m.code = mx(server_code);
+    data->code = mx(server_code);
 }
 
 message::message(symbol text) : message() {
-    m.content = text;
-    m.code    = 200;
+    data->content = text;
+    data->code    = 200;
 }
 
 message::message(str text) : message() {
-    m.content = text;
-    m.code    = 200;
+    data->content = text;
+    data->code    = 200;
 }
 
 message::message(path p, mx modified_since) : message() {
-    m.content = p.read<str>();
-    m.headers["Content-Type"] = p.mime_type();
-    m.code    = 200;
+    data->content = p.read<str>();
+    data->headers["Content-Type"] = p.mime_type();
+    data->code    = 200;
 }
 
 message::message(mx content, map<mx> headers, uri query) : message() {
-    m.query   = query;
-    m.headers = headers;
-    m.content = content; /// assuming the content isnt some error thing
-    m.code    = 200;
+    data->query   = query;
+    data->headers = headers;
+    data->content = content; /// assuming the content isnt some error thing
+    data->code    = 200;
 }
 
 message::message(uri url, map<mx> headers) : message() {
-    m.query   = url;
-    m.headers = headers; // ion::pair<ion::mx, ion::mx>    ion::pair<ion::mx, ion::mx>
+    data->query   = url;
+    data->headers = headers; // ion::pair<ion::mx, ion::mx>    ion::pair<ion::mx, ion::mx>
 }
 
 /// important to note we do not keep holding onto this socket
 message::message(sock &sc) : message() {
     read_headers(sc);
     //console.log("received headers:");
-    //m.headers.print();
+    //data->headers.print();
     read_content(sc);
-    m.code = m.headers["Status"];
+    data->code = data->headers["Status"];
 }
 
-uri message::query() { return m.query; }
+uri message::query() { return data->query; }
 
 bool message::read_headers(sock &sc) {
     int line = 0;
@@ -426,21 +426,21 @@ bool message::read_headers(sock &sc) {
             break;
         ///
         if (line++ == 0) {
-            str hello = str(rbytes.data(), int(sz - 2));
+            str hello = str(rbytes.data, int(sz - 2));
             i32  code = 0;
             auto   sp = hello.split(" ");
             if (hello.len() >= 12) {
                 if (sp.len() >= 2)
                     code = i32(sp[1].integer_value());
             }
-            m.headers["Status"] = str::from_integer(code);
+            data->headers["Status"] = str::from_integer(code);
             ///
         } else {
             for (size_t i = 0; i < sz; i++) {
                 if (rbytes[i] == ':') {
                     str k = str(&rbytes[0], int(i));
                     str v = str(&rbytes[i + 2], int(sz) - int(k.len()) - 2 - 2);
-                    m.headers[k] = v;
+                    data->headers[k] = v;
                     break;
                 }
             }
@@ -454,9 +454,9 @@ bool message::read_content(sock &sc) {
     str              te = "Transfer-Encoding";
     str              cl = "Content-Length";
     str              ce = "Content-Encoding";
-    str        encoding = m.headers.count(te) ? str(m.headers[ce].grab()) : str();
-    int            clen = int(m.headers.count(cl) ? str(m.headers[cl].grab()).integer_value() : -1);
-    bool        chunked = encoding && m.headers[te] == "chunked";
+    str        encoding =     data->headers->count(te) ? str(data->headers[ce].grab()) : str();
+    int            clen = int(data->headers->count(cl) ? str(data->headers[cl].grab()).integer_value() : -1);
+    bool        chunked = encoding && data->headers[te] == "chunked";
     num     content_len = clen;
     num            rlen = 0;
     const num     r_max = 1024;
@@ -482,7 +482,7 @@ bool message::read_content(sock &sc) {
                     break;
                 }
                 std::stringstream ss;
-                ss << std::hex << rbytes.data();
+                ss << std::hex << rbytes.data;
                 ss >> content_len;
                 if (content_len == 0) /// this will effectively drop out of the while loop
                     break;
@@ -510,7 +510,7 @@ bool message::read_content(sock &sc) {
     }
     ///
     mx    rcv = error ? mx() : mx(v_data);
-    str ctype = m.headers.count("Content-Type") ? str(m.headers["Content-Type"].grab()) : str("");
+    str ctype = data->headers->count("Content-Type") ? str(data->headers["Content-Type"].grab()) : str("");
 
     ///
     if (ctype.split(";").count("application/json")) {
@@ -523,14 +523,14 @@ bool message::read_content(sock &sc) {
         size_t sz = rcv.byte_len();
         array<char> js { rcv };
         var   obj = var::json(js);
-        m.content = obj;
+        data->content = obj;
     }
     else if (ctype.starts_with("text/")) {
-        m.content = str(&rcv.ref<char>(), int(rcv.byte_len()));
+        data->content = str(&rcv.ref<char>(), int(rcv.byte_len()));
     } else {
         /// other non-text types must be supported, not going to just leave them as array for now
         assert(v_data.len() == 0);
-        m.content = var(null);
+        data->content = var(null);
     }
     return !error;
 }
@@ -562,11 +562,11 @@ message message::response(uri query, mx code, mx content, map<mx> headers) {
 }
 
 message::operator bool() {
-    type_t ct = m.code.type();
+    type_t ct = data->code.type();
     assert(ct == typeof(i32) || ct == typeof(str));
-    return (m.query.mtype() != method::undefined) &&
-    ((ct == typeof(i32) && int(m.code) >= 200 && int(m.code) < 300) ||
-     (ct == typeof(str) && m.code.byte_len()));
+    return (data->query.mtype() != method::undefined) &&
+    ((ct == typeof(i32) && int(data->code) >= 200 && int(data->code) < 300) ||
+     (ct == typeof(str) && data->code.byte_len()));
 }
 
 bool message::operator!() { return !(operator bool()); }
@@ -585,20 +585,20 @@ symbol message::code_symbol(int code) {
         {403, "Forbidden"}, {404, "Not Found"}, {500, "Internal Server Error"},
         {0,   "Unknown"}
     };
-    size_t count  = symbols.count(code);
+    size_t count  = symbols->count(code);
     symbol result = count ? symbols[code] : symbols[0]; /// map doesnt work.
     return result;
 }
 
 bool message::write_status(sock &sc) {
     mx status = "Status";
-    int  code = m.headers.count(status) ? int(m.headers[status]) : (m.code ? int(m.code) : int(200));
+    int  code = data->headers->count(status) ? int(data->headers[status]) : (data->code ? int(data->code) : int(200));
     return sc.send("HTTP/1.1 {0} {1}\r\n", { code, code_symbol(code) });
 }
 
 ///  code is in headers.
 bool message::write_headers(sock &sc) {
-    for (auto &[v, k]: m.headers) { /// mx key, mx value
+    for (auto &[v, k]: data->headers) { /// mx key, mx value
         /// check if header is valid data; holding ref to mx
         /// requires one to defer valid population of a
         /// resulting header injected by query
@@ -621,60 +621,60 @@ bool message::write_headers(sock &sc) {
 }
 
 bool message::write(sock &sc) {
-    if (m.content) {
-        type_t ct = m.content.type();
+    if (data->content) {
+        type_t ct = data->content.type();
         /// map of mx must be json compatible, or be structured in that process
-        if (!m.headers.count("Content-Type") && (ct == typeof(map<mx>) || ct == typeof(mx)))
-            m.headers["Content-Type"] = "application/json";
+        if (!data->headers->count("Content-Type") && (ct == typeof(map<mx>) || ct == typeof(mx)))
+            data->headers["Content-Type"] = "application/json";
         ///
-        m.headers["Connection"] = "keep-alive";
+        data->headers["Connection"] = "keep-alive";
         
         /// do different things based on type
-        if (m.headers.count("Content-Type") && m.headers["Content-Type"] == "application/json") {
+        if (data->headers->count("Content-Type") && data->headers["Content-Type"] == "application/json") {
             /// json transfer; content can be anything, its just mx..
             /// so we convert to json explicitly. var is just an illusion as you can see friend.
-            str json = var(m.content).stringify();
-            m.headers["Content-Length"] = str(json.len());
+            str json = var(data->content).stringify();
+            data->headers["Content-Length"] = str(json.len());
             write_headers(sc);
             return sc.send(json);
             ///
         } else if (ct == typeof(map<mx>)) {
             /// post fields transfer
-            str post = uri::encode_fields(map<mx>(m.content));
-            m.headers["Content-Length"] = str::from_integer(post.len());
+            str post = uri::encode_fields(map<mx>(data->content));
+            data->headers["Content-Length"] = str::from_integer(post.len());
             write_headers(sc);
             return sc.send(post);
             ///
         } else if (ct == typeof(u8)) { /// different from char.  char is for text and u8 is for binary.
             /// binary transfer
-            m.headers["Content-Length"] = str::from_integer(m.content.byte_len()); /// size() is part of mx object, should always return it size in its own unit, but a byte_size is there too
-            return sc.send(m.content);
+            data->headers["Content-Length"] = str::from_integer(data->content.byte_len()); /// size() is part of mx object, should always return it size in its own unit, but a byte_size is there too
+            return sc.send(data->content);
             ///
         } else if (ct == typeof(null_t)) {
             /// can be null_t
-            m.headers["Content-Length"] = str("0");
-            console.log("sending Content-Length of {0}", { m.headers["Content-Length"] });
+            data->headers["Content-Length"] = str("0");
+            console.log("sending Content-Length of {0}", { data->headers["Content-Length"] });
             return write_headers(sc);
             ///
         } else {
             /// cstring
             assert(ct == typeof(char));
-            m.headers["Content-Length"] = str::from_integer(m.content.byte_len());
-            console.log("sending Content-Length of {0}", { m.headers["Content-Length"] });
+            data->headers["Content-Length"] = str::from_integer(data->content.byte_len());
+            console.log("sending Content-Length of {0}", { data->headers["Content-Length"] });
             write_headers(sc);
-            return sc.send(m.content);
+            return sc.send(data->content);
         }
     }
-    m.headers["Content-Length"] = 0;
-    m.headers["Connection"]     = "keep-alive";
+    data->headers["Content-Length"] = 0;
+    data->headers["Connection"]     = "keep-alive";
     return write_headers(sc);
 }
 
-str message::text() { return m.content.to_string(); }
+str message::text() { return data->content.to_string(); }
 
 /// structure cookies into usable format
 map<str> message::cookies() {
-    str  dec = uri::decode(m.headers["Set-Cookie"].grab());
+    str  dec = uri::decode(data->headers["Set-Cookie"].grab());
     str  all = dec.split(",")[0];
     auto sep = all.split(";");
     auto res = map<str>();
@@ -692,10 +692,10 @@ map<str> message::cookies() {
 }
 
 mx &message::operator[](symbol key) {
-    return m.headers[key];
+    return data->headers[key];
 }
 
-mx &message::header(mx key) { return m.headers[key]; }
+mx &message::header(mx key) { return data->headers[key]; }
 
 async service(uri bind, lambda<message(message)> fn_process) {
     return sock::listen(bind, [fn_process](sock &sc) -> bool {
@@ -708,7 +708,7 @@ async service(uri bind, lambda<message(message)> fn_process) {
             if (!msg) break;
             
             /// its 2 chars off because read_until stops at the phrase
-            uri req_uri = uri::parse(str(msg.data(), int(msg.len() - 2)));
+            uri req_uri = uri::parse(str(msg.data, int(msg.len() - 2)));
             ///
             if (req_uri) {
                 console.log("request: {0}", { req_uri.resource() });
@@ -729,9 +729,9 @@ future request(uri url, map<mx> args) {
         map<mx> st_headers;
         mx    null_content; /// consider null static on var, assertions on its write by sequence on debug
         map<mx>         &a = *(map<mx> *)&args; /// so lame.  stop pretending that this cant change C++
-        map<mx>    headers = a.count("headers") ? map<mx>(a["headers"]) : st_headers;
-        mx         content = a.count("content") ?         a["content"]  : null_content;
-        method        type = a.count("method")  ?  method(a["method"])  : method(method::get);
+        map<mx>    headers = a->count("headers") ? map<mx>(a["headers"]) : st_headers;
+        mx         content = a->count("content") ?         a["content"]  : null_content;
+        method        type = a->count("method")  ?  method(a["method"])  : method(method::get);
         uri          query = url.methodize(type);
         
         ///

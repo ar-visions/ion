@@ -92,7 +92,7 @@ i64 millis() {
 }
 
 /// attach arbs to memory (uses a pointer)
-attachment *memory::attach(::symbol id, void *data, func<void()> release) {
+attachment *memory::attach(ion::symbol id, void *data, func<void()> release) {
     if (!atts)
          atts = new doubly<attachment>();
     doubly<attachment> &a = *atts;
@@ -100,7 +100,7 @@ attachment *memory::attach(::symbol id, void *data, func<void()> release) {
     return &a->last();
 }
 
-attachment *memory::find_attachment(::symbol id) {
+attachment *memory::find_attachment(ion::symbol id) {
     if (!atts) return nullptr;
     /// const char * symbol should work fine for the cases used
     for (attachment &att:*atts)
@@ -163,7 +163,7 @@ void memory::clear() {
 }
 
 memory *memory::stringify(cstr cs, size_t len, size_t rsv, bool constant, type_t ctype, i64 id) {
-    ::symbol sym = (::symbol)(cs ? cs : "");
+    ion::symbol sym = (ion::symbol)(cs ? cs : "");
     if (constant) {
         if(!ctype->symbols)
             ctype->symbols = new symbol_data { };
@@ -191,7 +191,7 @@ memory *memory::stringify(cstr cs, size_t len, size_t rsv, bool constant, type_t
 memory *memory::string (std::string s) { return stringify(cstr(s.c_str()), s.length(), 0, false, typeof(char), 0); }
 memory *memory::cstring(cstr s)        { return stringify(cstr(s),         strlen(s),  0, false, typeof(char), 0); }
 
-memory *memory::symbol (::symbol s, type_t ty, i64 id) {
+memory *memory::symbol (ion::symbol s, type_t ty, i64 id) {
     return stringify(cstr(s), strlen(s), 0, true, ty, id);
 }
 
@@ -309,7 +309,7 @@ void chdir(std::string c) {
 #endif
 }
 
-memory* mem_symbol(::symbol cs, type_t ty, i64 id) {
+memory* mem_symbol(ion::symbol cs, type_t ty, i64 id) {
     return memory::symbol(cs, ty, id);
 }
 

@@ -1,4 +1,4 @@
-﻿#include <vkg/vkvg_internal.h>
+﻿#include <vkg/internal.hh>
 
 #define GetInstProcAddress(inst, func)(PFN_##func)vkGetInstanceProcAddr(inst, #func);
 
@@ -7,7 +7,7 @@
 #include "shaders.h"
 
 #ifdef VKVG_WIRED_DEBUG
-vkvg_wired_debug_mode vkvg_wired_debug = vkvg_wired_debug_mode_normal;
+vkg_wired_debug_mode vkg_wired_debug = vkg_wired_debug_mode_normal;
 #endif
 
 PFN_vkCmdBindPipeline			CmdBindPipeline;
@@ -33,13 +33,13 @@ PFN_vkResetFences				ResetFences;
 PFN_vkResetCommandBuffer		ResetCommandBuffer;
 
 //TODO:save/reload cache in user temp directory
-void _device_create_pipeline_cache(VkvgDevice dev){
+void _device_create_pipeline_cache(VkgDevice dev){
 
 	VkPipelineCacheCreateInfo pipelineCacheCreateInfo = {.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO};
 	VK_CHECK_RESULT(vkCreatePipelineCache(dev->vke->vkdev, &pipelineCacheCreateInfo, NULL, &dev->pipelineCache));
 }
 
-VkRenderPass _device_createRenderPassNoResolve(VkvgDevice dev, VkAttachmentLoadOp loadOp, VkAttachmentLoadOp stencilLoadOp)
+VkRenderPass _device_createRenderPassNoResolve(vkg_device *dev, VkAttachmentLoadOp loadOp, VkAttachmentLoadOp stencilLoadOp)
 {
 	VkAttachmentDescription attColor = {
 					.format = FB_COLOR_FORMAT,
@@ -93,7 +93,9 @@ VkRenderPass _device_createRenderPassNoResolve(VkvgDevice dev, VkAttachmentLoadO
 	VK_CHECK_RESULT(vkCreateRenderPass(dev->vke->vkdev, &renderPassInfo, NULL, &rp));
 	return rp;
 }
-VkRenderPass _device_createRenderPassMS(VkvgDevice dev, VkAttachmentLoadOp loadOp, VkAttachmentLoadOp stencilLoadOp)
+
+/// move to vke.
+VkRenderPass _device_createRenderPassMS(vkg_device *dev, VkAttachmentLoadOp loadOp, VkAttachmentLoadOp stencilLoadOp)
 {
 	VkAttachmentDescription attColor = {
 					.format = FB_COLOR_FORMAT,
@@ -159,7 +161,7 @@ VkRenderPass _device_createRenderPassMS(VkvgDevice dev, VkAttachmentLoadOp loadO
 	return rp;
 }
 
-void _device_setupPipelines(VkvgDevice dev)
+void _device_setupPipelines(vkg_device *dev)
 {
 	VkGraphicsPipelineCreateInfo pipelineCreateInfo = { .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
 				.renderPass = dev->renderPass };
@@ -253,15 +255,15 @@ void _device_setupPipelines(VkvgDevice dev)
 	VkShaderModule modVert, modFrag;
 #endif
 	VkShaderModuleCreateInfo createInfo = { .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-											.pCode = (uint32_t*)vkvg_main_vert_spv,
-											.codeSize = vkvg_main_vert_spv_len };
+											.pCode = (uint32_t*)vkg_main_vert_spv,
+											.codeSize = vkg_main_vert_spv_len };
 	VK_CHECK_RESULT(vkCreateShaderModule(dev->vke->vkdev, &createInfo, NULL, &modVert));
 #if defined(VKVG_LCD_FONT_FILTER) && defined(FT_CONFIG_OPTION_SUBPIXEL_RENDERING)
-	createInfo.pCode = (uint32_t*)vkvg_main_lcd_frag_spv;
-	createInfo.codeSize = vkvg_main_lcd_frag_spv_len;
+	createInfo.pCode = (uint32_t*)vkg_main_lcd_frag_spv;
+	createInfo.codeSize = vkg_main_lcd_frag_spv_len;
 #else
-	createInfo.pCode = (uint32_t*)vkvg_main_frag_spv;
-	createInfo.codeSize = vkvg_main_frag_spv_len;
+	createInfo.pCode = (uint32_t*)vkg_main_frag_spv;
+	createInfo.codeSize = vkg_main_frag_spv_len;
 #endif
 	VK_CHECK_RESULT(vkCreateShaderModule(dev->vke->vkdev, &createInfo, NULL, &modFrag));
 
@@ -352,7 +354,7 @@ void _device_setupPipelines(VkvgDevice dev)
 	vkDestroyShaderModule(dev->vke->vkdev, modFrag, NULL);
 }
 
-void _device_createDescriptorSetLayout (VkvgDevice dev) {
+void _device_createDescriptorSetLayout (vkg_device *dev) {
 
 	VkDescriptorSetLayoutBinding dsLayoutBinding =
 		{0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,VK_SHADER_STAGE_FRAGMENT_BIT, NULL};
@@ -378,15 +380,15 @@ void _device_createDescriptorSetLayout (VkvgDevice dev) {
 	VK_CHECK_RESULT(vkCreatePipelineLayout(dev->vke->vkdev, &pipelineLayoutCreateInfo, NULL, &dev->pipelineLayout));
 }
 
-void _device_wait_idle (VkvgDevice dev) {
+void _device_wait_idle (vkg_device *dev) {
 	vkDeviceWaitIdle (dev->vke->vkdev);
 }
-void _device_wait_and_reset_device_fence (VkvgDevice dev) {
+void _device_wait_and_reset_device_fence (vkg_device *dev) {
 	vkWaitForFences (dev->vke->vkdev, 1, &dev->fence, VK_TRUE, UINT64_MAX);
 	ResetFences (dev->vke->vkdev, 1, &dev->fence);
 }
 
-bool _device_try_get_cached_context (VkvgDevice dev, VkvgContext* pCtx) {
+bool _device_try_get_cached_context (vkg_device *dev, vkg_context* pCtx) {
 	io_sync(dev);
 
 	if (dev->cachedContextCount) {
@@ -421,8 +423,8 @@ bool _device_try_get_cached_context (VkvgDevice dev, VkvgContext* pCtx) {
 void _cached_ctx_destroy(_cached_ctx *cur) {
 }
 
-void _device_store_context (VkvgContext ctx) {
-	VkvgDevice dev = ctx->dev;
+void _device_store_context (vkg_context *ctx) {
+	VkgDevice dev = ctx->dev;
 
 	mx_sync(dev);
 
@@ -439,13 +441,14 @@ void _device_store_context (VkvgContext ctx) {
 	vke_log(VKE_LOG_THREAD,"store context: %p, thd:%p cached ctx: %d\n", cur->ctx, (void*)cur->thread, dev->cachedContextCount);
 	io_unsync(dev);
 }
-void _device_submit_cmd (VkvgDevice dev, VkCommandBuffer* cmd, VkFence fence) {
+
+void _device_submit_cmd (vkg_device *dev, VkCommandBuffer* cmd, VkFence fence) {
 	mx_sync(dev);
 	vke_cmd_submit (dev->gQueue, cmd, fence);
 	io_unsync(dev);
 }
 
-bool _device_init_function_pointers (VkvgDevice dev) {
+bool _device_init_function_pointers (vkg_device *dev) {
 #if defined(DEBUG) && defined (VKVG_DBG_UTILS)
 	if (vkGetInstanceProcAddr(dev->vke->app->inst, "vkSetDebugUtilsObjectNameEXT")==VK_NULL_HANDLE){
 		vke_log(VKE_LOG_ERR, "vkvg create device failed: 'VK_EXT_debug_utils' has to be loaded for Debug build\n");
@@ -453,8 +456,8 @@ bool _device_init_function_pointers (VkvgDevice dev) {
 	}
 	vke_device_init_debug_utils (dev->vke);
 #endif
-	VkDevice vkdev = dev->vke->vkdev;
-	VkInstance inst = dev->app->inst;
+	VkDevice   vkdev = dev->vke->vkdev;
+	VkInstance inst  = dev->app->inst;
 	CmdBindPipeline			= GetVkProcAddress(vkdev, inst, vkCmdBindPipeline);
 	CmdBindDescriptorSets	= GetVkProcAddress(vkdev, inst, vkCmdBindDescriptorSets);
 	CmdBindIndexBuffer		= GetVkProcAddress(vkdev, inst, vkCmdBindIndexBuffer);
@@ -475,7 +478,7 @@ bool _device_init_function_pointers (VkvgDevice dev) {
 	return true;
 }
 
-void _device_create_empty_texture (VkvgDevice dev, VkFormat format, VkImageTiling tiling) {
+void _device_create_empty_texture (vkg_device *dev, VkFormat format, VkImageTiling tiling) {
 	//create empty image to bind to context source descriptor when not in use
 	dev->emptyImg = vke_image_create(dev->vke,format,16,16,tiling,VKE_MEMORY_USAGE_GPU_ONLY,
 									 VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
@@ -490,7 +493,7 @@ void _device_create_empty_texture (VkvgDevice dev, VkFormat format, VkImageTilin
 	vke_cmd_end (dev->cmd);
 	_device_submit_cmd (dev, &dev->cmd, dev->fence);
 }
-void _device_check_best_image_tiling (VkvgDevice dev, VkFormat format) {
+void _device_check_best_image_tiling (vkg_device *dev, VkFormat format) {
 	VkFlags stencilFormats[] = { VK_FORMAT_S8_UINT, VK_FORMAT_D16_UNORM_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_D32_SFLOAT_S8_UINT };
 	VkFormatProperties phyStencilProps = { 0 }, phyImgProps = { 0 };
 
@@ -514,9 +517,9 @@ void _device_check_best_image_tiling (VkvgDevice dev, VkFormat format) {
 	if (dev->pngStagFormat == VK_FORMAT_UNDEFINED)
 		vke_log(VKE_LOG_DEBUG, "vkvg create device failed: no suitable image format for png write\n");
 
-	dev->stencilFormat = VK_FORMAT_UNDEFINED;
-	dev->stencilAspectFlag = VK_IMAGE_ASPECT_STENCIL_BIT;
-	dev->supportedTiling = 0xff;
+	dev->stencilFormat 		= VK_FORMAT_UNDEFINED;
+	dev->stencilAspectFlag 	= VK_IMAGE_ASPECT_STENCIL_BIT;
+	dev->supportedTiling 	= 0xff;
 	
 	vkGetPhysicalDeviceFormatProperties(dev->vke->phyinfo->gpu, format, &phyImgProps);
 	
@@ -550,7 +553,7 @@ void _device_check_best_image_tiling (VkvgDevice dev, VkFormat format) {
 	vke_log(VKE_LOG_ERR, "vkvg create device failed: image format not supported: %d\n", format);
 }
 
-void _dump_image_format_properties (VkvgDevice dev, VkFormat format) {
+void _dump_image_format_properties (vkg_device *dev, VkFormat format) {
 	/*VkImageFormatProperties imgProps;
 	VK_CHECK_RESULT(vkGetPhysicalDeviceImageFormatProperties(dev->vke->phyinfo->gpu,
 															 format, VK_IMAGE_TYPE_2D, VKVG_TILING,
@@ -584,7 +587,7 @@ if (vke_phyinfo_try_get_extension_properties(pi, #ext, NULL))	\
 	enabledExts[enabledExtsCount++] = #ext;						\
 }
 
-void vkvg_device_free(VkvgDevice dev) {
+void VkgDevice::free(VkgDevice dev) {
 	if (dev->cachedContextCount > 0) { /// i cant wait to see what this brings
 		_cached_ctx* cur = dev->cachedContextLast;
 		while (cur) {
@@ -639,7 +642,7 @@ void vkvg_device_free(VkvgDevice dev) {
 }
 
 /// experiment with calling this. // todo
-void vkvg_device_set_context_cache_size (VkvgDevice dev, uint32_t maxCount) {
+void VkgDevice::set_context_cache_size (VkgDevice dev, uint32_t maxCount) {
 	if (maxCount == dev->cachedContextMaxCount)
 		return;
 
@@ -671,7 +674,7 @@ bool _get_dev_extension_is_supported (VkExtensionProperties* pExtensionPropertie
 	}\
 }
 
-VkeStatus vkvg_get_required_device_extensions (VkPhysicalDevice gpu, const char** pExtensions, uint32_t* pExtCount) {
+VkeStatus vkg_get_required_device_extensions (VkPhysicalDevice gpu, const char** pExtensions, uint32_t* pExtCount) {
 	VkExtensionProperties* pExtensionProperties;
 	uint32_t extensionCount;
 
@@ -718,7 +721,7 @@ VkeStatus vkvg_get_required_device_extensions (VkPhysicalDevice gpu, const char*
 }
 
 //enabledFeature12 is guarantied to be the first in pNext chain
-const void* vkvg_get_device_requirements (VkPhysicalDeviceFeatures* pEnabledFeatures) {
+const void* vkg_get_device_requirements (VkPhysicalDeviceFeatures* pEnabledFeatures) {
 
 	pEnabledFeatures->fillModeNonSolid	= VK_TRUE;
 	pEnabledFeatures->sampleRateShading	= VK_TRUE;
@@ -760,105 +763,104 @@ const void* vkvg_get_device_requirements (VkPhysicalDeviceFeatures* pEnabledFeat
 	return pNext;
 }
 
-VkvgDevice vkvg_device_create(VkeDevice vke, VkSampleCountFlagBits samples, bool defer_resolve) {
+VkgDevice::VkgDevice(VkeDevice vke, VkSampleCountFlagBits samples, bool defer_resolve) {
 	/// construct with method and arguments; also sets ref count and mutex
-	VkvgDevice dev = io_new(vkvg_device);
-	dev->vke       		 = vke;
-	dev->samples   		 = vke_max_samples(samples);
-	dev->deferredResolve = (dev->samples == VK_SAMPLE_COUNT_1_BIT) ? false : defer_resolve;
-	dev->cachedContextMaxCount = VKVG_MAX_CACHED_CONTEXT_COUNT;
+	data->vke       		 = vke;
+	data->samples   		 = vke_max_samples(samples);
+	data->deferredResolve = (data->samples == VK_SAMPLE_COUNT_1_BIT) ? false : defer_resolve;
+	data->cachedContextMaxCount = VKVG_MAX_CACHED_CONTEXT_COUNT;
 
 	int p_index = vke_device_present_index(vke);
-	vke_log(VKE_LOG_INFO, "vkvg_device_with_vke: qFam = %d; qIdx = %d\n", p_index, 0);
+	vke_log(VKE_LOG_INFO, "vkg_device_with_vke: qFam = %d; qIdx = %d\n", p_index, 0);
 
 #if VKVG_DBG_STATS
-	dev->debug_stats = (vkvg_debug_stats_t) {0};
+	data->debug_stats = (vkg_debug_stats) {0};
 #endif
 	VkFormat format = FB_COLOR_FORMAT;
-	_device_check_best_image_tiling(dev, format);
-	if (dev->status != VKE_STATUS_SUCCESS)
+	_device_check_best_image_tiling(data, format);
+	if (data->status != VKE_STATUS_SUCCESS)
 		return NULL;
 
-	if (!_device_init_function_pointers (dev)){
-		dev->status = VKE_STATUS_NULL_POINTER;
+	if (!_device_init_function_pointers (data)){
+		data->status = VKE_STATUS_NULL_POINTER;
 		return NULL;
 	}
 
-	dev->gQueue = vke_queue_create (dev->vke, p_index, 0);
-	//mtx_init (&dev->gQMutex, mtx_plain);
+	data->gQueue = vke_queue_create (data->vke, p_index, 0);
+	//mtx_init (&data->gQMutex, mtx_plain);
 
 	VmaAllocatorCreateInfo allocatorInfo = {
 		.physicalDevice = vke->phyinfo->gpu,
 		.device 		= vke->vkdev
 	};
-	vmaCreateAllocator(&allocatorInfo, (VmaAllocator*)&dev->vke->allocator);
+	vmaCreateAllocator(&allocatorInfo, (VmaAllocator*)&data->vke->allocator);
 
-	dev->cmdPool= vke_cmd_pool_create		(dev->vke, dev->gQueue->familyIndex, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
-	dev->cmd	= vke_cmd_buff_create		(dev->vke, dev->cmdPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
-	dev->fence	= vke_fence_create_signaled (dev->vke);
+	data->cmdPool	= vke_cmd_pool_create		(data->vke, data->gQueue->familyIndex, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+	data->cmd		= vke_cmd_buff_create		(data->vke, data->cmdPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+	data->fence		= vke_fence_create_signaled (data->vke);
 
-	_device_create_pipeline_cache		(dev);
-	_fonts_cache_create					(dev);
-	if (dev->deferredResolve || dev->samples == VK_SAMPLE_COUNT_1_BIT){
-		dev->renderPass					= _device_createRenderPassNoResolve (dev, VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_LOAD_OP_LOAD);
-		dev->renderPass_ClearStencil	= _device_createRenderPassNoResolve (dev, VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_LOAD_OP_CLEAR);
-		dev->renderPass_ClearAll		= _device_createRenderPassNoResolve (dev, VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_LOAD_OP_CLEAR);
+	_device_create_pipeline_cache		(data);
+	_fonts_cache_create					(data);
+
+	if (data->deferredResolve || data->samples == VK_SAMPLE_COUNT_1_BIT) {
+		data->renderPass				= _device_createRenderPassNoResolve (data, VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_LOAD_OP_LOAD);
+		data->renderPass_ClearStencil	= _device_createRenderPassNoResolve (data, VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_LOAD_OP_CLEAR);
+		data->renderPass_ClearAll		= _device_createRenderPassNoResolve (data, VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_LOAD_OP_CLEAR);
 	} else {
-		dev->renderPass					= _device_createRenderPassMS (dev, VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_LOAD_OP_LOAD);
-		dev->renderPass_ClearStencil	= _device_createRenderPassMS (dev, VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_LOAD_OP_CLEAR);
-		dev->renderPass_ClearAll		= _device_createRenderPassMS (dev, VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_LOAD_OP_CLEAR);
+		data->renderPass				= _device_createRenderPassMS (data, VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_LOAD_OP_LOAD);
+		data->renderPass_ClearStencil	= _device_createRenderPassMS (data, VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_LOAD_OP_CLEAR);
+		data->renderPass_ClearAll		= _device_createRenderPassMS (data, VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_LOAD_OP_CLEAR);
 	}
-	_device_createDescriptorSetLayout	(dev);
-	_device_setupPipelines				(dev);
-	_device_create_empty_texture		(dev, format, dev->supportedTiling);
+	_device_createDescriptorSetLayout	(data);
+	_device_setupPipelines				(data);
+	_device_create_empty_texture		(data, format, data->supportedTiling);
 
 #ifdef DEBUG
+
 	#if defined(__linux__) && defined(__GLIBC__)
 		_linux_register_error_handler ();
 	#endif
-	#ifdef VKVG_DBG_UTILS
-		vke_device_set_object_name(dev->vke, VK_OBJECT_TYPE_COMMAND_POOL, (uint64_t)dev->cmdPool, "Device Cmd Pool");
-		vke_device_set_object_name(dev->vke, VK_OBJECT_TYPE_COMMAND_BUFFER, (uint64_t)dev->cmd, "Device Cmd Buff");
-		vke_device_set_object_name(dev->vke, VK_OBJECT_TYPE_FENCE, (uint64_t)dev->fence, "Device Fence");
-		vke_device_set_object_name(dev->vke, VK_OBJECT_TYPE_RENDER_PASS, (uint64_t)dev->renderPass, "RP load img/stencil");
-		vke_device_set_object_name(dev->vke, VK_OBJECT_TYPE_RENDER_PASS, (uint64_t)dev->renderPass_ClearStencil, "RP clear stencil");
-		vke_device_set_object_name(dev->vke, VK_OBJECT_TYPE_RENDER_PASS, (uint64_t)dev->renderPass_ClearAll, "RP clear all");
 
-		vke_device_set_object_name(dev->vke, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, (uint64_t)dev->dslSrc, "DSLayout SOURCE");
-		vke_device_set_object_name(dev->vke, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, (uint64_t)dev->dslFont, "DSLayout FONT");
-		vke_device_set_object_name(dev->vke, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, (uint64_t)dev->dslGrad, "DSLayout GRADIENT");
-		vke_device_set_object_name(dev->vke, VK_OBJECT_TYPE_PIPELINE_LAYOUT, (uint64_t)dev->pipelineLayout, "PLLayout dev");
+	#ifdef VKVG_DBG_UTILS
+		vke.set_object_name(VK_OBJECT_TYPE_COMMAND_POOL, 		   (uint64_t)data->cmdPool, 						"Device Cmd Pool");
+		vke.set_object_name(VK_OBJECT_TYPE_COMMAND_BUFFER, 	   	   (uint64_t)data->cmd, 							"Device Cmd Buff");
+		vke.set_object_name(VK_OBJECT_TYPE_FENCE, 				   (uint64_t)data->fence, 						"Device Fence");
+		vke.set_object_name(VK_OBJECT_TYPE_RENDER_PASS, 		   (uint64_t)data->renderPass, 					"RP load img/stencil");
+		vke.set_object_name(VK_OBJECT_TYPE_RENDER_PASS, 		   (uint64_t)data->renderPass_ClearStencil, 		"RP clear stencil");
+		vke.set_object_name(VK_OBJECT_TYPE_RENDER_PASS, 		   (uint64_t)data->renderPass_ClearAll, 			"RP clear all");
+		vke.set_object_name(VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT,  (uint64_t)data->dslSrc, 						"DSLayout SOURCE");
+		vke.set_object_name(VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT,  (uint64_t)data->dslFont, 						"DSLayout FONT");
+		vke.set_object_name(VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT,  (uint64_t)data->dslGrad, 						"DSLayout GRADIENT");
+		vke.set_object_name(VK_OBJECT_TYPE_PIPELINE_LAYOUT, 	   (uint64_t)data->pipelineLayout, 				"PLLayout data");
 
 		#ifndef __APPLE__
-			vke_device_set_object_name(dev->vke, VK_OBJECT_TYPE_PIPELINE, (uint64_t)dev->pipelinePolyFill, "PL Poly fill");
+			/// ??
+			vke.set_object_name(VK_OBJECT_TYPE_PIPELINE, (uint64_t)data->pipelinePolyFill, "PL Poly fill");
 		#endif
-		vke_device_set_object_name(dev->vke, VK_OBJECT_TYPE_PIPELINE, (uint64_t)dev->pipelineClipping, "PL Clipping");
-		vke_device_set_object_name(dev->vke, VK_OBJECT_TYPE_PIPELINE, (uint64_t)dev->pipe_OVER, "PL draw Over");
-		vke_device_set_object_name(dev->vke, VK_OBJECT_TYPE_PIPELINE, (uint64_t)dev->pipe_SUB, "PL draw Substract");
-		vke_device_set_object_name(dev->vke, VK_OBJECT_TYPE_PIPELINE, (uint64_t)dev->pipe_CLEAR, "PL draw Clear");
 
-		vke_image_set_name(dev->emptyImg, "empty IMG");
-		vke_device_set_object_name(dev->vke, VK_OBJECT_TYPE_IMAGE_VIEW, (uint64_t)vke_image_get_view(dev->emptyImg), "empty IMG VIEW");
-		vke_device_set_object_name(dev->vke, VK_OBJECT_TYPE_SAMPLER, (uint64_t)vke_image_get_sampler(dev->emptyImg), "empty IMG SAMPLER");
+		vke.set_object_name(VK_OBJECT_TYPE_PIPELINE, (uint64_t)data->pipelineClipping, "PL Clipping");
+		vke.set_object_name(VK_OBJECT_TYPE_PIPELINE, (uint64_t)data->pipe_OVER, "PL draw Over");
+		vke.set_object_name(VK_OBJECT_TYPE_PIPELINE, (uint64_t)data->pipe_SUB, "PL draw Substract");
+		vke.set_object_name(VK_OBJECT_TYPE_PIPELINE, (uint64_t)data->pipe_CLEAR, "PL draw Clear");
+		data->emptyImg.set_name("empty IMG");
+		vke.set_object_name(VK_OBJECT_TYPE_IMAGE_VIEW, (uint64_t)vke_image_get_view(data->emptyImg), "empty IMG VIEW");
+		vke.set_object_name(VK_OBJECT_TYPE_SAMPLER, (uint64_t)vke_image_get_sampler(data->emptyImg), "empty IMG SAMPLER");
 	#endif
 #endif
-	dev->status = VKE_STATUS_SUCCESS;
-	return dev;
+	data->status = VKE_STATUS_SUCCESS;
+	return data;
 }
 
-VkeStatus vkvg_device_status (VkvgDevice dev) {
-	return dev->status;
-}
-
-void vkvg_device_set_thread_aware (VkvgDevice dev, uint32_t thread_aware) {
-	io_sync_enable(dev, (bool)thread_aware);
+VkeStatus VkgDevice::status() {
+	return data->status;
 }
 
 #if VKVG_DBG_STATS
-vkvg_debug_stats_t vkvg_device_get_stats (VkvgDevice dev) {
-	return dev->debug_stats;
+vkg_debug_stats VkgDevice::get_stats() {
+	return data->debug_stats;
 }
-vkvg_debug_stats_t vkvg_device_reset_stats (VkvgDevice dev) {
-	dev->debug_stats = (vkvg_debug_stats_t) {0};
+
+vkg_debug_stats VkgDevice::reset_stats() {
+	data->debug_stats = (vkg_debug_stats) {0};
 }
 #endif

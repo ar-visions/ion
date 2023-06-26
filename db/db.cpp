@@ -172,7 +172,7 @@ void SQLite::observe(str model_name) {
         int       rc = sqlite3_open(uri.cstr(), &db);
         bool key_req = op == var::Binding::Update || op == var::Binding::Delete;
         ///
-        assert(!key_req || row.count(kname)); /// if the key is required, it needs to exist on the row
+        assert(!key_req || row->count(kname)); /// if the key is required, it needs to exist on the row
         ///
         int64_t ikey = key_req ? int64_t(row[kname])  : int64_t(-1);
         str     skey = key_req ? str(std::to_string(ikey)) : str(null);
@@ -188,7 +188,7 @@ void SQLite::observe(str model_name) {
                 for (auto &[peer_name, v_fields]: refs.map()) {
                     string speer_name = peer_name;
                     var field_names_used = v_fields;
-                    if (refs.count(peer_name) && refs[peer_name].count(field)) {
+                    if (refs->count(peer_name) && refs[peer_name]->count(field)) {
                         auto peer_key = ctx->first_fields[peer_name];
                         return value ? str(value[peer_key]) : str("NULL");
                     }

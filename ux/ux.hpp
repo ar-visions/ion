@@ -51,18 +51,22 @@ namespace graphics {
         miter, round, bevel);
 
     struct shape:mx {
-        using r4r     = rectd;
-        using vec2    = vec2d;
         using Rect    = Rect   <r64>;
         using Rounded = Rounded<r64>;
         ///
         struct sdata {
-            Rect       bounds; /// if the ops change the bounds must be re-eval'd
+            Rectd      bounds; /// if the ops change the bounds must be re-eval'd
             doubly<mx> ops;
-            vec2       mv;
+            vec2d      mv;
         };
         ///
         ptr(shape, mx, sdata);
+
+        operator rectd &() {
+            if (!data->bounds)
+                bounds();
+            return data->bounds;
+        }
 
         bool contains(vec2d p) {
             if (!data->bounds)
@@ -70,13 +74,13 @@ namespace graphics {
             return data->bounds->contains(p);
         }
         ///
-        rectd bounds() {
+        rectd &bounds() {
             real min_x = 0, max_x = 0;
             real min_y = 0, max_y = 0;
             int  index = 0;
             ///
             if (!data->bounds && data->ops) {
-                /// get aabb from vec2
+                /// get aabb from vec2d
                 for (mx &v:data->ops) {
                     vec2d *vd = v.get<vec2d>(0); 
                     if (!vd) continue;
@@ -87,8 +91,6 @@ namespace graphics {
                     index++;
                 }
             }
-            /// null bounds is possible and thats by design on shape,
-            /// which, can simply have no shape at all
             return data->bounds;
         }
 
@@ -98,18 +100,18 @@ namespace graphics {
                                       Rect(Rounded(r4, rx, std::isnan(ry) ? rx : ry)); /// type forwards
         }
 
-        bool is_rect () { return data->bounds.type() == typeof(r4r)            && !data->ops; }
+        bool is_rect () { return data->bounds.type() == typeof(rectd)          && !data->ops; }
         bool is_round() { return data->bounds.type() == typeof(Rounded::rdata) && !data->ops; }    
 
         /// following ops are easier this way than having a last position which has its exceptions for arc/line primitives
         inline void line    (vec2d  l) {
-            data->ops += line(data->mv, l);
+            data->ops += ion::Line({ data->mv, l });
             data->mv = l;
         }
         inline void bezier  (Bezier b) { data->ops += b; }
         inline void move    (vec2d  v) {
             data->mv = v;
-            data->ops += movement(v);
+            data->ops += ion::Movement(v);
         }
 
       //void quad    (graphics::quad   q) { data->ops += q; }
@@ -121,7 +123,7 @@ namespace graphics {
 
     struct border_data {
         real size, tl, tr, bl, br;
-        rgba color;
+        rgbad color;
         inline bool operator==(const border_data &b) const { return b.tl == tl && b.tr == tr && b.bl == bl && b.br == br; }
         inline bool operator!=(const border_data &b) const { return !operator==(b); }
 
@@ -130,9 +132,9 @@ namespace graphics {
         ///
         border_data(str raw) : border_data() {
             str        trimmed = raw.trim();
-            size_t     tlen    = trimmed.length();
+            size_t     tlen    = trimmed.len();
             array<str> values  = raw.split();
-            size_t     ncomps  = values.length();
+            size_t     ncomps  = values.len();
             ///
             if (tlen > 0) {
                 size = values[0].real_value<real>();
@@ -183,14 +185,15 @@ enums(distance, undefined,
 template <typename P, typename S>
 struct scalar:mx {
     using scalar_t = scalar<P, S>;
-    struct data {
+    struct sdata {
         P            prefix;
         real         scale;
         S            suffix;
         bool         is_percent;
-    } &m;
+    };
 
-    ctr(scalar, mx, data, m);
+    ptr(scalar, mx, sdata);
+    movable(scalar);
 
     real operator()(real origin, real size) {
         return origin + (data->is_percent ? (data->scale / 100.0 * size) : data->scale);
@@ -216,11 +219,11 @@ struct scalar:mx {
     inline operator    S() const { return s_type(data->suffix); }
     inline operator real() const { return data->scale; }
 
-    scalar(p_type prefix, real scale, s_type suffix) : scalar(data { prefix, scale, suffix, false }) { }
+    scalar(p_type prefix, real scale, s_type suffix) : scalar(sdata { prefix, scale, suffix, false }) { }
 
     scalar(str s) : scalar() {
         str    tr  = s.trim();
-        size_t len = tr.length();
+        size_t len = tr.len();
         bool in_symbol = isalpha(tr[0]) || tr[0] == '_' || tr[0] == '%'; /// str[0] is always guaranteed to be there
         array<str> sp   = tr.split([&](char &c) -> bool {
             bool split  = false;
@@ -256,65 +259,66 @@ struct scalar:mx {
                 data->scale  =   sp[1].real_value<real>();
             }
         } catch (P &e) {
-            console.fault("type exception in scalar construction: prefix lookup failure: {0}", { str(e.mx::type()->name) });
+            console.fault("type exception in scalar construction: prefix lookup failure: {0}", { str(typeof(P)->name) });
         } catch (S &e) {
-            console.fault("type exception in scalar construction: suffix lookup failure: {0}", { str(e.type()->name) });
+            console.fault("type exception in scalar construction: suffix lookup failure: {0}", { str(typeof(S)->name) });
         }
     }
 };
 
 ///
 struct alignment:mx {
-    struct data {
+    struct adata {
         scalar<xalign, distance> x; /// these are different types
         scalar<yalign, distance> y; /// ...
-    } &coords;
+    };
 
     ///
-    ctr(alignment, mx, data, coords);
+    ptr(alignment, mx, adata);
+    movable(alignment);
 
     ///
-    inline alignment(str  x, str  y) : alignment { data { x, y } } { }
+    inline alignment(str  x, str  y) : alignment { adata { x, y } } { }
     inline alignment(real x, real y)
-         : alignment { data { { xalign::left, x, distance::px },
-                              { yalign::top,  y, distance::px } } } { }
+         : alignment { adata { { xalign::left, x, distance::px },
+                               { yalign::top,  y, distance::px } } } { }
 
-    inline operator vec2() { return vec2 { real(coords.x), real(coords.y) }; }
+    inline operator vec2d() { return vec2d { real(data->x), real(data->y) }; }
 
-    /// compute x and y coordinates given alignment data, and parameters for rect and offset
-    vec2 plot(r4<real> &win) {
-        v2<real> rs;
+    /// compute x and y coordinates given alignment cdata, and parameters for rect and offset
+    vec2d plot(rectd &win) {
+        vec2d rs;
         /// todo: direct enum operator does not seem to works
         /// set x coordinate
-        switch (xalign::etype(xalign(coords.x))) {
+        switch (xalign::etype(xalign(data->x))) {
             case xalign::undefined: rs.x = nan<real>();                        break;
-            case xalign::left:      rs.x = coords.x(win.x,             win.w); break;
-            case xalign::middle:    rs.x = coords.x(win.x + win.w / 2, win.w); break;
-            case xalign::right:     rs.x = coords.x(win.x + win.w,     win.w); break;
+            case xalign::left:      rs.x = data->x(win.x,             win.w); break;
+            case xalign::middle:    rs.x = data->x(win.x + win.w / 2, win.w); break;
+            case xalign::right:     rs.x = data->x(win.x + win.w,     win.w); break;
         }
         /// set y coordinate
-        switch (yalign::etype(yalign(coords.y))) {
+        switch (yalign::etype(yalign(data->y))) {
             case yalign::undefined: rs.y = nan<real>();                        break;
-            case yalign::top:       rs.y = coords.y(win.y,             win.h); break;
-            case yalign::middle:    rs.y = coords.y(win.y + win.h / 2, win.h); break;
-            case yalign::bottom:    rs.y = coords.y(win.y + win.h,     win.h); break;
-            case yalign::line:      rs.y = coords.y(win.y + win.h / 2, win.h); break;
+            case yalign::top:       rs.y = data->y(win.y,             win.h); break;
+            case yalign::middle:    rs.y = data->y(win.y + win.h / 2, win.h); break;
+            case yalign::bottom:    rs.y = data->y(win.y + win.h,     win.h); break;
+            case yalign::line:      rs.y = data->y(win.y + win.h / 2, win.h); break;
         }
         /// return vector of this 'corner' (top-left or bottom-right)
-        return vec2(rs);
+        return vec2d(rs);
     }
 };
 
 /// good primitive for ui, implemented in basic canvas ops.
 /// regions can be constructed from rects if area is static or composed in another way
 struct region:mx {
-    struct data {
+    struct rdata {
         alignment tl;
         alignment br;
-    } &m;
+    };
 
     ///
-    ctr(region, mx, data, m);
+    ptr(region, mx, rdata);
     
     ///
     region(str s) : region() {
@@ -326,15 +330,15 @@ struct region:mx {
     /// when given a shape, this is in-effect a window which has static bounds
     /// this is used to convert shape abstract to a region
     region(graphics::shape sh) : region() {
-        r4r &b = sh.bounds();
+        rectd b = sh.bounds();
         data->tl   = alignment { b.x,  b.y };
         data->br   = alignment { b.x + b.w,
-                             b.y + b.h };
+                                 b.y + b.h };
     }
     
     ///
-    r4<real> rect(r4<real> &win) {
-        return r4<real> { real(data->tl.plot(win)), real(data->br.plot(win)) };
+    rectd rect(rectd &win) {
+        return rectd { data->tl.plot(win), data->br.plot(win) };
     }
 };
 
@@ -350,14 +354,14 @@ namespace user {
     using chr = num;
 
     struct key:mx {
-        struct data {
+        struct kdata {
             num               unicode;
             num               scan_code;
             states<keyboard>  modifiers;
             bool              repeat;
             bool              up;
-        } &m;
-        ctr(key, mx, data, m);
+        };
+        ptr(key, mx, kdata);
     };
 };
 
@@ -366,33 +370,33 @@ struct event:mx {
     struct edata {
         user::chr     unicode;
         user::key     key;
-        vec2          wheel_delta;
-        vec2          cursor;
+        vec2d          wheel_delta;
+        vec2d          cursor;
         states<mouse>    buttons;
         states<keyboard> modifiers;
         size          resize;
         mouse::etype  button_id;
         bool          prevent_default;
         bool          stop_propagation;
-    } &evd;
+    };
 
-    ctr(event, mx, edata, evd);
+    ptr(event, mx, edata);
     
     event(const mx &a) = delete;
     ///
-    inline void prevent_default()   {         evd.prevent_default = true; }
-    inline bool is_default()        { return !evd.prevent_default; }
-    inline bool should_propagate()  { return !evd.stop_propagation; }
-    inline bool stop_propagation()  { return  evd.stop_propagation = true; }
-    inline vec2 cursor_pos()        { return  evd.cursor; }
-    inline bool mouse_down(mouse m) { return  evd.buttons[m]; }
-    inline bool mouse_up  (mouse m) { return !evd.buttons[m]; }
-    inline num  unicode   ()        { return  evd.key->unicode; }
-    inline num  scan_code ()        { return  evd.key->scan_code; }
-    inline bool key_down  (num u)   { return  evd.key->unicode   == u && !evd.key->up; }
-    inline bool key_up    (num u)   { return  evd.key->unicode   == u &&  evd.key->up; }
-    inline bool scan_down (num s)   { return  evd.key->scan_code == s && !evd.key->up; }
-    inline bool scan_up   (num s)   { return  evd.key->scan_code == s &&  evd.key->up; }
+    inline void prevent_default()   {         data->prevent_default = true; }
+    inline bool is_default()        { return !data->prevent_default; }
+    inline bool should_propagate()  { return !data->stop_propagation; }
+    inline bool stop_propagation()  { return  data->stop_propagation = true; }
+    inline vec2d cursor_pos()        { return data->cursor; }
+    inline bool mouse_down(mouse m) { return  data->buttons[m]; }
+    inline bool mouse_up  (mouse m) { return !data->buttons[m]; }
+    inline num  unicode   ()        { return  data->key->unicode; }
+    inline num  scan_code ()        { return  data->key->scan_code; }
+    inline bool key_down  (num u)   { return  data->key->unicode   == u && !data->key->up; }
+    inline bool key_up    (num u)   { return  data->key->unicode   == u &&  data->key->up; }
+    inline bool scan_down (num s)   { return  data->key->scan_code == s && !data->key->up; }
+    inline bool scan_up   (num s)   { return  data->key->scan_code == s &&  data->key->up; }
 };
 
 
@@ -408,7 +412,7 @@ struct   map_results:mx {   map_results():mx() { } };
 struct array_results:mx { array_results():mx() { } };
 
 struct Element:mx {
-    struct data {
+    struct edata {
         type_t           type;     /// type given
         memory*          id;       /// identifier 
         ax               args;     /// ax = better than args.  we use args as a var all the time; arguments is terrible
@@ -418,12 +422,13 @@ struct Element:mx {
         node*            parent;
         style*           root_style; /// applied at root for multiple style trees across multiple apps
         states<interaction> istates;
-    } &e;
+    };
 
     /// default case when there is no render()
-    array<Element> &children() { return *e.children; }
+    array<Element> &children() { return *data->children; }
 
-    ctr(Element, mx, data, e);
+    ptr(Element, mx, edata);
+    movable(Element);
 
     static memory *args_id(type_t type, initial<arg> args) {
         static memory *m_id = memory::symbol("id"); /// im a token!
@@ -436,12 +441,12 @@ struct Element:mx {
 
     //inline Element(ax &a):mx(a.mem->grab()), e(defaults<data>()) { }
     Element(type_t type, initial<arg> args) : Element(
-        data { type, args_id(type, args), args } // ax = array of args; i dont want the different ones but they do syn
+        edata { type, args_id(type, args), args } // ax = array of args; i dont want the different ones but they do syn
     ) { }
 
     /// inline expression of the data inside, im sure this would be common case (me 6wks later: WHERE????)
     Element(type_t type, size_t sz) : Element(
-        data { type, null, null, new array<Element>(sz) }
+        edata { type, null, null, new array<Element>(sz) }
     ) { }
 
     template <typename T>
@@ -449,7 +454,7 @@ struct Element:mx {
         Element res(typeof(map_results), a.length());
         for (auto &v:a) {
             Element ve = fn(v);
-            if (ve) *res.e.children += ve;
+            if (ve) *res.data->children += ve;
         }
         return res;
     }
@@ -457,10 +462,10 @@ struct Element:mx {
     template <typename K, typename V>
     static Element each(map<V> m, lambda<Element(K &k, V &v)> fn) {
         Element res(typeof(array_results), m.size);
-        if (res.e.children)
+        if (res.data->children)
         for (auto &[v,k]:m) {
             Element r = fn(k, v);
-            if (r) *res.e.children += r;
+            if (r) *res.data->children += r;
         }
         return res;
     }
@@ -486,11 +491,11 @@ struct listener:mx {
         fn_stub   detatch;
         bool      detached;
         ///
-        ~data() { printf("listener, ...destroyed\n"); }
+        ~ldata() { printf("listener, ...destroyed\n"); }
     };
     
     ///
-    ctr(listener, mx, ldata);
+    ptr(listener, mx, ldata);
 
     void cancel() {
         data->detatch();
@@ -510,7 +515,7 @@ struct dispatch:mx {
         doubly<listener> listeners;
     };
     ///
-    ptr(dispatch, mx, data);
+    ptr(dispatch, mx, ddata);
     ///
     void operator()(event e);
     ///
@@ -524,31 +529,31 @@ struct OBJ:mx {
     using strings = array<str>;
 
     struct group:mx {
-        struct data {
+        struct gdata {
             str        name;
             array<u32> ibo;
-        } &m;
-        ctr(group, mx, data, m);
+        };
+        ptr(group, mx, gdata);
     };
 
     struct members {
         array<V>   vbo;
         map<group> groups;
-    } &m;
+    };
 
-    ctr(OBJ, mx, members, m);
+    ptr(OBJ, mx, members);
 
-    OBJ(path p, lambda<V(group&, vec3&, vec2&, vec3&)> fn) : OBJ() {
+    OBJ(path p, lambda<V(group&, vec3d*, vec2d*, vec3d*)> fn) : OBJ() {
         str g;
         str contents  = str::read_file(p.exists() ? p : fmt {"models/{0}.obj", { p }});
-        assert(contents.length() > 0);
+        assert(contents.len() > 0);
         
         auto lines    = contents.split("\n");
-        size_t line_c = lines.length();
+        size_t line_c = lines.len();
         auto wlines   = array<strings>();
-        auto v        = array<vec3>(line_c); // need these
-        auto vn       = array<vec3>(line_c);
-        auto vt       = array<vec2>(line_c);
+        auto v        = array<vec3d>(line_c); // need these
+        auto vn       = array<vec3d>(line_c);
+        auto vt       = array<vec2d>(line_c);
         auto indices  = std::unordered_map<str, u32>(); ///
         size_t verts  = 0;
 
@@ -564,7 +569,7 @@ struct OBJ:mx {
                 data->groups[g].name  = g;
                 data->gcount[g]       = 0;
             } else if (w[0] == "f") {
-                if (!g.length() || w.length() != 4)
+                if (!g.len() || w.len() != 4)
                     console.fault("import requires triangles"); /// f pos/uv/norm pos/uv/norm pos/uv/norm
                 data->gcount[g]++;
             }
@@ -577,22 +582,23 @@ struct OBJ:mx {
                 if (!data->groups[g].ibo)
                      data->groups[g].ibo = array<u32>(data->gcount[g] * 3);
             }
-            else if (w[0] == "v")  v  += vec3 { w[1].real_value<real>(), w[2].real_value<real>(), w[3].real_value<real>() };
-            else if (w[0] == "vt") vt += vec2 { w[1].real_value<real>(), w[2].real_value<real>() };
-            else if (w[0] == "vn") vn += vec3 { w[1].real_value<real>(), w[2].real_value<real>(), w[3].real_value<real>() };
+            else if (w[0] == "v")  v  += vec3d { w[1].real_value<real>(), w[2].real_value<real>(), w[3].real_value<real>() };
+            else if (w[0] == "vt") vt += vec2d { w[1].real_value<real>(), w[2].real_value<real>() };
+            else if (w[0] == "vn") vn += vec3d { w[1].real_value<real>(), w[2].real_value<real>(), w[3].real_value<real>() };
             else if (w[0] == "f") {
-                assert(g.length());
+                assert(g.len());
                 for (size_t i = 1; i < 4; i++) {
                     auto key = w[i];
-                    if (indices.count(key) == 0) {
+                    if (indices->count(key) == 0) {
                         indices[key] = u32(verts++);
                         auto      sp =  w[i].split("/");
                         int      iv  = sp[0].integer_value();
                         int      ivt = sp[1].integer_value();
                         int      ivn = sp[2].integer_value();
-                        data->vbo       += fn(data->groups[g], iv ?  v[ iv-1] : null,
-                                                      ivt ? vt[ivt-1] : null,
-                                                      ivn ? vn[ivn-1] : null);
+                        data->vbo       += fn(data->groups[g],
+                                                iv  ? & v[ iv-1] : null,
+                                                ivt ? &vt[ivt-1] : null,
+                                                ivn ? &vn[ivn-1] : null);
                     }
                     data->groups[g].ibo += indices[key];
                 }
@@ -613,7 +619,7 @@ struct window:mx {
 
     void        loop(lambda<void()> fn);
     bool        key(int key);
-    vec2        cursor();
+    vec2d        cursor();
     str         clipboard();
     void        set_clipboard(str text);
     void        set_title(str s);
@@ -646,22 +652,22 @@ struct StageData;
 /// generic vertex model; uses spec map, normal map by tangent/bi-tangent v3 unit vectors
 struct Vertex {
     ///
-    v3f pos;  // position
-    v3f norm; // normal position
-    v2f uv;   // texture uv coordinate
-    v4f clr;  // color
-    v3f ta;   // tangent
-    v3f bt;   // bi-tangent
+    vec3f pos;  // position
+    vec3f norm; // normal position
+    vec2f uv;   // texture uv coordinate
+    vec4f clr;  // color
+    vec3f ta;   // tangent
+    vec3f bt;   // bi-tangent
     
     /// VkAttribs (array of VkAttribute) [data] from VAttribs (state flags) [model]
     static void attribs(VAttribs attr, void *vk_attr_res);
     Vertex() { }
     Vertex(vec3f pos, vec3f norm, vec2f uv, vec4f clr, vec3f ta = {}, vec3f bt = {}):
-           pos  (pos.data), norm (norm.data), uv   (uv.data),
-           clr  (clr.data), ta   (ta.data),   bt   (bt.data) { }
+           pos  (pos), norm (norm), uv   (uv),
+           clr  (clr), ta   (ta),   bt   (bt) { }
     Vertex(vec3f &pos, vec3f &norm, vec2f &uv, vec4f &clr, vec3f &ta, vec3f &bt):
-           pos  (pos.data), norm (norm.data), uv   (uv.data),
-           clr  (clr.data), ta   (ta.data),   bt   (bt.data) { }
+           pos  (pos), norm (norm), uv   (uv),
+           clr  (clr), ta   (ta),   bt   (bt) { }
     
     /// hip to consider this data
     static array<Vertex> square(vec4f v_clr = {1.0, 1.0, 1.0, 1.0}) {
@@ -679,22 +685,17 @@ struct Vertex {
 /// use this for building up data, and then it is handed to VertexBuffer
 using Vertices = array<Vertex>;
 
-mesh subdiv(const mesh& input_mesh, const array<v3f>& verts);
+mesh subdiv(const mesh& input_mesh, const array<vec3f>& verts);
 
 /// this one would be nice to use gcc's static [] or () overload in c++ 23
 struct Shaders {
-    ion::map<str> map;
+    ion::map<str> m;
     /// default construction
-    Shaders(std::nullptr_t n = null) {
-        map["*"] = "main";
-    }
+    Shaders(std::nullptr_t n = null) { m["*"] = "main"; }
     
-    bool operator==(Shaders &ref) {
-        return map == ref.map;
-    }
-    
-    operator bool()  { return  map.count(); }
-    bool operator!() { return !map.count(); }
+    bool operator==(Shaders &ref) { return m == ref.m; }
+    operator  bool() { return  m.count(); }
+    bool operator!() { return !m.count(); }
     
     /// group=shader
     Shaders(str v) { /// str is the only interface in it.  everything else is just too messy for how simple the map is
@@ -704,17 +705,20 @@ struct Shaders {
             assert(a.length() == 2);
             str key   = a[0];
             str value = a[1];
-            map[key] = value;
+            m[key] = value;
         }
     }
-    str operator()(str &group) {
-        return map.count(group) ? map[group] : map["*"];
+
+    str operator()(str  &group) {
+        return m->count(group) ? m[group] : m["*"];
     }
+
     str &operator[](str n) {
-        return map[n];
+        return m[n];
     }
+
     size_t count(str n) {
-        return map.count(n);
+        return m->count(n);
     }
 };
 
@@ -723,14 +727,16 @@ struct Composer;
 extern Assets cache_assets(str model, str skin, states<Asset> &atypes);
 
 struct font:mx {
-    struct data {
+    struct fdata {
         str  alias;
         real sz;
         path res;
-    } &info;
+    };
 
-    ctr(font, mx, data, info);
-    font(str alias, real sz, path res) : font(data { alias, sz, res }) { }
+    ptr(font, mx, fdata);
+    movable(font);
+
+    font(str alias, real sz, path res) : font(fdata { alias, sz, res }) { }
 
     /// if there is no res, it can use font-config; there must always be an alias set, just so any cache has identity
     static font default_font() {
@@ -739,8 +745,8 @@ struct font:mx {
                     def = font("monaco", 16, "fonts/monaco.ttf");
         return      def; ///
     }
-            operator bool()    { return  info.alias; }
-    bool    operator!()        { return !info.alias; }
+            operator bool()    { return  data->alias; }
+    bool    operator!()        { return !data->alias; }
 };
 
 ///
@@ -748,10 +754,10 @@ struct glyph:mx {
     struct members {
         int        border;
         str        chr;
-        rgba::data bg;
-        rgba::data fg;
-    } &m;
-    ctr(glyph, mx, members, m);
+        rgba8      bg;
+        rgba8      fg;
+    };
+    ptr(glyph, mx, members);
 
     str ansi();
     bool operator==(glyph &lhs) {
@@ -769,9 +775,9 @@ struct cbase:mx {
         real             opacity;
         graphics::shape  clip;
         str              font;
-        m44              mat44;
-        rgba             color;
-        vec2             blur;
+        m44d             mat44;
+        rgba8            color;
+        vec2d            blur;
         graphics::cap    cap;
         graphics::join   join;
     };
@@ -786,18 +792,18 @@ struct cbase:mx {
         type_t             pixel_t;
         doubly<draw_state> stack; /// ds = states.last()
         draw_state*        state; /// todo: update w push and pop
-    } &m;
+    };
 
-    ctr(cbase, mx, cdata, m);
+    ptr(cbase, mx, cdata);
 
     protected:
     virtual void init() { }
     
     draw_state &cur() {
-        if (data->stack.length() == 0)
+        if (data->stack->length() == 0)
             data->stack += draw_state(); /// this errors in graphics::cap initialize (type construction, Deallocate error indicates stack corruption?)
         
-        return data->stack.last();
+        return data->stack->last();
     }
 
     public:
@@ -811,25 +817,25 @@ struct cbase:mx {
     }
 
     virtual void      flush() { }
-    virtual void       text(str, graphics::shape, vec2, vec2, bool)  { }
-    virtual void      image(ion::image, graphics::shape, vec2, vec2) { }
+    virtual void       text(str, graphics::shape, vec2d, vec2d, bool)  { }
+    virtual void      image(ion::image, graphics::shape, vec2d, vec2d) { }
     virtual void    texture(ion::image)        { }
     virtual void      clear()                  { }
-    virtual void      clear(rgba)              { }
+    virtual void      clear(rgba8)             { }
     virtual tm_t    measure(str s)               { assert(false); return {}; }
     virtual void        cap(graphics::cap   cap) { cur().cap     = cap;      }
     virtual void       join(graphics::join join) { cur().join    = join;     }
     virtual void    opacity(real        opacity) { cur().opacity = opacity;  }
     virtual void       font(font f)            { }
-    virtual void      color(rgba)              { }
-    virtual void   gaussian(vec2, graphics::shape) { }
-    virtual void      scale(vec2)              { }
+    virtual void      color(rgba8)             { }
+    virtual void   gaussian(vec2d, graphics::shape) { }
+    virtual void      scale(vec2d)             { }
     virtual void     rotate(real)              { }
-    virtual void  translate(vec2)              { }
+    virtual void  translate(vec2d)             { }
     virtual void   set_char(int, int, glyph)   { } /// this needs to be tied to pixel unit (cbase 2nd T arg)
     virtual str    get_char(int, int)          { return "";    }
-    virtual str  ansi_color(rgba &c, bool text) { return null;  }
-    virtual ion::image  resample(ion::size sz, real deg = 0.0f, graphics::rect view = null, vec2 rc = null) {
+    virtual str  ansi_color(rgba8 &c, bool text) { return null;  }
+    virtual ion::image  resample(ion::size sz, real deg = 0.0f, rectd view = {}, vec2d rc = {}) {
         return null;
     }
 
@@ -844,7 +850,7 @@ struct cbase:mx {
     }
 
     void  pop() {
-        data->stack.pop();
+        data->stack->pop();
         data->state = &cur();
         ///
         draw_state_change(data->state, state_change::pop);
@@ -853,14 +859,13 @@ struct cbase:mx {
     void    outline_sz(real sz)  { cur().outline_sz  = sz;  }
     void    font_sz   (real sz)  { cur().font_sz     = sz;  }
     void    line_height(real lh) { cur().line_height = lh;  }
-    m44     get_matrix()         { return cur().mat44;      }
-    void    set_matrix(m44 m)    {        cur().mat44 = m;  }
+    m44d    get_matrix()         { return cur().mat44;      }
+    void    set_matrix(m44d m)   {        cur().mat44 = m;  }
     void      defaults()         {
         draw_state &ds = cur();
         ds.line_height = 1; /// its interesting to base units on a font-derrived line-height
                             /// in the case of console context, this allows for integral rows and columns for more translatable views to context2d
     }
-    void         *data();
 
     /// boolean operator
     inline operator bool() { return bool(data->size); }
@@ -877,7 +882,7 @@ struct gfx:cbase {
     gfx(ion::window &w);
 
     /// data is single instanced on this cbase, and the draw_state is passed in as type for the cbase, which atleast makes it type-unique
-    ptr_decl(gfx, cbase, gfx_memory, g);
+    ptr_declare(gfx, cbase, gfx_memory);
 
     ion::window    &window();
     Device         *device();
@@ -885,51 +890,44 @@ struct gfx:cbase {
     text_metrics   measure(str text);
     str    format_ellipsis(str text, real w, text_metrics &tm_result);
     void     draw_ellipsis(str text, real w);
-    void             image(ion::image img, graphics::shape sh, vec2 align, vec2 offset, vec2 source);
+    void             image(ion::image img, graphics::shape sh, vec2d align, vec2d offset, vec2d source);
     void              push();
     void               pop();
-    void              text(str text, graphics::rect rect, alignment align, vec2 offset, bool ellip);
+    void              text(str text, rectd rect, alignment align, vec2d offset, bool ellip);
     void              clip(graphics::shape cl);
     Texture        texture();
     void             flush();
-    void             clear(rgba c);
+    void             clear(rgba8 c);
     void              font(ion::font f);
     void               cap(graphics::cap   c);
     void              join(graphics::join  j);
-    void         translate(vec2       tr);
-    void             scale(vec2       sc);
+    void         translate(vec2d       tr);
+    void             scale(vec2d       sc);
     void             scale(real       sc);
     void            rotate(real     degs);
     void              fill(graphics::shape  p);
-    void          gaussian(vec2 sz, graphics::shape c);
+    void          gaussian(vec2d sz, graphics::shape c);
     void           outline(graphics::shape p);
-    void*             data();
     str           get_char(int x, int y);
-    str         ansi_color(rgba &c, bool text);
-    ion::image    resample(ion::size sz, real deg, graphics::shape view, vec2 axis);
+    str         ansi_color(rgba8 &c, bool text);
+    ion::image    resample(ion::size sz, real deg, graphics::shape view, vec2d axis);
 };
 
 /// should call it text_canvas, display_buffer, tcanvas; terminal should be implementation of escape sequence/display in gfx context
 struct terminal:cbase {
     static inline symbol reset_chr = "\u001b[0m";
-
-    protected:
     struct tdata {
         array<glyph> glyphs;
         draw_state  *ds;
-    } &t;
-
-    public:
-
+    };
     terminal(ion::size sz);
-    ctr(terminal, cbase, tdata, t);
+    ptr(terminal, cbase, tdata);
 
     void draw_state_change(draw_state &ds, cbase::state_change type);
-    str         ansi_color(rgba &c, bool text);
-    void             *data();
+    str         ansi_color(rgba8 &c, bool text);
     void          set_char(int x, int y, glyph gl);
     str           get_char(int x, int y);
-    void              text(str s, graphics::shape vrect, alignment::data &align, vec2 voffset, bool ellip);
+    void              text(str s, graphics::shape vrect, alignment::adata &align, vec2d voffset, bool ellip);
     void           outline(graphics::shape sh);
     void              fill(graphics::shape sh);
 };
@@ -942,18 +940,18 @@ struct node:Element {
     /// standard props
     struct props {
         struct events {
-            dispatch        hover;
-            dispatch        out;
-            dispatch        down;
-            dispatch        up;
-            dispatch        key;
-            dispatch        focus;
-            dispatch        blur;
-            dispatch        cursor;
+            dispatch            hover;
+            dispatch            out;
+            dispatch            down;
+            dispatch            up;
+            dispatch            key;
+            dispatch            focus;
+            dispatch            blur;
+            dispatch            cursor;
         } ev;
 
         struct drawing {
-            rgba                color; 
+            rgba8               color; 
             real                offset;
             alignment           align; 
             image               img;   
@@ -962,32 +960,49 @@ struct node:Element {
             graphics::cap       cap;   
             graphics::join      join;
             graphics::border    border;
-            inline graphics::rect rect() { return shape.bounds(); }
+            inline rectd rect() { return shape.bounds(); }
         };
 
         /// this is simply bounds, not rounded
         inline graphics::shape shape() {
             return drawings[operation::child].shape;
         }
-        inline graphics::rect bounds() {
-            return graphics::rect { shape() };
+
+        inline rectd bounds() {
+            return rectd((rectd&)shape());
         }
 
         ///
         str                 id;         ///
         drawing             drawings[operation::count];
-        graphics::rect      container;  /// the parent child rectangle
+        rectd               container;  /// the parent child rectangle
         int                 tab_index;  /// if 0, this is default; its all relative numbers we dont play absolutes.
         states<interaction> istates;    /// interaction states; these are referenced in qualifiers
-        vec2                cursor;     /// set relative to the area origin
-        vec2                scroll = {0,0};
+        vec2d                cursor;     /// set relative to the area origin
+        vec2d                scroll = {0,0};
         std::queue<fn_t>    queue;      /// this is an animation queue
         bool                active;
         bool                focused;
         type_t              type;       /// this is the type of node, as stored by the initializer of this data
         mx                  content;
         mx                  bind;       /// bind is useful to be in mx form, as any object can be key then.
-    } &std;
+
+        doubly<prop> meta() const {
+            return {
+                prop { "id",        id        },
+                prop { "on-hover",  ev.hover  }, /// must give member-parent-origin (std) to be able to 're-apply' somewhere else
+                prop { "on-out",    ev.out    },
+                prop { "on-down",   ev.down   },
+                prop { "on-up",     ev.up     },
+                prop { "on-key",    ev.key    },
+                prop { "on-focus",  ev.focus  },
+                prop { "on-blur",   ev.blur   },
+                prop { "on-cursor", ev.cursor },
+                prop { "on-hover",  ev.hover  },
+                prop { "content",   content   }
+            };
+        }
+    };
 
     /// type and prop name lookup in tree
     /// there can also be an mx-based context.  it must assert that the type looked up in meta_map inherits from mx.  from there it can be ref memory,
@@ -999,11 +1014,11 @@ struct node:Element {
             if (ctx) {
                 prop *def = ctx->schema->meta_map.lookup((symbol&)*sym); /// will always need schema
                 if (def) {
-                    T &ref = def->member_ref<T, props>(cur->std); // require inheritance here
+                    T &ref = def->member_ref<T>(cur->data); // require inheritance here
                     return ref;
                 }
             }
-            cur = cur->e.parent;
+            cur = cur->Element::data->parent;
         }
         assert(false);
         T *n = null;
@@ -1013,13 +1028,13 @@ struct node:Element {
     /// base drawing routine, easiest to understand and i think favoured over a non-virtual that purely uses the meta tables in polymorphic back tracking fashion
     /// one could lazy-cache that but i dunno.  why make drawing things complicated and covered in lambdas.  during iteration in debug you thank thy-self
     virtual void draw(gfx& canvas) {
-        props::drawing &fill    = std.drawings[operation::fill];
-        props::drawing &image   = std.drawings[operation::image];
-        props::drawing &text    = std.drawings[operation::text];
-        props::drawing &outline = std.drawings[operation::outline]; /// outline is more AR than border.  and border is a bad idea, badly defined and badly understood. outline is on the 0 pt.  just offset it if you want.
+        props::drawing &fill    = data->drawings[operation::fill];
+        props::drawing &image   = data->drawings[operation::image];
+        props::drawing &text    = data->drawings[operation::text];
+        props::drawing &outline = data->drawings[operation::outline]; /// outline is more AR than border.  and border is a bad idea, badly defined and badly understood. outline is on the 0 pt.  just offset it if you want.
         
         /// if there is a fill color
-        if (fill.color) { /// free'd prematurely during style change (not a transition)
+        if (!!fill.color) { /// free'd prematurely during style change (not a transition)
             canvas.color(fill.color);
             canvas.fill(fill.shape);
         }
@@ -1029,31 +1044,31 @@ struct node:Element {
             canvas.image(image.img, image.shape, image.align, {0,0}, {0,0});
         
         /// if there is text (its not alpha 0, and there is text)
-        if (std.content && ((std.content.type() == typeof(char)) ||
-                            (std.content.type() == typeof(str)))) {
+        if (data->content && ((data->content.type() == typeof(char)) ||
+                            (data->content.type() == typeof(str)))) {
             canvas.color(text.color);
             canvas.text(
-                std.content.grab(), text.shape.bounds(),
+                data->content.grab(), text.shape.bounds(),
                 text.align, {0.0, 0.0}, true);
         }
 
         /// if there is an effective border to draw
-        if (outline.color && outline.border->size > 0.0) {
+        if (!!outline.color && outline.border->size > 0.0) {
             canvas.color(outline.border->color);
             canvas.outline_sz(outline.border->size);
             canvas.outline(outline.shape); /// this needs to work with vshape, or border
         }
     }
 
-    vec2 offset() {
-        node *n = e.parent;
-        vec2  o = { 0, 0 };
+    vec2d offset() {
+        node *n = Element::data->parent;
+        vec2d  o = { 0, 0 };
         while (n) {
-            props::drawing &draw = n->std.drawings[operation::child];
-            r4<real> &rect = draw.shape.bounds();
-            o  += rect.xy();
-            o  -= n->std.scroll;
-            n   = n->e.parent;
+            props::drawing &draw = n->data->drawings[operation::child];
+            rectd &rect = draw.shape.bounds();
+            o  +=  rect.xy();
+            o  -= n->node   ::data->scroll;
+            n   = n->Element::data->parent;
         }
         return o;
     }
@@ -1065,7 +1080,7 @@ struct node:Element {
             node* r = fn(n);
             if   (r) result += r;
             /// go through mount fields mx(symbol) -> node*
-            for (field<node*> &f:n->Element::e.mounts)
+            for (field<node*> &f:n->Element::data->mounts)
                 if (f.value) recur(f.value);
             return null;
         };
@@ -1074,43 +1089,30 @@ struct node:Element {
     }
 
     // node(Element::data&); /// constructs default members.  i dont see an import use-case for members just yet
-    ctr(node, Element, props, std);
+    ptr(node, Element, props);
 
-    node(type_t type, initial<arg> args) : Element(type, args), std(defaults<props>()) { }
+    /// does not resolve at this point, this is purely storage in element with a static default data pointer
+    /// we do not set anything in data
+    node(type_t type, initial<arg> args) : Element(type, args), data(defaults<props>()) { }
 
     node *root() const {
         node  *pe = (node*)this;
         while (pe) {
-            if (!pe->e.parent) return pe;
-            pe = pe->e.parent;
+            if (!pe->Element::data->parent) return pe;
+            pe = pe->Element::data->parent;
         }
         return null;
     }
 
-    style *fetch_style() const { return  root()->e.root_style; } /// fetch data from Element's accessor
-    //Device        *dev() const {
+    style *fetch_style() const { return  root()->Element::data->root_style; } /// fetch data from Element's accessor
+    
+    //Device *dev() const {
     //    return null;
     //}
 
-    doubly<prop> meta() const {
-        return {
-            prop { std, "id",        std.id },
-            prop { std, "on-hover",  std.ev.hover  }, /// must give member-parent-origin (std) to be able to 're-apply' somewhere else
-            prop { std, "on-out",    std.ev.out    },
-            prop { std, "on-down",   std.ev.down   },
-            prop { std, "on-up",     std.ev.up     },
-            prop { std, "on-key",    std.ev.key    },
-            prop { std, "on-focus",  std.ev.focus  },
-            prop { std, "on-blur",   std.ev.blur   },
-            prop { std, "on-cursor", std.ev.cursor },
-            prop { std, "on-hover",  std.ev.hover  },
-            prop { std, "content",   std.content   }
-        };
-    }
-
     inline size_t count(memory *symbol) {
-        for (Element &c: *e.children)
-            if (c.e.id == symbol)
+        for (Element &c: *Element::data->children)
+            if (c.data->id == symbol)
                 return 1;
         ///
         return 0;
@@ -1121,7 +1123,7 @@ struct node:Element {
         recur = [&](node* n) -> node* {
             node* r = fn(n);
             if   (r) return r;
-            for (field<node*> &f: n->Element::e.mounts) {
+            for (field<node*> &f: n->Element::data->mounts) {
                 if (!f.value) continue;
                 node* r = recur(f.value);
                 if   (r) return r;
@@ -1135,7 +1137,7 @@ struct node:Element {
         lambda<node*(node*)> recur;
         recur = [&](node* n) -> node* {
             fn(n);
-            for (field<node*> &f: n->Element::e.mounts)
+            for (field<node*> &f: n->Element::data->mounts)
                 if (f.value) recur(f.value);
             return null;
         };
@@ -1160,8 +1162,8 @@ struct style:mx {
             str       state; /// member to perform operation on (boolean, if not specified)
             str       oper;  /// if specified, use non-boolean operator
             str       value;
-        } &data;
-        ctr(qualifier, mx, members, data);
+        };
+        ptr(qualifier, mx, members);
     };
 
     ///
@@ -1173,13 +1175,13 @@ struct style:mx {
         struct members {
             curve ct; /// curve-type, or counter-terrorist.
             scalar<nil, duration> dur;
-        } &data;
+        };
 
-        ctr(transition, mx, members, data);
+        ptr(transition, mx, members);
 
         inline real pos(real tf) const {
             real x = math::clamp<real>(tf, 0.0, 1.0);
-            switch (style::transition::curve::etype(data.ct)) {
+            switch (style::transition::curve::etype(data->ct)) {
                 case curve::none:      x = 1.0;                    break;
                 case curve::linear:                                break; // /*x = x*/  
                 case curve::ease_in:   x = x * x * x;              break;
@@ -1208,48 +1210,48 @@ struct style:mx {
                 ///
                 if (len == 2) {
                     /// 0.5s ease-out [things like that]
-                    data.dur = sp[0];
-                    data.ct  = curve(sp[1]).value;
+                    data->dur = sp[0];
+                    data->ct  = curve(sp[1]).value;
                 } else if (len == 1) {
                     doubly<memory*> &sym = curve::symbols();
                     if (s == str(sym[0])) {
                         /// none
-                        data.ct  = curve::none;
+                        data->ct  = curve::none;
                     } else {
                         /// 0.2s
-                        data.dur = sp[0];
-                        data.ct  = curve::linear; /// linear is set if any duration is set; none = no transition
+                        data->dur = sp[0];
+                        data->ct  = curve::linear; /// linear is set if any duration is set; none = no transition
                     }
                 } else
                     console.fault("transition values: none, count type, count (seconds default)");
             }
         }
         ///
-        operator  bool() { return data.ct != curve::none; }
-        bool operator!() { return data.ct == curve::none; }
+        operator  bool() { return data->ct != curve::none; }
+        bool operator!() { return data->ct == curve::none; }
     };
 
     /// Element or style block entry
     struct entry:mx {
-        struct data {
+        struct edata {
             mx              member;
             str             value;
             transition      trans;
-        } &m;
-        ctr(entry, mx, data, m);
+        };
+        ptr(entry, mx, edata);
     };
 
     ///
     struct block:mx {
-        struct data {
+        struct bdata {
             mx                       parent; /// pattern: reduce type rather than create pointer to same type in delegation
             doubly<style::qualifier> quals;  /// an array of qualifiers it > could > be > this:state, or > just > that [it picks the best score, moves up for a given node to match style in]
             doubly<style::entry>     entries;
             doubly<style::block>     blocks;
-        } &m;
+        };
         
         ///
-        ctr(block, mx, data, m);
+        ptr(block, mx, bdata);
         
         ///
         inline size_t count(str s) {
@@ -1263,19 +1265,19 @@ struct style:mx {
         inline entry *b_entry(mx member_name) {
             for (entry &p:data->entries)
                 if (p->member == member_name)
-                    return &p;
+                    return (entry*)&(mx&)p; /// this is how you get the pointer to the thing
             return null;
         }
 
         size_t score(node *n) {
             double best_sc = 0;
             for (qualifier &q:data->quals) {
-                qualifier::members &qd = q.data;
-                bool    id_match  = qd.id    &&  qd.id == n->e.id;
+                qualifier::members &qd = *q;
+                bool    id_match  = qd.id    &&  qd.id == n->data->id;
                 bool   id_reject  = qd.id    && !id_match;
                 bool  type_match  = qd.type  &&  strcmp((symbol)qd.type.cs(), (symbol)n->mem->type->name) == 0; /// class names are actual type names
                 bool type_reject  = qd.type  && !type_match;
-                bool state_match  = qd.state &&  n->e.istates[qd.state];
+                bool state_match  = qd.state &&  n->data->istates[qd.state];
                 bool state_reject = qd.state && !state_match;
                 ///
                 if (!id_reject && !type_reject && !state_reject) {
@@ -1303,7 +1305,7 @@ struct style:mx {
                 ///
                 while (n) { ///
                     auto sc = bl.score(n);
-                    n       = n->e.parent;
+                    n       = n->Element::data->parent;
                     if (sc == 0 && is_root) {
                         score = 0;
                         break;
@@ -1332,12 +1334,12 @@ struct style:mx {
 
     static inline map<style> cache;
 
-    struct data {
+    struct sdata {
         array<block>      root;
         map<array<block>> members;
-    } &m;
+    };
 
-    ctr(style, mx, data, m);
+    ptr(style, mx, sdata);
 
     array<block> &members(mx &s_member) {
         return data->members[s_member];
@@ -1357,6 +1359,25 @@ struct style:mx {
     static style load(path p);
     static style for_class(symbol);
 };
+
+/// defines a component with a restricted subset and props initializer_list.
+/// this macro is used for template purposes and bypasses memory allocation.
+/// the actual instances of the component are managed by the composer.
+/// -------------------------------------------
+#define component(C, B, D) \
+    using parent_class   = B;\
+    using context_class  = C;\
+    using intern         = D;\
+    intern* state;\
+    C(memory*         mem) : B(mem), state(mx::data<D>()) { }\
+    C(initial<arg>  props) : B(typeof(C), props) { }\
+    C(mx                o) : C(o.mem->grab())  { }\
+    C()                    : C(mx::alloc<C>()) { }\
+    intern    &operator *() { return *state; }\
+    intern    *operator->() { return  state; }\
+    intern    *operator &() { return  state; }\
+    operator     intern *() { return  state; }\
+    operator     intern &() { return *state; }
 
 style::entry *prop_style(node &n, prop *member);
 
@@ -1388,13 +1409,13 @@ struct object:node {
         /// our interface
         doubly<prop> meta() {
             return {
-                prop { *this, "model",     model },
-                prop { *this, "skin",      skin },
-                prop { *this, "assets",    assets },
-                prop { *this, "shaders",   shaders },
-              //prop { *this, "ubo",       ubo },
-              //prop { *this, "attr",      attr },
-                prop { *this, "render",    render }
+                prop { "model",     model   },
+                prop { "skin",      skin    },
+                prop { "assets",    assets  },
+                prop { "shaders",   shaders },
+              //prop { "ubo",       ubo     },
+              //prop { "attr",      attr    },
+                prop { "render",    render  }
             };
         }
     };
@@ -1405,13 +1426,13 @@ struct object:node {
     /// change management, we probably have to give prev values in a map.
     void changed(doubly<prop> list) {
         // needs new model interface through vkengine
-        //m.plumbing = Model<Vertex>(m.model, m.skin, m.ubo, m.attr, m.assets, m.shaders);
+        //data->plumbing = Model<Vertex>(data->model, data->skin, data->ubo, data->attr, data->assets, data->shaders);
     }
 
     /// rendition of pipes
     Element update() {
-        //if (m.plumbing)
-        //    for (auto &[pipe, name]: m.plumbing.map())
+        //if (data->plumbing)
+        //    for (auto &[pipe, name]: data->plumbing.map())
         //        push_pipeline(dev(), pipe);
         return node::update();
     }
@@ -1421,12 +1442,12 @@ struct object:node {
 struct button:node {
     enums(behavior, push,
         "push, label, toggle, radio",
-         push, label, toggle, radio);
+         push, label, toggle, radio); /// you must make aliases anyway, friend
     
     struct props {
         button::behavior behavior;
-    } &m;
-    ctr_args(button, node, props, m);
+    };
+    component(button, node, props);
 };
 
 #if 0
@@ -1434,28 +1455,28 @@ struct button:node {
 /// bind-compatible List component for displaying data from models or static (type cases: array)
 struct list_view:node {
     struct Column:mx {
-        struct data {
+        struct cdata {
             str     id     = null;
             real    final  = 0;
             real    value  = 1.0;
             bool    scale  = true;
             xalign  align  = xalign::left;
-        } &a;
+        };
         
-        ctr(Column, mx, data, a);
+        ptr(Column, mx, cdata);
 
         Column(str id, real scale = 1.0, xalign ax = xalign::left) : Column() {
-            a.id    = id;
-            a.value = scale;
-            a.scale = true;
-            a.align = ax;
+            data->id    = id;
+            data->value = scale;
+            data->scale = true;
+            data->align = ax;
         }
         
         Column(str id, int size, xalign ax = xalign::left) : Column() {
-            a.id    = id;
-            a.value = size;
-            a.scale = false;
-            a.align = ax;
+            data->id    = id;
+            data->value = size;
+            data->scale = false;
+            data->align = ax;
         }
     };
     
@@ -1467,8 +1488,8 @@ struct list_view:node {
         struct Cell {
             mx        id;
             str       text;
-            rgba      fg;
-            rgba      bg;
+            rgba8     fg;
+            rgba8     bg;
             alignment va;
         } cell;
         
@@ -1476,20 +1497,20 @@ struct list_view:node {
             Columns   ids;
         } column;
 
-        rgba odd_bg;
+        rgba8 odd_bg;
+
+        doubly<prop> meta() {
+            return {
+                prop { *this, "cell-fg",    cell.fg    }, /// designer gets to set app-defaults in css; designer gets to know entire component model; designer almost immediately regrets
+                prop { *this, "cell-fg",    cell.fg    },
+                prop { *this, "cell-bg",    cell.bg    },
+                prop { *this, "odd-bg",     odd_bg     },
+                prop { *this, "column-fg",  column.fg  },
+                prop { *this, "column-bg",  column.bg  },
+                prop { *this, "column-ids", column.ids }
+            };
+        }
     } m;
-    
-    doubly<prop> meta() {
-        return {
-            prop { m, "cell-fg",    m.cell.fg    }, /// designer gets to set app-defaults in css; designer gets to know entire component model; designer almost immediately regrets
-            prop { m, "cell-fg",    m.cell.fg    },
-            prop { m, "cell-bg",    m.cell.bg    },
-            prop { m, "odd-bg",     m.odd_bg     },
-            prop { m, "column-fg",  m.column.fg  },
-            prop { m, "column-bg",  m.column.bg  },
-            prop { m, "column-ids", m.column.ids }
-        };
-    }
     
     void update_columns() {
         columns       = array<Column>(m.column.ids);
@@ -1530,11 +1551,11 @@ struct list_view:node {
         if (!data) return; /// use any smooth bool operator
 
         ///
-        r4<real> &rect   = node::std.drawings[operation::fill].rect();
-        r4<real>  h_line = { rect.x, rect.y, rect.w, 1.0 };
+        rectd &rect   = node::std.drawings[operation::fill].rect();
+        rectd  h_line = { rect.x, rect.y, rect.w, 1.0 };
 
         /// would be nice to just draw 1 outline here, canvas should work with that.
-        auto draw_rect = [&](rgba &c, r4<real> &h_line) {
+        auto draw_rect = [&](rgba8 &c, rectd &h_line) {
             rectr  r   = h_line;
             shape vs  = r; /// todo: decide on final xy scaling for text and gfx; we need a the same unit scales
             canvas.push();
@@ -1543,12 +1564,12 @@ struct list_view:node {
             canvas.pop();
         };
         Column  nc = null;
-        auto cells = [&] (lambda<void(Column::data &, r4<real> &)> fn) {
+        auto cells = [&] (lambda<void(Column::data &, rectd &)> fn) {
             if (columns) {
                 v2d p = h_line.xy();
                 for (Column::data &c: columns) {
                     double w = c.final;
-                    r4<real> cell = { p.x, p.y, w - 1.0, 1.0 };
+                    rectd cell = { p.x, p.y, w - 1.0, 1.0 };
                     fn(c, cell);
                     p.x += w;
                 }
@@ -1557,25 +1578,25 @@ struct list_view:node {
         };
 
         ///
-        auto pad_rect = [&](r4<real> r) -> r4<real> {
+        auto pad_rect = [&](rectd r) -> rectd {
             return {r.x + 1.0, r.y, r.w - 2.0, r.h};
         };
         
         /// paint column text, fills and outlines
         if (columns) {
             bool prev = false;
-            cells([&](Column::data &c, r4<real> &cell) {
+            cells([&](Column::data &c, rectd &cell) {
                 //var d_id = c.id;
                 str label = "n/a";//context("resolve")(d_id); -- c
                 canvas.color(text.color);
                 canvas.text(label, pad_rect(cell), { xalign::middle, yalign::middle }, { 0, 0 }, true);
                 if (prev) {
-                    r4<real> cr = cr;
+                    rectd cr = cr;
                     draw_rect(outline.border.color(), cr);
                 } else
                     prev = true;
             });
-            r4<real> rr = { h_line.x - 1.0, h_line.y + 1.0, h_line.w + 2.0, 0.0 }; /// needs to be in props
+            rectd rr = { h_line.x - 1.0, h_line.y + 1.0, h_line.w + 2.0, 0.0 }; /// needs to be in props
             draw_rect(outline.border.color(), rr);
             h_line.y += 2.0; /// this too..
         }
@@ -1586,9 +1607,9 @@ struct list_view:node {
         int  limit = sy + fill.h() - (columns ? 2.0 : 0.0);
         for (int i = sy; i < math::min(limit, int(d_array.length())); i++) {
             mx &d = d_array[i];
-            cells([&](Column::data &c, r4<real> &cell) {
+            cells([&](Column::data &c, rectd &cell) {
                 str s = c ? str(d[c.id]) : str(d);
-                rgba &clr = (i & 1) ? m.odd_bg : m.cell.bg;
+                rgba8 &clr = (i & 1) ? m.odd_bg : m.cell.bg;
                 canvas.color(clr);
                 canvas.fill(cell);
                 canvas.color(text.color);
@@ -1606,32 +1627,33 @@ struct list_view:node {
 
 struct composer:mx {
     ///
-    struct data {
+    struct cdata {
         node         *root;
         struct vk_interface *vk;
         //fn_render     render;
         lambda<Element()> render;
         map<mx>       args;
-    } &d;
+    };
     ///
-    ctr(composer, mx, data, d);
+    ptr(composer, mx, cdata);
     ///
-    array<node *> select_at(vec2 cur, bool active = true) {
-        array<node*> inside = d.root->select([&](node *n) {
-            real      x = cur.data.x, y = cur.data.y;
-            vec2      o = n->offset();
-            vec2    rel = cur.data + o.data;
-
+    array<node *> select_at(vec2d cur, bool active = true) {
+        array<node*> inside = data->root->select([&](node *n) {
+            real           x = cur.x, y = cur.y;
+            vec2d          o = n->offset();
+            vec2d        rel = cur + o;
+            node::props &std = **n;
             /// it could be Element::drawing
-            node::props::drawing &draw = n->std.drawings[operation::fill];
+            node::props::drawing &draw = std.drawings[operation::fill];
 
-            bool     in = draw.shape.contains(rel);
-            n->std.cursor = in ? vec2(x, y) : vec2(null);
-            return (in && (!active || !n->std.active)) ? n : null;
+            bool in = draw.shape.contains(rel);
+            n->node::data->cursor = in ? vec2d(x, y) : vec2d(-1, -1);
+            return (in && (!active || !std.active)) ? n : null;
         });
 
-        array<node*> actives = d.root->select([&](node *n) -> node* {
-            return (active && n->std.active) ? n : null;
+        array<node*> actives = data->root->select([&](node *n) -> node* {
+             node::props &std = **n;
+            return (active && std.active) ? n : null;
         });
 
         array<node*> result = array<node *>(size_t(inside.length()) + size_t(actives.length()));
@@ -1647,16 +1669,16 @@ struct composer:mx {
 };
 
 struct app:composer {
-    struct data {
+    struct adata {
         window win;
         gfx    canvas;
         lambda<Element(app&)> app_fn;
-    } &m;
+    };
 
-    ctr(app, composer, data, m);
+    ptr(app, composer, adata);
 
     app(lambda<Element(app&)> app_fn) : app() {
-        m.app_fn = app_fn;
+        data->app_fn = app_fn;
     }
     ///
     int run();

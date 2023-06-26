@@ -15,6 +15,22 @@ template <typename T> using m33  = glm::tmat3x3<T>;
 template <typename T> using m22  = glm::tmat2x2<T>;
 
 
+template <typename T>
+constexpr bool operator==(const rgba<T>& a, const rgba<T>& b) {
+    return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
+}
+
+template <typename T>
+constexpr bool operator!=(const rgba<T>& a, const rgba<T>& b) {
+    return !(a == b);
+}
+
+template <typename T>
+constexpr bool operator!(const rgba<T>& a) {
+    return !(a.r || a.g || a.b || a.a);
+}
+
+
 /// vkg must use doubles!
 using m44d    = m44 <r64>;
 using m44f    = m44 <r32>;
@@ -71,8 +87,6 @@ struct edge {
 
     /// returns x-value of intersection of two lines
     T x(edge e) const {
-        vec2 &a =   a;
-        vec2 &b =   b;
         vec2 &c = e.a;
         vec2 &d = e.b;
         T num   = (a.x*b.y  -  a.y*b.x) * (c.x-d.x) - (a.x-b.x) * (c.x*d.y - c.y*d.x);
@@ -82,8 +96,6 @@ struct edge {
     
     /// returns y-value of intersection of two lines
     T y(edge e) const {
-        vec2 &a =   a;
-        vec2 &b =   b;
         vec2 &c = e.a;
         vec2 &d = e.b;
         T num = (a.x*b.y  -  a.y*b.x) * (c.y-d.y) - (a.y-b.y) * (c.x*d.y - c.y*d.x);
@@ -131,9 +143,7 @@ struct rect {
     }
 };
 
-using recti   = rect <i32>;
-using rectd   = rect <r64>;
-using rectf   = rect <r32>;
+
 
 /// high level class begins with Capitalisation, spelling words properly
 /// try to express in 1 word when succinct
@@ -142,6 +152,21 @@ struct Rect:mx {
     ptr(Rect, mx, rect<T>);
     movable(Rect);
 };
+
+using recti   = rect <i32>;
+using rectd   = rect <r64>;
+using rectf   = rect <r32>;
+
+using Recti   = Rect <i32>;
+using Rectd   = Rect <r64>;
+using Rectf   = Rect <r32>;
+
+/// shortening methods
+template <typename T> inline vec2<T> xy  (vec4<T> v) { return { v.x, v.y }; }
+template <typename T> inline vec2<T> xy  (vec3<T> v) { return { v.x, v.y }; }
+template <typename T> inline vec3<T> xyz (vec4<T> v) { return { v.x, v.y, v.z }; }
+template <typename T> inline vec4<T> xyxy(vec4<T> v) { return { v.x, v.y, v.x, v.y }; }
+template <typename T> inline vec4<T> xyxy(vec3<T> v) { return { v.x, v.y, v.x, v.y }; }
 
 template <typename T>
 struct Rounded:Rect<T> {
@@ -164,26 +189,26 @@ struct Rounded:Rect<T> {
         inline rdata() { } /// this is implicit zero fill
         inline rdata(vec4 tl, vec4 tr, vec4 br, vec4 bl) {
             /// top-left
-            p_tl  = tl.xy();
-            v_tl  = tr.xy() - p_tl;
+            p_tl  = ion::xy(tl);
+            v_tl  = ion::xy(tr) - p_tl;
             l_tl  = v_tl.length();
             d_tl  = v_tl / l_tl;
 
             /// top-right
-            p_tr  = tr.xy();
-            v_tr  = br.xy() - p_tr;
+            p_tr  = ion::xy(tr);
+            v_tr  = ion::xy(br) - p_tr;
             l_tr  = v_tr.length();
             d_tr  = v_tr / l_tr;
 
             // bottom-right
-            p_br  = br.xy();
-            v_br  = bl.xy() - p_br;
+            p_br  = ion::xy(br);
+            v_br  = ion::xy(bl) - p_br;
             l_br  = v_br.length();
             d_br  = v_br / l_br;
 
             /// bottom-left
-            p_bl  = bl.xy();
-            v_bl  = tl.xy() - p_bl;
+            p_bl  = ion::xy(bl);
+            v_bl  = ion::xy(tl) - p_bl;
             l_bl  = v_bl.length();
             d_bl  = v_bl / l_bl;
 
@@ -203,15 +228,15 @@ struct Rounded:Rect<T> {
             bl_x = p_bl - d_br * r_bl;
             bl_y = p_bl - d_tr * r_bl;
 
-            c0   = (p_tr + tr_x) / 2;
-            c1   = (p_tr + tr_y) / 2;
+            c0   = (p_tr + tr_x) / T(2);
+            c1   = (p_tr + tr_y) / T(2);
             p1   =  tr_y;
-            c0b  = (p_br + br_y) / 2;
-            c1b  = (p_br + br_x) / 2;
-            c0c  = (p_bl + bl_x) / 2;
-            c1c  = (p_bl + bl_y) / 2;
-            c0d  = (p_tl + bl_x) / 2;
-            c1d  = (p_bl + bl_y) / 2;
+            c0b  = (p_br + br_y) / T(2);
+            c1b  = (p_br + br_x) / T(2);
+            c0c  = (p_bl + bl_x) / T(2);
+            c1c  = (p_bl + bl_y) / T(2);
+            c0d  = (p_tl + bl_x) / T(2);
+            c1d  = (p_bl + bl_y) / T(2);
         }
 
         inline rdata(rect &r, T rx, T ry)
@@ -220,6 +245,7 @@ struct Rounded:Rect<T> {
         
     };
     ptr(Rounded, Rect<T>, rdata);
+    movable(Rounded);
 
     /// needs routines for all prims
     inline bool contains(vec2 v) { return (v >= data->p_tl && v < data->p_br); }
@@ -249,6 +275,7 @@ struct Line:mx {
         vec2d origin;
     };
     ptr(Line, mx, ldata);
+    movable(Line);
 };
 
 struct Movement:mx {
@@ -266,5 +293,9 @@ struct Bezier:mx {
     ptr(Bezier, mx, bdata);
 };
 
+template <typename T>
+struct Vec2:mx {
+    ptr(Vec2<T>, mx, vec2<T>);
+};
 
 }

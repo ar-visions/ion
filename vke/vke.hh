@@ -2,11 +2,13 @@
 #include <mx/mx.hpp>
 #include <math/math.hpp>
 
+struct GLFWmonitor;
+
 namespace ion {
 enum VkeStatus {
 	VKE_STATUS_SUCCESS = 0,			    /// no error occurred.
 	VKE_STATUS_NO_MEMORY,				/// out of memory
-	VKE_STATUS_INVALID_RESTORE,		    /// call to #vkvg_restore without matching call to #vkvg_save
+	VKE_STATUS_INVALID_RESTORE,		    /// call to #vkg_restore without matching call to #vkg_save
 	VKE_STATUS_NO_CURRENT_POINT,		/// path command expecting a current point to be defined failed
 	VKE_STATUS_INVALID_MATRIX,			/// invalid matrix (not invertible)
 	VKE_STATUS_INVALID_STATUS,			///
@@ -106,7 +108,23 @@ struct VkePresentModeKHR                :mx { ptr_declare(VkePresentModeKHR,    
 struct VkeDeviceQueueCreateInfo         :mx { ptr_declare(VkeDeviceQueueCreateInfo,          mx, VkDeviceQueueCreateInfo)          };
 struct VkePhysicalDeviceProperties      :mx { ptr_declare(VkePhysicalDeviceProperties,       mx, VkPhysicalDeviceProperties)       }; 
 struct VkeQueueFamilyProperties         :mx { ptr_declare(VkeQueueFamilyProperties,          mx, VkQueueFamilyProperties)          }; 
-struct VkePhysicalDeviceMemoryProperties:mx { ptr_declare(VkePhysicalDeviceMemoryProperties, mx, VkPhysicalDeviceMemoryProperties) }; 
+struct VkePhysicalDeviceMemoryProperties:mx { ptr_declare(VkePhysicalDeviceMemoryProperties, mx, VkPhysicalDeviceMemoryProperties) };
+struct VkeAttachmentLoadOp              :mx { ptr_declare(VkeAttachmentLoadOp,               mx, VkAttachmentLoadOp)               }; 
+struct VkeAttachmentStoreOp             :mx { ptr_declare(VkeAttachmentStoreOp,              mx, VkAttachmentStoreOp)              }; 
+
+/// these utility functions let you relate to what structure it stores it in, and what purpose it serves.  its literally 1-4 things per thing instead of spitting out 20 boilerplate lines on each
+struct VkeAttachmentDescription         :mx {
+    ptr_declare(VkeAttachmentDescription, mx, VkAttachmentDescription);
+    ///
+    static VkeAttachmentDescription         color(VkeFormat format, VkeSampleCountFlagBits samples, VkeAttachmentLoadOp load, VkeAttachmentStoreOp store);
+    static VkeAttachmentDescription depth_stencil(VkeFormat format, VkeSampleCountFlagBits samples, VkeAttachmentLoadOp load, VkeAttachmentStoreOp store);
+    static VkeAttachmentDescription color_resolve(VkeFormat format);
+}; 
+
+struct VkeRenderPass:mx {
+    ptr_declare(VkeRenderPass, mx, VkRenderPass);
+    VkeRenderPass(VkeDevice dev, array<VkeAttachmentDescription> desc);
+};
 
 struct VkeSemaphore:mx {
     ptr_declare(VkeSemaphore, mx, VkSemaphore);

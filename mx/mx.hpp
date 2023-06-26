@@ -51,9 +51,28 @@
 #endif
 
 #include <assert.h>
-#include <io/io.h>
 
 namespace ion {
+
+/// AR.. here be some fine types. #not-a-real-sailor
+typedef signed char        i8;
+typedef signed short       i16;
+typedef signed int         i32;
+typedef signed long long   i64;
+typedef unsigned char      u8;
+typedef unsigned short     u16;
+typedef unsigned int       u32;
+typedef unsigned long long u64;
+typedef unsigned long      ulong;
+typedef float              r32;
+typedef double             r64;
+typedef r64                real;
+typedef char*              cstr;
+typedef const char*        symbol;
+typedef const char         cchar_t;
+// typedef i64             ssize_t; // ssize_t is typically predefined in sys/types.h
+typedef i64                num;
+typedef void*              handle_t;
 
 struct idata;
 struct mx;
@@ -162,7 +181,7 @@ constexpr int num_occurances(const char* cs, char c) {
             for (size_t i  = 0; i < c; i++)\
                 mem_symbol(sp[i].data, ty, i64(i));\
         }\
-        ::symbol symbol() {\
+        ion::symbol symbol() {\
             memory *mem = typeof(C)->lookup(u64(value));\
             assert(mem);\
             return (char*)mem->origin;\
@@ -752,7 +771,7 @@ struct doubly {
     doubly(memory *mem) : mem(mem), data(mdata<ldata>(mem, 0)) { }
     
     doubly() : doubly(talloc<ldata>()) { }
-    doubly(initial<T> a) : doubly() { for (auto &v: a) push(v); }
+    doubly(initial<T> a) : doubly() { for (auto &v: a) data->push(v); }
 
     operator bool() const { return bool(*data); }
     
@@ -896,18 +915,15 @@ memory *mem_symbol(symbol cs, type_t ty = typeof(char), i64 id = 0);
 
 /// now that we have allowed for any, make entry for meta description
 struct prop {
-    u8     *container; /// address of container.
     memory *key;
     size_t  member_addr;
     size_t  offset; /// this is set by once-per-type meta fetcher
 
-    template <typename MC, typename M>
-    prop(MC &container, symbol name, M &member) : container((u8*)&container), key(mem_symbol(name)), member_addr(&member) { }
+    template <typename M>
+    prop(symbol name, M &member) : key(mem_symbol(name)), member_addr((size_t)&member) { }
 
-    template <typename M, typename D>
-    M &member_ref(D &m) {
-        return *(M *)handle_t(&cstr(&m)[offset]);
-    }
+    template <typename M>
+    M &member_ref(void *m) { return *(M *)handle_t(&cstr(m)[offset]); }
 
     symbol name() const;
 };
@@ -1223,15 +1239,15 @@ struct memory {
     static memory *stringify(cstr cs, size_t len = autolen, size_t rsv = 0, bool constant = false, type_t ctype = typeof(char), i64 id = 0);
     static memory *string   (std::string s);
     static memory *cstring  (cstr        s);
-    static memory *symbol   (::symbol s, type_t ty = typeof(char), i64 id = 0);
+    static memory *symbol   (ion::symbol s, type_t ty = typeof(char), i64 id = 0);
     
-    ::symbol symbol() {
-        return ::symbol(origin);
+    ion::symbol symbol() {
+        return ion::symbol(origin);
     }
 
-    operator ::symbol*() {
+    operator ion::symbol*() {
         assert(attrs & constant);
-        return (::symbol *)origin;
+        return (ion::symbol *)origin;
     }
 
     memory *copy(size_t reserve = 0);
@@ -1270,9 +1286,9 @@ i64 integer_value(memory *mem);
 struct str;
 
 template <typename T>
-T &defaults() {
+T *defaults() {
     static T def_instance;
-    return   def_instance; //typeof(T)->defaults->ref<T>();
+    return  &def_instance;
 }
 
 template <typename T> T* mdata(memory *mem, size_t index) { return mem ? mem->data<T>(index) : null; }
@@ -3759,7 +3775,7 @@ struct sp:mx {
 };
 
 void         chdir(std::string c);
-memory* mem_symbol(::symbol cs, type_t ty, i64 id);
+memory* mem_symbol(ion::symbol cs, type_t ty, i64 id);
 void *  mem_origin(memory *mem);
 memory *   cstring(cstr cs, size_t len, size_t reserve, bool is_constant);
 

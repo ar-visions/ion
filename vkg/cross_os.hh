@@ -11,19 +11,19 @@
 			#define isnan _isnanf
 		#endif
 	#endif
-	#define vkvg_inline __forceinline
+	#define vkg_inline __forceinline
 	#define disable_warning (warn)
 	#define reset_warning (warn)
 #elif __APPLE__
 	#include <math.h>
-	#define vkvg_inline static
+	#define vkg_inline static
 	#define disable_warning (warn)
 	#define reset_warning (warn)
 #elif __unix__
 	#include <unistd.h>
 	#include <sys/types.h>
 	#include <pwd.h>
-	#define vkvg_inline static inline __attribute((always_inline))
+	#define vkg_inline static inline __attribute((always_inline))
 	#define disable_warning (warn) #pragma GCC diagnostic ignored "-W"#warn
 	#define reset_warning (warn) #pragma GCC diagnostic warning "-W"#warn
 	#if __linux__

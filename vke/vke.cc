@@ -24,6 +24,8 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wc++11-narrowing"
 
+struct GLFWmonitor;
+
 namespace ion {
 
 /// needs organization into what is instance/device/feature extension
@@ -59,14 +61,14 @@ void vke_configure(bool _validation, bool _mesa_overlay, bool _render_doc) {
 #ifdef DEBUG
 	extern uint32_t vke_log_level;
 	#ifdef VKVG_WIRED_DEBUG
-		enum vkvg_wired_debug_mode {
-			vkvg_wired_debug_mode_normal	= 0x01,
-			vkvg_wired_debug_mode_points	= 0x02,
-			vkvg_wired_debug_mode_lines		= 0x04,
-			vkvg_wired_debug_mode_both		= vkvg_wired_debug_mode_points|vkvg_wired_debug_mode_lines,
-			vkvg_wired_debug_mode_all		= 0xFFFFFFFF
+		enum vkg_wired_debug_mode {
+			vkg_wired_debug_mode_normal	= 0x01,
+			vkg_wired_debug_mode_points	= 0x02,
+			vkg_wired_debug_mode_lines		= 0x04,
+			vkg_wired_debug_mode_both		= vkg_wired_debug_mode_points|vkg_wired_debug_mode_lines,
+			vkg_wired_debug_mode_all		= 0xFFFFFFFF
 		};
-		extern vkvg_wired_debug_mode vkvg_wired_debug;
+		extern vkg_wired_debug_mode vkg_wired_debug;
 	#endif
 #endif
 
@@ -1038,6 +1040,106 @@ int VkeDevice::compute_index() {
 	return data->phyinfo->cQueue;
 }
 
+VkeAttachmentDescription VkeAttachmentDescription::color(
+		VkeFormat format, VkeSampleCountFlagBits samples, VkeAttachmentLoadOp load, VkeAttachmentStoreOp store) {
+	VkAttachmentDescription desc {
+		.format 		= *format,
+		.samples 		= *samples,
+		.loadOp 		= *load,
+		.storeOp 		= *store,
+		.stencilLoadOp 	=  VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.stencilStoreOp =  VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.initialLayout 	=  VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		.finalLayout 	=  VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+	};
+	return VkeAttachmentDescription(desc);
+}
+
+/// pattern: if you ever need to change it, add an arg
+VkeAttachmentDescription VkeAttachmentDescription::color_resolve(VkeFormat format) {
+	VkAttachmentDescription desc {
+		.format 		= *format,
+		.samples	 	= VK_SAMPLE_COUNT_1_BIT,
+		.loadOp 		= VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.storeOp 		= VK_ATTACHMENT_STORE_OP_STORE,
+		.stencilLoadOp 	= VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.initialLayout 	= VK_IMAGE_LAYOUT_UNDEFINED,
+		.finalLayout 	= VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+	};
+	return VkeAttachmentDescription(desc);
+}
+
+VkeAttachmentDescription VkeAttachmentDescription::depth_stencil(
+		VkeFormat format, VkeSampleCountFlagBits samples, VkeAttachmentLoadOp load, VkeAttachmentStoreOp store) {
+	VkAttachmentDescription desc {
+		.format 		= *format,
+		.samples 		= *samples,
+		.loadOp 		= VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.storeOp 		= VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.stencilLoadOp 	= *load,
+		.stencilStoreOp = *store,
+		.initialLayout 	= VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+		.finalLayout 	= VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+	};
+	return VkeAttachmentDescription(desc);
+}
+
+// Vkg cannot use internal vulkan types and certainly not call vulkan functions
+VkeRenderPass::VkeRenderPass(VkeDevice dev, array<VkeAttachmentDescription> desc) {
+	///
+	size_t index = 0;
+	array<VkAttachmentDescription> attachments(desc.len());
+	array<VkAttachmentReference>   refs       (desc.len());
+	int resolve       = -1;
+	int color         = -1;
+	int depth_stencil = -1;
+
+	for (VkeAttachmentDescription &o: desc) {
+		VkAttachmentDescription &d = *o;
+		VkAttachmentReference ref = { index, d.finalLayout };
+		refs.push(ref);
+		attachments.push(d);
+		if (d.initialLayout == VK_IMAGE_LAYOUT_UNDEFINED && d.samples == VK_SAMPLE_COUNT_1_BIT) resolve 		= index;
+		if (d.initialLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) 				depth_stencil 	= index;
+		if (d.initialLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) 						color 			= index;
+		index++;
+	}
+
+	///
+	VkSubpassDescription subpass_desc = {
+		.pipelineBindPoint 		= VK_PIPELINE_BIND_POINT_GRAPHICS,
+		.colorAttachmentCount	= 1,
+		.pColorAttachments		= (color 		 >= 0) ? &refs[color] 		  : null,
+		.pResolveAttachments	= (resolve       >= 0) ? &refs[resolve]       : null,
+		.pDepthStencilAttachment= (depth_stencil >= 0) ? &refs[depth_stencil] : null
+	};
+
+	/// no clue what this garbage is. hopefully ill have some clue later.
+	VkSubpassDependency dependencies[] = {
+		{ VK_SUBPASS_EXTERNAL, 0,
+		  VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		  VK_ACCESS_MEMORY_READ_BIT, VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+		  VK_DEPENDENCY_BY_REGION_BIT},
+		{ 0, VK_SUBPASS_EXTERNAL,
+		  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+		  VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_MEMORY_READ_BIT,
+		  VK_DEPENDENCY_BY_REGION_BIT},
+	};
+
+	VkRenderPassCreateInfo renderpass_info = {
+		.sType 				= VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+		.attachmentCount 	= attachments.len(),
+		.pAttachments 		= attachments,
+		.subpassCount 		= 1,
+		.pSubpasses 		= &subpass_desc,
+		.dependencyCount 	= 2,
+		.pDependencies 		= dependencies
+	};
+
+	vk_assert(vkCreateRenderPass(dev, &renderpass_info, NULL, data));
+}
+
 /**
  * @brief get instance proc addresses for debug utils (name, label,...)
  * @param vkh device
@@ -1122,9 +1224,10 @@ static void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMesse
 
 
 array<VkeMonitor> VkeMonitor::enumerate() {
-	int count;
+	int 		  count;
 	GLFWmonitor **glfwm = glfwGetMonitors(&count);
 	static array<VkeMonitor> *cache;
+	///
 	if (!cache) cache = new array<VkeMonitor>(count);
 	for (int i = 0; i < count; i++)
 		(*cache)[i] = VkeMonitor(glfwm[i]);
@@ -1136,7 +1239,7 @@ void vke_poll_events() {
 	glfwPollEvents();
 }
 
-/// imported from vkvg (it needs more use of vke in vkvg_device)
+/// imported from vkvg (it needs more use of vke in vkg_device)
 /// too many compile-time switches where you dont need them there
 /// and that prevents the code from running elsewhere (no actual runtime benefit)
 

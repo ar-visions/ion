@@ -1,30 +1,10 @@
 #ifndef _io_h_
 #define _io_h_
 
-#include <tinycthread.h>
+//#include <tinycthread.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <memory.h>
-
-/// AR.. here be some fine types. #not-a-real-sailor
-typedef signed char       i8;
-typedef signed short      i16;
-typedef signed int        i32;
-typedef long long         i64;
-typedef unsigned char     u8;
-typedef unsigned short    u16;
-typedef unsigned int      u32;
-typedef unsigned long long u64;
-typedef unsigned long     ulong;
-typedef float             r32;
-typedef double            r64;
-typedef r64               real;
-typedef char*             cstr;
-typedef const char*       symbol;
-typedef const char        cchar_t;
-// typedef i64            ssize_t; // ssize_t is typically predefined in sys/types.h
-typedef i64               num;
-typedef void*             handle_t;
 
 /// io is an allocator with reference counts
 /// io allocates what it needs at the head including mtx_t

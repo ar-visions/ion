@@ -39,35 +39,37 @@
 
 /// must be folded into glm wrapper
 
-#include <vkg/vkvg_matrix.h>
+#include <vkg/vkg_matrix.h>
 
 #define ISFINITE(x) ((x) * (x) >= 0.) /* check for NaNs */
 
 //matrix computations mainly taken from http://cairographics.org
 
-VkeStatus VkvgMatrix::invert ()
+/// must convert to glm in stages
+
+VkeStatus VkgMatrix::invert()
 {
 	float det;
 
 	/* Simple scaling|translation matrices are quite common... */
-	if (matrix->xy == 0. && matrix->yx == 0.) {
-		matrix->x0 = -matrix->x0;
-		matrix->y0 = -matrix->y0;
+	if (data->xy == 0. && data->yx == 0.) {
+		data->x0 = -data->x0;
+		data->y0 = -data->y0;
 
-		if (matrix->xx != 1.f) {
-			if (matrix->xx == 0.)
+		if (data->xx != 1.f) {
+			if (data->xx == 0.)
 			return VKE_STATUS_INVALID_MATRIX;
 
-			matrix->xx = 1.f / matrix->xx;
-			matrix->x0 *= matrix->xx;
+			data->xx = 1.f / data->xx;
+			data->x0 *= data->xx;
 		}
 
-		if (matrix->yy != 1.f) {
-			if (matrix->yy == 0.)
+		if (data->yy != 1.f) {
+			if (data->yy == 0.)
 			return VKE_STATUS_INVALID_MATRIX;
 
-			matrix->yy = 1.f / matrix->yy;
-			matrix->y0 *= matrix->yy;
+			data->yy = 1.f / data->yy;
+			data->y0 *= data->yy;
 		}
 
 		return VKE_STATUS_SUCCESS;
@@ -87,98 +89,88 @@ VkeStatus VkvgMatrix::invert ()
 
 	return VKE_STATUS_SUCCESS;
 }
-void VkvgMatrix::init_identity (vkvg_matrix_t *matrix) {
+
+// member
+void VkgMatrix::init_identity() {
 	init(1, 0, 0, 1, 0, 0);
 }
 
-void VkvgMatrix::init (
+// member
+void VkgMatrix::init (
 	float xx, float yx,
 	float xy, float yy,
 	float x0, float y0)
 {
-	matrix->xx = xx; matrix->yx = yx;
-	matrix->xy = xy; matrix->yy = yy;
-	matrix->x0 = x0; matrix->y0 = y0;
+	data->xx = xx; data->yx = yx;
+	data->xy = xy; data->yy = yy;
+	data->x0 = x0; data->y0 = y0;
 }
 
-void VkvgMatrix::init_translate (vkvg_matrix_t *matrix, float tx, float ty) {
-	init (1, 0, 0, 1, tx, ty);
+// static
+VkgMatrix VkgMatrix::translated(float tx, float ty) {
+	VkgMatrix res;
+	res.init (1, 0, 0, 1, tx, ty);
+	return res;
 }
 
-void VkvgMatrix::init_scale (vkvg_matrix_t *matrix, float sx, float sy) {
-	init (sx, 0, 0, sy, 0, 0);
+// static
+VkgMatrix VkgMatrix::scaled(float sx, float sy) {
+	VkgMatrix res;
+	res.init (sx, 0, 0, sy, 0, 0);
+	return res;
 }
 
-void VkvgMatrix::init_rotate (vkvg_matrix_t *matrix, float radians) {
-	float  s;
-	float  c;
-
-	s = sinf (radians);
-	c = cosf (radians);
-
-	init (matrix, c, s, -s, c, 0, 0);
+// static
+void VkgMatrix::rotated(float radians) {
+	float s = sinf(radians);
+	float c = cosf(radians);
+	init(data, c, s, -s, c, 0, 0);
 }
-void VkvgMatrix::translate (vkvg_matrix_t *matrix, float tx, float ty)
-{
-	vkvg_matrix_t tmp;
 
+void VkgMatrix::translate(float tx, float ty) {
+	VkgMatrix tmp;
 	tmp.init_translate (tx, ty);
-
-	tmp.multiply (matrix, &tmp, matrix);
+	multiply(data, &tmp, data);
 }
-void VkvgMatrix::scale (vkvg_matrix_t *matrix, float sx, float sy)
-{
-	vkvg_matrix_t tmp;
 
-	vkvg_matrix_init_scale (&tmp, sx, sy);
-
-	vkvg_matrix_multiply (matrix, &tmp, matrix);
+void VkgMatrix::scale(float sx, float sy) {
+	VkgMatrix tmp;
+	init_scale(&tmp, sx, sy);
+	multiply(data, &tmp, data);
 }
-void VkvgMatrix::rotate (vkvg_matrix_t *matrix, float radians)
-{
-	vkvg_matrix_t tmp;
 
+void VkgMatrix::rotate(float radians) {
+	VkgMatrix tmp;
 	init_rotate (&tmp, radians);
-
-	multiply (matrix, &tmp, matrix);
+	multiply (data, &tmp, data);
 }
-void VkvgMatrix::multiply (vkvg_matrix_t *result, const vkvg_matrix_t *a, const vkvg_matrix_t *b)
-{
-	vkvg_matrix_t r;
 
-	r.xx = a->xx * b->xx + a->yx * b->xy;
-	r.yx = a->xx * b->yx + a->yx * b->yy;
-
-	r.xy = a->xy * b->xx + a->yy * b->xy;
-	r.yy = a->xy * b->yx + a->yy * b->yy;
-
-	r.x0 = a->x0 * b->xx + a->y0 * b->xy + b->x0;
-	r.y0 = a->x0 * b->yx + a->y0 * b->yy + b->y0;
-
-	*result = r;
+void VkgMatrix::multiply(VkgMatrix a, VkgMatrix b) {
+	VkgMatrix r;
+	r->xx = a->xx * b->xx + a->yx * b->xy;
+	r->yx = a->xx * b->yx + a->yx * b->yy;
+	r->xy = a->xy * b->xx + a->yy * b->xy;
+	r->yy = a->xy * b->yx + a->yy * b->yy;
+	r->x0 = a->x0 * b->xx + a->y0 * b->xy + b->x0;
+	r->y0 = a->x0 * b->yx + a->y0 * b->yy + b->y0;
+	return r;
 }
-void VkvgMatrix::transform_distance (const vkvg_matrix_t *matrix, float *dx, float *dy)
-{
+
+void VkgMatrix::transform_distance(float *dx, float *dy) {
 	float new_x, new_y;
-
-	new_x = (matrix->xx * *dx + matrix->xy * *dy);
-	new_y = (matrix->yx * *dx + matrix->yy * *dy);
-
+	new_x = (data->xx * *dx + data->xy * *dy);
+	new_y = (data->yx * *dx + data->yy * *dy);
 	*dx = new_x;
 	*dy = new_y;
 }
-void VkvgMatrix::transform_point (const vkvg_matrix_t *matrix, float *x, float *y)
-{
-	vkvg_matrix_transform_distance (matrix, x, y);
 
-	*x += matrix->x0;
-	*y += matrix->y0;
+void VkgMatrix::transform_point(float *x, float *y) {
+	transform_distance(x, y);
+	*x += data->x0;
+	*y += data->y0;
 }
-void VkvgMatrix::get_scale (const vkvg_matrix_t *matrix, float *sx, float *sy) {
-	*sx = sqrt (matrix->xx * matrix->xx + matrix->xy * matrix->xy);
-	/*if (matrix->xx < 0)
-		*sx = -*sx;*/
-	*sy = sqrt (matrix->yx * matrix->yx + matrix->yy * matrix->yy);
-	/*if (matrix->yy < 0)
-		*sy = -*sy;*/
+
+void VkgMatrix::get_scale(float *sx, float *sy) {
+	*sx = sqrt (data->xx * data->xx + data->xy * data->xy);
+	*sy = sqrt (data->yx * data->yx + data->yy * data->yy);
 }

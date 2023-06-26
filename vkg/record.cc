@@ -21,43 +21,43 @@
  */
 
 #include <vkg/vkg.h>
-#include <vkg/vkvg_internal.h>
+#include <vkg/internal.hh>
 
 #define VKVG_RECORDING_INIT_BUFFER_SIZE_TRESHOLD	64
 #define VKVG_RECORDING_INIT_BUFFER_SIZE				1024
 #define VKVG_RECORDING_INIT_COMMANDS_COUNT			64
 
-vkvg_recording* _new_recording () {
-	vkvg_recording*        rec = io_new(vkvg_recording); /// i've been waiting for you obi rec.  the circular dependency is now complete now i am the main
+vkg_recording* _new_recording () {
+	vkg_recording*        rec = io_new(vkg_recording); /// i've been waiting for you obi rec.  the circular dependency is now complete now i am the main
 	rec->commandsReservedCount = VKVG_RECORDING_INIT_COMMANDS_COUNT;
 	rec->bufferReservedSize	   = VKVG_RECORDING_INIT_BUFFER_SIZE;
-	rec->commands 			   = (vkvg_record*)malloc(rec->commandsReservedCount * sizeof(vkvg_record));
+	rec->commands 			   = (vkg_record*)malloc(rec->commandsReservedCount * sizeof(vkg_record));
 	rec->buffer 			   = malloc (rec->bufferReservedSize);
 	return rec;
 }
 
-void _destroy_recording (vkvg_recording* rec) {
+void _destroy_recording (vkg_recording* rec) {
 	if (!rec)
 		return;
 	for (uint32_t i=0; i<rec->commandsCount; i++) {
 		if (rec->commands[i].cmd == VKVG_CMD_SET_SOURCE)
-			vkvg_pattern_drop((VkvgPattern)(rec->buffer + rec->commands[i].dataOffset));
+			VkgPattern::drop((VkgPattern)(rec->buffer + rec->commands[i].dataOffset));
 		else if (rec->commands[i].cmd == VKVG_CMD_SET_SOURCE_SURFACE)
-			vkvg_surface_drop((VkvgSurface)(rec->buffer + rec->commands[i].dataOffset + 2 * sizeof(float)));
+			vkg_surface_drop((VkgSurface)(rec->buffer + rec->commands[i].dataOffset + 2 * sizeof(float)));
 	}
 	free(rec->commands);
 	free(rec->buffer);
 	free(rec);
 }
 
-void _start_recording (VkvgContext ctx) {
+void _start_recording (VkgContext ctx) {
 	if (ctx->recording)
 		_destroy_recording(ctx->recording);
 	ctx->recording = _new_recording();
 }
 
-vkvg_recording* _stop_recording (VkvgContext ctx) {
-	vkvg_recording* rec = ctx->recording;
+vkg_recording* _stop_recording (VkgContext ctx) {
+	vkg_recording* rec = ctx->recording;
 	if (!rec)
 		return NULL;
 	if (!rec->commandsCount) {
@@ -66,12 +66,12 @@ vkvg_recording* _stop_recording (VkvgContext ctx) {
 		return NULL;
 	}
 	/*rec->buffer = realloc(rec->buffer, rec->bufferSize);
-	rec->commands = (vkvg_record_t*)realloc(rec->commands, rec->commandsCount * sizeof (vkvg_record_t));*/
+	rec->commands = (vkg_record_t*)realloc(rec->commands, rec->commandsCount * sizeof (vkg_record_t));*/
 	ctx->recording = NULL;
 	return rec;
 }
 
-void* _ensure_recording_buffer (vkvg_recording* rec, size_t size) {
+void* _ensure_recording_buffer (vkg_recording* rec, size_t size) {
 	if (rec->bufferReservedSize >= rec->bufferSize - VKVG_RECORDING_INIT_BUFFER_SIZE_TRESHOLD - size) {
 		rec->bufferReservedSize += VKVG_RECORDING_INIT_BUFFER_SIZE;
 		rec->buffer = realloc(rec->buffer, rec->bufferReservedSize);
@@ -79,7 +79,7 @@ void* _ensure_recording_buffer (vkvg_recording* rec, size_t size) {
 	return rec->buffer + rec->bufferSize;
 }
 
-void* _advance_recording_buffer_unchecked (vkvg_recording* rec, size_t size) {
+void* _advance_recording_buffer_unchecked (vkg_recording* rec, size_t size) {
 	rec->bufferSize += size;
 	return rec->buffer + rec->bufferSize;
 }
@@ -103,7 +103,7 @@ void* _advance_recording_buffer_unchecked (vkvg_recording* rec, size_t size) {
 		buff = _advance_recording_buffer_unchecked (rec, sizeof(uint32_t));	\
 	}
 
-void _record (vkvg_recording* rec,...) {
+void _record (vkg_recording* rec,...) {
 	va_list args;
 	va_start(args, rec);
 
@@ -111,9 +111,9 @@ void _record (vkvg_recording* rec,...) {
 
 	if (rec->commandsCount == rec->commandsReservedCount) {
 		rec->commandsReservedCount += VKVG_RECORDING_INIT_COMMANDS_COUNT;
-		rec->commands = (vkvg_record_t*)realloc(rec->commands, rec->commandsReservedCount * sizeof (vkvg_record_t));
+		rec->commands = (vkg_record_t*)realloc(rec->commands, rec->commandsReservedCount * sizeof (vkg_record_t));
 	}
-	vkvg_record_t* r = &rec->commands[rec->commandsCount++];
+	vkg_record_t* r = &rec->commands[rec->commandsCount++];
 	r->cmd = cmd;
 	r->dataOffset = rec->bufferSize;
 
@@ -189,10 +189,10 @@ void _record (vkvg_recording* rec,...) {
 			case VKVG_CMD_SET_MATRIX:
 			case VKVG_CMD_TRANSFORM:
 				{
-					buff = _ensure_recording_buffer (rec, sizeof(vkvg_matrix_t));
-					vkvg_matrix_t* mat = (vkvg_matrix_t*)va_arg(args, vkvg_matrix_t*);
-					memcpy(buff, mat, sizeof(vkvg_matrix_t));
-					buff = _advance_recording_buffer_unchecked (rec, sizeof(vkvg_matrix_t));
+					buff = _ensure_recording_buffer (rec, sizeof(vkg_matrix));
+					vkg_matrix* mat = (vkg_matrix*)va_arg(args, vkg_matrix*);
+					memcpy(buff, mat, sizeof(vkg_matrix));
+					buff = _advance_recording_buffer_unchecked (rec, sizeof(vkg_matrix));
 
 				}
 				break;
@@ -210,22 +210,22 @@ void _record (vkvg_recording* rec,...) {
 				break;
 			case VKVG_CMD_SET_SOURCE:
 				{
-					buff = _ensure_recording_buffer (rec, sizeof(VkvgPattern));
-					VkvgPattern pat = (VkvgPattern)va_arg(args, VkvgPattern);
-					io_grab(vkvg_pattern, pat);
-					VkvgPattern* pPat = (VkvgPattern*)buff;
+					buff = _ensure_recording_buffer (rec, sizeof(VkgPattern));
+					VkgPattern pat = (VkgPattern)va_arg(args, VkgPattern);
+					io_grab(vkg_pattern, pat);
+					VkgPattern* pPat = (VkgPattern*)buff;
 					*pPat = pat;
-					_advance_recording_buffer_unchecked (rec, sizeof(VkvgPattern));
+					_advance_recording_buffer_unchecked (rec, sizeof(VkgPattern));
 				}
 				break;
 			case VKVG_CMD_SET_SOURCE_SURFACE:
 				STORE_FLOATS(2);
 				{
-					buff = _ensure_recording_buffer (rec, sizeof(VkvgSurface));
-					VkvgSurface surf = (VkvgSurface)va_arg(args, VkvgSurface);
-					vkvg_surface_reference(surf);
-					*(VkvgSurface*)buff = surf;
-					_advance_recording_buffer_unchecked (rec, sizeof(VkvgSurface));
+					buff = _ensure_recording_buffer (rec, sizeof(VkgSurface));
+					VkgSurface surf = (VkgSurface)va_arg(args, VkgSurface);
+					vkg_surface_reference(surf);
+					*(VkgSurface*)buff = surf;
+					_advance_recording_buffer_unchecked (rec, sizeof(VkgSurface));
 				}
 				break;
 			}
@@ -251,174 +251,174 @@ void _record (vkvg_recording* rec,...) {
 	}
 	va_end(args);
 }
-void _replay_command (VkvgContext ctx, VkvgRecording rec, uint32_t index) {
-	vkvg_record_t* r = &rec->commands[index];
+void _replay_command (VkgContext ctx, VkgRecording rec, uint32_t index) {
+	vkg_record_t* r = &rec->commands[index];
 	float* floats = (float*)(rec->buffer + r->dataOffset);
 	uint32_t* uints = (uint32_t*)floats;
 	if (r->cmd&VKVG_CMD_PATH_COMMANDS) {
 		if ((r->cmd&VKVG_CMD_RELATIVE_COMMANDS)==VKVG_CMD_RELATIVE_COMMANDS) {
 			switch (r->cmd) {
 			case VKVG_CMD_REL_MOVE_TO:
-				vkvg_rel_move_to(ctx, floats[0], floats[1]);
+				vkg_rel_move_to(ctx, floats[0], floats[1]);
 				return;
 			case VKVG_CMD_REL_LINE_TO:
-				vkvg_rel_line_to(ctx, floats[0], floats[1]);
+				vkg_rel_line_to(ctx, floats[0], floats[1]);
 				return;
 			case VKVG_CMD_REL_CURVE_TO:
-				vkvg_rel_curve_to (ctx, floats[0], floats[1], floats[2], floats[3], floats[4], floats[5]);
+				vkg_rel_curve_to (ctx, floats[0], floats[1], floats[2], floats[3], floats[4], floats[5]);
 				return;
 			case VKVG_CMD_REL_QUADRATIC_TO:
-				vkvg_rel_quadratic_to (ctx, floats[0], floats[1], floats[2], floats[3]);
+				vkg_rel_quadratic_to (ctx, floats[0], floats[1], floats[2], floats[3]);
 				return;
 			case VKVG_CMD_REL_ELLIPTICAL_ARC_TO:
 				{
 					bool* flags = (bool*)&floats[5];
-					vkvg_rel_elliptic_arc_to (ctx, floats[0], floats[1], flags[0], flags[1], floats[2], floats[3], floats[4]);
+					vkg_rel_elliptic_arc_to (ctx, floats[0], floats[1], flags[0], flags[1], floats[2], floats[3], floats[4]);
 				}
 				return;
 			}
 		}else if ((r->cmd&VKVG_CMD_PATHPROPS_COMMANDS)==VKVG_CMD_PATHPROPS_COMMANDS) {
 			switch (r->cmd) {
 			case VKVG_CMD_SET_LINE_WIDTH:
-				vkvg_set_line_width (ctx, floats[0]);
+				vkg_set_line_width (ctx, floats[0]);
 				return;
 			case VKVG_CMD_SET_MITER_LIMIT:
-				vkvg_set_miter_limit (ctx, floats[0]);
+				vkg_set_miter_limit (ctx, floats[0]);
 				return;
 			case VKVG_CMD_SET_LINE_JOIN:
-				vkvg_set_line_join (ctx, (vkvg_line_join_t)uints[0]);
+				vkg_set_line_join (ctx, (vkg_line_join)uints[0]);
 				return;
 			case VKVG_CMD_SET_LINE_CAP:
-				vkvg_set_line_cap (ctx, (vkvg_line_cap_t)uints[0]);
+				vkg_set_line_cap (ctx, (vkg_line_cap)uints[0]);
 				return;
 			case VKVG_CMD_SET_OPERATOR:
-				vkvg_set_operator (ctx, (vkvg_operator_t)uints[0]);
+				vkg_set_operator (ctx, (vkg_operator)uints[0]);
 				return;
 			case VKVG_CMD_SET_FILL_RULE:
-				vkvg_set_fill_rule (ctx, (vkvg_fill_rule_t)uints[0]);
+				vkg_set_fill_rule (ctx, (vkg_fill_rule)uints[0]);
 				return;
 			case VKVG_CMD_SET_DASH:
-				vkvg_set_dash(ctx, &floats[2],  uints[0], floats[1]);
+				vkg_set_dash(ctx, &floats[2],  uints[0], floats[1]);
 				return;
 			}
 		} else {
 			switch (r->cmd) {
 			case VKVG_CMD_NEW_PATH:
-				vkvg_new_path (ctx);
+				vkg_new_path (ctx);
 				return;
 			case VKVG_CMD_NEW_SUB_PATH:
-				vkvg_new_sub_path (ctx);
+				vkg_new_sub_path (ctx);
 				return;
 			case VKVG_CMD_CLOSE_PATH:
-				vkvg_close_path (ctx);
+				vkg_close_path (ctx);
 				return;
 			case VKVG_CMD_RECTANGLE:
-				vkvg_rectangle (ctx, floats[0], floats[1], floats[2], floats[3]);
+				vkg_rectangle (ctx, floats[0], floats[1], floats[2], floats[3]);
 				return;
 			case VKVG_CMD_ARC:
-				vkvg_arc (ctx, floats[0], floats[1], floats[2], floats[3], floats[4]);
+				vkg_arc (ctx, floats[0], floats[1], floats[2], floats[3], floats[4]);
 				return;
 			case VKVG_CMD_ARC_NEG:
-				vkvg_arc (ctx, floats[0], floats[1], floats[2], floats[3], floats[4]);
+				vkg_arc (ctx, floats[0], floats[1], floats[2], floats[3], floats[4]);
 				return;
 			/*case VKVG_CMD_ELLIPSE:
-				vkvg_ellipse (ctx, floats[0], floats[1], floats[2], floats[3], floats[4]);
+				vkg_ellipse (ctx, floats[0], floats[1], floats[2], floats[3], floats[4]);
 				break;*/
 			case VKVG_CMD_MOVE_TO:
-				vkvg_move_to(ctx, floats[0], floats[1]);
+				vkg_move_to(ctx, floats[0], floats[1]);
 				return;
 			case VKVG_CMD_LINE_TO:
-				vkvg_line_to(ctx, floats[0], floats[1]);
+				vkg_line_to(ctx, floats[0], floats[1]);
 				return;
 			case VKVG_CMD_CURVE_TO:
-				vkvg_curve_to (ctx, floats[0], floats[1], floats[2], floats[3], floats[4], floats[5]);
+				vkg_curve_to (ctx, floats[0], floats[1], floats[2], floats[3], floats[4], floats[5]);
 				return;
 			case VKVG_CMD_ELLIPTICAL_ARC_TO:
 				{
 					bool* flags = (bool*)&floats[5];
-					vkvg_elliptic_arc_to (ctx, floats[0], floats[1], flags[0], flags[1], floats[2], floats[3], floats[4]);
+					vkg_elliptic_arc_to (ctx, floats[0], floats[1], flags[0], flags[1], floats[2], floats[3], floats[4]);
 				}
 				return;
 			case VKVG_CMD_QUADRATIC_TO:
-				vkvg_quadratic_to (ctx, floats[0], floats[1], floats[2], floats[3]);
+				vkg_quadratic_to (ctx, floats[0], floats[1], floats[2], floats[3]);
 				return;
 			}
 		}
 	} else if (r->cmd & VKVG_CMD_DRAW_COMMANDS) {
 		switch (r->cmd) {
 		case VKVG_CMD_PAINT:
-			vkvg_paint (ctx);
+			vkg_paint (ctx);
 			return;
 		case VKVG_CMD_FILL:
-			vkvg_fill (ctx);
+			vkg_fill (ctx);
 			return;
 		case VKVG_CMD_STROKE:
-			vkvg_stroke (ctx);
+			vkg_stroke (ctx);
 			return;
 		case VKVG_CMD_CLIP:
-			vkvg_clip (ctx);
+			vkg_clip (ctx);
 			return;
 		case VKVG_CMD_CLEAR:
-			vkvg_clear (ctx);
+			vkg_clear (ctx);
 			return;
 		case VKVG_CMD_FILL_PRESERVE:
-			vkvg_fill_preserve (ctx);
+			vkg_fill_preserve (ctx);
 			return;
 		case VKVG_CMD_STROKE_PRESERVE:
-			vkvg_stroke_preserve (ctx);
+			vkg_stroke_preserve (ctx);
 			return;
 		case VKVG_CMD_CLIP_PRESERVE:
-			vkvg_clip_preserve (ctx);
+			vkg_clip_preserve (ctx);
 			return;
 		}
 	} else if (r->cmd & VKVG_CMD_TRANSFORM_COMMANDS) {
 		switch (r->cmd) {
 		case VKVG_CMD_TRANSLATE:
-			vkvg_translate (ctx, floats[0], floats[1]);
+			vkg_translate (ctx, floats[0], floats[1]);
 			return;
 		case VKVG_CMD_SCALE:
-			vkvg_scale (ctx, floats[0], floats[1]);
+			vkg_scale (ctx, floats[0], floats[1]);
 			return;
 		case VKVG_CMD_ROTATE:
-			vkvg_rotate (ctx, floats[0]);
+			vkg_rotate (ctx, floats[0]);
 			return;
 		case VKVG_CMD_IDENTITY_MATRIX:
-			vkvg_identity_matrix (ctx);
+			vkg_identity_matrix (ctx);
 			return;
 		case VKVG_CMD_TRANSFORM:
 			{
-				vkvg_matrix_t* mat = (vkvg_matrix_t*)&floats[0];
-				vkvg_transform (ctx, mat);
+				vkg_matrix* mat = (vkg_matrix*)&floats[0];
+				vkg_transform (ctx, mat);
 			}
 			return;
 		case VKVG_CMD_SET_MATRIX:
 			{
-				vkvg_matrix_t* mat = (vkvg_matrix_t*)&floats[0];
-				vkvg_set_matrix (ctx, mat);
+				vkg_matrix* mat = (vkg_matrix*)&floats[0];
+				vkg_set_matrix (ctx, mat);
 			}
 			return;
 		}
 	} else if (r->cmd & VKVG_CMD_PATTERN_COMMANDS) {
 		switch (r->cmd) {
 		case VKVG_CMD_SET_SOURCE_RGB:
-			vkvg_set_source_rgb (ctx, floats[0], floats[1], floats[2]);
+			vkg_set_source_rgb (ctx, floats[0], floats[1], floats[2]);
 			return;
 		case VKVG_CMD_SET_SOURCE_RGBA:
-			vkvg_set_source_rgba (ctx, floats[0], floats[1], floats[2], floats[3]);
+			vkg_set_source_rgba (ctx, floats[0], floats[1], floats[2], floats[3]);
 			return;
 		case VKVG_CMD_SET_SOURCE_COLOR:
-			vkvg_set_source_color (ctx, uints[0]);
+			vkg_set_source_color (ctx, uints[0]);
 			return;
 		case VKVG_CMD_SET_SOURCE:
 			{
-				VkvgPattern pat = *((VkvgPattern*)(rec->buffer + r->dataOffset));
-				vkvg_set_source (ctx, pat);
+				VkgPattern pat = *((VkgPattern*)(rec->buffer + r->dataOffset));
+				vkg_set_source (ctx, pat);
 			}
 			return;
 		case VKVG_CMD_SET_SOURCE_SURFACE:
 			{
-				VkvgSurface surf = *((VkvgSurface*)&floats[2]);
-				vkvg_set_source_surface (ctx, surf, floats[0], floats[1]);
+				VkgSurface surf = *((VkgSurface*)&floats[2]);
+				vkg_set_source_surface (ctx, surf, floats[0], floats[1]);
 			}
 			return;
 		}
@@ -426,25 +426,25 @@ void _replay_command (VkvgContext ctx, VkvgRecording rec, uint32_t index) {
 		char* txt = (char*)floats;
 		switch (r->cmd) {
 		case VKVG_CMD_SET_FONT_SIZE:
-			vkvg_set_font_size (ctx, uints[0]);
+			vkg_set_font_size (ctx, uints[0]);
 			return;
 		case VKVG_CMD_SET_FONT_FACE:
-			vkvg_select_font_face (ctx, txt);
+			vkg_select_font_face (ctx, txt);
 			return;
 		/*case VKVG_CMD_SET_FONT_PATH:
-			vkvg_load_font_from_path (ctx, txt);
+			vkg_load_font_from_path (ctx, txt);
 			return;	*/
 		case VKVG_CMD_SHOW_TEXT:
-			vkvg_show_text (ctx, txt);
+			vkg_show_text (ctx, txt);
 			return;
 		}
 	} else {
 		switch (r->cmd) {
 		case VKVG_CMD_SAVE:
-			vkvg_save (ctx);
+			vkg_save (ctx);
 			return;
 		case VKVG_CMD_RESTORE:
-			vkvg_restore (ctx);
+			vkg_restore (ctx);
 			return;
 		}
 	}
@@ -453,27 +453,27 @@ void _replay_command (VkvgContext ctx, VkvgRecording rec, uint32_t index) {
 
 
 #ifdef VKVG_RECORDING
-void vkvg_start_recording (VkvgContext ctx) {
+void vkg_start_recording (VkgContext ctx) {
 	if (ctx->status)
 		return;
 	_start_recording(ctx);
 }
-VkvgRecording vkvg_stop_recording (VkvgContext ctx) {
+VkgRecording vkg_stop_recording (VkgContext ctx) {
 	if (ctx->status)
 		return NULL;
 	return _stop_recording (ctx);
 }
-uint32_t vkvg_recording_get_count (VkvgRecording rec) {
+uint32_t vkg_recording_get_count (VkgRecording rec) {
 	if (!rec)
 		return 0;
 	return rec->commandsCount;
 }
-void* vkvg_recording_get_data (VkvgRecording rec) {
+void* vkg_recording_get_data (VkgRecording rec) {
 	if (!rec)
 		return 0;
 	return rec->buffer;
 }
-void vkvg_recording_get_command (VkvgRecording rec, uint32_t cmdIndex, uint32_t* cmd, void** dataOffset) {
+void vkg_recording_get_command (VkgRecording rec, uint32_t cmdIndex, uint32_t* cmd, void** dataOffset) {
 	if (!rec)
 		return;
 	if (cmdIndex < rec->commandsCount) {
@@ -485,19 +485,19 @@ void vkvg_recording_get_command (VkvgRecording rec, uint32_t cmdIndex, uint32_t*
 	}
 
 }
-void vkvg_replay (VkvgContext ctx, VkvgRecording rec) {
+void vkg_replay (VkgContext ctx, VkgRecording rec) {
 	if (!rec)
 		return;
 	for (uint32_t i=0; i<rec->commandsCount; i++)
 		_replay_command(ctx, rec, i);
 }
-void vkvg_replay_command (VkvgContext ctx, VkvgRecording rec, uint32_t cmdIndex) {
+void vkg_replay_command (VkgContext ctx, VkgRecording rec, uint32_t cmdIndex) {
 	if (!rec)
 		return;
 	if (cmdIndex < rec->commandsCount)
 		_replay_command(ctx, rec, cmdIndex);
 }
-void vkvg_recording_destroy(VkvgRecording rec) {
+void vkg_recording_destroy(VkgRecording rec) {
 	if (!rec)
 		return;
 	_destroy_recording(rec);
