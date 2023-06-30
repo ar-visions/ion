@@ -5,9 +5,9 @@
 			"label": "build",
 			"type": "shell",
 			"options": {
-				"cwd": "${workspaceFolder}/../hyperspace/build"
+				"cwd": "${workspaceFolder}/../orbiter/build"
 			},
-			"command": "make -j10 ai-yt",
+			"command": "make -j10 triangle",
 			"presentation": {
 				"reveal": "silent",
 				"panel": "shared",
@@ -16,6 +16,66 @@
 			"problemMatcher": [
 				"$nvcc"
 			]
-		}
+		},
+		{
+            "label": "build-orbiter",
+            "type": "shell",
+            "command": "make orbiter -j1",
+			"options": {
+                "cwd": "${workspaceFolder}/../orbiter/build"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "group": "build0",
+                "clear": true
+            },
+			"isBackground": false,
+			"problemMatcher": ["$gcc"]
+        },
+        {
+            "label": "build-triangle",
+            "type": "shell",
+            "command": "make triangle -j1",
+			"options": {
+                "cwd": "${workspaceFolder}/../orbiter/build"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "group": "build0",
+                "clear": true
+            },
+			"isBackground": false,
+			"problemMatcher": ["$gcc"]
+        },
+        {
+            "label": "build-older-tri",
+            "type": "shell",
+            "command": "make older-tri -j1",
+			"options": {
+                "cwd": "${workspaceFolder}/../orbiter/build"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "group": "build0",
+                "clear": true
+            },
+			"isBackground": false,
+			"problemMatcher": ["$gcc"]
+        }
 	]
 }

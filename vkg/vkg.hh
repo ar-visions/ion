@@ -19,15 +19,20 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+
+/* alterations by kalen novis */
+
+#pragma once
+
 #include <mx/mx.hpp>
 #include <vke/vke.hh>
 #include <math/math.hpp>
-
 #include <vulkan/vulkan.h>
 #include <math.h>
 #include <stdbool.h>
 
 namespace ion {
+///
 #define FONT_PAGE_SIZE			1024
 #define FONT_CACHE_INIT_LAYERS	1
 #define FONT_FILE_NAME_MAX_SIZE 1024
@@ -279,108 +284,186 @@ struct VkgSurface:mx {
 	void 		resolve 		();
 };
 
+struct stroke_context;
+struct dash_context;
 
 struct VkgPattern:mx {
 	ptr(VkgPattern, mx, struct vkg_pattern);
 
-	static VkgPattern create_for_surface(VkgSurface surf);
-	static VkgPattern create_linear(float x0, float y0, float x1, float y1);
-	static VkgPattern create_radial(float cx0, float cy0, float radius0, float cx1, float cy1, float radius1);
-	
-	VkeStatus 		set_linear			(float  x0, float  y0, float  x1, float  y1);
-	VkeStatus 		get_linear_points	(float* x0, float* y0, float* x1, float* y1);
-	VkeStatus 		edit_radial			(float cx0, float cy0, float radius0, float cx1, float cy1, float radius1);
-	VkeStatus 		get_color_stop_count(uint32_t* count);
-	VkeStatus 		get_color_stop_rgba (uint32_t index, float* offset, float* r, float* g, float* b, float* a);
-	VkeStatus 		add_color_stop		(float offset, float r, float g, float b, float a);
+	static VkgPattern 	create_for_surface(VkgSurface surf);
+	static VkgPattern 	create_linear(float x0, float y0, float x1, float y1);
+	static VkgPattern 	create_radial(float cx0, float cy0, float radius0, float cx1, float cy1, float radius1);
 
-	void 			set_extend			(vkg_extend extend);
-	void 			set_filter			(vkg_filter filter);
-	vkg_extend 		get_extend 			();
-	vkg_filter 		get_filter 			();
-	vkg_pattern_type get_type 			();
-	void 			set_matrix 			(VkgMatrix m);
-	void 			get_matrix 			(VkgMatrix m);
+	VkeStatus 			set_linear			(float  x0, float  y0, float  x1, float  y1);
+	VkeStatus 			get_linear_points	(float* x0, float* y0, float* x1, float* y1);
+	VkeStatus 			edit_radial			(float cx0, float cy0, float radius0, float cx1, float cy1, float radius1);
+	VkeStatus 			get_color_stop_count(uint32_t* count);
+	VkeStatus 			get_color_stop_rgba (uint32_t index, float* offset, float* r, float* g, float* b, float* a);
+	VkeStatus 			add_color_stop		(float offset, float r, float g, float b, float a);
+	void 				set_extend			(vkg_extend extend);
+	void 				set_filter			(vkg_filter filter);
+	vkg_extend 			get_extend 			();
+	vkg_filter 			get_filter 			();
+	vkg_pattern_type 	get_type 			();
+	void 				set_matrix 			(VkgMatrix m);
+	void 				get_matrix 			(VkgMatrix m);
 };
+
+struct VkgVertex {
+	vec2f    		pos;
+	uint32_t		color;
+	vec3f			uv;
+};
+
+struct vkg_context_save;
 
 struct VkgContext:mx {
 	ptr(VkgContext, mx, struct vkg_context);
 
 	VkgContext(VkgSurface surf);
 
-	VkeStatus 		status ();
-	const char* 	status_to_string (VkeStatus status);
-	VkgContext 		reference ();
-	void 			flush ();
-	void 			new_path ();
-	void 			close_path ();
-	void 			new_sub_path ();
-	void 			path_extents (float *x1, float *y1, float *x2, float *y2);
-	void 			get_current_point (float* x, float* y);
-	void 			line_to (float x, float y);
-	void 			rel_line_to (float dx, float dy);
-	void 			move_to (float x, float y);
-	void 			rel_move_to (float x, float y);
-	void 			arc (float xc, float yc, float radius, float a1, float a2);
-	void 			arc_negative (float xc, float yc, float radius, float a1, float a2);
-	void 			curve_to (float x1, float y1, float x2, float y2, float x3, float y3);
-	void 			rel_curve_to (float x1, float y1, float x2, float y2, float x3, float y3);
-	void 			quadratic_to (float x1, float y1, float x2, float y2);
-	void 			rel_quadratic_to (float x1, float y1, float x2, float y2);
-	VkeStatus 		rectangle(float x, float y, float w, float h);
-	VkeStatus 		rounded_rectangle (float x, float y, float w, float h, float radius);
-	void 	  		rounded_rectangle2 (float x, float y, float w, float h, float rx, float ry);
-	void 			ellipse (float radiusX, float radiusY, float x, float y, float rotationAngle);
-	void 			elliptic_arc_to (float x, float y, bool large_arc_flag, bool sweep_flag, float rx, float ry, float phi);
-	void 			rel_elliptic_arc_to (float x, float y, bool large_arc_flag, bool sweep_flag, float rx, float ry, float phi);
-	void 			stroke ();
-	void 			stroke_preserve ();
-	void 			fill ();
-	void 			fill_preserve ();
-	void 			paint ();
-	void 			clear ();//use vkClearAttachment to speed up clearing surf
-	void 			reset_clip ();
-	void 			clip ();
-	void 			clip_preserve ();
-	void 			set_opacity (float opacity);
-	void 			set_source_color (uint32_t c);
-	void 			set_source_rgba (float r, float g, float b, float a);
-	void 			set_source_rgb (float r, float g, float b);
-	void 			set_line_width (float width);
-	void 			set_miter_limit (float limit);
-	float 			get_miter_limit 	();
-	void 			set_line_cap 		(vkg_line_cap cap);
-	void 			set_line_join 		(vkg_line_join join);
-	void 			set_source_surface 	(VkgSurface surf, float x, float y);
-	void 			set_source 			(VkgPattern pat);
-	void 			set_operator 		(vkg_operator op);
-	void 			set_fill_rule 		(vkg_fill_rule fr);
-	void 			set_dash (const float* dashes, uint32_t num_dashes, float offset);
-	void 			get_dash (const float *dashes, uint32_t* num_dashes, float* offset);
-	float 			get_line_width ();
-	vkg_line_cap   	get_line_cap ();
-	vkg_line_join   get_line_join ();
-	vkg_operator   	get_operator ();
-	vkg_fill_rule   get_fill_rule ();
-	VkgPattern 		get_source ();
-	VkgSurface 		get_target ();
-	bool 			has_current_point ();
-	void 			save ();
-	void 			restore ();
-	void 			translate (float dx, float dy);
-	void 			scale (float sx, float sy);
-	void 			rotate (float radians);
-	void 			transform (const vkg_matrix* matrix);
-	void 			set_matrix (const vkg_matrix* matrix);
-	void 			get_matrix (vkg_matrix * const matrix);
-	void 			identity_matrix ();
-	void 			select_font_face (const char* name);
-	void 			load_font_from_path (const char* path, const char *name);
-	void 			load_font_from_memory (unsigned char* fontBuffer, long fontBufferByteSize, const char* name);
-	void 			set_font_size (uint32_t size);
-	void 			show_text (const char* utf8);
-	void 			text_extents (const char* utf8, vkg_text_extents* extents);
-	void 			font_extents (vkg_font_extents* extents);
+	VkeStatus 		status 						();
+	const char* 	status_to_string 			(VkeStatus status);
+	void 			flush 						();
+	void 			new_path 					();
+	void 			close_path 					();
+	void 			new_sub_path 				();
+	void 			path_extents 				(float *x1, float *y1, float *x2, float *y2);
+	void 			get_current_point 			(float* x, float* y);
+	void 			line_to 					(float x, float y);
+	void 			rel_line_to 				(float dx, float dy);
+	void 			move_to 					(float x, float y);
+	void 			rel_move_to 				(float x, float y);
+	void 			arc 						(float xc, float yc, float radius, float a1, float a2);
+	void 			arc_negative 				(float xc, float yc, float radius, float a1, float a2);
+	void 			curve_to 					(float x1, float y1, float x2, float y2, float x3, float y3);
+	void 			rel_curve_to 				(float x1, float y1, float x2, float y2, float x3, float y3);
+	void 			quadratic_to 				(float x1, float y1, float x2, float y2);
+	void 			rel_quadratic_to 			(float x1, float y1, float x2, float y2);
+	VkeStatus 		rectangle					(float x, float y, float w, float h);
+	VkeStatus 		rounded_rectangle 			(float x, float y, float w, float h, float radius);
+	void 	  		rounded_rectangle2 			(float x, float y, float w, float h, float rx, float ry);
+	void 			ellipse 					(float radiusX, float radiusY, float x, float y, float rotationAngle);
+	void 			elliptic_arc_to 			(float x, float y, bool large_arc_flag, bool sweep_flag, float rx, float ry, float phi);
+	void 			rel_elliptic_arc_to 		(float x, float y, bool large_arc_flag, bool sweep_flag, float rx, float ry, float phi);
+	void 			stroke 						();
+	void 			stroke_preserve 			();
+	void 			fill 						();
+	void 			fill_preserve 				();
+	void 			paint 						();
+	void 			clear 						();//use vkClearAttachment to speed up clearing surf
+	void 			reset_clip	 				();
+	void 			clip 						();
+	void 			clip_preserve 				();
+	void 			set_opacity 				(float opacity);
+	void 			set_source_color 			(uint32_t c);
+	void 			set_source_rgba 			(float r, float g, float b, float a);
+	void 			set_source_rgb 				(float r, float g, float b);
+	void 			set_line_width 				(float width);
+	void 			set_miter_limit 			(float limit);
+	float 			get_miter_limit 			();
+	void 			set_line_cap 				(vkg_line_cap cap);
+	void 			set_line_join 				(vkg_line_join join);
+	void 			set_source_surface 			(VkgSurface surf, float x, float y);
+	void 			set_source 					(VkgPattern pat);
+	void 			set_operator 				(vkg_operator op);
+	void 			set_fill_rule 				(vkg_fill_rule fr);
+	void 			set_dash 					(const float* dashes, uint32_t num_dashes, float offset);
+	void 			get_dash 					(const float *dashes, uint32_t* num_dashes, float* offset);
+	float 			get_line_width 				();
+	vkg_line_cap   	get_line_cap 				();
+	vkg_line_join   get_line_join 				();
+	vkg_operator   	get_operator 				();
+	vkg_fill_rule   get_fill_rule 				();
+	VkgPattern 		get_source 					();
+	VkgSurface 		get_target 					();
+	bool 			has_current_point 			();
+	void 			save 						();
+	void 			restore 					();
+	void 			translate 					(float dx, float dy);
+	void 			scale 						(float sx, float sy);
+	void 			rotate 						(float radians);
+	void 			transform 					(const vkg_matrix* matrix);
+	void 			set_matrix 					(const vkg_matrix* matrix);
+	void 			get_matrix 					(vkg_matrix * const matrix);
+	void 			identity_matrix 			();
+	void 			select_font_face 			(const char* name);
+	void 			load_font_from_path 		(const char* path, const char *name);
+	void 			load_font_from_memory 		(unsigned char* fontBuffer, long fontBufferByteSize, const char* name); // there can be only one. dick.
+	void 			set_font_size 				(uint32_t size);
+	void 			show_text 					(const char* utf8);
+	void 			text_extents 				(const char* utf8, vkg_text_extents* extents);
+	void 			font_extents 				(vkg_font_extents* extents);
+	bool 			check_point_array			();
+
+	/// these are internally implemented and protected.  its good to have them in the header.
+	protected:
+	void 			check_vertex_cache_size		();
+	void 			ensure_vertex_cache_size	(uint32_t addedVerticesCount);
+	void 			resize_vertex_cache			(uint32_t newSize);
+	void 			check_index_cache_size		();
+	void 			ensure_index_cache_size		(uint32_t addedIndicesCount);
+	void 			resize_index_cache			(uint32_t newSize);
+	bool 			check_pathes_array			();
+	bool 			current_path_is_empty		();
+	void 			finish_path					();
+	void 			clear_path					();
+	void 			remove_last_point			();
+	bool 			path_is_closed				(uint32_t ptrPath);
+	void 			set_curve_start				();
+	void 			set_curve_end				();
+	bool 			path_has_curves				(uint32_t ptrPath);
+	float 			normalizeAngle				(float a);
+	float 			get_arc_step				(float radius);
+	vec2f*			get_current_position    	();
+	void 			add_point					(float x, float y);
+	void 			resetMinMax					();
+	void 			path_extents				(bool transformed, float *x1, float *y1, float *x2, float *y2);
+	void 			draw_stoke_cap				(stroke_context* str, vec2f p0, vec2f n, bool isStart);
+	void 			draw_segment				(stroke_context* str, dash_context* dc, bool isCurve);
+	float 			draw_dashed_segment			(stroke_context *str, dash_context* dc, bool isCurve);
+	bool 			build_vb_step				(stroke_context *str, bool isCurve);
+	void 			poly_fill					(vec4f *bounds);
+	void 			fill_non_zero				();
+	void 			draw_full_screen_quad		(vec4f *scissor);
+	void 			create_gradient_buff		();
+	void 			create_vertices_buff		();
+	void 			add_vertex					(VkgVertex &v);
+	void 			add_vertexf					(float x, float y);
+	void 			set_vertex					(uint32_t idx, VkgVertex v);
+	void 			add_triangle_indices		(VKVG_IBO_INDEX_TYPE i0, VKVG_IBO_INDEX_TYPE i1, VKVG_IBO_INDEX_TYPE i2);
+	void 			add_tri_indices_for_rect	(VKVG_IBO_INDEX_TYPE i);
+	void 			vao_add_rectangle			(float x, float y, float width, float height);
+	void 			bind_draw_pipeline			();
+	void 			create_cmd_buff				();
+	void 			check_vao_size				();
+	void 			flush_cmd_buff				();
+	void 			ensure_renderpass_is_started();
+	void 			emit_draw_cmd_undrawn_vertices();
+	void 			flush_cmd_until_vx_base		();
+	bool 			wait_ctx_flush_end			();
+	bool 			wait_and_submit_cmd			();
+	void 			update_push_constants		();
+	void 			update_cur_pattern			(VkgPattern pat);
+	void 			set_mat_inv_and_vkCmdPush 	();
+	void 			start_cmd_for_render_pass 	();
+	void 			createDescriptorPool		();
+	void 			init_descriptor_sets		();
+	void 			update_descriptor_set		(VkeImage img, VkDescriptorSet ds);
+	void 			update_gradient_desc_set	();
+	void 			free_ctx_save				(vkg_context_save* sav);
+	void 			release_context_resources	();
+	void 			add_indice 					(VKVG_IBO_INDEX_TYPE i);
+	void 			add_indice_for_fan 			(VKVG_IBO_INDEX_TYPE i);
+	void			resize_vbo 					(size_t new_size);
+	void			resize_ibo 					(size_t new_size);
+	void add_vertexf_unchecked(float x, float y);
+	void add_indice_for_strip(VKVG_IBO_INDEX_TYPE i, bool odd);
+	void add_triangle_indices_unchecked (VKVG_IBO_INDEX_TYPE i0, VKVG_IBO_INDEX_TYPE i1, VKVG_IBO_INDEX_TYPE i2);
+	void clear_attachment();
+	void flush_vertices_caches_until_vertex_base ();
+	void flush_vertices_caches();
+	void end_render_pass ();
 };
 
 struct VkgText:mx {
@@ -396,34 +479,4 @@ struct VkgText:mx {
 };
 
 
-
-/** @}*/
-
-/********* EXPERIMENTAL **************/
-
-void vkg_set_source_color_name (VkgContext ctx, const char* color);
-
-#ifdef VKVG_RECORDING
-
-struct VkgRecording:mx {
-	ptr(VkgRecording, mx, struct vkg_recording);
-	///
-	VkgRecording(VkgContext ctx);
-	///
-	void			 start_recording		();
-	VkgRecording 	 stop_recording			();
-	void			 replay					(VkgRecording rec);
-	void			 replay_command			(VkgRecording rec, uint32_t cmdIndex);
-	void			 recording_get_command 	(VkgRecording rec, uint32_t cmdIndex, uint32_t* cmd, void** dataOffset);
-	uint32_t		 recording_get_count   	(VkgRecording rec);
-	void*		 	 recording_get_data    	(VkgRecording rec);
-};
-
-
-struct vkg_font_identity;
-struct _vkg_context_save;
-struct _font_cache;
-
 } /// namespace ion
-/*************************************/
-#endif

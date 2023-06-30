@@ -589,7 +589,7 @@ struct OBJ:mx {
                 assert(g.len());
                 for (size_t i = 1; i < 4; i++) {
                     auto key = w[i];
-                    if (indices->count(key) == 0) {
+                    if (indices.count(key) == 0) {
                         indices[key] = u32(verts++);
                         auto      sp =  w[i].split("/");
                         int      iv  = sp[0].integer_value();

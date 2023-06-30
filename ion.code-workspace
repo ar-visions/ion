@@ -141,7 +141,8 @@
 			"__nullptr": "cpp",
 			"concepts": "cpp",
 			"numeric": "cpp",
-			"__memory": "cpp"
+			"__memory": "cpp",
+			"iterator": "cpp"
 		}
 	}
 }

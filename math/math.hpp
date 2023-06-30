@@ -41,14 +41,17 @@ using m33f    = m33 <r32>;
 using m22d    = m22 <r64>;
 using m22f    = m22 <r32>;
 
+using vec2u8  = vec2 <u8>;
 using vec2i   = vec2 <i32>;
 using vec2d   = vec2 <r64>;
 using vec2f   = vec2 <r32>;
 
+using vec3u8  = vec3 <u8>;
 using vec3i   = vec3 <i32>;
 using vec3d   = vec3 <r64>;
 using vec3f   = vec3 <r32>;
 
+using vec4u8  = vec4 <u8>;
 using vec4i   = vec4 <i32>;
 using vec4d   = vec4 <r64>;
 using vec4f   = vec4 <r32>;

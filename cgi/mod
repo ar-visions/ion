@@ -1,0 +1,8 @@
+cpp(17)
+dep(ion:mx ion:math vulkansdk:vulkan)
+
+if(APPLE)
+    dep(IOSurface QuartzCore Metal AppKit CoreGraphics CoreFoundation Cocoa IOKit)
+else()
+    dep(X11)
+endif()

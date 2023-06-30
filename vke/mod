@@ -1,9 +1,0 @@
-# vkengine is to wrap vulkan.  better to get a handle on it than to overlay api utility.
-cpp(17)
-dep(ion:mx ion:math)
-
-if(APPLE)
-    dep(moltenvk:MoltenVK IOSurface QuartzCore Metal AppKit CoreGraphics CoreFoundation Cocoa IOKit)
-else()
-    dep(X11 vulkansdk:vulkan)
-endif()

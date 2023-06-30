@@ -1,9 +1,9 @@
-dep(ion:net ion:media ion:vkg)
+dep(ion:net ion:media)
 
 if(APPLE)
-    dep(moltenvk:MoltenVK IOSurface QuartzCore Metal AppKit CoreGraphics CoreFoundation Cocoa IOKit)
+    dep(IOSurface QuartzCore Metal AppKit CoreGraphics CoreFoundation Cocoa IOKit)
 else()
-    dep(X11 vulkansdk:vulkan)
+    dep(X11)
 endif()
 
 cpp(17)

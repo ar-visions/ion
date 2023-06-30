@@ -29,16 +29,16 @@ vec2 vec2f_line_norm(vec2f r, vec2f a, vec2f b) {
 
 // compute perpendicular vector
 vec2d vec2d_perp(vec2d r, vec2d a) {
-    double ax = a[X];
-    double ay = a[Y];
-    r[X]      =  ay;
-    r[Y]      = -ax;
+    double ax = a.x;
+    double ay = a.y;
+    r.x      =  ay;
+    r.y      = -ax;
 }
 vec2f vec2f_perp(vec2f r, vec2f a) {
-    float  ax = a[X];
-    float  ay = a[Y];
-    r[X]      =  ay;
-    r[Y]      = -ax;
+    float  ax = a.x;
+    float  ay = a.y;
+    r.x      =  ay;
+    r.y      = -ax;
 }
 
 bool vec2d_isnan(vec2d v) { return (bool)(isnan(v[0]) || isnan (v[1])); }
@@ -47,7 +47,7 @@ bool vec2d_isnan(vec2d v) { return (bool)(isnan(v[0]) || isnan (v[1])); }
 #define WITHIN_EPSILON(a, b) (fabsf(a-(b)) <= EPSILON)
 
 // test equality of two single precision vectors
-bool vec2f_equ(vec2f a, vec2f b) { return (WITHIN_EPSILON(a[X], b[X]) && WITHIN_EPSILON(a[Y], b[Y])); }
+bool vec2f_equ(vec2f a, vec2f b) { return (WITHIN_EPSILON(a.x, b.x) && WITHIN_EPSILON(a.y, b.y)); }
 
 void vec2f_inv(vec2f r, vec2f v) {
 	r[0] = -v[0];

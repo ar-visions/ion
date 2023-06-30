@@ -3,22 +3,15 @@
 #include <assert.h>
 #include <string.h>
 
-#ifdef __APPLE__
-	/// never do this again!
-    #include <MoltenVK/vk_mvk_moltenvk.h>
-#else
-	/// or this!
-    #include <vulkan/vulkan.h>
-#endif
-
-/// and definitely not this!
-#include <GLFW/glfw3.h>
+#include <vke/vke.hh>
 
 /// never include this again either (VERIFY)
 #include <vk_mem_alloc.h>
 
-#include <mx/mx.hpp>
-#include <vke/vke.hh>
+
+/// and definitely not this!
+#include <GLFW/glfw3.h>
+
 #include <math/math.hpp>
 
 #pragma GCC diagnostic push
@@ -26,7 +19,16 @@
 
 struct GLFWmonitor;
 
-namespace ion {
+namespace vke {
+
+bool _get_dev_extension_is_supported (VkExtensionProperties* pExtensionProperties, uint32_t extensionCount, const char* name) {
+	for (uint32_t i=0; i<extensionCount; i++) {
+		if (strcmp(name, pExtensionProperties[i].extensionName)==0)
+			return true;
+	}
+	return false;
+}
+
 
 /// needs organization into what is instance/device/feature extension
 static bool validation;
@@ -37,40 +39,13 @@ static bool timeline_semaphore;
 
 /// additional extensions would be nice, then it can look them up case by case
 /// then it supports a broader interface
-void vke_configure(bool _validation, bool _mesa_overlay, bool _render_doc) {
+void configure(bool _validation, bool _mesa_overlay, bool _render_doc) {
 	if (!vke_out) vke_out = stdout;
 	validation 	   = _validation;
 	mesa_overlay   = _mesa_overlay;
 	render_doc     = _render_doc;
 }
 
-#define VKE_LOG_ERR		    0x00000001
-#define VKE_LOG_DEBUG		0x00000002
-#define VKE_LOG_INFO_PTS	0x00000004
-#define VKE_LOG_INFO_PATH	0x00000008
-#define VKE_LOG_INFO_CMD	0x00000010
-#define VKE_LOG_INFO_VBO	0x00000020
-#define VKE_LOG_INFO_IBO	0x00000040
-#define VKE_LOG_INFO_VAO	(VKE_LOG_INFO_VBO|VKE_LOG_INFO_IBO)
-#define VKE_LOG_THREAD		0x00000080
-#define VKE_LOG_DBG_ARRAYS	0x00001000
-#define VKE_LOG_STROKE		0x00010000
-#define VKE_LOG_FULL		0xffffffff
-
-#define VKE_LOG_INFO		0x00008000//(VKE_LOG_INFO_PTS|VKE_LOG_INFO_PATH|VKE_LOG_INFO_CMD|VKE_LOG_INFO_VAO)
-#ifdef DEBUG
-	extern uint32_t vke_log_level;
-	#ifdef VKVG_WIRED_DEBUG
-		enum vkg_wired_debug_mode {
-			vkg_wired_debug_mode_normal	= 0x01,
-			vkg_wired_debug_mode_points	= 0x02,
-			vkg_wired_debug_mode_lines		= 0x04,
-			vkg_wired_debug_mode_both		= vkg_wired_debug_mode_points|vkg_wired_debug_mode_lines,
-			vkg_wired_debug_mode_all		= 0xFFFFFFFF
-		};
-		extern vkg_wired_debug_mode vkg_wired_debug;
-	#endif
-#endif
 
 uint32_t vke_log_level = VKE_LOG_DEBUG;
 FILE    *vke_out;
@@ -91,94 +66,49 @@ FILE    *vke_out;
     }                                                                                           \
 }
 
-ptr_implement(VkeGPU, 		 mx);
-ptr_implement(VkeSurfaceKHR, mx);
-ptr_implement(VkeApp, 		 mx);
-ptr_implement(VkeWindow, 	 mx);
-ptr_implement(VkeMonitor, 	 mx);
-ptr_implement(VkePresenter,  mx);
+static void glfw_error(int code, const char *cs);
+static void glfw_key(GLFWwindow *h, int unicode, int scan_code, int action, int mods);
+static void glfw_char(GLFWwindow *h, unsigned int unicode);
+static void glfw_button(GLFWwindow *h, int button, int action, int mods);
+static void glfw_cursor(GLFWwindow *h, double x, double y);
+static void glfw_resize(GLFWwindow *handle, int w, int h);
 
-struct vke_window {
-    VkeDevice          dev;
-    int                w, h;
-    VkeKeyEvent        key_event;
-    VkeCharEvent       char_event;
-    VkeButtonEvent     button_event;
-    VkeCursorEvent     cursor_event;
-    VkeResizeEvent     resize_event;
-    VkePresenter       renderer;
-    struct GLFWwindow *glfw;
-	VkeSurfaceKHR      surface;
-    void              *user;
+struct vke_pipeline {
+	VkeDevice  dev;
+	VkPipeline pipeline;
+};
+
+struct vke_surface {
+	VkeDevice 		dev;
+	VkeInstance		instance;
+	VkSurfaceKHR	surface;
+};
+
+struct vke_command_buffer {
+	VkeDevice        dev;
+	VkCommandBuffer *buffer;
+	VkCommandPool    pool;
+	int				 count;
+	doubly<memory*>	 refs;
 	///
-	~vke_window() {
-		glfwDestroyWindow(glfw);
+	~vke_command_buffer() {
+		vkFreeCommandBuffers(dev, pool, count, buffer);
+	}
+};
+
+struct vke_command_pool {
+	VkeDevice 	  dev;
+	VkCommandPool pool;
+	///
+	~vke_command_pool() {
+		vkDestroyCommandPool(dev, pool, NULL);
 	}
 };
 
 
-
-struct vke_device;
-struct vke_queue {
-	vke_device	   *dev;
-	uint32_t		familyIndex;
-	VkQueue			queue;
-	VkQueueFlags	flags;
-
-	///
-	static const size_t valloc = 32;
-	struct entry {
-		array<VkCommandBuffer> 	   	cmd_buffers;
-		array<VkPipelineStageFlags> wait_stages;
-		array<VkSemaphore>			wait_semaphores;
-		array<VkSemaphore>			signal_semaphores;
-		array<u64>				 	wait_values;
-		array<u64>				 	signal_values;
-		///
-		entry() :
-			cmd_buffers			(valloc),
-			wait_stages			(valloc),
-			wait_semaphores		(valloc),
-			signal_semaphores	(valloc),
-			wait_values			(valloc),
-			signal_values		(valloc) { }
-		///
-		entry &reset() {
-			cmd_buffers.clear();
-			wait_stages.clear();
-			wait_semaphores.clear();
-			signal_semaphores.clear();
-			wait_values.clear();
-			signal_values.clear();
-			return *this;
-		}
-	};
-
-	static const size_t max_transit = 32;
-	static inline entry *transit = new entry[max_transit];
-	///
-	static entry &next_entry() {
-		static size_t index = max_transit;
-		if (++index >= max_transit)
-			  index = 0;
-		return transit[index].reset();
-	}
-
-	///
-	operator VkQueue() { return queue; }
-
-	void submit(
-		array<VkCommandBuffer> 		cmd_buf,
-		array<VkeSemaphore> 		wait_semaphores,
-		array<VkeSemaphore> 		signal_semaphores,
-		array<u64> 					waits,
-		array<u64> 					signals,
-		array<VkPipelineStageFlags> wait_stages);
-
-};
-
+///
 struct vke_buffer {
-	vke_device	   		   *dev;
+	VkeDevice	   		    dev;
 	VkBufferCreateInfo		infos;
 	VkBuffer				buffer;
 	VmaAllocation			alloc;
@@ -193,34 +123,6 @@ struct vke_buffer {
 	~vke_buffer();
 };
 
-static void glfw_error(int code, const char *cs) {
-	printf("glfw error: code: %d (%s)", code, cs);
-}
-
-static void glfw_key(GLFWwindow *h, int unicode, int scan_code, int action, int mods) {
-	vke_window *win = (vke_window *)glfwGetWindowUserPointer(h);
-    win->key_event(win->user, unicode, scan_code, action, mods); /// i think its a good idea to pass handle to your user data not the window.  afterall you are going to look that up anyway, and guess waht it can contain too
-}
-
-static void glfw_char(GLFWwindow *h, unsigned int unicode) {
-	vke_window *win =(vke_window *)glfwGetWindowUserPointer(h);
-	win->char_event(win->user, unicode);
-}
-
-static void glfw_button(GLFWwindow *h, int button, int action, int mods) {
-    vke_window *win = (vke_window *)glfwGetWindowUserPointer(h);
-    win->button_event(win->user, button, action, mods);
-}
-
-static void glfw_cursor(GLFWwindow *h, double x, double y) {
-    vke_window *win = (vke_window *)glfwGetWindowUserPointer(h);
-    win->cursor_event(win->user, x, y, (bool)glfwGetWindowAttrib(h, GLFW_HOVERED));
-}
-
-static void glfw_resize(GLFWwindow *handle, int w, int h) {
-	vke_window *win = (vke_window *)glfwGetWindowUserPointer(handle);
-	win->resize_event(win->user, w, h);
-}
 
 struct vke_app {
     struct ivke_app *data;
@@ -347,7 +249,7 @@ struct vke_device {
 	}
 };
 
-VkeDevice::operator VkDevice &() { return data->vk; }
+implement(VkeDevice, mx, VkDevice, &data->vk);
 
 struct vke_sampler {
 	VkeDevice 		dev;
@@ -358,24 +260,13 @@ struct vke_sampler {
 	}
 };
 
-VkeSampler::operator VkSampler &() {
-	return data->sampler;
-}
-
-
-vke_buffer::~vke_buffer() {
-	if (buffer)
-		vmaDestroyBuffer(dev->allocator, buffer, alloc);
-}
-
-#define _CHECK_DEV_EXT(ext) {					\
-	if (_get_dev_extension_is_supported(pExtensionProperties, extensionCount, #ext)){\
-		if (pExtensions)							\
-			pExtensions[*pExtCount] = #ext;			\
-		(*pExtCount)++;								\
-	}\
-}
-
+struct vke_framebuffer {
+	VkeDevice dev;
+	VkFramebuffer framebuffer;
+	~vke_framebuffer() {
+		vkDestroyFramebuffer(dev, framebuffer, NULL);
+	}
+};
 
 struct vke_image {
 	VkeDevice				dev;
@@ -408,6 +299,246 @@ struct vke_phyinfo {
 	array<VkExtensionProperties>		ext_props;
 };
 
+struct vke_swap_chain {
+	VkeDevice	 	dev;
+	VkSwapchainKHR 	swap_chain;
+	~vke_swap_chain() {
+		vkDestroySwapchainKHR(dev, swap_chain, null);
+	}
+};
+
+struct vke_fence {
+	VkeDevice	 	dev;
+	VkFence 		fence;
+	~vke_fence() {
+		vkDestroyFence(dev, fence, null);
+	}
+};
+
+
+struct vke_semaphore {
+	VkeDevice   dev;
+	VkSemaphore semaphore;
+	~vke_semaphore() {
+		vkDestroySemaphore(dev, semaphore, null);
+	}
+};
+
+struct vke_presenter {
+	VkQueue 		        queue;
+	VkeCommandPool        	cmdPool;
+	uint32_t		        qFam;
+	VkeDevice		        dev;
+	VkSurfaceKHR        	surface;
+	VkeSemaphore		    semaPresentEnd;
+	VkeSemaphore		    semaDrawEnd;
+	VkeFence			    fenceDraw;
+	VkFormat		    	format;
+	VkColorSpaceKHR     	colorSpace;
+	VkPresentModeKHR    	presentMode;
+	uint32_t		        width;
+	uint32_t		        height;
+	uint32_t		        imgCount;
+	uint32_t		        currentScBufferIndex;
+	VkRenderPass 	    	renderPass;
+	VkSwapchainKHR 	    	swapChain;
+	array<VkeImage>	        ScBuffers;
+	array<VkeCommandBuffer> cmdBuffs; // neither of these need to be in compact vector for vulkan api usage.
+	VkFramebuffer*	        frameBuffs;
+	///
+	~vke_presenter() {
+		vkDeviceWaitIdle    (dev);
+	}
+};
+
+struct vke_window {
+    VkeDevice          dev;
+    int                w, h;
+    VkeKeyEvent        key_event;
+    VkeCharEvent       char_event;
+    VkeButtonEvent     button_event;
+    VkeCursorEvent     cursor_event;
+    VkeResizeEvent     resize_event;
+    VkePresenter       renderer;
+    struct GLFWwindow *glfw;
+	VkeSurfaceKHR      surface;
+    void              *user;
+	///
+	~vke_window() {
+		glfwDestroyWindow(glfw);
+	}
+};
+
+struct vke_device;
+struct vke_queue {
+	VkeDevice	    dev;
+	uint32_t		familyIndex;
+	VkQueue			queue;
+	VkQueueFlags	flags;
+
+	///
+	static const size_t valloc = 32;
+	struct entry {
+		array<VkCommandBuffer> 	   	cmd_buffers;
+		array<VkPipelineStageFlags> wait_stages;
+		array<VkSemaphore>			wait_semaphores;
+		array<VkSemaphore>			signal_semaphores;
+		array<u64>				 	wait_values;
+		array<u64>				 	signal_values;
+		///
+		entry() :
+			cmd_buffers			(valloc),
+			wait_stages			(valloc),
+			wait_semaphores		(valloc),
+			signal_semaphores	(valloc),
+			wait_values			(valloc),
+			signal_values		(valloc) { }
+		///
+		entry &reset() {
+			cmd_buffers.clear();
+			wait_stages.clear();
+			wait_semaphores.clear();
+			signal_semaphores.clear();
+			wait_values.clear();
+			signal_values.clear();
+			return *this;
+		}
+	};
+
+	static const size_t max_transit = 32;
+	static inline entry *transit = new entry[max_transit];
+	///
+	static entry &next_entry() {
+		static size_t index = max_transit;
+		if (++index >= max_transit)
+			  index = 0;
+		return transit[index].reset();
+	}
+
+	void submit(
+		array<VkCommandBuffer> 		cmd_buf,
+		array<VkeSemaphore> 		wait_semaphores,
+		array<VkeSemaphore> 		signal_semaphores,
+		array<u64> 					waits,
+		array<u64> 					signals,
+		array<VkPipelineStageFlags> wait_stages);
+};
+
+static void glfw_error(int code, const char *cs) {
+	printf("glfw error: code: %d (%s)", code, cs);
+}
+
+static void glfw_key(GLFWwindow *h, int unicode, int scan_code, int action, int mods) {
+	vke_window *win = (vke_window *)glfwGetWindowUserPointer(h);
+    win->key_event(win->user, unicode, scan_code, action, mods); /// i think its a good idea to pass handle to your user data not the window.  afterall you are going to look that up anyway, and guess waht it can contain too
+}
+
+static void glfw_char(GLFWwindow *h, unsigned int unicode) {
+	vke_window *win =(vke_window *)glfwGetWindowUserPointer(h);
+	win->char_event(win->user, unicode);
+}
+
+static void glfw_button(GLFWwindow *h, int button, int action, int mods) {
+    vke_window *win = (vke_window *)glfwGetWindowUserPointer(h);
+    win->button_event(win->user, button, action, mods);
+}
+
+static void glfw_cursor(GLFWwindow *h, double x, double y) {
+    vke_window *win = (vke_window *)glfwGetWindowUserPointer(h);
+    win->cursor_event(win->user, x, y, (bool)glfwGetWindowAttrib(h, GLFW_HOVERED));
+}
+
+static void glfw_resize(GLFWwindow *handle, int w, int h) {
+	vke_window *win = (vke_window *)glfwGetWindowUserPointer(handle);
+	win->resize_event(win->user, w, h);
+}
+
+/*
+enums_define(VkeStencilFaceFlags, 			VkStencilFaceFlags);
+enums_define(VkePipelineBindPoint, 			VkPipelineBindPoint);
+enums_define(VkeShaderStageFlags,			VkShaderStageFlags);
+enums_define(VkeBufferUsage, 				VkBufferUsage);
+enums_define(VkeCommandBufferUsage, 		VkCommandBufferUsage);
+enums_define(VkeSubpassContents, 			VkSubpassContents);
+*/
+
+///       name                             base  data type                           data location
+implement(VkePipelineCache,                  mx, VkPipelineCache,        			 data);
+implement(VkePipelineLayout,                 mx, VkPipelineLayout,       			 data);
+implement(VkeDescriptorSetLayout,            mx, VkDescriptorSetLayout, 			 data);
+implement(VkeGPU,               			 mx, VkPhysicalDevice,              	 data);
+implement(VkeDeviceCreateInfo,               mx, VkDeviceCreateInfo,    			 data);
+implement(VkeObjectType,                     mx, VkObjectType,    					 data);
+implement(VkePhysicalDeviceFeatures,         mx, VkPhysicalDeviceFeatures,    		 data);
+implement(VkeSampleCountFlagBits,            mx, VkSampleCountFlagBits,    			 data);
+implement(VkeImageType,                      mx, VkImageType,    					 data);
+implement(VkeFormat,                         mx, VkFormat,    						 data);
+implement(VkeImageUsageFlags,                mx, VkImageUsageFlags,    				 data);
+implement(VkeImageTiling,                    mx, VkImageTiling,    					 data);
+implement(VkePipelineStageFlags,             mx, VkPipelineStageFlags,    			 data);
+implement(VkeResult,                         mx, VkResult,    						 data);
+implement(VkeImageViewType,                  mx, VkImageViewType,    				 data);
+implement(VkeImageAspectFlags,               mx, VkImageAspectFlags,    			 data);
+implement(VkeImageLayout,                    mx, VkImageLayout,    					 data);
+implement(VkeImageSubresourceRange,          mx, VkImageSubresourceRange,    		 data);
+implement(VkeDescriptorImageInfo,            mx, VkDescriptorImageInfo,    			 data);
+implement(VkeBufferUsageFlags,               mx, VkBufferUsageFlags,    			 data);
+implement(VkeDeviceSize,                     mx, VkDeviceSize,    					 data);
+implement(VkeDescriptorBufferInfo,           mx, VkDescriptorBufferInfo,    		 data);
+implement(VkeCommandPoolCreateFlags,         mx, VkCommandPoolCreateFlags,    		 data);
+implement(VkeCommandBufferLevel,             mx, VkCommandBufferLevel,    			 data);
+implement(VkeCommandBufferUsageFlags,        mx, VkCommandBufferUsageFlags,    		 data);
+implement(VkePresentModeKHR,                 mx, VkPresentModeKHR,    				 data);
+implement(VkeDeviceQueueCreateInfo,          mx, VkDeviceQueueCreateInfo,    		 data);
+implement(VkePhysicalDeviceProperties,       mx, VkPhysicalDeviceProperties,    	 data); 
+implement(VkeQueueFamilyProperties,          mx, VkQueueFamilyProperties,    		 data); 
+implement(VkePhysicalDeviceMemoryProperties, mx, VkPhysicalDeviceMemoryProperties,   data);
+implement(VkeAttachmentLoadOp,               mx, VkAttachmentLoadOp,    			 data); 
+implement(VkeAttachmentStoreOp,              mx, VkAttachmentStoreOp,    			 data); 
+implement(VkePipeline, 						 mx, VkPipeline,    					&data->pipeline);
+implement(VkeAttachmentDescription, 		 mx, VkAttachmentDescription,    		 data);
+implement(VkeRenderPass,	 				 mx, VkRenderPass,    					 data);
+implement(VkeSemaphore, 					 mx, VkSemaphore,						&data->semaphore);
+implement(VkeCommandPool, 					 mx, VkCommandPool,						&data->pool);
+implement(VkeCommandBuffer, 				 mx, VkCommandBuffer,					 data->buffer);
+implement(VkeMonitor, 						 mx, GLFWmonitor*,    					 data);
+implement(VkeImageView, 					 mx, VkImageView,    					 data);
+implement(VkeEvent, 						 mx, VkEvent,    						 data);
+implement(VkeFence, 						 mx, VkFence,    						&data->fence);
+implement(VkeQueue, 						 mx, VkQueue,    						&data->queue);
+implement(VkePhyInfo, 						 mx, VkPhysicalDevice, 					&data->gpu);
+implement(VkeApp, 							 mx, struct vke_app,					 data);
+implement(VkeWindow, 						 mx, struct vke_window,					 data);
+implement(VkeSampler, 						 mx, VkSampler,				 			&data->sampler);
+implement(VkeImage, 						 mx, VkImage,    						&data->image);
+implement(VkeBuffer, 						 mx, VkBuffer,    						&data->buffer);
+implement(VkePresenter, 					 mx, struct vke_presenter,				 data);
+implement(VkeShaderModule, 					 mx, VkShaderModule,    				 data);
+
+/*implement(VkeViewport, 					     mx, VkViewport,    				 	 data);
+VkeViewport::VkeViewport(rectf &r, float min_depth, float max_depth) {
+	data->x 		= r.x;
+	data->y 		= r.y;
+	data->width 	= r.width;
+	data->height 	= r.height;
+	data->min_depth = min_depth;
+	data->max_depth = max_depth;
+}
+*/
+
+vke_buffer::~vke_buffer() {
+	if (buffer)
+		vmaDestroyBuffer(dev->allocator, buffer, alloc);
+}
+
+#define _CHECK_DEV_EXT(ext) { \
+	if (_get_dev_extension_is_supported(pExtensionProperties, extensionCount, #ext)){ \
+		if (pExtensions) \
+			pExtensions[*pExtCount] = #ext; \
+		(*pExtCount)++; \
+	} \
+}
+
 VkExtensionProperties *VkePhyInfo::lookup_extension(symbol input) {
 	if (!data->ext_props) {
 		uint32_t dev_ext_count = 0;
@@ -434,47 +565,6 @@ array<symbol> VkePhyInfo::usable_extensions(array<symbol> input) { /// input: VK
 	
 	return result;
 }
-
-
-struct vke_presenter {
-	VkQueue 		        queue;
-	VkCommandPool        	cmdPool;
-	uint32_t		        qFam;
-	VkeDevice		        dev;
-	VkSurfaceKHR        	surface;
-	VkSemaphore		    	semaPresentEnd;
-	VkSemaphore		    	semaDrawEnd;
-	VkeFence			    fenceDraw;
-	VkFormat		    	format;
-	VkColorSpaceKHR     	colorSpace;
-	VkPresentModeKHR    	presentMode;
-	uint32_t		        width;
-	uint32_t		        height;
-	uint32_t		        imgCount;
-	uint32_t		        currentScBufferIndex;
-	VkRenderPass 	    	renderPass;
-	VkSwapchainKHR 	    	swapChain;
-	array<VkeImage>	        ScBuffers;
-	array<VkeCommandBuffer> cmdBuffs; // neither of these need to be in compact vector for vulkan api usage.
-	VkFramebuffer*	        frameBuffs;
-	///
-	~vke_presenter() {
-		vkDeviceWaitIdle    (dev);
-		for (uint32_t i = 0; i < imgCount; i++)
-			vkFreeCommandBuffers (dev, cmdPool, 1, &cmdBuffs[i]);
-		
-		vkDestroySwapchainKHR (dev, swapChain, NULL);
-		swapChain = VK_NULL_HANDLE;
-
-		free(cmdBuffs);
-
-		ScBuffers.clear();
-		vkDestroySemaphore	(dev, semaDrawEnd,    NULL);
-		vkDestroySemaphore	(dev, semaPresentEnd, NULL);
-		vkDestroyFence		(dev, fenceDraw,      NULL);
-		vkDestroyCommandPool(dev, cmdPool,        NULL);
-	}
-};
 
 VkeImage::VkeImage (
 		VkeDevice dev, VkeImageType imageType, VkeFormat format, uint32_t width, uint32_t height,
@@ -644,7 +734,8 @@ void VkeImage::set_layout_subres(
 		default:
 			break;
 	}
-	vkCmdPipelineBarrier(cmdBuff, src_stages, dest_stages, 0, 0, NULL, 0, NULL, 1, &image_memory_barrier);
+	vkCmdPipelineBarrier(cmdBuff, src_stages, dest_stages, 0, 0,
+		NULL, 0, NULL, 1, &image_memory_barrier);
 	data->layout = new_image_layout;
 }
 
@@ -680,7 +771,8 @@ uint64_t VkeImage::get_stride() {
 
 void VkePresenter::swapchain_destroy() {
 	for (uint32_t i = 0; i < data->imgCount; i++)
-		vkFreeCommandBuffers (data->dev, data->cmdPool, 1, &data->cmdBuffs[i]);
+		vkFreeCommandBuffers(
+			data->dev, data->cmdPool, 1, (VkCommandBuffer*)&data->cmdBuffs[i]);
 	
 	vkDestroySwapchainKHR (data->dev, data->swapChain, NULL);
 	data->swapChain = VK_NULL_HANDLE;
@@ -688,8 +780,7 @@ void VkePresenter::swapchain_destroy() {
 	data->ScBuffers.clear();
 }
 
-void _init_phy_surface(VkePresenter r, VkFormat preferedFormat, VkPresentModeKHR presentMode) {
-	vke_presenter  *data = &r; /// get the data address
+void VkePresenter::init(VkeFormat preferedFormat, VkePresentModeKHR presentMode) {
 	VkPhysicalDevice gpu = data->dev->phyinfo->gpu;
 
 	uint32_t count;
@@ -737,50 +828,52 @@ VkePresenter::VkePresenter(VkeDevice dev, uint32_t presentQueueFamIdx, VkeSurfac
 	vkGetDeviceQueue(data->dev, data->qFam, 0, &data->queue);
 
 	data->cmdPool		  = VkeCommandPool(data->dev, presentQueueFamIdx, VkCommandPoolCreateFlags(0));
-	data->semaPresentEnd  = VkeSemaphore(data->dev);
-	data->semaDrawEnd	  = VkeSemaphore(data->dev);
+	data->semaPresentEnd  = VkeSemaphore(data->dev, 0);
+	data->semaDrawEnd	  = VkeSemaphore(data->dev, 0);
 	data->fenceDraw	      = VkeFence(data->dev, true);
 
-	_init_phy_surface(data, preferedFormat, presentMode);
+	init(preferedFormat, presentMode);
 	create_swapchain();
 }
 
 bool VkePresenter::acquireNextImage(VkeFence fence, VkeSemaphore semaphore) {
 	// Get the index of the next available swapchain image:
 	VkResult err = vkAcquireNextImageKHR
-			(data->dev, data->swapChain, UINT64_MAX, semaphore, fence, &data->currentScBufferIndex);
+			(data->dev, data->swapChain, UINT64_MAX, (VkSemaphore&)semaphore, fence, &data->currentScBufferIndex);
 	return ((err != VK_ERROR_OUT_OF_DATE_KHR) && (err != VK_SUBOPTIMAL_KHR));
 }
 
-
 bool VkePresenter::draw() {
-	if (!acquireNextImage(VkFence(VK_NULL_HANDLE), data->semaPresentEnd)){
+	if (!acquireNextImage(VkeFence(), data->semaPresentEnd)){
 		create_swapchain();
 		return false;
 	}
 
 	VkPipelineStageFlags dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-	VkSubmitInfo submit_info = { .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-								 .commandBufferCount = 1,
-								 .signalSemaphoreCount = 1,
-								 .pSignalSemaphores = &data->semaDrawEnd,
-								 .waitSemaphoreCount = 1,
-								 .pWaitSemaphores = &data->semaPresentEnd,
-								 .pWaitDstStageMask = &dstStageMask,
-								 .pCommandBuffers = &data->cmdBuffs[data->currentScBufferIndex]};
-
-	vkWaitForFences	(data->dev, 1, &data->fenceDraw, VK_TRUE, FENCE_TIMEOUT);
-	vkResetFences	(data->dev, 1, &data->fenceDraw);
+	VkSubmitInfo submit_info 	= {
+		.sType 					= VK_STRUCTURE_TYPE_SUBMIT_INFO,
+		.commandBufferCount 	= 1,
+		.signalSemaphoreCount 	= 1,
+		.pSignalSemaphores 		= &(VkSemaphore&)data->semaDrawEnd,
+		.waitSemaphoreCount 	= 1,
+		.pWaitSemaphores 		= &(VkSemaphore&)data->semaPresentEnd,
+		.pWaitDstStageMask 		= &dstStageMask,
+		.pCommandBuffers 		= &(VkCommandBuffer&)data->cmdBuffs[data->currentScBufferIndex]
+	};
+	vkWaitForFences	(data->dev, 1, &(VkFence&)data->fenceDraw, VK_TRUE, FENCE_TIMEOUT);
+	vkResetFences	(data->dev, 1, &(VkFence&)data->fenceDraw);
 
 	vk_assert(vkQueueSubmit (data->queue, 1, &submit_info, data->fenceDraw));
 
 	/* Now present the image in the window */
-	VkPresentInfoKHR present = { .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-								 .swapchainCount = 1,
-								 .pSwapchains = &data->swapChain,
-								 .waitSemaphoreCount = 1,
-								 .pWaitSemaphores = &data->semaDrawEnd,
-								 .pImageIndices = &data->currentScBufferIndex };
+	VkPresentInfoKHR present 	= {
+		.sType 			 		= VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+		.swapchainCount 	 	= 1,
+		.pSwapchains 		 	= &(VkSwapchainKHR&)data->swapChain,
+		.waitSemaphoreCount 	= 1,
+		.pWaitSemaphores    	= &(VkSemaphore&)data->semaDrawEnd,
+		.pImageIndices      	= &data->currentScBufferIndex
+	};
 
 	/* Make sure command buffer is finished before presenting */
 	vkQueuePresentKHR(data->queue, &present);
@@ -795,7 +888,7 @@ void VkePresenter::build_blit_cmd (VkeImage blitSource, uint32_t width, uint32_t
 		VkeImage bltDstImage = data->ScBuffers[i];
 		VkeCommandBuffer  cb = data->cmdBuffs [i];
 
-		cb.cmd_begin(VkCommandBufferUsageFlags(0)); /// no implicit literal, probably for nullptr_t ambiguity; the cast is fine
+		cb.begin(VkeCommandBufferUsage::one_time_submit); /// no implicit literal, probably for nullptr_t ambiguity; the cast is fine
 
 		bltDstImage.set_layout(cb, VK_IMAGE_ASPECT_COLOR_BIT,
 			VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
@@ -819,7 +912,9 @@ void VkePresenter::build_blit_cmd (VkeImage blitSource, uint32_t width, uint32_t
 			.dstOffsets[1] = { width, height, 1 }
 		};
 
-		vkCmdBlitImage(*cb, blitSource, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, bltDstImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &bregion, VK_FILTER_NEAREST);
+		vkCmdBlitImage(cb, blitSource, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			bltDstImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
+			&bregion, VK_FILTER_NEAREST);
 
 		/*vkCmdCopyImage(cb, blitSource, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, bltDstImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 					   1, &cregion);*/
@@ -828,10 +923,11 @@ void VkePresenter::build_blit_cmd (VkeImage blitSource, uint32_t width, uint32_t
 			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
 			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
 		blitSource.set_layout(cb, VK_IMAGE_ASPECT_COLOR_BIT,
-			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
 
-		cb.cmd_end();
+		cb.finish();
 	}
 }
 
@@ -904,8 +1000,11 @@ void VkePresenter::create_swapchain () {
 		VkeImage sci = VkeImage(data->dev, VkeImage(images[i]), data->format, data->width, data->height);
 		sci.create_view(VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT); /// this modifies field on the VkeImage
 		
+		// (VkeDevice &vke, VkeCommandPool cmd_pool, VkeCommandBufferLevel level, uint32_t count)
+		
 		data->ScBuffers  += sci; /// VkeImage wont be deleting the VkImage as read form vkGetSwapchainImagesKHR
-		data->cmdBuffs   += VkeCommandBuffer(data->dev, data->cmdPool,VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+		VkeCommandBuffer cb { data->dev, data->cmdPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY };
+		data->cmdBuffs   += cb;
 	}
 	data->currentScBufferIndex = 0;
 }
@@ -1043,14 +1142,14 @@ int VkeDevice::compute_index() {
 VkeAttachmentDescription VkeAttachmentDescription::color(
 		VkeFormat format, VkeSampleCountFlagBits samples, VkeAttachmentLoadOp load, VkeAttachmentStoreOp store) {
 	VkAttachmentDescription desc {
-		.format 		= *format,
-		.samples 		= *samples,
-		.loadOp 		= *load,
-		.storeOp 		= *store,
-		.stencilLoadOp 	=  VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-		.stencilStoreOp =  VK_ATTACHMENT_STORE_OP_DONT_CARE,
-		.initialLayout 	=  VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		.finalLayout 	=  VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+		.format 		= format,
+		.samples 		= samples,
+		.loadOp 		= load,
+		.storeOp 		= store,
+		.stencilLoadOp 	= VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.initialLayout 	= VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		.finalLayout 	= VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
 	};
 	return VkeAttachmentDescription(desc);
 }
@@ -1058,7 +1157,7 @@ VkeAttachmentDescription VkeAttachmentDescription::color(
 /// pattern: if you ever need to change it, add an arg
 VkeAttachmentDescription VkeAttachmentDescription::color_resolve(VkeFormat format) {
 	VkAttachmentDescription desc {
-		.format 		= *format,
+		.format 		= format,
 		.samples	 	= VK_SAMPLE_COUNT_1_BIT,
 		.loadOp 		= VK_ATTACHMENT_LOAD_OP_DONT_CARE,
 		.storeOp 		= VK_ATTACHMENT_STORE_OP_STORE,
@@ -1073,12 +1172,12 @@ VkeAttachmentDescription VkeAttachmentDescription::color_resolve(VkeFormat forma
 VkeAttachmentDescription VkeAttachmentDescription::depth_stencil(
 		VkeFormat format, VkeSampleCountFlagBits samples, VkeAttachmentLoadOp load, VkeAttachmentStoreOp store) {
 	VkAttachmentDescription desc {
-		.format 		= *format,
-		.samples 		= *samples,
+		.format 		= format,
+		.samples 		= samples,
 		.loadOp 		= VK_ATTACHMENT_LOAD_OP_DONT_CARE,
 		.storeOp 		= VK_ATTACHMENT_STORE_OP_DONT_CARE,
-		.stencilLoadOp 	= *load,
-		.stencilStoreOp = *store,
+		.stencilLoadOp 	= load,
+		.stencilStoreOp = store,
 		.initialLayout 	= VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
 		.finalLayout 	= VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
 	};
@@ -1096,7 +1195,7 @@ VkeRenderPass::VkeRenderPass(VkeDevice dev, array<VkeAttachmentDescription> desc
 	int depth_stencil = -1;
 
 	for (VkeAttachmentDescription &o: desc) {
-		VkAttachmentDescription &d = *o;
+		VkAttachmentDescription &d = o;
 		VkAttachmentReference ref = { index, d.finalLayout };
 		refs.push(ref);
 		attachments.push(d);
@@ -1186,7 +1285,7 @@ void VkeCommandBuffer::label_start(const char* name, const float color[4]) {
 		.pLabelName= name
 	};
 	memcpy ((void*)info.color, (void*)color, 4 * sizeof(float));
-	CmdBeginDebugUtilsLabelEXT(*data, &info);
+	CmdBeginDebugUtilsLabelEXT(*data->buffer, &info);
 }
 
 void VkeCommandBuffer::label_insert(const char* name, const float color[4]) {
@@ -1196,13 +1295,12 @@ void VkeCommandBuffer::label_insert(const char* name, const float color[4]) {
 		.pLabelName= name
 	};
 	memcpy ((void*)info.color, (void*)color, 4 * sizeof(float));
-	CmdInsertDebugUtilsLabelEXT(*data, &info);
+	CmdInsertDebugUtilsLabelEXT(*data->buffer, &info);
 }
 
 void VkeCommandBuffer::label_end () {
-	CmdEndDebugUtilsLabelEXT (*data);
+	CmdEndDebugUtilsLabelEXT (*data->buffer);
 }
-
 
 static VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger) {
     auto func = (PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
@@ -1330,7 +1428,7 @@ void        VkeWindow::hide() 						 {        glfwHideWindow        (data->glfw)
 void       *VkeWindow::user_data() 					 { return data->user; 							  }
 
 
-VkeBuffer::VkeBuffer(VkeDevice dev, VkeBufferUsageFlags usage, VkeMemoryUsage memprops, VkeDeviceSize size, bool mapped) : mx(&data) {
+VkeBuffer::VkeBuffer(VkeDevice dev, VkeBufferUsage usage, VkeMemoryUsage memprops, VkeDeviceSize size, bool mapped) : mx(&data) {
 	data->dev			        = dev;
 	VkBufferCreateInfo*   pInfo = &data->infos;
 	pInfo->sType				= VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -1380,11 +1478,10 @@ VkeWindow::VkeWindow(
 	data->dev        = dev;
 	data->w          = w;
 	data->h          = h;
-	data->glfw       = glfwCreateWindow(w, h, title, *mon, null);
-	data->surface    = (VkSurfaceKHR*)calloc(1, sizeof(VkSurfaceKHR));
+	data->glfw       = glfwCreateWindow(w, h, title, mon, null);
 	VkInstance inst  = dev->app->inst; // todo: import device by creating app, returning its device
 	///
-	vk_assert (glfwCreateWindowSurface(inst, data->glfw, NULL, (VkSurfaceKHR *)data->surface));
+	vk_assert (glfwCreateWindowSurface(inst, data->glfw, NULL, &data->surface));
 	///
 	data->renderer   = VkePresenter(
 		dev, (uint32_t) dev->phyinfo->pQueue, data->surface, w, h,
@@ -1405,10 +1502,13 @@ VkeWindow::VkeWindow(
 #define CHECK_BIT(var,pos) (((var)>>(pos)) & 1)
 
 VkeFence::VkeFence(VkeDevice vke, bool signalled) : mx(&data) {
-	VkFenceCreateInfo fenceInfo = { .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-									.pNext = NULL,
-									.flags = signalled ? VK_FENCE_CREATE_SIGNALED_BIT : 0 };
-	vk_assert(vkCreateFence(vke->vk, &fenceInfo, NULL, data));
+	VkFenceCreateInfo fenceInfo = {
+		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+		.pNext = NULL,
+		.flags = signalled ? VK_FENCE_CREATE_SIGNALED_BIT : 0
+	};
+	data->dev = vke;
+	vk_assert(vkCreateFence(vke->vk, &fenceInfo, NULL, &data->fence));
 }
 
 ///
@@ -1426,83 +1526,188 @@ VkeSemaphore::VkeSemaphore(VkeDevice &vke, uint64_t initialValue) {
 		.flags 			= 0
 	};
 	/// .semaphoreType 	= initialValue ? VK_SEMAPHORE_TYPE_TIMELINE : VK_SEMAPHORE_TYPE_BINARY,
-	vk_assert (vkCreateSemaphore (vke->vk, &info, NULL, data));
+	vk_assert (vkCreateSemaphore (vke->vk, &info, NULL, &data->semaphore));
 }
 
 VkeCommandPool::VkeCommandPool(VkeDevice &vke, uint32_t qFamIndex, VkeCommandPoolCreateFlags flags) : mx(&data) {
-	VkCommandPool 			cmd_pool;
-	VkCommandPoolCreateInfo cmd_pool_info {
+	VkCommandPoolCreateInfo info {
 		.sType 				= VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
 		.pNext 				= NULL,
 		.queueFamilyIndex 	= qFamIndex,
 		.flags 				= flags
 	};
-	vk_assert (vkCreateCommandPool (vke->vk, &cmd_pool_info, NULL, &cmd_pool));
+	data->dev = vke;
+	vk_assert (vkCreateCommandPool (vke->vk, &info, NULL, &data->pool));
 }
 
 VkeCommandBuffer::VkeCommandBuffer(VkeDevice &vke, VkeCommandPool cmd_pool, VkeCommandBufferLevel level, uint32_t count) : mx(&data) {
-	VkCommandBufferAllocateInfo cmd {
+	VkCommandBufferAllocateInfo info {
 		.sType 				= VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
 		.pNext 				= NULL,
 		.commandPool 		= cmd_pool,
 		.level 				= level,
 		.commandBufferCount = count
 	};
-	vk_assert (vkAllocateCommandBuffers (vke, &cmd, data));
+	data->dev = vke;
+	vk_assert (vkAllocateCommandBuffers (vke, &info, (VkCommandBuffer*)data->buffer));
 }
 
-void VkeCommandBuffer::cmd_begin(VkeCommandBufferUsageFlags flags) {
+void VkeCommandBuffer::begin(VkeCommandBufferUsage flags) {
 	VkCommandBufferBeginInfo cmd_buf_info = {
 		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
 		.pNext = NULL,
-		.flags = flags,
+		.flags = (VkCommandBufferUsageFlags)(u32)flags, // these could pass-through but we would need 2 more enums() args
 		.pInheritanceInfo = NULL
 	};
-	vk_assert (vkBeginCommandBuffer (*data, &cmd_buf_info));
+	vk_assert (vkBeginCommandBuffer (*data->buffer, &cmd_buf_info));
 }
 
-void VkeCommandBuffer::cmd_end(){
-	vk_assert (vkEndCommandBuffer (*data));
+void VkeCommandBuffer::finish() {
+	vk_assert (vkEndCommandBuffer (*data->buffer));
+}
+
+void VkeCommandBuffer::bind_pipeline(
+		VkePipelineBindPoint    bind,
+		VkePipeline             pipeline) {
+	vkCmdBindPipeline(*data->buffer, (VkPipelineBindPoint)(u32)bind, pipeline);
+}
+
+void VkeCommandBuffer::bind_descriptor_sets(
+		VkePipelineBindPoint    	pipelineBindPoint,
+		VkePipelineLayout       	layout,
+		compact<VkeDescriptorSet> 	pDescriptorSets) {
+	vkCmdBindDescriptorSets(
+		*data->buffer, (VkPipelineBindPoint)(u32)pipelineBindPoint, layout, 0,
+		pDescriptorSets.len(), 
+		(VkDescriptorSet*)pDescriptorSets.mem->origin, 0, NULL);
+}
+
+void VkeCommandBuffer::bind_index_buffer(
+		VkeBuffer               buffer,
+		u64                     offset,
+		type_t                  index_type) {
+	vkCmdBindIndexBuffer(
+		*data->buffer, buffer, offset,
+		index_type->base_sz == 4 ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16);
+}
+	
+void VkeCommandBuffer::bind_vertex_buffers(
+		u32                     first,
+		u32                     count,
+		compact<VkeBuffer>      buffers,
+		array<u64>              offsets) {
+	vkCmdBindVertexBuffers(
+		*data->buffer, first, count,
+		(VkBuffer*)buffers.mem->origin, offsets.data);
+}
+
+void VkeCommandBuffer::draw_indexed(
+		uint32_t                indexCount,
+		uint32_t                instanceCount,
+		uint32_t                firstIndex,
+		int32_t                 vertexOffset,
+		uint32_t                firstInstance) {
+	vkCmdDrawIndexed(*data->buffer, indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
+}
+
+void VkeCommandBuffer::draw(
+		uint32_t                vertexCount,
+		uint32_t                instanceCount,
+		uint32_t                firstVertex,
+		uint32_t                firstInstance) {
+	vkCmdDraw(
+		*data->buffer, vertexCount, instanceCount, firstVertex, firstInstance);
+}
+
+void VkeCommandBuffer::set_stencil_compare_mask(
+		VkeStencilFaceFlags     faceMask,
+		uint32_t                compareMask) {
+	vkCmdSetStencilCompareMask(
+		*data->buffer, (u32)faceMask, compareMask);
+}
+
+void VkeCommandBuffer::set_stencil_reference(
+		VkeStencilFaceFlags     faceMask,
+		uint32_t                reference) {
+	vkCmdSetStencilReference(
+		*data->buffer, (u32)faceMask, reference);
+}
+
+void VkeCommandBuffer::set_stencil_write_mask(
+		VkeStencilFaceFlags      faceMask,
+		uint32_t                 writeMask) {
+	vkCmdSetStencilWriteMask(
+		*data->buffer, (u32)faceMask, writeMask);
+}
+
+void VkeCommandBuffer::begin_render_pass(
+		VkeRenderPassBeginInfo  pRenderPassBegin,
+		VkeSubpassContents      contents) {
+	vkCmdBeginRenderPass(
+		*data->buffer, pRenderPassBegin, (VkSubpassContents)(u32)contents);
+}
+
+void VkeCommandBuffer::end_render_pass() {
+	vkCmdEndRenderPass(
+		*data->buffer);
+}
+
+void VkeCommandBuffer::set_viewport(compact<VkeViewport> viewports) {
+	vkCmdSetViewport(
+		*data->buffer, 0, viewports.len(), viewports.data());
+}
+
+void VkeCommandBuffer::set_scissor(array<recti> scissors) {
+	vkCmdSetScissor(
+		*data->buffer, 0, scissors.len(), (const VkRect2D*)scissors.data);
+}
+
+// void push_constants(
+// 		VkePipelineLayout       layout,
+// 		VkeShaderStageFlags     stageFlags,
+// 		uint32_t                offset,
+// 		uint32_t                size,
+// 		const void*             pValues) {
+
+void VkeCommandBuffer::push_constants(
+		VkePipelineLayout       layout,
+		VkeShaderStageFlags     stage_flags,
+		uint32_t                offset,
+		uint32_t                size,
+		const void*             pValues) {
+	vkCmdPushConstants(
+		*data->buffer, layout, (u32)stage_flags, offset, size, pValues
+	);
 }
 
 void VkeQueue::submit(
-		VkeFence 					 fence,
-		array<VkeCommandBuffer>  	 cmd_buffers,
-		array<VkePipelineStageFlags> wait_stages, 	  /// --> must be size of wait_semaphores len() <--
-		array<VkeSemaphore> 		 wait_semaphores, array<VkeSemaphore> signal_semaphores,
-		array<u64> 					 wait_values, 	  array<u64> 		  signal_values)
+		VkeFence 					 	fence,
+		array<VkCommandBuffer>  	 	cmd_buffers,
+		array<VkPipelineStageFlags> 	wait_stages, 	  /// --> must be size of wait_semaphores len() <--
+		array<VkSemaphore> 		 		wait_semaphores,  array<VkSemaphore> 	signal_semaphores,
+		array<u64> 					 	wait_values, 	  array<u64> 		    signal_values)
 {
-	auto e = vke_queue::next_entry();
-	/// copy wrapped data into contiguous vector (max of 2 in vkvg)
-	for (auto &v:       wait_values)       wait_values += v;
-	for (auto &v:     signal_values)     signal_values += v;
-	for (auto &v:       cmd_buffers)       cmd_buffers += v;
-	for (auto &v:       wait_stages)       wait_stages += v;
-	for (auto &v:   wait_semaphores)   wait_semaphores += v;
-	for (auto &v: signal_semaphores) signal_semaphores += v;
-	for (auto &v:       wait_values)       wait_values += v;
-	for (auto &v:     signal_values)     signal_values += v;
 	///
 	VkTimelineSemaphoreSubmitInfo timeline_info;
 	timeline_info.sType 					= VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
 	timeline_info.pNext 					= NULL;
-	timeline_info.waitSemaphoreValueCount 	= e.wait_values.len();
-	timeline_info.pWaitSemaphoreValues 		= e.wait_values.data;
-	timeline_info.signalSemaphoreValueCount	= e.signal_values.len();
-	timeline_info.pSignalSemaphoreValues 	= e.signal_values.data;
+	timeline_info.waitSemaphoreValueCount 	= wait_values.len();
+	timeline_info.pWaitSemaphoreValues 		= wait_values.data;
+	timeline_info.signalSemaphoreValueCount	= signal_values.len();
+	timeline_info.pSignalSemaphoreValues 	= signal_values.data;
 	/// --------------------------------------------
 	assert (wait_semaphores.len() == wait_stages.len());
 	/// --------------------------------------------
 	VkSubmitInfo submit_info;
 	submit_info.sType 				 = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 	submit_info.pNext 				 = &timeline_info;
-	submit_info.pWaitDstStageMask	 = e.wait_stages.data;
-	submit_info.waitSemaphoreCount 	 = e.wait_semaphores.len();
-	submit_info.pWaitSemaphores 	 = e.wait_semaphores.data;
-	submit_info.signalSemaphoreCount = e.signal_semaphores.len();
-	submit_info.pSignalSemaphores 	 = e.signal_semaphores.data;
-	submit_info.commandBufferCount 	 = e.cmd_buffers.len();
-	submit_info.pCommandBuffers 	 = e.cmd_buffers.data;
+	submit_info.pWaitDstStageMask	 = wait_stages.data;
+	submit_info.waitSemaphoreCount 	 = wait_semaphores.len();
+	submit_info.pWaitSemaphores 	 = wait_semaphores.data;
+	submit_info.signalSemaphoreCount = signal_semaphores.len();
+	submit_info.pSignalSemaphores 	 = signal_semaphores.data;
+	submit_info.commandBufferCount 	 = cmd_buffers.len();
+	submit_info.pCommandBuffers 	 = cmd_buffers.data;
 	/// --------------------------------------------
 	vk_assert (vkQueueSubmit(data->queue, 1, &submit_info, fence));
 }
@@ -1550,6 +1755,8 @@ bool vke_memory_type_from_properties(VkePhysicalDeviceMemoryProperties* memory_p
 	return false;
 }
 */
+
+/// vke::max_samples
 
 VkeSampleCountFlagBits VkeSampler::max_samples(VkeSampleCountFlagBits counts) {
 	VkSampleCountFlagBits v = *counts;
@@ -1670,7 +1877,7 @@ VkePhyInfo::VkePhyInfo(VkeGPU gpu, VkeSurfaceKHR surface) : mx(&data) {
 		VkBool32 present = VK_FALSE;
 		switch (data->queues[j].queueFlags) {
 		case VK_QUEUE_GRAPHICS_BIT:
-			if (*surface)
+			if (VkSurfaceKHR(surface))
 				vkGetPhysicalDeviceSurfaceSupportKHR(gpu, j, surface, &present);
 			if (present){
 				if (data->pQueue<0)
@@ -1692,7 +1899,7 @@ VkePhyInfo::VkePhyInfo(VkeGPU gpu, VkeSurfaceKHR surface) : mx(&data) {
 	for (uint32_t j=0; j<data->queueCount; j++){
 		if (data->queues[j].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
 			VkBool32 present = 0;
-			if (*surface)
+			if (surface.value())
 				vkGetPhysicalDeviceSurfaceSupportKHR(gpu, j, surface, &present);
 			//printf ("surf=%d, q=%d, present=%d\n",surface,j,present);
 			if (present){
@@ -1828,6 +2035,14 @@ bool VkePhyInfo::create_graphic_queues (uint32_t queueCount, const float* queue_
 		return true;
 	}
 	return false;
+}
+
+VkeCommandBuffer VkeCommandBuffer::operator[](size_t i) {
+	return VkeCommandBuffer(data[i]);
+}
+
+VkeSurfaceKHR::VkeSurfaceKHR(VkSurfaceKHR &surface) : mx(&data) {
+	data->surface = surface;
 }
 
 #pragma GCC diagnostic pop

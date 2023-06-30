@@ -1,5 +1,4 @@
 #include <ux/ux.hpp>
-#include <vke/vke.h>
 #include <array>
 #include <set>
 #include <stack>
@@ -11,23 +10,6 @@ namespace ion {
 using vpair = std::pair<int, int>;
 using face  = ngon;
 
-using VkAttribs = array<VkVertexInputAttributeDescription>;
-
-VkDescriptorSetLayoutBinding Asset_descriptor(Asset::etype t) {
-    return { uint32_t(t), VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_ALL, nullptr };
-}
-
-/// VkAttribs (array of VkAttribute) [data] from VAttribs (state flags) [model]
-/// import this format and its tangent / bi-tangent
-void Vertex::attribs(VAttribs attr, void *res) {
-    VkAttribs &vk_attr = (*(VkAttribs*)res = VkAttribs(6));
-    if (attr[VA::Position])  vk_attr += { 0, 0, VK_FORMAT_R32G32B32_SFLOAT,    offsetof(Vertex,  pos)  };
-    if (attr[VA::Normal])    vk_attr += { 1, 0, VK_FORMAT_R32G32B32_SFLOAT,    offsetof(Vertex,  norm) };
-    if (attr[VA::UV])        vk_attr += { 2, 0, VK_FORMAT_R32G32_SFLOAT,       offsetof(Vertex,  uv)   };
-    if (attr[VA::Color])     vk_attr += { 3, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(Vertex,  clr)  };
-    if (attr[VA::Tangent])   vk_attr += { 4, 0, VK_FORMAT_R32G32B32_SFLOAT,    offsetof(Vertex,  ta)   };
-    if (attr[VA::BiTangent]) vk_attr += { 5, 0, VK_FORMAT_R32G32B32_SFLOAT,    offsetof(Vertex,  bt)   };
-}
 
 struct Internal;
 

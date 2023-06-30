@@ -19,7 +19,7 @@ void _font_cache_free(vkg_device *dev) {
 	for (int i = 0; i < cache->fontsCount; ++i) {
 		vkg_font_identity* f = &cache->fonts[i];
 		for (uint32_t j = 0; j < f->sizeCount; j++) {
-			_vkg_font_t* s = &f->sizes[j];
+			vkg_font* s = &f->sizes[j];
 #ifdef VKVG_USE_FREETYPE
 			for (int g = 0; g < s->face->num_glyphs; ++g) {
 				if (s->charLookup[g]!=NULL)
@@ -109,7 +109,7 @@ void _fonts_cache_create (VkgDevice dev) {
 
 	//Set texture cache initial layout to shaderReadOnly to prevent error msg if cache is not fill
 	const VkImageSubresourceRange subres = {VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,cache->texLength};
-	vke_cmd_begin (cache->cmd,VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+	cache->cmd.begin(VkeCommandBufferUsage::one_time_submit);
 	vke_image_set_layout_subres(cache->cmd, cache->texture, subres,
 								VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 								VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
@@ -142,7 +142,7 @@ void _increase_font_tex_array (VkgDevice dev){
 	VkImageSubresourceRange subresNew	= {VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,newSize};
 	VkImageSubresourceRange subres		= {VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,cache->texLength};
 
-	vke_cmd_begin (cache->cmd,VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+	cache->cmd.begin(VkeCommandBufferUsage::one_time_submit);
 
 	vke_image_set_layout_subres(cache->cmd, newImg, subresNew,
 								VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
@@ -182,7 +182,7 @@ void _increase_font_tex_array (VkgDevice dev){
 }
 //flush font stagging buffer to cache texture array
 //Trigger stagging buffer to be uploaded in font cache. Groupping upload improve performances.
-void _flush_chars_to_tex (VkgDevice dev, _vkg_font_t* f) {
+void _flush_chars_to_tex (VkgDevice dev, vkg_font* f) {
 
 	_font_cache* cache = dev->fontCache;
 	if (cache->stagingX == 0)//no char in stagging buff to flush
@@ -196,7 +196,7 @@ void _flush_chars_to_tex (VkgDevice dev, _vkg_font_t* f) {
 
 	memcpy(vke_buffer_get_mapped_pointer (&cache->buff), cache->hostBuff, (uint64_t)f->curLine.height * FONT_PAGE_SIZE * cache->texPixelSize);
 
-	vke_cmd_begin (cache->cmd,VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+	cache->cmd.begin(VkeCommandBufferUsage::one_time_submit);
 
 	VkImageSubresourceRange subres		= {VK_IMAGE_ASPECT_COLOR_BIT,0,1,f->curLine.pageIdx,1};
 	vke_image_set_layout_subres(cache->cmd, cache->texture, subres,
@@ -225,7 +225,7 @@ void _flush_chars_to_tex (VkgDevice dev, _vkg_font_t* f) {
 	memset(cache->hostBuff, 0, (uint64_t)FONT_PAGE_SIZE * FONT_PAGE_SIZE * cache->texPixelSize);
 }
 ///Start a new line in font cache, increase texture layer count if needed.
-void _init_next_line_in_tex_cache (VkgDevice dev, _vkg_font_t* f){
+void _init_next_line_in_tex_cache (VkgDevice dev, vkg_font* f){
 	_font_cache* cache = dev->fontCache;
 	int i;
 	for (i = 0; i < cache->texLength; ++i) {
@@ -251,13 +251,13 @@ void _font_cache_update_context_descset (VkgContext ctx) {
 	ctx->fontCacheImg = ctx->dev->fontCache->texture;
 	vke_image_reference (ctx->fontCacheImg);
 
-	_update_descriptor_set (ctx, ctx->fontCacheImg, ctx->dsFont);
+	update_descriptor_set (ctx, ctx->fontCacheImg, ctx->dsFont);
 
 	io_unsync(ctx->dev);
 }
 //create a new char entry and put glyph in stagging buffer, ready for upload.
 _char_ref* _prepare_char (VkgDevice dev, VkgText tr, uint32_t gindex){
-	_vkg_font_t* f = tr->font;
+	vkg_font* f = tr->font;
 #ifdef VKVG_USE_FREETYPE
 	#if defined(VKVG_LCD_FONT_FILTER) && defined(FT_CONFIG_OPTION_SUBPIXEL_RENDERING)
 		FT_CHECK_RESULT(FT_Load_Glyph(f->face, gindex, FT_LOAD_TARGET_NORMAL));
@@ -311,16 +311,16 @@ _char_ref* _prepare_char (VkgDevice dev, VkgText tr, uint32_t gindex){
 #endif
 		}
 	}
-	cr->bmpDiff[X]	= (int16_t)slot->bitmap_left;
-	cr->bmpDiff[Y]	= (int16_t)slot->bitmap_top;
+	cr->bmpDiff.x	= (int16_t)slot->bitmap_left;
+	cr->bmpDiff.y	= (int16_t)slot->bitmap_top;
 	cr->advance		= slot->advance;
 #else
 	int advance;
 	int lsb;
 	stbtt_GetGlyphHMetrics(pStbInfo, gindex, &advance, &lsb);
 	stbtt_MakeGlyphBitmap (pStbInfo, data + penX, bmpPixelWidth, bmpRows, FONT_PAGE_SIZE, f->scale, f->scale, gindex);
-	cr->bmpDiff[X]	= (int16_t)c_x1;
-	cr->bmpDiff[Y]	= (int16_t)-c_y1;
+	cr->bmpDiff.x	= (int16_t)c_x1;
+	cr->bmpDiff.y	= (int16_t)-c_y1;
 	cr->advance		= (vec2f) {(uint32_t)roundf (f->scale * advance) << 6, 0};
 #endif
 	vec4f uvBounds = {
@@ -375,7 +375,7 @@ vkg_font_identity* _font_cache_add_font_identity (VkgContext ctx, const char* fo
 	return &cache->fonts[cache->fontsCount-1];
 }
 //select current font for context
-_vkg_font_t* _find_or_create_font_size (VkgContext ctx) {
+vkg_font* _find_or_create_font_size (VkgContext ctx) {
 	vkg_font_identity* font = ctx->currentFont;
 
 	for (uint32_t i = 0; i < font->sizeCount; ++i) {
@@ -384,10 +384,10 @@ _vkg_font_t* _find_or_create_font_size (VkgContext ctx) {
 	}
 	//if not found, create a new font size structure
 	if (++font->sizeCount == 1)
-		font->sizes = (_vkg_font_t*) malloc (sizeof(_vkg_font_t));
+		font->sizes = (vkg_font*) malloc (sizeof(vkg_font));
 	else
-		font->sizes = (_vkg_font_t*) realloc (font->sizes, font->sizeCount * sizeof(_vkg_font_t));
-	_vkg_font_t newSize = {.charSize = ctx->selectedCharSize};
+		font->sizes = (vkg_font*) realloc (font->sizes, font->sizeCount * sizeof(vkg_font));
+	vkg_font newSize = {.charSize = ctx->selectedCharSize};
 
 	VkgDevice dev = ctx->dev;
 #ifdef VKVG_USE_FREETYPE
@@ -505,8 +505,8 @@ void _update_current_font (VkgContext ctx) {
 
 #ifdef VKVG_USE_HARFBUZZ
 //Get harfBuzz buffer for provided text.
-hb_buffer_t * _get_hb_buffer (_vkg_font_t* font, const char* text, int length) {
-	hb_buffer_t *buf = hb_buffer_create();
+hb_buffer * _get_hb_buffer (vkg_font* font, const char* text, int length) {
+	hb_buffer *buf = hb_buffer_create();
 
 	hb_script_t script = HB_SCRIPT_LATIN;
 	hb_unicode_funcs_t* ucfunc = hb_unicode_funcs_get_default ();
@@ -534,7 +534,7 @@ void _font_cache_font_extents (VkgContext ctx, vkg_font_extents *extents) {
 		return;
 
 	//TODO: ensure correct metrics are returned (scalled/unscalled, etc..)
-	_vkg_font_t* font = ctx->currentFontSize;
+	vkg_font* font = ctx->currentFontSize;
 #ifdef VKVG_USE_FREETYPE
 	FT_BBox*			bbox	= &font->face->bbox;
 	FT_Size_Metrics*	metrics = &font->face->size->metrics;
@@ -607,12 +607,12 @@ void _font_cache_create_text_run (VkgContext ctx, const char* text, int length, 
 		if (cr==NULL)
 			cr = _prepare_char (textRun->dev, textRun, gindex);
 		textRun->glyphs[i].codepoint = gindex;
-		textRun->glyphs[i].x_advance = cr->advance[X];
-		textRun->glyphs[i].y_advance = cr->advance[Y];
+		textRun->glyphs[i].x_advance = cr->advance.x;
+		textRun->glyphs[i].y_advance = cr->advance.y;
 		textRun->glyphs[i].x_offset	 = 0;
 		textRun->glyphs[i].y_offset	 = 0;
-		/*textRun->glyphs[i].x_offset	 = cr->bmpDiff[X];
-		textRun->glyphs[i].y_offset	 = cr->bmpDiff[Y];*/
+		/*textRun->glyphs[i].x_offset	 = cr->bmpDiff.x;
+		textRun->glyphs[i].y_offset	 = cr->bmpDiff.y;*/
 	}
 	free (tmp);
 #endif
@@ -659,7 +659,7 @@ void _show_texture (vkg_context* ctx){
 	memcpy (pVert,vs,4*sizeof(Vertex));
 	ctx->vertCount+=4;
 
-	_check_vertex_cache_size(ctx);
+	check_vertex_cache_size(ctx);
 
 	add_tri_indices_for_rect(ctx, firstIdx);
 }
@@ -676,8 +676,8 @@ void _font_cache_show_text_run (VkgContext ctx, VkgText tr) {
 	Vertex v = {{0},ctx->curColor,{0,0,-1}};
 	vec2f pen = {0,0};
 
-	if (!_current_path_is_empty(ctx))
-		pen = _get_current_position(ctx);
+	if (!current_path_is_empty(ctx))
+		pen = get_current_position(ctx);
 
 	LOCK_FONTCACHE (ctx->dev)
 
@@ -691,41 +691,41 @@ void _font_cache_show_text_run (VkgContext ctx, VkgText tr) {
 
 		float uvWidth	= cr->bounds.width  / (float)FONT_PAGE_SIZE;
 		float uvHeight	= cr->bounds.height / (float)FONT_PAGE_SIZE;
-		vec2f p0 = {pen[X] + cr->bmpDiff[X] + (tr->glyphs[i].x_offset >> 6),
-				   pen[Y] - cr->bmpDiff[Y] + (tr->glyphs[i].y_offset >> 6)};
+		vec2f p0 = {pen.x + cr->bmpDiff.x + (tr->glyphs[i].x_offset >> 6),
+				   pen.y - cr->bmpDiff.y + (tr->glyphs[i].y_offset >> 6)};
 		v.pos = p0;
 
 		VKVG_IBO_INDEX_TYPE firstIdx = (VKVG_IBO_INDEX_TYPE)(ctx->vertCount - ctx->curVertOffset);
 
 
-		v.uv[X] = cr->bounds[X];
-		v.uv[Y] = cr->bounds[Y];
-		v.uv[Z] = cr->pageIdx;
+		v.uv.x = cr->bounds.x;
+		v.uv.y = cr->bounds.y;
+		v.uv.z = cr->pageIdx;
 		add_vertex(ctx,v);
 
-		v.pos[Y] += cr->bounds.height;
-		v.uv[Y] += uvHeight;
+		v.pos.y += cr->bounds.height;
+		v.uv.y += uvHeight;
 		add_vertex(ctx,v);
 
-		v.pos[X] += cr->bounds.width;
-		v.pos[Y] = p0[Y];
-		v.uv[X] += uvWidth;
-		v.uv[Y] = cr->bounds[Y];
+		v.pos.x += cr->bounds.width;
+		v.pos.y = p0.y;
+		v.uv.x += uvWidth;
+		v.uv.y = cr->bounds.y;
 		add_vertex(ctx,v);
 
-		v.pos[Y] += cr->bounds.height;
-		v.uv[Y] += uvHeight;
+		v.pos.y += cr->bounds.height;
+		v.uv.y += uvHeight;
 		add_vertex(ctx,v);
 
 		add_tri_indices_for_rect (ctx, firstIdx);
 
-		pen[X] += (tr->glyphs[i].x_advance >> 6);
-		pen[Y] -= (tr->glyphs[i].y_advance >> 6);
+		pen.x += (tr->glyphs[i].x_advance >> 6);
+		pen.y -= (tr->glyphs[i].y_advance >> 6);
 	}
 
 	//equivalent to a moveto
-	_finish_path(ctx);
-	_add_point (ctx, pen[X], pen[Y]);
+	finish_path(ctx);
+	add_point (ctx, pen.x, pen.y);
 	_flush_chars_to_tex(tr->dev, tr->font);	
 	UNLOCK_FONTCACHE (ctx->dev)
 
@@ -763,7 +763,7 @@ void _font_cache_show_text (VkgContext ctx, const char* text){
 	//_build_face_tex(face);
 
 	hb_font_t *hb_font = hb_ft_font_create(face, NULL);
-	hb_buffer_t *buf = hb_buffer_create();
+	hb_buffer *buf = hb_buffer_create();
 
 	const char *text = "Ленивый рыжий кот";
 	const char *lng	 = "en";

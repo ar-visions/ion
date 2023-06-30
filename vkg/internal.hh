@@ -96,7 +96,7 @@ namespace ion {
 
 
 //texture coordinates of one character in font cache array texture.
-typedef struct {
+struct _char_ref {
 	vec4f		bounds;				/* normalized float bounds of character bitmap in font cache texture. */
 	vec2f		bmpDiff;			/* Difference in pixel between char bitmap top left corner and char glyph*/
 	uint8_t		pageIdx;			/* Page index in font cache texture array */
@@ -105,19 +105,19 @@ typedef struct {
 #else
 	vec2f		advance;
 #endif
-}_char_ref;
+};
 
 // Current location in font cache texture array for new character addition. Each font holds such structure to locate
 // where to upload new chars.
-typedef struct {
+struct _tex_ref_t {
 	uint8_t		pageIdx;			/* Current page number in font cache */
 	int			penX;				/* Current X in cache for next char addition */
 	int			penY;				/* Current Y in cache for next char addition */
 	int			height;				/* Height of current line pointed by this structure */
-}_tex_ref_t;
+};
 
 // Loaded font structure, one per size, holds informations for glyphes upload in cache and the lookup table of characters.
-typedef struct {
+struct vkg_font {
 #ifdef VKVG_USE_FREETYPE
 	FT_F26Dot6		charSize;		/* Font size*/
 	FT_Face			face;			/* FreeType face*/
@@ -135,7 +135,7 @@ typedef struct {
 	_char_ref**		charLookup;		/* Lookup table of characteres in cache, if not found, upload is queued*/
 
 	_tex_ref_t		curLine;		/* tex coord where to add new char bmp's */
-}_vkg_font_t;
+};
 
 /* Font identification structure */
 struct vkg_font_identity {
@@ -151,11 +151,11 @@ struct vkg_font_identity {
 	int					lineGap;
 #endif
 	uint32_t			sizeCount;	/* available font size loaded */
-	_vkg_font_t*		sizes;		/* loaded font size array */
+	vkg_font*			sizes;		/* loaded font size array */
 };
 
 // Font cache global structure, entry point for all font related operations.
-struct font_cache_t {
+struct _font_cache {
 #ifdef VKVG_USE_FREETYPE
 	FT_Library		library;		/* FreeType library*/
 #else
@@ -170,15 +170,15 @@ struct font_cache_t {
 	VkCommandBuffer cmd;			/* vulkan command buffer for font textures upload */
 	VkeBuffer		buff;			/* stagin buffer */
 	VkeImage		texture;		/* 2d array texture used by contexts to draw characteres */
-	VkFormat		texFormat;		/* Format of the fonts texture array */
+	VkeFormat		texFormat;		/* Format of the fonts texture array */
 	uint8_t			texPixelSize;	/* Size in byte of a single pixel in a font texture */
 	uint8_t			texLength;		/* layer count of 2d array texture, starts with FONT_CACHE_INIT_LAYERS count and increased when needed */
 	int*			pensY;			/* array of current y pen positions for each texture in cache 2d array */
-	VkFence			uploadFence;	/* Signaled when upload is finished */
+	VkeFence		uploadFence;	/* Signaled when upload is finished */
 
 	vkg_font_identity*	fonts;	/* Loaded fonts structure array */
 	int32_t			fontsCount;		/* Loaded fonts array count*/
-} _font_cache;
+};
 
 struct _vkg_device;
 struct _vkg_context;
@@ -264,19 +264,13 @@ void _device_store_context				(VkgContext ctx);
 	#define CreateRgbaf(r, g, b, a) (((int)(a * 255.0f) << 24) | ((int)(b * 255.0f) << 16) | ((int)(g * 255.0f) << 8) | (int)(r * 255.0f))
 #endif
 
-struct Vertex {
-	vec2f    	pos;
-	uint32_t	color;
-	vec3f		uv;
-};
-
 struct push_constants {
 	vec4f			source;
 	vec2f			size;
 	uint32_t		fsq_patternType;
 	float			opacity;
-	vkg_matrix	mat;
-	vkg_matrix	matInv;
+	VkgMatrix		mat;
+	VkgMatrix		matInv;
 };
 
 struct vkg_context_save {
@@ -325,80 +319,13 @@ struct stroke_context {
 	float		arcStep;		//cached arcStep, prevent compute multiple times for same stroke, 0 if not yet computed
 };
 
-void _check_vertex_cache_size	(VkgContext ctx);
-void _ensure_vertex_cache_size	(VkgContext ctx, uint32_t addedVerticesCount);
-void _resize_vertex_cache		(VkgContext ctx, uint32_t newSize);
-
-void _check_index_cache_size	(VkgContext ctx);
-void _ensure_index_cache_size	(VkgContext ctx, uint32_t addedIndicesCount);
-void _resize_index_cache		(VkgContext ctx, uint32_t newSize);
-
-bool _check_pathes_array		(VkgContext ctx);
-
-bool _current_path_is_empty		(VkgContext ctx);
-void _finish_path				(VkgContext ctx);
-void _clear_path				(VkgContext ctx);
-void _remove_last_point			(VkgContext ctx);
-bool _path_is_closed			(VkgContext ctx, uint32_t ptrPath);
-void _set_curve_start			(VkgContext ctx);
-void _set_curve_end				(VkgContext ctx);
-bool path_has_curves			(VkgContext ctx, uint32_t ptrPath);
-
-float _normalizeAngle			(float a);
-float _get_arc_step				(VkgContext ctx, float radius);
-
-vec2f *_get_current_position    	(VkgContext ctx);
-void _add_point						(VkgContext ctx, float x, float y);
-
-void _resetMinMax					(VkgContext ctx);
-void _vkg_path_extents				(VkgContext ctx, bool transformed, float *x1, float *y1, float *x2, float *y2);
-void _draw_stoke_cap				(VkgContext ctx, stroke_context* str, vec2f p0, vec2f n, bool isStart);
-void _draw_segment					(VkgContext ctx, stroke_context* str, dash_context_t* dc, bool isCurve);
-float draw_dashed_segment			(VkgContext ctx, stroke_context *str, dash_context_t* dc, bool isCurve);
-bool build_vb_step					(VkgContext ctx, stroke_context *str, bool isCurve);
-
-void _poly_fill						(VkgContext ctx, vec4f *bounds);
-void _fill_non_zero					(VkgContext ctx);
-void _draw_full_screen_quad			(VkgContext ctx, vec4f *scissor);
-
-void _create_gradient_buff			(VkgContext ctx);
-void _create_vertices_buff			(VkgContext ctx);
-void add_vertex						(VkgContext ctx, Vertex v);
-void add_vertexf					(VkgContext ctx, float x, float y);
-void _set_vertex					(VkgContext ctx, uint32_t idx, Vertex v);
-void add_triangle_indices			(VkgContext ctx, VKVG_IBO_INDEX_TYPE i0, VKVG_IBO_INDEX_TYPE i1, VKVG_IBO_INDEX_TYPE i2);
-void add_tri_indices_for_rect		(VkgContext ctx, VKVG_IBO_INDEX_TYPE i);
-
-void _vao_add_rectangle				(VkgContext ctx, float x, float y, float width, float height);
-void _bind_draw_pipeline			(VkgContext ctx);
-void _create_cmd_buff				(VkgContext ctx);
-void _check_vao_size				(VkgContext ctx);
-void _flush_cmd_buff				(VkgContext ctx);
-void _ensure_renderpass_is_started	(VkgContext ctx);
-void _emit_draw_cmd_undrawn_vertices(VkgContext ctx);
-void _flush_cmd_until_vx_base		(VkgContext ctx);
-bool _wait_ctx_flush_end			(VkgContext ctx);
-bool _wait_and_submit_cmd			(VkgContext ctx);
-void _update_push_constants			(VkgContext ctx);
-void _update_cur_pattern			(VkgContext ctx, VkgPattern pat);
-void _set_mat_inv_and_vkCmdPush 	(VkgContext ctx);
-void _start_cmd_for_render_pass 	(VkgContext ctx);
-void _createDescriptorPool			(VkgContext ctx);
-void _init_descriptor_sets			(VkgContext ctx);
-void _update_descriptor_set			(VkgContext ctx, VkeImage img, VkDescriptorSet ds);
-void _update_gradient_desc_set		(VkgContext ctx);
-void _free_ctx_save					(vkg_context_save* sav);
-void _release_context_ressources	(VkgContext ctx);
-
 static inline float vec2f_zcross (vec2f v1, vec2f v2) {
-	return v1[X] * v2[Y] - v1[Y] * v2[X];
+	return v1.x * v2.y - v1.y * v2.x;
 }
 
 static inline float ecp_zcross (ear_clip_point* p0, ear_clip_point* p1, ear_clip_point* p2) {
-	vec2f d_10;
-	vec2f d_20;
-	vec2f_sub(d_10, p1->pos, p0->pos);
-	vec2f_sub(d_20, p2->pos, p0->pos);
+	vec2f d_10 = p1->pos - p0->pos;
+	vec2f d_20 = p2->pos - p0->pos;
 	return vec2f_zcross (d_10, d_20);
 }
 
@@ -490,58 +417,45 @@ void _select_font_face			(VkgContext ctx, const char* name);
 #define VKVG_CMD_SET_SOURCE			(0x0004|VKVG_CMD_PATTERN_COMMANDS)
 #define VKVG_CMD_SET_SOURCE_SURFACE	(0x0005|VKVG_CMD_PATTERN_COMMANDS)
 
-void				_start_recording	(VkgContext ctx);
-vkg_recording*	    _stop_recording		(VkgContext ctx);
 void				_destroy_recording	(vkg_recording* rec);
-void				_replay_command		(VkgContext ctx, VkgRecording rec, uint32_t index);
 void				_record				(vkg_recording* rec,...);
 
-#define RECORD(data,...) {\
+#define RECORD(...) {\
 	if (data->recording)	{\
 		_record (data->recording,__VA_ARGS__);\
 		return;\
 	}\
 }
-#define RECORD2(data,...) {\
+#define RECORD2(...) {\
 	if (data->recording)	{\
 		_record (data->recording,__VA_ARGS__);\
 		return 0;\
 	}\
 }
 
-void _explicit_ms_resolve (VkgSurface surf);
-void _clear_surface (VkgSurface surf, VkImageAspectFlags aspect);
-void _create_surface_main_image (VkgSurface surf);
-void _create_surface_secondary_images (VkgSurface surf);
-void _create_framebuffer (VkgSurface surf);
-void _create_surface_images (VkgSurface surf);
-VkgSurface _create_surface (VkgDevice dev, VkFormat format);
+void 		_clear_surface 					(VkgSurface surf, VkImageAspectFlags aspect);
+void 		_create_surface_main_image 		(VkgSurface surf);
+void 		_create_surface_secondary_images(VkgSurface surf);
+void 		_create_framebuffer 			(VkgSurface surf);
+void 		_create_surface_images 			(VkgSurface surf);
+VkgSurface 	_create_surface 				(VkgDevice dev, VkFormat format);
 
-void _surface_submit_cmd (VkgSurface surf);
+void 		_surface_submit_cmd 			(VkgSurface surf);
 //bool _surface_wait_cmd (VkgSurface surf);
-
-
-
-
-
-
-
-
-
 
 struct vkg_text_run {
 	struct vkg_font_identity*	fontId;		/* vkvg font structure pointer */
-	struct _vkg_font_t*			font;		/* vkvg font structure pointer */
+	struct vkg_font*			font;		/* vkvg font structure pointer */
 
-	VkgDevice				dev;		/* vkvg device associated with this text run */
-	vkg_text_extents		extents;	/* store computed text extends */
+	VkgDevice					dev;		/* vkvg device associated with this text run */
+	vkg_text_extents			extents;	/* store computed text extends */
 	
-	const char*				text;		/* utf8 char array of text*/
-	unsigned int			glyph_count;/* Total glyph count */
+	const char*					text;		/* utf8 char array of text*/
+	unsigned int				glyph_count;/* Total glyph count */
 
 #ifdef VKVG_USE_HARFBUZZ
-	struct hb_buffer_t*			hbBuf;		/* HarfBuzz buffer of text */
-	struct hb_glyph_position_t*	glyphs;		/* HarfBuzz computed glyph positions array */
+	struct hb_buffer*			hbBuf;		/* HarfBuzz buffer of text */
+	struct hb_glyph_position*	glyphs;		/* HarfBuzz computed glyph positions array */
 #else
 	vkg_glyph_info_t*		glyphs;		/* computed glyph positions array */
 #endif
@@ -549,16 +463,16 @@ struct vkg_text_run {
 
 struct vkg_pattern {
 	VkeStatus			status;
-	VkgPattern::type_t 	type;
-	vkg_extend_t		extend;
-	vkg_filter_t		filter;
-	vkg_matrix		matrix;
+	vkg_pattern_type 	type;
+	vkg_extend			extend;
+	vkg_filter			filter;
+	VkgMatrix			matrix;
 	bool				hasMatrix;
 	void*				data;
 };
 
 struct vkg_gradient {
-	vkg_color_t			colors[16];
+	vkg_color			colors[16];
 	vec4d				stops[16];
 	vec4d				cp[2];
 	uint32_t			count;
@@ -566,46 +480,36 @@ struct vkg_gradient {
 
 struct vkg_device {
 	/// data was cross over from vke but i believe its better to reference it.
-	VkeDevice           vke;
-	VkeImageTiling>		supportedTiling;		/**< Supported image tiling for surface, 0xFF=no support */
-	VkeFormat>			stencilFormat;			/**< Supported vulkan image format for stencil */
-	VkeImageAspectFlags>	stencilAspectFlag;		/**< stencil only or depth stencil, could be solved by VK_KHR_separate_depth_stencil_layouts*/
-	VkeFormat>			pngStagFormat;			/**< Supported vulkan image format png write staging img */
-	VkeImageTiling>		pngStagTiling;			/**< tiling for the blit operation */
-
+	VkeDevice           	vke;
+	VkeImageTiling			supportedTiling;		/**< Supported image tiling for surface, 0xFF=no support */
+	VkeFormat				stencilFormat;			/**< Supported vulkan image format for stencil */
+	VkeImageAspectFlags		stencilAspectFlag;		/**< stencil only or depth stencil, could be solved by VK_KHR_separate_depth_stencil_layouts*/
+	VkeFormat				pngStagFormat;			/**< Supported vulkan image format png write staging img */
+	VkeImageTiling			pngStagTiling;			/**< tiling for the blit operation */
 	VkeQueue				gQueue;					/**< Vulkan Queue with Graphic flag */
-
-	VkeRenderPass>		renderPass;				/**< Vulkan render pass, common for all surfaces */
-	VkeRenderPass>		renderPass_ClearStencil;/**< Vulkan render pass for first draw with context, stencil has to be cleared */
-	VkeRenderPass>		renderPass_ClearAll;	/**< Vulkan render pass for new surface, clear all attacments*/
-
+	VkeRenderPass			renderPass;				/**< Vulkan render pass, common for all surfaces */
+	VkeRenderPass			renderPass_ClearStencil;/**< Vulkan render pass for first draw with context, stencil has to be cleared */
+	VkeRenderPass			renderPass_ClearAll;	/**< Vulkan render pass for new surface, clear all attacments*/
 	uint32_t				references;				/**< Reference count, prevent destroying device if still in use */
-	VkeCommandPool>			cmdPool;				/**< Global command pool for processing on surfaces without context */
-	VkeCommandBuffer>			cmd;					/**< Global command buffer */
-	VkeFence>					fence;					/**< this fence is kept signaled when idle, wait and reset are called before each recording. */
-
-	VkePipeline>				pipe_OVER;				/**< default operator */
-	VkePipeline>				pipe_SUB;
-	VkePipeline>				pipe_CLEAR;				/**< clear operator */
-
-	VkePipeline>				pipelinePolyFill;		/**< even-odd polygon filling first step */
-	VkePipeline>				pipelineClipping;		/**< draw on stencil to update clipping regions */
-
-	VkePipelineCache>			pipelineCache;			/**< speed up startup by caching configured pipelines on disk */
-	VkePipelineLayout>		pipelineLayout;			/**< layout common to all pipelines */
-	VkeDescriptorSetLayout>	dslFont;				/**< font cache descriptors layout */
-	VkeDescriptorSetLayout>	dslSrc;					/**< context source surface descriptors layout */
-	VkeDescriptorSetLayout>	dslGrad;				/**< context gradient descriptors layout */
-
+	VkeCommandPool			cmdPool;				/**< Global command pool for processing on surfaces without context */
+	VkeCommandBuffer		cmd;					/**< Global command buffer */
+	VkeFence				fence;					/**< this fence is kept signaled when idle, wait and reset are called before each recording. */
+	VkePipeline				pipe_OVER;				/**< default operator */
+	VkePipeline				pipe_SUB;
+	VkePipeline				pipe_CLEAR;				/**< clear operator */
+	VkePipeline 			pipelinePolyFill;		/**< even-odd polygon filling first step */
+	VkePipeline 			pipelineClipping;		/**< draw on stencil to update clipping regions */
+	VkePipelineCache 		pipelineCache;			/**< speed up startup by caching configured pipelines on disk */
+	VkePipelineLayout 		pipelineLayout;			/**< layout common to all pipelines */
+	VkeDescriptorSetLayout 	dslFont;				/**< font cache descriptors layout */
+	VkeDescriptorSetLayout 	dslSrc;					/**< context source surface descriptors layout */
+	VkeDescriptorSetLayout 	dslGrad;				/**< context gradient descriptors layout */
 	VkeImage				emptyImg;				/**< prevent unbound descriptor to trigger Validation error 61 */
-	VkeSampleCountFlags>  samples;				/**< samples count common to all surfaces */
+	VkeSampleCountFlagBits 	samples;				/**< samples count common to all surfaces */
 	bool					deferredResolve;		/**< if true, resolve only on context destruction and set as source */
-	VkeStatus			status;					/**< Current status of device, affected by last operation */
-
-	struct _font_cache_t*   fontCache;				/**< Store everything relative to common font caching system */
-
+	VkeStatus				status;					/**< Current status of device, affected by last operation */
+	struct _font_cache*     fontCache;				/**< Store everything relative to common font caching system */
 	VkgContext				lastCtx;				/**< last element of double linked list of context, used to trigger font caching system update on all contexts*/
-
 	int32_t					cachedContextMaxCount;	/**< Maximum context cache element count.*/
 	int32_t					cachedContextCount;		/**< Current context cache element count.*/
 	struct _cached_ctx_t*   cachedContextLast;		/**< Last element of single linked list of saved context for fast reuse.*/
@@ -615,12 +519,12 @@ struct vkg_device {
 	VkPipeline				pipelineLineList;
 #endif
 #if VKVG_DBG_STATS
-	vkg_debug_stats		debug_stats;			/**< debug statistics on memory usage and vulkan ressources */
+	vkg_debug_stats			debug_stats;			/**< debug statistics on memory usage and vulkan ressources */
 #endif
 }; /// keeping with this pattern, no *_t (replacing others)
 
 struct vkg_context {
-	VkeStatus		status;
+	VkeStatus			status;
 	uint32_t			references;		//reference count
 
 	VkgDevice			dev;
@@ -632,27 +536,24 @@ struct vkg_context {
 #endif
 	//VkDescriptorImageInfo sourceDescriptor;	//Store view/sampler in context
 
-	VkCommandPool		cmdPool;		//local pools ensure thread safety
-	VkCommandBuffer		cmdBuffers[2];	//double cmd buff for context operations
-	VkCommandBuffer		cmd;			//current recording buffer
+	VkeCommandPool		cmdPool;		//local pools ensure thread safety
+	VkeCommandBuffer	cmdBuffers;		//double cmd buff for context operations
+    VkCommandBuffer		cmd;			//current buffer being staged
 	bool				cmdStarted;		//prevent flushing empty renderpass
 	bool				pushCstDirty;	//prevent pushing to gpu if not requested
-	VkDescriptorPool	descriptorPool;	//one pool per thread
-	VkDescriptorSet		dsFont;			//fonts glyphs texture atlas descriptor (local for thread safety)
-	VkDescriptorSet		dsSrc;			//source ds
-	VkDescriptorSet		dsGrad;			//gradient uniform buffer
+	VkeDescriptorPool	descriptorPool;	//one pool per thread
+	VkeDescriptorSet	dsFont;			//fonts glyphs texture atlas descriptor (local for thread safety)
+	VkeDescriptorSet	dsSrc;			//source ds
+	VkeDescriptorSet	dsGrad;			//gradient uniform buffer
 
 	VkeImage			fontCacheImg;	//current font cache, may not be the last one, updated only if new glyphs are
 										//uploaded by the current context
 	VkRect2D			bounds;
 	uint32_t			curColor;
 
-#if VKVG_FILL_NZ_GLUTESS
 	void (*vertex_cb)(VKVG_IBO_INDEX_TYPE, VkgContext);//tesselator vertex callback
 	VKVG_IBO_INDEX_TYPE tesselator_fan_start;
 	uint32_t			tesselator_idx_counter;
-	
-#endif
 
 #if VKVG_RECORDING
 	vkg_recording*		recording;
@@ -674,7 +575,7 @@ struct vkg_context {
 	uint32_t			sizeVertices;	//reserved size
 	uint32_t			vertCount;		//effective vertices count
 
-	Vertex*				vertexCache;
+	VkgVertex*			vertexCache;
 	VKVG_IBO_INDEX_TYPE* indexCache;
 
 	//pathes, exists until stroke of fill
@@ -704,9 +605,9 @@ struct vkg_context {
 
 	long				selectedCharSize; /* Font size*/
 	char				selectedFontName[FONT_NAME_MAX_SIZE];
-	//_vkg_font_t		  selectedFont;		//hold current face and size before cache addition
+	//vkg_font		  selectedFont;		//hold current face and size before cache addition
 	struct vkg_font_identity* currentFont;		//font pointing to cached fonts identity
-	struct _vkg_font_t*		  currentFontSize;	//font structure by size ready for lookup
+	struct vkg_font*		  currentFontSize;	//font structure by size ready for lookup
 	vkg_direction	textDirection;
 
 	push_constants		pushConsts;
@@ -717,28 +618,29 @@ struct vkg_context {
 	VkeImage*			savedStencils;		//additional image for saving contexes once more than 6 save/restore are reached
 	vkg_clip_state	curClipState;		//current clipping status relative to the previous saved one or clear state if none.
 
-	VkClearRect			clearRect;
-	VkRenderPassBeginInfo renderPassBeginInfo;
+	VkeClearRect			clearRect;
+	VkeRenderPassBeginInfo  renderPassBeginInfo;
 };
 
 struct vkg_surface {
-	VkeStatus	status;					/**< Current status of surface, affected by last operation */
+	VkeStatus		status;					/**< Current status of surface, affected by last operation */
 	VkgDevice		dev;
 	uint32_t		width;
 	uint32_t		height;
-	VkFormat		format;
-	VkFramebuffer	fb;
+	VkeFormat		format;
+	VkeFramebuffer	fb;
 	VkeImage		img;
 	VkeImage		imgMS;
 	VkeImage		stencil;
-	VkCommandPool	cmdPool;				//local pools ensure thread safety
-	VkCommandBuffer cmd;					//surface local command buffer.
+	VkeCommandPool	cmdPool;				//local pools ensure thread safety
+	VkeCommandBuffer cmd;					//surface local command buffer.
 	bool			newSurf;
+	///
 #ifdef VKVG_ENABLE_VK_TIMELINE_SEMAPHORE
-	VkSemaphore		timeline;				/**< Timeline semaphore */
+	VkeSemaphore	timeline;				/**< Timeline semaphore */
 	uint64_t		timelineStep;
 #else
-	VkFence			flushFence;				//unsignaled idle.
+	VkeFence			flushFence;				//unsignaled idle.
 #endif
 };
 

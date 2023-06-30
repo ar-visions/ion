@@ -1,2 +1,2 @@
 cpp(17)
-dep(prefix:ci glm)
+dep(prefix:ci)

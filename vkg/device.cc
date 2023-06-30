@@ -1,10 +1,11 @@
 ﻿#include <vkg/internal.hh>
 
 #define GetInstProcAddress(inst, func)(PFN_##func)vkGetInstanceProcAddr(inst, #func);
-
 #define GetVkProcAddress(dev, inst, func)(vkGetDeviceProcAddr(dev,#func)==NULL)?(PFN_##func)vkGetInstanceProcAddr(inst, #func):(PFN_##func)vkGetDeviceProcAddr(dev, #func)
 
 #include "shaders.h"
+
+namespace ion {
 
 #ifdef VKVG_WIRED_DEBUG
 vkg_wired_debug_mode vkg_wired_debug = vkg_wired_debug_mode_normal;
@@ -442,7 +443,7 @@ void _device_store_context (vkg_context *ctx) {
 	io_unsync(dev);
 }
 
-void _device_submit_cmd (vkg_device *dev, VkCommandBuffer* cmd, VkFence fence) {
+void _device_submit_cmd (vkg_device *dev, VkeCommandBuffer cmd, VkFence fence) {
 	mx_sync(dev);
 	vke_cmd_submit (dev->gQueue, cmd, fence);
 	io_unsync(dev);
@@ -486,11 +487,11 @@ void _device_create_empty_texture (vkg_device *dev, VkFormat format, VkImageTili
 
 	_device_wait_and_reset_device_fence (dev);
 
-	vke_cmd_begin (dev->cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+	data->cmd.begin(VkeCommandBufferUsage::one_time_submit);
 	vke_image_set_layout (dev->cmd, dev->emptyImg, VK_IMAGE_ASPECT_COLOR_BIT,
 						  VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 						  VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
-	vke_cmd_end (dev->cmd);
+	data->cmd.finish();
 	_device_submit_cmd (dev, &dev->cmd, dev->fence);
 }
 void _device_check_best_image_tiling (vkg_device *dev, VkFormat format) {
@@ -591,7 +592,7 @@ void VkgDevice::free(VkgDevice dev) {
 	if (dev->cachedContextCount > 0) { /// i cant wait to see what this brings
 		_cached_ctx* cur = dev->cachedContextLast;
 		while (cur) {
-			_release_context_ressources (cur->ctx);
+			release_context_resources (cur->ctx);
 			_cached_ctx* prev = cur;
 			cur = cur->pNext;
 			free (prev);
@@ -650,7 +651,7 @@ void VkgDevice::set_context_cache_size (VkgDevice dev, uint32_t maxCount) {
 
 	_cached_ctx* cur = dev->cachedContextLast;
 	while (cur && dev->cachedContextCount > dev->cachedContextMaxCount) {
-		_release_context_ressources (cur->ctx);
+		release_context_resources (cur->ctx);
 		_cached_ctx* prev = cur;
 		cur = cur->pNext;
 		free (prev);
@@ -864,3 +865,4 @@ vkg_debug_stats VkgDevice::reset_stats() {
 	data->debug_stats = (vkg_debug_stats) {0};
 }
 #endif
+}

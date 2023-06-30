@@ -4,7 +4,7 @@ file(GLOB INC_FILES "${CMAKE_SOURCE_DIR}/glm/*.hpp" "${CMAKE_SOURCE_DIR}/glm/*.h
 install(FILES   ${INC_FILES} DESTINATION ${CMAKE_INSTALL_PREFIX}/include/glm)
 
 ## install more headers
-set(dirs ext detail gtc simd)
+set(dirs ext detail gtc gtx simd)
 foreach(d ${dirs})
     file(GLOB INC_FILES "${CMAKE_SOURCE_DIR}/glm/${d}/*.hpp" "${CMAKE_SOURCE_DIR}/glm/${d}/*.h" "${CMAKE_SOURCE_DIR}/glm/${d}/*.inl")
     install(FILES   ${INC_FILES} DESTINATION ${CMAKE_INSTALL_PREFIX}/include/glm/${d})

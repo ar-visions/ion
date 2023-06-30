@@ -12,6 +12,21 @@ size_t length(std::ifstream& in) {
     return to_end - base;
 }
 
+size_t idata::size() {
+    return schema ? schema->total_bytes : base_sz;
+}
+
+memory *idata::lookup(symbol sym) {
+    u64 hash = djb2(cstr(sym));
+    memory **result = symbols ? symbols->djb2.lookup(hash) : null;
+    return   result ? *result : null;
+}
+
+memory *idata::lookup(i64 id) {
+    memory **result = symbols ? symbols->ids.lookup(id) : null;
+    return   result ? *result : null;
+}
+
 ///
 int str::index_of(MatchType ct, symbol mp) const {
     int  index = 0;
@@ -271,12 +286,16 @@ memory *memory::alloc(type_t type, size_t count, size_t reserve, raw_t v_src) {
                     if (bind.data) bind.data->functions->construct(dst, count); /// issue is origin passed and effectively reused memory! /// probably good to avoid the context bind at all if there is no data; in some cases it may not be required and the context does offer some insight by itself
                 }
             }
-        } else {
+        } else if (type->functions) {
             const bool prim = (type->traits & traits::primitive);
             if (v_src)
                 type->functions->copy(mem->origin, v_src, count);
-            else if (!prim)
+            else if (!prim) {
+                printf("type name = %s\n", type->name);
                 type->functions->construct(mem->origin, count);
+            }
+        } else if (v_src) {
+            memcpy(mem->origin, v_src, type->base_sz * count);
         }
     }
     return mem;

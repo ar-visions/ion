@@ -45,10 +45,10 @@ VkeStatus VkgPattern::get_linear_points (VkgPattern pat, float* x0, float* y0, f
 
 	vkg_gradient* grad = (vkg_gradient*)pat->data;
 
-	*x0 = grad->cp[0][X];
-	*y0 = grad->cp[0][Y];
-	*x1 = grad->cp[0][Z];
-	*y1 = grad->cp[0][W];
+	*x0 = grad->cp[0].x;
+	*y0 = grad->cp[0].y;
+	*x1 = grad->cp[0].z;
+	*y1 = grad->cp[0].w;
 	return VKE_STATUS_SUCCESS;
 }
 VkeStatus VkgPattern::edit_linear (VkgPattern pat, float x0, float y0, float x1, float y1){
@@ -96,8 +96,8 @@ VkeStatus VkgPattern::edit_radial (VkgPattern pat,
 		vec2f_add(c0, c1, vec2f_scale (v, radius1 - radius0 - 1.0f));
 	}
 
-	grad->cp[0] = (vec4f){c0[X], c0[Y], radius0, 0};
-	grad->cp[1] = (vec4f){c1[X], c1[Y], radius1, 0};
+	grad->cp[0] = (vec4f){c0.x, c0.y, radius0, 0};
+	grad->cp[1] = (vec4f){c1.x, c1.y, radius1, 0};
 	return VKE_STATUS_SUCCESS;
 }
 
@@ -133,9 +133,9 @@ VkeStatus VkgPattern::add_color_stop (VkgPattern pat, float offset, float r, flo
 
 	vkg_gradient* grad = (vkg_gradient*)pat->data;
 #ifdef VKVG_PREMULT_ALPHA
-	vkg_color_t c = {a*r,a*g,a*b,a};
+	vkg_color c = {a*r,a*g,a*b,a};
 #else
-	vkg_color_t c = {r,g,b,a};
+	vkg_color c = {r,g,b,a};
 #endif
 	grad->colors[grad->count] = c;
 #ifdef VKVG_ENABLE_VK_SCALAR_BLOCK_LAYOUT
@@ -157,20 +157,20 @@ void VkgPattern::set_filter (vkg_filter filter){
 	pat->filter = filter;
 }
 
-vkg_extend_t VkgPattern::get_extend (){
+vkg_extend VkgPattern::get_extend (){
 	if (pat->status)
-		return (vkg_extend_t)0;
+		return (vkg_extend)0;
 	return pat->extend;
 }
-vkg_filter_t VkgPattern::get_filter (){
+vkg_filter VkgPattern::get_filter (){
 	if (pat->status)
-		return (vkg_filter_t)0;
+		return (vkg_filter)0;
 	return pat->filter;
 }
 
 vkg_pattern_type VkgPattern::get_type (){
 	if (pat->status)
-		return (VkgPattern::type_t)0;
+		return (vkg_pattern_type)0;
 	return pat->type;
 }
 
@@ -198,7 +198,7 @@ VkeStatus VkgPattern::get_color_stop_rgba (uint32_t index,
 #else
 	*offset = grad->stops[index].r;
 #endif
-	vkg_color_t c = grad->colors[index];
+	vkg_color c = grad->colors[index];
 	*r = c.r;
 	*g = c.g;
 	*b = c.b;
