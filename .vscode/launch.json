@@ -40,17 +40,17 @@
             "osx": { "MIMode":  "lldb" }
         },
         {
-            "name":             "older-tri",
+            "name":             "viking",
             "type":             "cppdbg",
             "request":          "launch",
-            "program":          "${workspaceFolder}/../orbiter/build/older-tri",
+            "program":          "${workspaceFolder}/../orbiter/build/viking",
             "args":             [],
             "stopAtEntry":      false,
             "cwd":              "${workspaceFolder}/../orbiter/build",
             "environment":      [],
             "externalConsole":  false,
             "MIMode":           "gdb",
-            "preLaunchTask":    "build-older-tri",
+            "preLaunchTask":    "build-viking",
             "presentation": {
                 "hidden": false,
                 "group": "",

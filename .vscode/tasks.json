@@ -58,9 +58,9 @@
 			"problemMatcher": ["$gcc"]
         },
         {
-            "label": "build-older-tri",
+            "label": "build-viking",
             "type": "shell",
-            "command": "make older-tri -j1",
+            "command": "make viking -j1",
 			"options": {
                 "cwd": "${workspaceFolder}/../orbiter/build"
             },
