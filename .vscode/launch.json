@@ -40,6 +40,25 @@
             "osx": { "MIMode":  "lldb" }
         },
         {
+            "name":             "vulkan-example",
+            "type":             "cppdbg",
+            "request":          "launch",
+            "program":          "${workspaceFolder}/../vulkan-example/build/example",
+            "args":             [],
+            "stopAtEntry":      false,
+            "cwd":              "${workspaceFolder}/../vulkan-example/build",
+            "environment":      [],
+            "externalConsole":  false,
+            "MIMode":           "gdb",
+            "preLaunchTask":    "build-example",
+            "presentation": {
+                "hidden": false,
+                "group": "",
+                "order": 1,
+            },
+            "osx": { "MIMode":  "lldb" }
+        },
+        {
             "name":             "viking",
             "type":             "cppdbg",
             "request":          "launch",

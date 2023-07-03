@@ -58,6 +58,26 @@
 			"problemMatcher": ["$gcc"]
         },
         {
+            "label": "build-example",
+            "type": "shell",
+            "command": "make example -j1",
+			"options": {
+                "cwd": "${workspaceFolder}/../vulkan-example/build"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "group": "build0",
+                "clear": true
+            },
+			"isBackground": false,
+			"problemMatcher": ["$gcc"]
+        },
+        {
             "label": "build-viking",
             "type": "shell",
             "command": "make viking -j1",

@@ -15,6 +15,10 @@
 		{
 			"name": "orbiter",
 			"path": "../orbiter"
+		},
+		{
+			"name": "vulkan-example",
+			"path": "../vulkan-example"
 		}
 	],
 	"settings": {
