@@ -5,6 +5,14 @@
 			"path": "../prefix"
 		},
 		{
+			"name": "mx",
+			"path": "../mx"
+		},
+		{
+			"name": "vulkan",
+			"path": "../vulkan"
+		},
+		{
 			"name": "ion",
 			"path": "."
 		},
@@ -15,10 +23,6 @@
 		{
 			"name": "orbiter",
 			"path": "../orbiter"
-		},
-		{
-			"name": "vulkan-example",
-			"path": "../vulkan-example"
 		}
 	],
 	"settings": {
