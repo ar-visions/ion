@@ -1,24 +1,5 @@
 {
     "version": "0.2.0",
     "configurations": [
-        {
-            "name":             "orbiter",
-            "type":             "cppdbg",
-            "request":          "launch",
-            "program":          "${workspaceFolder}/../orbiter/build/orbiter",
-            "args":             [],
-            "stopAtEntry":      false,
-            "cwd":              "${workspaceFolder}/../orbiter/build",
-            "environment":      [],
-            "externalConsole":  false,
-            "MIMode":           "gdb",
-            "preLaunchTask":    "build-orbiter",
-            "presentation": {
-                "hidden": false,
-                "group": "",
-                "order": 1,
-            },
-            "osx": { "MIMode":  "lldb" }
-        }
     ]
 }

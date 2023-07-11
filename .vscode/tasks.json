@@ -18,9 +18,9 @@
 			]
 		},
 		{
-            "label": "build-orbiter",
+            "label": "build-agent",
             "type": "shell",
-            "command": "make orbiter -j1",
+            "command": "make agent -j8",
 			"options": {
                 "cwd": "${workspaceFolder}/../orbiter/build"
             },
