@@ -313,7 +313,7 @@ struct _window {
 
 };
 
-ptr_implement(vdata, mx);
+mx_implement(vdata, mx);
 
 
 

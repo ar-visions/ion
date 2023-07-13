@@ -1,0 +1,151 @@
+{
+    "name":   "ion",
+    "version":"dev",
+    "import": [
+        {
+            "name":     "glm",
+            "version":  "0.9.9.8",
+            "commit":   "bf71a83",
+            "url":      "https://github.com/g-truc/glm",
+            "cmake": {
+                "args": ["-DBUILD_STATIC_LIBS=Yes"]
+            }
+        },
+        {
+            "name":     "vulkansdk",
+            "version":  "1.3.250.0",
+            "includes": ["%VULKAN_SDK%/macOS/include"],
+            "libs":     ["%VULKAN_SDK%/macOS/lib"],
+            "bins":     ["%VULKAN_SDK%/macOS/bin"]
+        },
+        {
+            "name":     "moltenvk",
+            "version":  "1.2.3",
+            "commit":   "db8512a64f2c703e31ff7038b2859034062aa00f",
+            "url":      "https://github.com/KhronosGroup/MoltenVK",
+            "platforms":["mac"],
+            "environment": {
+                "VULKAN_SDK":"%INSTALL_PREFIX%/lib/Frameworks/MoltenVK",
+                "VULKAN_LIBRARY_NAME":"MoltenVK"
+            }
+        },
+        {
+            "name":     "freetype",
+            "version":  "2.13.0",
+            "commit":   "4d8db130ea4342317581bab65fc96365ce806b77",
+            "url":      "https://github.com/freetype/freetype",
+            "cmake": {
+                "args": ["-DFT_DISABLE_BROTLI=Yes"],
+                "path": "."
+            }
+        },
+        {
+            "name":     "harfbuzz",
+            "version":  "7.3.0",
+            "commit":   "4584bcd",
+            "url":      "https://github.com/harfbuzz/harfbuzz",
+            "cmake":    {
+                "args": ["-DHB_HAVE_FREETYPE=Yes"]
+            }
+        },
+        {
+            "name":     "vma",
+            "version":  "3.0.1",
+            "url":      "https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator",
+            "commit":   "a6bfc23"
+        },
+        {
+            "name":     "glfw",
+            "version":  "3.3.8",
+            "commit":   "7482de6",
+            "url":      "https://github.com/glfw/glfw"
+        },
+        {
+            "name":     "zlib",
+            "version":  "1.2.13",
+            "commit":   "04f42ce",
+            "url":      "https://github.com/madler/zlib"
+        },
+        {
+            "name":     "libpng",
+            "version":  "1.6.39",
+            "commit":   "07b8803",
+            "url":      "https://github.com/glennrp/libpng"
+        },
+        {
+            "name":     "gsl",
+            "version":  "2.7",
+            "url":      "https://github.com/ampl/gsl",
+            "commit":   "47862078af4a204c4220f028656a19ddd3922144"
+        },
+        {
+            "name":     "sqlite3",
+            "version":  "1.0.30",
+            "url":      "https://github.com/alex85k/sqlite3-cmake",
+            "commit":   "121e7d273436c5de88956f559b940b8d69cadfbe"
+        },
+        {
+            "name":     "shine",
+            "version":  "1.0.2",
+            "url":      "https://github.com/toots/shine",
+            "commit":   "ab5e3526b64af1a2eaa43aa6f441a7312e013519"
+        },
+        {
+            "name":     "opus",
+            "version":  "1.4",
+            "url":      "https://github.com/xiph/opus",
+            "commit":   "82ac57d",
+            "cmake": {
+                "args": ["-DOPUS_DISABLE_INTRINSICS=Yes"],
+                "path": "."
+            }
+        },
+        {
+            "name":     "ogg",
+            "version":  "1.3.5",
+            "url":      "https://github.com/xiph/ogg",
+            "commit":   "e1774cd"
+        },
+        {
+            "name":     "opusfile",
+            "version":  "0.12",
+            "url":      "https://github.com/xiph/opusfile",
+            "commit":   "9d718345ce03b2fad5d7d28e0bcd1cc69ab2b166",
+            "cmake": {
+                "args": ["-DOP_DISABLE_HTTP=Yes","-DOP_DISABLE_DOCS=Yes","-DOP_DISABLE_EXAMPLES=Yes"],
+                "path": "."
+            }
+        },
+        {
+            "name":     "speexdsp",
+            "version":  "1.2.1",
+            "url":      "https://github.com/xiph/speexdsp",
+            "commit":   "1b28a0f"
+        },
+        {
+            "name":     "opusenc",
+            "version":  "0.21",
+            "url":      "https://github.com/xiph/libopusenc",
+            "commit":   "b19e1b14",
+            "cmake": {
+                "args": ["-DOP_DISABLE_HTTP=Yes","-DOP_DISABLE_DOCS=Yes"],
+                "path": "."
+            }
+        },
+        {
+            "name":     "bzip2",
+            "version":  "1.0.8",
+            "commit":   "2d8393924b9f3e014000c7420c7da7c3ddb74e2c",
+            "url":      "https://gitlab.com/bzip2/bzip2",
+            "cmake":    {
+                "args": ["-DENABLE_STATIC_LIB=Yes"]
+            }
+        },
+        {
+            "name":     "mbedtls",
+            "version":  "3.4.0",
+            "commit":   "1873d3b",
+            "url":      "https://github.com/Mbed-TLS/mbedtls"
+        }
+    ]
+}

@@ -228,7 +228,7 @@ vkg_debug_stats vkg_device_reset_stats (VkgDevice dev);
 
 /// must merge with glm facility in math. there isnt much to add here
 struct VkgMatrix:mx {
-	ptr(VkgMatrix, mx, vkg_matrix);
+	mx_object(VkgMatrix, mx, vkg_matrix);
 	///
 	VkeStatus 	invert();
 	void 		init_identity();
@@ -248,7 +248,7 @@ struct VkgMatrix:mx {
 };
 
 struct VkgDevice:mx {
-	ptr(VkgDevice, mx, struct vkg_device);
+	mx_object(VkgDevice, mx, struct vkg_device);
 	///
 	VkgDevice(VkeDevice, VkSampleCountFlagBits, bool);
 	// deprecating these:
@@ -266,7 +266,7 @@ struct VkgDevice:mx {
 };
 
 struct VkgSurface:mx {
-	ptr(VkgSurface, mx, struct vkg_surface);
+	mx_object(VkgSurface, mx, struct vkg_surface);
 	/// constructors
 	VkgSurface 	(VkgDevice dev, uint32_t width, uint32_t height);
 	VkgSurface 	(VkgDevice dev, const char* 	filePath);
@@ -288,7 +288,7 @@ struct stroke_context;
 struct dash_context;
 
 struct VkgPattern:mx {
-	ptr(VkgPattern, mx, struct vkg_pattern);
+	mx_object(VkgPattern, mx, struct vkg_pattern);
 
 	static VkgPattern 	create_for_surface(VkgSurface surf);
 	static VkgPattern 	create_linear(float x0, float y0, float x1, float y1);
@@ -318,7 +318,7 @@ struct VkgVertex {
 struct vkg_context_save;
 
 struct VkgContext:mx {
-	ptr(VkgContext, mx, struct vkg_context);
+	mx_object(VkgContext, mx, struct vkg_context);
 
 	VkgContext(VkgSurface surf);
 
@@ -467,7 +467,7 @@ struct VkgContext:mx {
 };
 
 struct VkgText:mx {
-	ptr(VkgText, mx, struct vkg_text_run);
+	mx_object(VkgText, mx, struct vkg_text_run);
 
 	VkgText(VkgContext ctx, const char* text); /// was vkg_text_run_create
 	VkgText(VkgContext ctx, const char* text, uint32_t length);

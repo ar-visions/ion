@@ -107,7 +107,7 @@ mx inflate(mx);
 /// isolating the types and then designing from there brings the isolated types together
 /// i dont want these constructors implied, its a bit too much and a reduction effort should be of value
 struct audio:mx {
-    ptr_declare(audio, mx, struct iaudio);
+    mx_declare(audio, mx, struct iaudio);
     ///
     audio(path res, bool force_mono = false);
     void      convert_mono();

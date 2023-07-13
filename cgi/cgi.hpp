@@ -15,7 +15,7 @@
 namespace ion {
 
 struct vdata:mx {
-    ptr_declare(vdata, mx, struct _vertex);
+    mx_declare(vdata, mx, struct _vertex);
     vdata(mx vbo, array<u32> ibo);
 };
 

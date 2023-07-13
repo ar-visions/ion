@@ -54,7 +54,7 @@ struct uri:mx {
         return post;
     }
 
-    ptr(uri, mx, components);
+    mx_object(uri, mx, components);
 
     static memory *convert(memory *mem) { return parse(str(mem)); }
 
@@ -220,7 +220,7 @@ private:
     void load_certs(str host);
     
 public:
-    ptr_declare(sock, mx, isock);
+    mx_declare(sock, mx, isock);
     
     enums(role, none,
           "none, client, server",
@@ -258,7 +258,7 @@ struct message:mx {
         return data->query.mtype();
     }
 
-    ptr(message, mx, members);
+    mx_object(message, mx, members);
 
     message(int server_code);
     message(symbol text);

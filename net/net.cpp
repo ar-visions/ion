@@ -148,7 +148,7 @@ struct isock {
     }
 };
 
-ptr_implement(sock, mx);
+mx_implement(sock, mx);
 
 sock::~sock() {
     close();

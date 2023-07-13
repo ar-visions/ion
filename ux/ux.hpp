@@ -35,7 +35,7 @@ struct text_metrics:mx {
         real line_height,
               cap_height;
     };
-    ptr(text_metrics, mx, tmdata);
+    mx_object(text_metrics, mx, tmdata);
 };
 
 using tm_t = text_metrics;
@@ -60,7 +60,7 @@ namespace graphics {
             vec2d      mv;
         };
         ///
-        ptr(shape, mx, sdata);
+        mx_object(shape, mx, sdata);
 
         operator rectd &() {
             if (!data->bounds)
@@ -192,7 +192,7 @@ struct scalar:mx {
         bool         is_percent;
     };
 
-    ptr(scalar, mx, sdata);
+    mx_object(scalar, mx, sdata);
     movable(scalar);
 
     real operator()(real origin, real size) {
@@ -274,7 +274,7 @@ struct alignment:mx {
     };
 
     ///
-    ptr(alignment, mx, adata);
+    mx_object(alignment, mx, adata);
     movable(alignment);
 
     ///
@@ -318,7 +318,7 @@ struct region:mx {
     };
 
     ///
-    ptr(region, mx, rdata);
+    mx_object(region, mx, rdata);
     
     ///
     region(str s) : region() {
@@ -361,7 +361,7 @@ namespace user {
             bool              repeat;
             bool              up;
         };
-        ptr(key, mx, kdata);
+        mx_object(key, mx, kdata);
     };
 };
 
@@ -380,7 +380,7 @@ struct event:mx {
         bool          stop_propagation;
     };
 
-    ptr(event, mx, edata);
+    mx_object(event, mx, edata);
     
     event(const mx &a) = delete;
     ///
@@ -427,7 +427,7 @@ struct Element:mx {
     /// default case when there is no render()
     array<Element> &children() { return *data->children; }
 
-    ptr(Element, mx, edata);
+    mx_object(Element, mx, edata);
     movable(Element);
 
     static memory *args_id(type_t type, initial<arg> args) {
@@ -495,7 +495,7 @@ struct listener:mx {
     };
     
     ///
-    ptr(listener, mx, ldata);
+    mx_object(listener, mx, ldata);
 
     void cancel() {
         data->detatch();
@@ -515,7 +515,7 @@ struct dispatch:mx {
         doubly<listener> listeners;
     };
     ///
-    ptr(dispatch, mx, ddata);
+    mx_object(dispatch, mx, ddata);
     ///
     void operator()(event e);
     ///
@@ -533,7 +533,7 @@ struct OBJ:mx {
             str        name;
             array<u32> ibo;
         };
-        ptr(group, mx, gdata);
+        mx_object(group, mx, gdata);
     };
 
     struct members {
@@ -541,7 +541,7 @@ struct OBJ:mx {
         map<group> groups;
     };
 
-    ptr(OBJ, mx, members);
+    mx_object(OBJ, mx, members);
 
     OBJ(path p, lambda<V(group&, vec3d*, vec2d*, vec3d*)> fn) : OBJ() {
         str g;
@@ -613,7 +613,7 @@ enums(mode, regular,
 
 struct window_data;
 struct window:mx {
-    ptr_declare(window, mx, window_data);
+    mx_declare(window, mx, window_data);
     
     window(ion::size sz, mode::etype m, memory *control);
 
@@ -733,7 +733,7 @@ struct font:mx {
         path res;
     };
 
-    ptr(font, mx, fdata);
+    mx_object(font, mx, fdata);
     movable(font);
 
     font(str alias, real sz, path res) : font(fdata { alias, sz, res }) { }
@@ -757,7 +757,7 @@ struct glyph:mx {
         rgba8      bg;
         rgba8      fg;
     };
-    ptr(glyph, mx, members);
+    mx_object(glyph, mx, members);
 
     str ansi();
     bool operator==(glyph &lhs) {
@@ -794,7 +794,7 @@ struct cbase:mx {
         draw_state*        state; /// todo: update w push and pop
     };
 
-    ptr(cbase, mx, cdata);
+    mx_object(cbase, mx, cdata);
 
     protected:
     virtual void init() { }
@@ -882,7 +882,7 @@ struct gfx:cbase {
     gfx(ion::window &w);
 
     /// data is single instanced on this cbase, and the draw_state is passed in as type for the cbase, which atleast makes it type-unique
-    ptr_declare(gfx, cbase, gfx_memory);
+    mx_declare(gfx, cbase, gfx_memory);
 
     ion::window    &window();
     Device         *device();
@@ -921,7 +921,7 @@ struct terminal:cbase {
         draw_state  *ds;
     };
     terminal(ion::size sz);
-    ptr(terminal, cbase, tdata);
+    mx_object(terminal, cbase, tdata);
 
     void draw_state_change(draw_state &ds, cbase::state_change type);
     str         ansi_color(rgba8 &c, bool text);
@@ -1089,7 +1089,7 @@ struct node:Element {
     }
 
     // node(Element::data&); /// constructs default members.  i dont see an import use-case for members just yet
-    ptr(node, Element, props);
+    mx_object(node, Element, props);
 
     /// does not resolve at this point, this is purely storage in element with a static default data pointer
     /// we do not set anything in data
@@ -1163,7 +1163,7 @@ struct style:mx {
             str       oper;  /// if specified, use non-boolean operator
             str       value;
         };
-        ptr(qualifier, mx, members);
+        mx_object(qualifier, mx, members);
     };
 
     ///
@@ -1177,7 +1177,7 @@ struct style:mx {
             scalar<nil, duration> dur;
         };
 
-        ptr(transition, mx, members);
+        mx_object(transition, mx, members);
 
         inline real pos(real tf) const {
             real x = math::clamp<real>(tf, 0.0, 1.0);
@@ -1238,7 +1238,7 @@ struct style:mx {
             str             value;
             transition      trans;
         };
-        ptr(entry, mx, edata);
+        mx_object(entry, mx, edata);
     };
 
     ///
@@ -1251,7 +1251,7 @@ struct style:mx {
         };
         
         ///
-        ptr(block, mx, bdata);
+        mx_object(block, mx, bdata);
         
         ///
         inline size_t count(str s) {
@@ -1339,7 +1339,7 @@ struct style:mx {
         map<array<block>> members;
     };
 
-    ptr(style, mx, sdata);
+    mx_object(style, mx, sdata);
 
     array<block> &members(mx &s_member) {
         return data->members[s_member];
@@ -1421,7 +1421,7 @@ struct object:node {
     };
 
     /// make a node_constructors
-    ptr(object, node, members)
+    mx_object(object, node, members)
     
     /// change management, we probably have to give prev values in a map.
     void changed(doubly<prop> list) {
@@ -1463,7 +1463,7 @@ struct list_view:node {
             xalign  align  = xalign::left;
         };
         
-        ptr(Column, mx, cdata);
+        mx_object(Column, mx, cdata);
 
         Column(str id, real scale = 1.0, xalign ax = xalign::left) : Column() {
             data->id    = id;
@@ -1635,7 +1635,7 @@ struct composer:mx {
         map<mx>       args;
     };
     ///
-    ptr(composer, mx, cdata);
+    mx_object(composer, mx, cdata);
     ///
     array<node *> select_at(vec2d cur, bool active = true) {
         array<node*> inside = data->root->select([&](node *n) {
@@ -1675,7 +1675,7 @@ struct app:composer {
         lambda<Element(app&)> app_fn;
     };
 
-    ptr(app, composer, adata);
+    mx_object(app, composer, adata);
 
     app(lambda<Element(app&)> app_fn) : app() {
         data->app_fn = app_fn;
