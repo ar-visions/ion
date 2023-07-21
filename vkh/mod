@@ -1,0 +1,3 @@
+cpp(17)
+dep(mx:mx mx:async vulkan:vk)
+cflags(+-Wno-c++11-narrowing +-Wno-switch +-Wno-format)

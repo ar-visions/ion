@@ -5,49 +5,6 @@
         "mx",
         "vulkan",
         {
-            "name":     "freetype",
-            "version":  "2.13.0",
-            "commit":   "4d8db130ea4342317581bab65fc96365ce806b77",
-            "url":      "https://github.com/freetype/freetype",
-            "cmake": {
-                "args": ["-DFT_DISABLE_BROTLI=Yes"],
-                "path": "."
-            }
-        },
-        {
-            "name":     "harfbuzz",
-            "version":  "7.3.0",
-            "commit":   "4584bcd",
-            "url":      "https://github.com/harfbuzz/harfbuzz",
-            "cmake":    {
-                "args": ["-DHB_HAVE_FREETYPE=Yes"]
-            }
-        },
-        {
-            "name":     "vma",
-            "version":  "3.0.1",
-            "url":      "https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator",
-            "commit":   "a6bfc23"
-        },
-        {
-            "name":     "glfw",
-            "version":  "3.3.8",
-            "commit":   "7482de6",
-            "url":      "https://github.com/glfw/glfw"
-        },
-        {
-            "name":     "zlib",
-            "version":  "1.2.13",
-            "commit":   "04f42ce",
-            "url":      "https://github.com/madler/zlib"
-        },
-        {
-            "name":     "libpng",
-            "version":  "1.6.39",
-            "commit":   "07b8803",
-            "url":      "https://github.com/glennrp/libpng"
-        },
-        {
             "name":     "gsl",
             "version":  "2.7",
             "url":      "https://github.com/ampl/gsl",

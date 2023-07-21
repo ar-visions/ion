@@ -19,34 +19,39 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-#include "cross_os.h"
-#include <sys/types.h>
-#include <sys/stat.h>
+#ifndef VKH_APP_H
+#define VKH_APP_H
 
-#define _CRT_SECURE_NO_WARNINGS
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-#if defined(__linux__) && defined(__GLIBC__)
-#include <stdio.h>
-#include <execinfo.h>
-#include <signal.h>
-#include <stdlib.h>
-#include <unistd.h>
+#include <vkh/vkh.h>
 
-void handler(int sig) {
-  void *array[100];
-  size_t size;
+//console colors for debug output on stdout with debug utils or debug report
+#ifdef __unix__
+	#define KNRM  "\x1b[0m"
+	#define KRED  "\x1B[41m\x1B[37m"
+	#define KGRN  "\x1B[42m\x1B[30m"
+	#define KYEL  "\x1B[43m\x1B[30m"
+	#define KBLU  "\x1B[44m\x1B[30m"
+#else
+	#define KNRM  ""
+	#define KRED  ""
+	#define KGRN  ""
+	#define KYEL  ""
+	#define KBLU  ""
+	#define KMAG  ""
+	#define KCYN  ""
+	#define KWHT  ""
+#endif
 
-  // get void*'s for all entries on the stack
-  size = backtrace(array, 100);
-
-  // print out all the frames to stderr
-  fprintf(stderr, "Error: signal %d:\n", sig);
-  backtrace_symbols_fd(array, size, STDERR_FILENO);
-  exit(1);
+typedef struct _vkh_app_t{
+	VkApplicationInfo	infos;
+	VkInstance			inst;
+	VkDebugUtilsMessengerEXT debugMessenger;
+}vkh_app_t;
+#ifdef __cplusplus
 }
-
-void _linux_register_error_handler () {
-	signal(SIGSEGV, handler);   // install our handler
-	signal(SIGABRT, handler);   // install our handler
-}
+#endif
 #endif

@@ -19,26 +19,28 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-#include <vkg/internal.hh>
+#include "vkvg_surface_internal.h"
+#include "vkvg_device_internal.h"
+#include "vkvg_context_internal.h"
 
 #define NANOSVG_IMPLEMENTATION	// Expands implementation
 #include "nanosvg.h"
-#include <vkg/vkvg-svg.h>
+#include "vkvg-svg.h"
 
-void _svg_set_color (VkgContext ctx, uint32_t c, float alpha) {
+void _svg_set_color (VkvgContext ctx, uint32_t c, float alpha) {
 	float a = (c >> 24 & 255) / 255.f;
 	float b = (c >> 16 & 255) / 255.f;
 	float g = (c >> 8 & 255) / 255.f;
 	float r = (c & 255) / 255.f;
-	vkg_set_source_rgba(ctx,r,g,b,a*alpha);
+	vkvg_set_source_rgba(ctx,r,g,b,a*alpha);
 }
 
-VkgSurface _svg_load (VkgDevice dev, NSVGimage* svg) {
+VkvgSurface _svg_load (VkvgDevice dev, NSVGimage* svg) {
 	if (svg == NULL) {
-		vke_log(VKE_LOG_ERR, "nsvg error");
+		LOG(VKVG_LOG_ERR, "nsvg error");
 		return NULL;
 	}
-	VkgSurface surf = _create_surface(dev, FB_COLOR_FORMAT);
+	VkvgSurface surf = _create_surface(dev, FB_COLOR_FORMAT);
 	if (!surf)
 		return NULL;
 
@@ -48,45 +50,46 @@ VkgSurface _svg_load (VkgDevice dev, NSVGimage* svg) {
 
 	_create_surface_images (surf);
 
-	VkgContext ctx = vkg_create(surf);
-	vkg_svg_render(svg, ctx, NULL);
-	io_drop(vkg_context, ctx);
+	VkvgContext ctx = vkvg_create(surf);
+	vkvg_svg_render(svg, ctx, NULL);
+	vkvg_destroy(ctx);
 
 	nsvgDelete(svg);
 
-	io_grab(vkg_device, surf->dev); /// surf references device
+	surf->references = 1;
+	vkvg_device_reference (surf->dev);
+
 	return surf;
 }
 
-/// 72 is set for svgs being saved
-VkgSurface vkg_surface_create_from_svg (VkgDevice dev, uint32_t width, uint32_t height, const char* filePath) {
-	return _svg_load(dev, nsvgParseFromFile(filePath, "px", (float)dev->vke->physinfo->hdpi));
+VkvgSurface vkvg_surface_create_from_svg (VkvgDevice dev, uint32_t width, uint32_t height, const char* filePath) {
+	return _svg_load(dev, nsvgParseFromFile(filePath, "px", (float)dev->hdpi));
 }
-VkgSurface vkg_surface_create_from_svg_fragment (VkgDevice dev, uint32_t width, uint32_t height, char* svgFragment) {
-	return _svg_load(dev, nsvgParse(svgFragment, "px", (float)dev->vke->physinfo->hdpi));
+VkvgSurface vkvg_surface_create_from_svg_fragment (VkvgDevice dev, uint32_t width, uint32_t height, char* svgFragment) {
+	return _svg_load(dev, nsvgParse(svgFragment, "px", (float)dev->hdpi));
 }
-VkgSvg vkg_svg_load (const char* svgFilePath) {
+VkvgSvg vkvg_svg_load (const char* svgFilePath) {
 	return nsvgParseFromFile(svgFilePath, "px", 96.0f);
 }
-VkgSvg vkg_svg_load_fragment (char* svgFragment) {
+VkvgSvg vkvg_svg_load_fragment (char* svgFragment) {
 	return nsvgParse (svgFragment, "px", 96.0f);
 }
-void vkg_svg_destroy(VkgSvg svg) {
+void vkvg_svg_destroy (VkvgSvg svg) {
 	nsvgDelete(svg);
 }
-void vkg_svg_get_dimensions (VkgSvg svg, uint32_t* width, uint32_t* height) {
-	*width  = (uint32_t)svg->width;
+void vkvg_svg_get_dimensions (VkvgSvg svg, uint32_t* width, uint32_t* height) {
+	*width = (uint32_t)svg->width;
 	*height = (uint32_t)svg->height;
 }
 
-void vkg_svg_render (VkgSvg svg, VkgContext ctx, const char* subId){
+void vkvg_svg_render (VkvgSvg svg, VkvgContext ctx, const char* subId){
 	NSVGshape* shape;
 	NSVGpath* path;
-	vkg_save (ctx);
+	vkvg_save (ctx);
 
-	vkg_set_fill_rule(ctx, VKVG_FILL_RULE_EVEN_ODD);
+	vkvg_set_fill_rule(ctx, VKVG_FILL_RULE_EVEN_ODD);
 
-	vkg_set_source_rgba(ctx,0.0,0.0,0.0,1);
+	vkvg_set_source_rgba(ctx,0.0,0.0,0.0,1);
 
 	for (shape = svg->shapes; shape != NULL; shape = shape->next) {
 		if (subId != NULL) {
@@ -94,21 +97,21 @@ void vkg_svg_render (VkgSvg svg, VkgContext ctx, const char* subId){
 				continue;
 		}
 
-		vkg_new_path(ctx);
+		vkvg_new_path(ctx);
 
 		float o = shape->opacity;
 
-		vkg_set_line_width(ctx, shape->strokeWidth);
+		vkvg_set_line_width(ctx, shape->strokeWidth);
 
 		for (path = shape->paths; path != NULL; path = path->next) {
 			float* p = path->pts;
-			vkg_move_to(ctx, p[0],p[1]);
+			vkvg_move_to(ctx, p[0],p[1]);
 			for (int i = 1; i < path->npts; i += 3) {
 				p = &path->pts[i*2];
-				vkg_curve_to(ctx, p[0],p[1], p[2],p[3], p[4],p[5]);
+				vkvg_curve_to(ctx, p[0],p[1], p[2],p[3], p[4],p[5]);
 			}
 			if (path->closed)
-				vkg_close_path(ctx);
+				vkvg_close_path(ctx);
 		}
 
 		if (shape->fill.type == NSVG_PAINT_COLOR)
@@ -120,10 +123,10 @@ void vkg_svg_render (VkgSvg svg, VkgContext ctx, const char* subId){
 
 		if (shape->fill.type != NSVG_PAINT_NONE){
 			if (shape->stroke.type == NSVG_PAINT_NONE){
-				vkg_fill(ctx);
+				vkvg_fill(ctx);
 				continue;
 			}
-			vkg_fill_preserve (ctx);
+			vkvg_fill_preserve (ctx);
 		}
 
 		if (shape->stroke.type == NSVG_PAINT_COLOR)
@@ -133,7 +136,7 @@ void vkg_svg_render (VkgSvg svg, VkgContext ctx, const char* subId){
 			_svg_set_color(ctx, g->stops[0].color, o);
 		}
 
-		vkg_stroke(ctx);
+		vkvg_stroke(ctx);
 	}
-	vkg_restore (ctx);
+	vkvg_restore (ctx);
 }

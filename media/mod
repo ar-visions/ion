@@ -1,4 +1,4 @@
-dep(mx:mx mx:math libpng:png gsl:gsl
+dep(mx:mx mx:math mx:image libpng:png gsl:gsl
     opusenc:opusenc opusfile:opusfile
     speexdsp:speexdsp shine:shine
     zlib:z opus:opus ogg:ogg)

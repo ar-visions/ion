@@ -19,34 +19,33 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-#include "cross_os.h"
-#include <sys/types.h>
-#include <sys/stat.h>
+#ifndef VKH_PHY_H
+#define VKH_PHY_H
 
-#define _CRT_SECURE_NO_WARNINGS
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-#if defined(__linux__) && defined(__GLIBC__)
-#include <stdio.h>
-#include <execinfo.h>
-#include <signal.h>
-#include <stdlib.h>
-#include <unistd.h>
+#include <vkh/vkh.h>
 
-void handler(int sig) {
-  void *array[100];
-  size_t size;
+typedef struct _vkh_phy_t{
+	VkPhysicalDevice					phy;
+	VkPhysicalDeviceMemoryProperties	memProps;
+	VkPhysicalDeviceProperties			properties;
+	VkQueueFamilyProperties*			queues;
+	uint32_t							queueCount;
+	int									cQueue;//compute
+	int									gQueue;//graphic
+	int									tQueue;//transfer
+	int									pQueue;//presentation
 
-  // get void*'s for all entries on the stack
-  size = backtrace(array, 100);
+	uint32_t							qCreateInfosCount;
+	VkDeviceQueueCreateInfo*			qCreateInfos;
 
-  // print out all the frames to stderr
-  fprintf(stderr, "Error: signal %d:\n", sig);
-  backtrace_symbols_fd(array, size, STDERR_FILENO);
-  exit(1);
+	VkExtensionProperties*				pExtensionProperties;
+	uint32_t							extensionCount;
+}vkh_phy_t;
+#ifdef __cplusplus
 }
-
-void _linux_register_error_handler () {
-	signal(SIGSEGV, handler);   // install our handler
-	signal(SIGABRT, handler);   // install our handler
-}
+#endif
 #endif

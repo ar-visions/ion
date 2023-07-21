@@ -19,34 +19,29 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-#include "cross_os.h"
-#include <sys/types.h>
-#include <sys/stat.h>
+#include <vkh/vkh_queue.h>
+#include <vkh/vkh_device.h>
+#include <vkh/vkh_phyinfo.h>
 
-#define _CRT_SECURE_NO_WARNINGS
-
-#if defined(__linux__) && defined(__GLIBC__)
-#include <stdio.h>
-#include <execinfo.h>
-#include <signal.h>
-#include <stdlib.h>
-#include <unistd.h>
-
-void handler(int sig) {
-  void *array[100];
-  size_t size;
-
-  // get void*'s for all entries on the stack
-  size = backtrace(array, 100);
-
-  // print out all the frames to stderr
-  fprintf(stderr, "Error: signal %d:\n", sig);
-  backtrace_symbols_fd(array, size, STDERR_FILENO);
-  exit(1);
+VkhQueue _init_queue (VkhDevice dev) {
+	VkhQueue q	= (vkh_queue_t*)calloc(1, sizeof(vkh_queue_t));
+	q->dev = dev;
+	return q;
 }
 
-void _linux_register_error_handler () {
-	signal(SIGSEGV, handler);   // install our handler
-	signal(SIGABRT, handler);   // install our handler
+
+VkhQueue vkh_queue_create (VkhDevice dev, uint32_t familyIndex, uint32_t qIndex) {
+	VkhQueue q	= _init_queue (dev);
+	q->familyIndex	= familyIndex;
+	vkGetDeviceQueue (dev->dev, familyIndex, qIndex, &q->queue);
+	return q;
 }
-#endif
+
+//VkhQueue vkh_queue_find (VkhDevice dev, VkQueueFlags flags) {
+
+//	  return q;
+//}
+
+void vkh_queue_destroy (VkhQueue queue){
+	free (queue);
+}

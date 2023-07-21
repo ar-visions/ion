@@ -19,34 +19,31 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-#include "cross_os.h"
-#include <sys/types.h>
-#include <sys/stat.h>
+#ifndef VKVG_PATTERN_H
+#define VKVG_PATTERN_H
 
-#define _CRT_SECURE_NO_WARNINGS
+#include "vkvg_internal.h"
 
-#if defined(__linux__) && defined(__GLIBC__)
-#include <stdio.h>
-#include <execinfo.h>
-#include <signal.h>
-#include <stdlib.h>
-#include <unistd.h>
+typedef struct _vkvg_pattern_t {
+	vkvg_status_t		status;
+	uint32_t			references;
+	vkvg_pattern_type_t type;
+	vkvg_extend_t		extend;
+	vkvg_filter_t		filter;
+	vkvg_matrix_t		matrix;
+	bool				hasMatrix;
+	void*				data;
+}vkvg_pattern_t;
 
-void handler(int sig) {
-  void *array[100];
-  size_t size;
+typedef struct _vkvg_gradient_t {
+	vkvg_color_t	colors[16];
+#ifdef VKVG_ENABLE_VK_SCALAR_BLOCK_LAYOUT
+	float			stops[16];
+#else
+	vec4			stops[16];
+#endif
+	vec4			cp[2];
+	uint32_t		count;
+}vkvg_gradient_t;
 
-  // get void*'s for all entries on the stack
-  size = backtrace(array, 100);
-
-  // print out all the frames to stderr
-  fprintf(stderr, "Error: signal %d:\n", sig);
-  backtrace_symbols_fd(array, size, STDERR_FILENO);
-  exit(1);
-}
-
-void _linux_register_error_handler () {
-	signal(SIGSEGV, handler);   // install our handler
-	signal(SIGABRT, handler);   // install our handler
-}
 #endif

@@ -5,6 +5,33 @@
 namespace ion {
 
 template <typename T>
+str color_value(rgba<T> &c) {
+    char    res[64];
+    u8      arr[4];
+    ///
+    real sc;
+    ///
+    if constexpr (identical<T, uint8_t>())
+        sc = 1.0;
+    else
+        sc = 255.0;
+    ///
+    arr[0] = uint8_t(math::round(c.r * sc));
+    arr[1] = uint8_t(math::round(c.g * sc));
+    arr[2] = uint8_t(math::round(c.b * sc));
+    arr[3] = uint8_t(math::round(c.a * sc));
+    ///
+    res[0]  = '#';
+    ///
+    for (size_t i = 0, len = sizeof(arr) - (arr[3] == 255); i < len; i++) {
+        size_t index = 1 + i * 2;
+        snprintf(&res[index], sizeof(res) - index, "%02x", arr[i]); /// secure.
+    }
+    ///
+    return (symbol)res;
+}
+
+template <typename T>
 struct color:rgba<T> {
     using  base = ion::vec4<T>;
     using  data = ion::rgba<T>;
@@ -55,29 +82,7 @@ struct color:rgba<T> {
     
     /// #hexadecimal formatted str
     operator str() {
-        char    res[64];
-        u8      arr[4];
-        ///
-        real sc;
-        ///
-        if constexpr (identical<T, uint8_t>())
-            sc = 1.0;
-        else
-            sc = 255.0;
-        ///
-        arr[0] = uint8_t(math::round(base::r * sc));
-        arr[1] = uint8_t(math::round(base::g * sc));
-        arr[2] = uint8_t(math::round(base::b * sc));
-        arr[3] = uint8_t(math::round(base::a * sc));
-        ///
-        res[0]  = '#';
-        ///
-        for (size_t i = 0, len = sizeof(arr) - (arr[3] == 255); i < len; i++) {
-            size_t index = 1 + i * 2;
-            snprintf(&res[index], sizeof(res) - index, "%02x", arr[i]); /// secure.
-        }
-        ///
-        return (symbol)res;
+        return color_value(*this);
     }
 };
 

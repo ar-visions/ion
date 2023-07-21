@@ -1,16 +1,15 @@
 #pragma once
 
-#include <mx/mx.hpp>
 #include <async/async.hpp>
 #include <net/net.hpp>
 #include <math/math.hpp>
 #include <media/media.hpp>
+#include <vk/vk.hpp>
 
 struct GLFWwindow;
 
 namespace ion {
 
-/// @brief  imaginary friends
 struct Device;
 struct Texture;
 
@@ -18,14 +17,6 @@ using Path    = path;
 using Image   = image;
 using strings = array<str>;
 using Assets  = map<Texture *>;
-
-/// never support 16bit indices for obvious reasons.  you do 1 cmclark section too many and there it goes
-struct ngon {
-    size_t size;
-    u32   *indices;
-};
-
-using mesh = array<ngon>;
 
 struct text_metrics:mx {
     struct tmdata {
@@ -123,7 +114,7 @@ namespace graphics {
 
     struct border_data {
         real size, tl, tr, bl, br;
-        rgbad color;
+        rgba8 color;
         inline bool operator==(const border_data &b) const { return b.tl == tl && b.tr == tr && b.bl == bl && b.br == br; }
         inline bool operator!=(const border_data &b) const { return !operator==(b); }
 
@@ -193,7 +184,7 @@ struct scalar:mx {
     };
 
     mx_object(scalar, mx, sdata);
-    movable(scalar);
+    //movable(scalar);
 
     real operator()(real origin, real size) {
         return origin + (data->is_percent ? (data->scale / 100.0 * size) : data->scale);
@@ -275,7 +266,7 @@ struct alignment:mx {
 
     ///
     mx_object(alignment, mx, adata);
-    movable(alignment);
+    //movable(alignment);
 
     ///
     inline alignment(str  x, str  y) : alignment { adata { x, y } } { }
@@ -428,7 +419,7 @@ struct Element:mx {
     array<Element> &children() { return *data->children; }
 
     mx_object(Element, mx, edata);
-    movable(Element);
+    //movable(Element);
 
     static memory *args_id(type_t type, initial<arg> args) {
         static memory *m_id = memory::symbol("id"); /// im a token!
@@ -611,121 +602,6 @@ enums(mode, regular,
      "regular, headless",
       regular, headless);
 
-struct window_data;
-struct window:mx {
-    mx_declare(window, mx, window_data);
-    
-    window(ion::size sz, mode::etype m, memory *control);
-
-    void        loop(lambda<void()> fn);
-    bool        key(int key);
-    vec2d        cursor();
-    str         clipboard();
-    void        set_clipboard(str text);
-    void        set_title(str s);
-    void        show();
-    void        hide();
-    void        start();
-    ion::size   size();
-    void        repaint();
-    Device     *device();
-    Texture    *texture();
-    Texture    *texture(ion::size sz);
-
-    operator bool();
-};
-
-enums(Asset, Undefined,
-    "Undefined, Color, Normal, Specular, Displace",
-     Undefined, Color, Normal, Specular, Displace);
-
-enums(VA, Position,
-    "Position, Normal, UV, Color, Tangent, BiTangent",
-     Position, Normal, UV, Color, Tangent, BiTangent);
-
-using VAttribs = states<VA>;
-
-struct TextureMemory;
-struct StageData;
-///
-
-/// generic vertex model; uses spec map, normal map by tangent/bi-tangent v3 unit vectors
-struct Vertex {
-    ///
-    vec3f pos;  // position
-    vec3f norm; // normal position
-    vec2f uv;   // texture uv coordinate
-    vec4f clr;  // color
-    vec3f ta;   // tangent
-    vec3f bt;   // bi-tangent
-    
-    /// VkAttribs (array of VkAttribute) [data] from VAttribs (state flags) [model]
-    static void attribs(VAttribs attr, void *vk_attr_res);
-    Vertex() { }
-    Vertex(vec3f pos, vec3f norm, vec2f uv, vec4f clr, vec3f ta = {}, vec3f bt = {}):
-           pos  (pos), norm (norm), uv   (uv),
-           clr  (clr), ta   (ta),   bt   (bt) { }
-    Vertex(vec3f &pos, vec3f &norm, vec2f &uv, vec4f &clr, vec3f &ta, vec3f &bt):
-           pos  (pos), norm (norm), uv   (uv),
-           clr  (clr), ta   (ta),   bt   (bt) { }
-    
-    /// hip to consider this data
-    static array<Vertex> square(vec4f v_clr = {1.0, 1.0, 1.0, 1.0}) {
-        return array<Vertex> {
-            Vertex {{-0.5f, -0.5f, 0.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f}, v_clr},
-            Vertex {{ 0.5f, -0.5f, 0.0f}, {0.0f, 0.0f, 0.0f}, {1.0f, 0.0f}, v_clr},
-            Vertex {{ 0.5f,  0.5f, 0.0f}, {0.0f, 0.0f, 0.0f}, {1.0f, 1.0f}, v_clr},
-            Vertex {{-0.5f,  0.5f, 0.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 1.0f}, v_clr}
-        };
-    }
-    
-    void calculate_tangents(array<Vertex> &verts, array<ngon> &faces);
-};
-
-/// use this for building up data, and then it is handed to VertexBuffer
-using Vertices = array<Vertex>;
-
-mesh subdiv(const mesh& input_mesh, const array<vec3f>& verts);
-
-/// this one would be nice to use gcc's static [] or () overload in c++ 23
-struct Shaders {
-    ion::map<str> m;
-    /// default construction
-    Shaders(std::nullptr_t n = null) { m["*"] = "main"; }
-    
-    bool operator==(Shaders &ref) { return m == ref.m; }
-    operator  bool() { return  m.count(); }
-    bool operator!() { return !m.count(); }
-    
-    /// group=shader
-    Shaders(str v) { /// str is the only interface in it.  everything else is just too messy for how simple the map is
-        strings sp = v.split(",");
-        for (str &v: sp) {
-            auto a = v.split("=");
-            assert(a.length() == 2);
-            str key   = a[0];
-            str value = a[1];
-            m[key] = value;
-        }
-    }
-
-    str operator()(str  &group) {
-        return m->count(group) ? m[group] : m["*"];
-    }
-
-    str &operator[](str n) {
-        return m[n];
-    }
-
-    size_t count(str n) {
-        return m->count(n);
-    }
-};
-
-struct Composer;
-
-extern Assets cache_assets(str model, str skin, states<Asset> &atypes);
-
 struct font:mx {
     struct fdata {
         str  alias;
@@ -734,7 +610,7 @@ struct font:mx {
     };
 
     mx_object(font, mx, fdata);
-    movable(font);
+    //movable(font);
 
     font(str alias, real sz, path res) : font(fdata { alias, sz, res }) { }
 
@@ -788,7 +664,7 @@ struct cbase:mx {
         defs, push, pop);
     
     struct cdata {
-        ion::size          size; /// size in integer units; certainly not part of the stack lol.
+        vec2i              size;
         type_t             pixel_t;
         doubly<draw_state> stack; /// ds = states.last()
         draw_state*        state; /// todo: update w push and pop
@@ -807,7 +683,7 @@ struct cbase:mx {
     }
 
     public:
-    ion::size &size() { return data->size; }
+    vec2i &size() { return data->size; }
 
     virtual void    outline(graphics::shape) { }
     virtual void       fill(graphics::shape) { }
@@ -868,32 +744,32 @@ struct cbase:mx {
     }
 
     /// boolean operator
-    inline operator bool() { return bool(data->size); }
+    inline operator bool() { return data->size.x > 0; }
 };
 
 struct gfx_memory;
 template <> struct is_opaque<gfx_memory> : true_type { };
 
-/// gfx: a frontend on skia
+/// gfx: a frontend on vkvg
 struct gfx:cbase {
     gfx_memory* g;
     
     /// create with a window (indicated by a name given first)
-    gfx(ion::window &w);
+    gfx(GPU &w);
 
     /// data is single instanced on this cbase, and the draw_state is passed in as type for the cbase, which atleast makes it type-unique
     mx_declare(gfx, cbase, gfx_memory);
 
-    ion::window    &window();
-    Device         *device();
+    GPU             window();
+    Device          device();
     void draw_state_change(draw_state *ds, cbase::state_change type);
     text_metrics   measure(str text);
     str    format_ellipsis(str text, real w, text_metrics &tm_result);
     void     draw_ellipsis(str text, real w);
-    void             image(ion::image img, graphics::shape sh, vec2d align, vec2d offset, vec2d source);
+    void             image(ion::image img, graphics::shape sh, alignment align, vec2d offset, vec2d source);
     void              push();
     void               pop();
-    void              text(str text, rectd rect, alignment align, vec2d offset, bool ellip);
+    void              text(str text, Rect<double> rect, alignment align, vec2d offset, bool ellip);
     void              clip(graphics::shape cl);
     Texture        texture();
     void             flush();
@@ -920,14 +796,14 @@ struct terminal:cbase {
         array<glyph> glyphs;
         draw_state  *ds;
     };
-    terminal(ion::size sz);
+    terminal(vec2i sz);
     mx_object(terminal, cbase, tdata);
 
     void draw_state_change(draw_state &ds, cbase::state_change type);
     str         ansi_color(rgba8 &c, bool text);
     void          set_char(int x, int y, glyph gl);
     str           get_char(int x, int y);
-    void              text(str s, graphics::shape vrect, alignment::adata &align, vec2d voffset, bool ellip);
+    void              text(str s, graphics::shape vrect, alignment align, vec2d voffset, bool ellip);
     void           outline(graphics::shape sh);
     void              fill(graphics::shape sh);
 };
@@ -1012,7 +888,8 @@ struct node:Element {
         while (cur) {
             type_t ctx = cur->mem->type;
             if (ctx) {
-                prop *def = ctx->schema->meta_map.lookup((symbol&)*sym); /// will always need schema
+                hmap<symbol, prop> *meta_map = (hmap<symbol, prop> *)ctx->meta_map;
+                prop *def = meta_map->lookup((symbol&)*sym); /// will always need schema
                 if (def) {
                     T &ref = def->member_ref<T>(cur->data); // require inheritance here
                     return ref;
@@ -1178,6 +1055,7 @@ struct style:mx {
         };
 
         mx_object(transition, mx, members);
+        transition(null_t n) : transition() { }
 
         inline real pos(real tf) const {
             real x = math::clamp<real>(tf, 0.0, 1.0);
@@ -1377,21 +1255,17 @@ struct style:mx {
     intern    *operator->() { return  state; }\
     intern    *operator &() { return  state; }\
     operator     intern *() { return  state; }\
-    operator     intern &() { return *state; }
+    operator     intern &() { return *state; }\
+    type_register(C);
 
 style::entry *prop_style(node &n, prop *member);
 
 //typedef node* (*FnFactory)();
 using FnFactory = node*(*)();
 
-/// a type registered enum, with a default value
-enums(rendition, none,
-    "none, shader, wireframe",
-     none, shader, wireframe);
-
 using AssetUtil    = array<Asset>;
 
-//void push_pipeline(Device *dev, PipelineData &pipe);
+//void push_pipeline(Device *dev, Pipeline &pipe);
 
 template <typename V>
 struct object:node {
@@ -1400,11 +1274,11 @@ struct object:node {
       //construction    plumbing;
         str             model     = "";
         str             skin      = "";
-        states<Asset>   assets    = { Asset::Color };
-        Shaders         shaders   = { "*=main" };
+        states<Asset>   assets    = { }; /// if this is blank, it should load all; likewise with shader it should use default
+      //Shaders         shaders   = { "*=main" };
       //UniformData     ubo;
       //VAttribs        attr      = { VA::Position, VA::UV, VA::Normal };
-        rendition       render    = { rendition::shader };
+        Rendition       render    = { Rendition::shader };
 
         /// our interface
         doubly<prop> meta() {
@@ -1412,7 +1286,7 @@ struct object:node {
                 prop { "model",     model   },
                 prop { "skin",      skin    },
                 prop { "assets",    assets  },
-                prop { "shaders",   shaders },
+              //prop { "shaders",   shaders },
               //prop { "ubo",       ubo     },
               //prop { "attr",      attr    },
                 prop { "render",    render  }
@@ -1670,7 +1544,7 @@ struct composer:mx {
 
 struct app:composer {
     struct adata {
-        window win;
+        GPU    win;
         gfx    canvas;
         lambda<Element(app&)> app_fn;
     };
@@ -1682,6 +1556,7 @@ struct app:composer {
     }
     ///
     int run();
+    static void resize(vec2i &sz, app *app);
 
     operator int() { return run(); }
 };

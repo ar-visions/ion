@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2022 Jean-Philippe Bruyère <jp_bruyere@hotmail.com>
+ * Copyright (c) 2018-2021 Jean-Philippe Bruyère <jp_bruyere@hotmail.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -19,34 +19,10 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-#include "cross_os.h"
-#include <sys/types.h>
-#include <sys/stat.h>
+#ifndef VKVG_EXPERIMENTAL_H
+#define VKVG_EXPERIMENTAL_H
 
-#define _CRT_SECURE_NO_WARNINGS
+#include "vkvg_internal.h"
+#include "vkvg.h"
 
-#if defined(__linux__) && defined(__GLIBC__)
-#include <stdio.h>
-#include <execinfo.h>
-#include <signal.h>
-#include <stdlib.h>
-#include <unistd.h>
-
-void handler(int sig) {
-  void *array[100];
-  size_t size;
-
-  // get void*'s for all entries on the stack
-  size = backtrace(array, 100);
-
-  // print out all the frames to stderr
-  fprintf(stderr, "Error: signal %d:\n", sig);
-  backtrace_symbols_fd(array, size, STDERR_FILENO);
-  exit(1);
-}
-
-void _linux_register_error_handler () {
-	signal(SIGSEGV, handler);   // install our handler
-	signal(SIGABRT, handler);   // install our handler
-}
 #endif

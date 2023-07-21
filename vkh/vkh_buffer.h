@@ -19,34 +19,38 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-#include "cross_os.h"
-#include <sys/types.h>
-#include <sys/stat.h>
+#ifndef VKH_BUFFER_H
+#define VKH_BUFFER_H
 
-#define _CRT_SECURE_NO_WARNINGS
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-#if defined(__linux__) && defined(__GLIBC__)
-#include <stdio.h>
-#include <execinfo.h>
-#include <signal.h>
-#include <stdlib.h>
-#include <unistd.h>
+#include <vkh/vkh.h>
 
-void handler(int sig) {
-  void *array[100];
-  size_t size;
+#ifdef VKH_USE_VMA
+#include "vk_mem_alloc.h"
+#endif
 
-  // get void*'s for all entries on the stack
-  size = backtrace(array, 100);
-
-  // print out all the frames to stderr
-  fprintf(stderr, "Error: signal %d:\n", sig);
-  backtrace_symbols_fd(array, size, STDERR_FILENO);
-  exit(1);
+typedef struct _vkh_buffer_t {
+	VkhDevice				pDev;
+	VkBufferCreateInfo		infos;
+	VkBuffer				buffer;
+#ifdef VKH_USE_VMA
+	VmaAllocation			alloc;
+	VmaAllocationInfo		allocInfo;
+	VmaAllocationCreateInfo allocCreateInfo;
+#else
+	VkDeviceMemory			memory;
+	VkDeviceSize			size;
+	VkBufferUsageFlags		usageFlags;
+	VkhMemoryUsage			memprops;
+#endif
+	VkDescriptorBufferInfo	descriptor;
+	VkDeviceSize			alignment;
+	void*					mapped;
+}vkh_buffer_t;
+#ifdef __cplusplus
 }
-
-void _linux_register_error_handler () {
-	signal(SIGSEGV, handler);   // install our handler
-	signal(SIGABRT, handler);   // install our handler
-}
+#endif
 #endif

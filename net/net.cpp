@@ -174,7 +174,7 @@ sock sock::accept() {
 /// listen on https using mbedtls
 /// ---------------------------------
 async sock::listen(uri url, lambda<bool(sock&)> fn) {
-    return async(1, [&, url, fn](runtime &rt, int i) -> mx {
+    return async(1, [&, url, fn](runtime *rt, int i) -> mx {
         uri bind = url.methodize(method::get);
         
         /// proceed if https; that is our protocol and we know nothing else
@@ -192,7 +192,7 @@ async sock::listen(uri url, lambda<bool(sock&)> fn) {
                 break;
             
             /// spawn thread for the given callback -- this lets us accept again right away, on this thread
-            async {1, [client=client, fn=fn](runtime &rt, int i) -> mx {
+            async {1, [client=client, fn=fn](runtime *rt, int i) -> mx {
                 sock& cl = (sock&)client;
                 if (fn(cl))
                     cl.close();

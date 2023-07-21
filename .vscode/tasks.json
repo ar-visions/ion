@@ -1,68 +1,12 @@
 {
 	"version": "2.0.0",
 	"tasks": [
-		{
-			"label": "build",
-			"type": "shell",
-			"options": {
-				"cwd": "${workspaceFolder}/../orbiter/build"
-			},
-			"command": "make -j10 triangle",
-			"presentation": {
-				"reveal": "silent",
-				"panel": "shared",
-				"clear": true
-			},
-			"problemMatcher": [
-				"$nvcc"
-			]
-		},
-		{
-            "label": "build-agent",
-            "type": "shell",
-            "command": "make agent -j8",
-			"options": {
-                "cwd": "${workspaceFolder}/../orbiter/build"
-            },
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            },
-            "presentation": {
-                "reveal": "always",
-                "panel": "shared",
-                "group": "build0",
-                "clear": true
-            },
-			"isBackground": false,
-			"problemMatcher": ["$gcc"]
-        },
         {
-            "label": "build-triangle",
+            "label": "build-ux-app",
             "type": "shell",
-            "command": "make triangle -j1",
+            "command": "make ux-app -j1",
 			"options": {
-                "cwd": "${workspaceFolder}/../orbiter/build"
-            },
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            },
-            "presentation": {
-                "reveal": "always",
-                "panel": "shared",
-                "group": "build0",
-                "clear": true
-            },
-			"isBackground": false,
-			"problemMatcher": ["$gcc"]
-        },
-        {
-            "label": "build-viking",
-            "type": "shell",
-            "command": "make viking -j1",
-			"options": {
-                "cwd": "${workspaceFolder}/../orbiter/build"
+                "cwd": "${workspaceFolder}/../ion/build"
             },
             "group": {
                 "kind": "build",

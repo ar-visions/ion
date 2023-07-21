@@ -19,34 +19,37 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-#include "cross_os.h"
-#include <sys/types.h>
-#include <sys/stat.h>
+#ifndef CROSS_OS_H
+#define CROSS_OS_H
 
-#define _CRT_SECURE_NO_WARNINGS
-
-#if defined(__linux__) && defined(__GLIBC__)
-#include <stdio.h>
-#include <execinfo.h>
-#include <signal.h>
-#include <stdlib.h>
-#include <unistd.h>
-
-void handler(int sig) {
-  void *array[100];
-  size_t size;
-
-  // get void*'s for all entries on the stack
-  size = backtrace(array, 100);
-
-  // print out all the frames to stderr
-  fprintf(stderr, "Error: signal %d:\n", sig);
-  backtrace_symbols_fd(array, size, STDERR_FILENO);
-  exit(1);
-}
-
-void _linux_register_error_handler () {
-	signal(SIGSEGV, handler);   // install our handler
-	signal(SIGABRT, handler);   // install our handler
-}
+//cross platform os helpers
+#if defined(_WIN32) || defined(_WIN64)
+	//disable warning on iostream functions on windows
+	#define _CRT_SECURE_NO_WARNINGS
+	#include "windows.h"
+	#if defined(_WIN64)
+		#ifndef isnan
+			#define isnan _isnanf
+		#endif
+	#endif
+	#define vkvg_inline __forceinline
+	#define disable_warning (warn)
+	#define reset_warning (warn)
+#elif __APPLE__
+	#include <math.h>
+	#define vkvg_inline static
+	#define disable_warning (warn)
+	#define reset_warning (warn)
+#elif __unix__
+	#include <unistd.h>
+	#include <sys/types.h>
+	#include <pwd.h>
+	#define vkvg_inline static inline __attribute((always_inline))
+	#define disable_warning (warn) #pragma GCC diagnostic ignored "-W"#warn
+	#define reset_warning (warn) #pragma GCC diagnostic warning "-W"#warn
+	#if __linux__
+		void _linux_register_error_handler ();
+	#endif
 #endif
+
+#endif // CROSS_OS_H

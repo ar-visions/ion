@@ -150,7 +150,10 @@
 			"concepts": "cpp",
 			"numeric": "cpp",
 			"__memory": "cpp",
-			"iterator": "cpp"
+			"iterator": "cpp",
+			"vkh_queue.h": "c",
+			"vkh_image.h": "c",
+			"functional": "cpp"
 		}
 	}
 }

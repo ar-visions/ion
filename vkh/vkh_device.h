@@ -19,34 +19,31 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-#include "cross_os.h"
-#include <sys/types.h>
-#include <sys/stat.h>
+#ifndef VKH_DEVICE_H
+#define VKH_DEVICE_H
 
-#define _CRT_SECURE_NO_WARNINGS
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-#if defined(__linux__) && defined(__GLIBC__)
-#include <stdio.h>
-#include <execinfo.h>
-#include <signal.h>
-#include <stdlib.h>
-#include <unistd.h>
+#include <vkh/vkh.h>
 
-void handler(int sig) {
-  void *array[100];
-  size_t size;
+#ifdef VKH_USE_VMA
+#include "vk_mem_alloc.h"
+#endif
 
-  // get void*'s for all entries on the stack
-  size = backtrace(array, 100);
+typedef struct _vkh_device_t{
+	VkDevice				dev;
+	VkPhysicalDeviceMemoryProperties phyMemProps;
+	VkPhysicalDevice		phy;
+	VkInstance				instance;
+#ifdef VKH_USE_VMA
+	VmaAllocator			allocator;
+#endif
+	VkhApp					vkhApplication;
+}vkh_device_t;
 
-  // print out all the frames to stderr
-  fprintf(stderr, "Error: signal %d:\n", sig);
-  backtrace_symbols_fd(array, size, STDERR_FILENO);
-  exit(1);
+#ifdef __cplusplus
 }
-
-void _linux_register_error_handler () {
-	signal(SIGSEGV, handler);   // install our handler
-	signal(SIGABRT, handler);   // install our handler
-}
+#endif
 #endif
