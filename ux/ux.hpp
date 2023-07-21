@@ -25,6 +25,7 @@ struct text_metrics:mx {
                  descent;
         real line_height,
               cap_height;
+        type_register(tmdata);
     };
     mx_object(text_metrics, mx, tmdata);
 };
@@ -49,6 +50,7 @@ namespace graphics {
             Rectd      bounds; /// if the ops change the bounds must be re-eval'd
             doubly<mx> ops;
             vec2d      mv;
+            type_register(sdata);
         };
         ///
         mx_object(shape, mx, sdata);
@@ -181,6 +183,7 @@ struct scalar:mx {
         real         scale;
         S            suffix;
         bool         is_percent;
+        type_register(sdata);
     };
 
     mx_object(scalar, mx, sdata);
@@ -262,6 +265,7 @@ struct alignment:mx {
     struct adata {
         scalar<xalign, distance> x; /// these are different types
         scalar<yalign, distance> y; /// ...
+        type_register(adata);
     };
 
     ///
@@ -306,6 +310,7 @@ struct region:mx {
     struct rdata {
         alignment tl;
         alignment br;
+        type_register(rdata);
     };
 
     ///
@@ -351,6 +356,7 @@ namespace user {
             states<keyboard>  modifiers;
             bool              repeat;
             bool              up;
+            type_register(kdata);
         };
         mx_object(key, mx, kdata);
     };
@@ -369,6 +375,7 @@ struct event:mx {
         mouse::etype  button_id;
         bool          prevent_default;
         bool          stop_propagation;
+        type_register(edata);
     };
 
     mx_object(event, mx, edata);
@@ -413,6 +420,7 @@ struct Element:mx {
         node*            parent;
         style*           root_style; /// applied at root for multiple style trees across multiple apps
         states<interaction> istates;
+        type_register(edata);
     };
 
     /// default case when there is no render()
@@ -483,6 +491,7 @@ struct listener:mx {
         bool      detached;
         ///
         ~ldata() { printf("listener, ...destroyed\n"); }
+        type_register(ldata);
     };
     
     ///
@@ -504,6 +513,7 @@ struct listener:mx {
 struct dispatch:mx {
     struct ddata {
         doubly<listener> listeners;
+        type_register(ddata);
     };
     ///
     mx_object(dispatch, mx, ddata);
@@ -523,6 +533,7 @@ struct OBJ:mx {
         struct gdata {
             str        name;
             array<u32> ibo;
+            type_register(gdata);
         };
         mx_object(group, mx, gdata);
     };
@@ -530,6 +541,7 @@ struct OBJ:mx {
     struct members {
         array<V>   vbo;
         map<group> groups;
+        type_register(members);
     };
 
     mx_object(OBJ, mx, members);
@@ -607,6 +619,7 @@ struct font:mx {
         str  alias;
         real sz;
         path res;
+        type_register(fdata);
     };
 
     mx_object(font, mx, fdata);
@@ -632,6 +645,7 @@ struct glyph:mx {
         str        chr;
         rgba8      bg;
         rgba8      fg;
+        type_register(members);
     };
     mx_object(glyph, mx, members);
 
@@ -656,6 +670,7 @@ struct cbase:mx {
         vec2d            blur;
         graphics::cap    cap;
         graphics::join   join;
+        type_register(draw_state);
     };
 
     ///
@@ -668,6 +683,7 @@ struct cbase:mx {
         type_t             pixel_t;
         doubly<draw_state> stack; /// ds = states.last()
         draw_state*        state; /// todo: update w push and pop
+        type_register(cdata);
     };
 
     mx_object(cbase, mx, cdata);
@@ -795,6 +811,7 @@ struct terminal:cbase {
     struct tdata {
         array<glyph> glyphs;
         draw_state  *ds;
+        type_register(tdata);
     };
     terminal(vec2i sz);
     mx_object(terminal, cbase, tdata);
@@ -878,6 +895,7 @@ struct node:Element {
                 prop { "content",   content   }
             };
         }
+        type_register(props);
     };
 
     /// type and prop name lookup in tree
@@ -1039,6 +1057,7 @@ struct style:mx {
             str       state; /// member to perform operation on (boolean, if not specified)
             str       oper;  /// if specified, use non-boolean operator
             str       value;
+            type_register(members);
         };
         mx_object(qualifier, mx, members);
     };
@@ -1052,6 +1071,7 @@ struct style:mx {
         struct members {
             curve ct; /// curve-type, or counter-terrorist.
             scalar<nil, duration> dur;
+            type_register(members);
         };
 
         mx_object(transition, mx, members);
@@ -1115,6 +1135,7 @@ struct style:mx {
             mx              member;
             str             value;
             transition      trans;
+            type_register(edata);
         };
         mx_object(entry, mx, edata);
     };
@@ -1126,6 +1147,7 @@ struct style:mx {
             doubly<style::qualifier> quals;  /// an array of qualifiers it > could > be > this:state, or > just > that [it picks the best score, moves up for a given node to match style in]
             doubly<style::entry>     entries;
             doubly<style::block>     blocks;
+            type_register(bdata);
         };
         
         ///
@@ -1215,6 +1237,7 @@ struct style:mx {
     struct sdata {
         array<block>      root;
         map<array<block>> members;
+        type_register(sdata);
     };
 
     mx_object(style, mx, sdata);
@@ -1292,6 +1315,7 @@ struct object:node {
                 prop { "render",    render  }
             };
         }
+        type_register(members);
     };
 
     /// make a node_constructors
@@ -1320,6 +1344,7 @@ struct button:node {
     
     struct props {
         button::behavior behavior;
+        type_register(props);
     };
     component(button, node, props);
 };
@@ -1335,6 +1360,7 @@ struct list_view:node {
             real    value  = 1.0;
             bool    scale  = true;
             xalign  align  = xalign::left;
+            type_register(cdata);
         };
         
         mx_object(Column, mx, cdata);
@@ -1384,6 +1410,7 @@ struct list_view:node {
                 prop { *this, "column-ids", column.ids }
             };
         }
+        type_register(Members);
     } m;
     
     void update_columns() {
@@ -1495,10 +1522,6 @@ struct list_view:node {
 };
 #endif
 
-
-
-#pragma once
-
 struct composer:mx {
     ///
     struct cdata {
@@ -1507,6 +1530,7 @@ struct composer:mx {
         //fn_render     render;
         lambda<Element()> render;
         map<mx>       args;
+        type_register(cdata);
     };
     ///
     mx_object(composer, mx, cdata);
@@ -1547,6 +1571,7 @@ struct app:composer {
         GPU    win;
         gfx    canvas;
         lambda<Element(app&)> app_fn;
+        type_register(adata);
     };
 
     mx_object(app, composer, adata);

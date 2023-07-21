@@ -78,6 +78,12 @@
             "version":  "3.4.0",
             "commit":   "1873d3b",
             "url":      "https://github.com/Mbed-TLS/mbedtls"
+        },
+        {
+            "name":     "freetype",
+            "version":  "2.13.0",
+            "commit":   "4d8db130ea4342317581bab65fc96365ce806b77",
+            "url":      "https://github.com/freetype/freetype"
         }
     ]
 }

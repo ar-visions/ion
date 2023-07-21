@@ -8,6 +8,27 @@
 
 namespace ion {
 
+
+struct gfx_memory {
+    VkvgSurface    vg_surface;
+    VkvgDevice     vg_device;
+    VkvgContext    ctx;
+    Device         device;
+    VkhDevice      vkh_device;
+    VkhImage       vkh_image;
+    str            font_default;
+    GPU            win;
+    Texture        tx;
+    cbase::draw_state *ds;
+
+    ~gfx_memory() {
+        if (ctx)        vkvg_destroy(ctx);
+        if (vg_device)  vkvg_device_destroy(vg_device);
+        if (vg_surface) vkvg_surface_destroy(vg_surface);
+    }
+    type_register(gfx_memory);
+};
+
 listener &dispatch::listen(callback cb) {
     data->listeners += new listener::ldata { this, cb };
     listener &last = data->listeners->last(); /// last is invalid offset
@@ -283,25 +304,6 @@ void sk_canvas_gaussian(sk_canvas_data* sk_canvas, vec2d* sz, rectd* crop) {
     sk.setImageFilter(std::move(filter));
 }
 #endif
-
-struct gfx_memory {
-    VkvgSurface    vg_surface;
-    VkvgDevice     vg_device;
-    VkvgContext    ctx;
-    Device         device;
-    VkhDevice      vkh_device;
-    VkhImage       vkh_image;
-    str            font_default;
-    GPU            win;
-    Texture        tx;
-    cbase::draw_state *ds;
-
-    ~gfx_memory() {
-        if (ctx)        vkvg_destroy(ctx);
-        if (vg_device)  vkvg_device_destroy(vg_device);
-        if (vg_surface) vkvg_surface_destroy(vg_surface);
-    }
-};
 
 mx_implement(gfx, cbase);
 
