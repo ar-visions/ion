@@ -764,17 +764,15 @@ struct cbase:mx {
 };
 
 struct gfx_memory;
-template <> struct is_opaque<gfx_memory> : true_type { };
+//template <> struct is_opaque<gfx_memory> : true_type { };
 
 /// gfx: a frontend on vkvg
 struct gfx:cbase {
-    gfx_memory* g;
-    
-    /// create with a window (indicated by a name given first)
-    gfx(GPU &w);
-
     /// data is single instanced on this cbase, and the draw_state is passed in as type for the cbase, which atleast makes it type-unique
     mx_declare(gfx, cbase, gfx_memory);
+
+    /// create with a window (indicated by a name given first)
+    gfx(GPU &w);
 
     GPU             window();
     Device          device();

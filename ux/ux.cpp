@@ -232,13 +232,8 @@ void terminal::text(str s, graphics::shape vrect, alignment align, vec2d voffset
         int y = iy + 0 + offset.y;
         if (x < 0 || x >= szx || y < 0 || y >= szy)
             continue;
-        str     chr  = s.mid(i, 1);
-        glyph g;
-
-        g->chr = chr;
-        g->bg  = {0,0,0,0};
-        g->fg  = rgba8 { ds.color };
-
+        str chr = s.mid(i, 1);
+        glyph g = glyph::members { .chr = chr, .fg = ds.color };
         set_char(tx + int(i), ty, g);
     }
 }
@@ -308,32 +303,32 @@ void sk_canvas_gaussian(sk_canvas_data* sk_canvas, vec2d* sz, rectd* crop) {
 mx_implement(gfx, cbase);
 
 /// 
-gfx::gfx(GPU &win) : gfx(mx::alloc<gfx>()) { /// this allocates both gfx_memory and cbase::cdata memory (cbase has data type aliased at cbase::DC)
-    g->win = win;
-    g->device = Device::create(win);
+gfx::gfx(GPU &win) : gfx() { /// this allocates both gfx_memory and cbase::cdata memory (cbase has data type aliased at cbase::DC)
+    data->win = win;
+    data->device = Device::create(win);
     cbase::data->size = win->sz;
     assert(cbase::data->size.x > 0 && cbase::data->size.y > 0);
     ///
-    g->tx = win->texture(cbase::data->size); 
+    data->tx = win->texture(cbase::data->size); 
 
     Vulkan vk;
     VkInstance instance = vk->inst();
 
     //VkvgDevice vkvg_device_create_from_vk_multisample (VkInstance inst, VkPhysicalDevice phy, VkDevice vkdev, uint32_t qFamIdx, uint32_t qIndex, VkSampleCountFlags samples, bool deferredResolve);
-    g->vg_device = vkvg_device_create_from_vk_multisample(
-        instance, win->phys, g->device->device,
+    data->vg_device = vkvg_device_create_from_vk_multisample(
+        instance, win->phys, data->device->device,
         win->indices.graphicsFamily.value(), // swap?
         win->indices.presentFamily.value(),  // swap?
         VkSampleCountFlags(win->getUsableSampling(VK_SAMPLE_COUNT_8_BIT)), false);
     
     /// should merge vkh and the vk api with these use cases
-    g->vkh_device       = vkh_device_import(instance, win->phys, g->device->device);
-    g->vkh_image        = vkh_image_import(
-        g->vkh_device, g->tx->image, g->tx->format, u32(g->tx->width), u32(g->tx->height));
-    vkh_image_create_view(g->vkh_image, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT); // VK_IMAGE_ASPECT_COLOR_BIT questionable bit
+    data->vkh_device       = vkh_device_import(instance, win->phys, data->device->device);
+    data->vkh_image        = vkh_image_import(
+        data->vkh_device, data->tx->image, data->tx->format, u32(data->tx->width), u32(data->tx->height));
+    vkh_image_create_view(data->vkh_image, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT); // VK_IMAGE_ASPECT_COLOR_BIT questionable bit
     
-    g->vg_surface       = vkvg_surface_create_for_VkhImage(g->vg_device, (void*)g->vkh_image); // attachment #0 in VkFramebufferCreateInfo has 8bit samples that do not match VkRenderPass's attachment at same rank
-    g->ctx              = vkvg_create(g->vg_surface);
+    data->vg_surface       = vkvg_surface_create_for_VkhImage(data->vg_device, (void*)data->vkh_image); // attachment #0 in VkFramebufferCreateInfo has 8bit samples that do not match VkRenderPass's attachment at same rank
+    data->ctx              = vkvg_create(data->vg_surface);
     push(); /// gfx just needs a push off the ledge. [/penguin-drops]
     defaults();
 }
@@ -373,26 +368,26 @@ void vkvg_path(VkvgContext ctx, memory *mem) {
     }
 }
 
-GPU     gfx::window() { return g->win; }
-Device  gfx::device() { return g->device; }
+GPU     gfx::window() { return data->win; }
+Device  gfx::device() { return data->device; }
 
 /// Quake2: { computer. updated. }
 void gfx::draw_state_change(draw_state *ds, cbase::state_change type) {
-    g->ds = ds;
+    data->ds = ds;
 }
 
 text_metrics gfx::measure(str text) {
     vkvg_text_extents_t ext;
     vkvg_font_extents_t tm;
     ///
-    vkvg_text_extents(g->ctx, (symbol)text.cs(), &ext);
-    vkvg_font_extents(g->ctx, &tm);
+    vkvg_text_extents(data->ctx, (symbol)text.cs(), &ext);
+    vkvg_font_extents(data->ctx, &tm);
     return text_metrics::tmdata {
         .w           =  real(ext.x_advance),
         .h           =  real(ext.y_advance),
         .ascent      =  real(tm.ascent),
         .descent     =  real(tm.descent),
-        .line_height =  real(g->ds->line_height)
+        .line_height =  real(data->ds->line_height)
     };
 }
 
@@ -432,25 +427,25 @@ void gfx::draw_ellipsis(str text, real w) {
     text_metrics tm;
     str draw = format_ellipsis(text, w, tm);
     if (draw)
-        vkvg_show_text(g->ctx, (symbol)draw.cs());
+        vkvg_show_text(data->ctx, (symbol)draw.cs());
 }
 
 void gfx::image(ion::image img, graphics::shape sh, alignment align, vec2d offset, vec2d source) {
     attachment *att = img.find_attachment("vg-surf");
     if (!att) {
         VkvgSurface surf = vkvg_surface_create_from_bitmap(
-            g->vg_device, (uint8_t*)img.pixels(), u32(img.width()), u32(img.height()));
+            data->vg_device, (uint8_t*)img.pixels(), u32(img.width()), u32(img.height()));
         att = img.attach("vg-surf", surf, [surf]() {
             vkvg_surface_destroy(surf);
         });
         assert(att);
     }
     VkvgSurface surf = (VkvgSurface)att->data;
-    draw_state   &ds = *g->ds;
+    draw_state   &ds = *data->ds;
     ion::size     sz = img.shape();
     rectd           &r = sh.bounds();
     assert(surf);
-    vkvg_set_source_rgba(g->ctx,
+    vkvg_set_source_rgba(data->ctx,
         ds.color.r, ds.color.g, ds.color.b, ds.color.a * ds.opacity);
     
     /// now its just of matter of scaling the little guy to fit in the box.
@@ -465,21 +460,21 @@ void gfx::image(ion::image img, graphics::shape sh, alignment align, vec2d offse
     translate(pos + offset);
     scale(sc);
     /// push path
-    vkvg_rectangle(g->ctx, r.x, r.y, r.w, r.h);
+    vkvg_rectangle(data->ctx, r.x, r.y, r.w, r.h);
     /// color & fill
-    vkvg_set_source_surface(g->ctx, surf, source.x, source.y);
-    vkvg_fill(g->ctx);
+    vkvg_set_source_surface(data->ctx, surf, source.x, source.y);
+    vkvg_fill(data->ctx);
     pop();
 }
 
 void gfx::push() {
     cbase::push();
-    vkvg_save(g->ctx);
+    vkvg_save(data->ctx);
 }
 
 void gfx::pop() {
     cbase::pop();
-    vkvg_restore(g->ctx);
+    vkvg_restore(data->ctx);
 }
 
 /// would be reasonable to have a rich() method
@@ -493,11 +488,11 @@ void gfx::pop() {
 /// important that this info be known at time of output where clipping and ellipsis is concerned
 /// 
 void gfx::text(str text, Rect<double> rect, alignment align, vec2d offset, bool ellip) {
-    draw_state &ds = *g->ds;
+    draw_state &ds = *data->ds;
     rgba8 &c = ds.color;
     ///
-    vkvg_save(g->ctx);
-    vkvg_set_source_rgba(g->ctx, c.r, c.g, c.b, c.a * ds.opacity);
+    vkvg_save(data->ctx);
+    vkvg_set_source_rgba(data->ctx, c.r, c.g, c.b, c.a * ds.opacity);
     ///
     vec2d          pos  = { 0, 0 };
     text_metrics   tm;
@@ -521,51 +516,51 @@ void gfx::text(str text, Rect<double> rect, alignment align, vec2d offset, bool 
     vec2d           va = vec2d(align);
     pos              = mix(tl, br, va);
     
-    vkvg_show_text(g->ctx, (symbol)text.cs());
-    vkvg_restore  (g->ctx);
+    vkvg_show_text(data->ctx, (symbol)text.cs());
+    vkvg_restore  (data->ctx);
 }
 
 void gfx::clip(graphics::shape cl) {
     draw_state  &ds = cur();
     ds.clip  = cl;
-    vkvg_path(g->ctx, cl.mem);
-    vkvg_clip(g->ctx);
+    vkvg_path(data->ctx, cl.mem);
+    vkvg_clip(data->ctx);
 }
 
-Texture gfx::texture() { return g->tx; } /// associated with surface
+Texture gfx::texture() { return data->tx; } /// associated with surface
 
 void gfx::flush() {
-    vkvg_flush(g->ctx);
+    vkvg_flush(data->ctx);
 }
 
 void gfx::clear(rgba8 c) {
-    vkvg_save           (g->ctx);
-    vkvg_set_source_rgba(g->ctx, c.r, c.g, c.b, c.a);
-    vkvg_paint          (g->ctx);
-    vkvg_restore        (g->ctx);
+    vkvg_save           (data->ctx);
+    vkvg_set_source_rgba(data->ctx, c.r, c.g, c.b, c.a);
+    vkvg_paint          (data->ctx);
+    vkvg_restore        (data->ctx);
 }
 
 void gfx::font(ion::font f) {
-    vkvg_select_font_face(g->ctx, f->alias.cs());
-    vkvg_set_font_size   (g->ctx, f->sz);
+    vkvg_select_font_face(data->ctx, f->alias.cs());
+    vkvg_set_font_size   (data->ctx, f->sz);
 }
 
-void gfx::cap  (graphics::cap    c) { vkvg_set_line_cap (g->ctx, vkvg_line_cap_t (int(c))); }
-void gfx::join (graphics::join   j) { vkvg_set_line_join(g->ctx, vkvg_line_join_t(int(j))); }
-void gfx::translate(vec2d       tr) { vkvg_translate    (g->ctx, tr.x, tr.y);  }
-void gfx::scale    (vec2d       sc) { vkvg_scale        (g->ctx, sc.x, sc.y);  }
-void gfx::scale    (real        sc) { vkvg_scale        (g->ctx, sc, sc);        }
-void gfx::rotate   (real      degs) { vkvg_rotate       (g->ctx, radians(degs)); }
+void gfx::cap  (graphics::cap    c) { vkvg_set_line_cap (data->ctx, vkvg_line_cap_t (int(c))); }
+void gfx::join (graphics::join   j) { vkvg_set_line_join(data->ctx, vkvg_line_join_t(int(j))); }
+void gfx::translate(vec2d       tr) { vkvg_translate    (data->ctx, tr.x, tr.y);  }
+void gfx::scale    (vec2d       sc) { vkvg_scale        (data->ctx, sc.x, sc.y);  }
+void gfx::scale    (real        sc) { vkvg_scale        (data->ctx, sc, sc);        }
+void gfx::rotate   (real      degs) { vkvg_rotate       (data->ctx, radians(degs)); }
 void gfx::fill(graphics::shape   p) {
-    vkvg_path(g->ctx, p.mem);
-    vkvg_fill(g->ctx);
+    vkvg_path(data->ctx, p.mem);
+    vkvg_fill(data->ctx);
 }
 
 void gfx::gaussian (vec2d sz, graphics::shape c) { }
 
 void gfx::outline  (graphics::shape p) {
-    vkvg_path(g->ctx, p.mem);
-    vkvg_stroke(g->ctx);
+    vkvg_path(data->ctx, p.mem);
+    vkvg_stroke(data->ctx);
 }
 
 str      gfx::get_char  (int x, int y)       { return str(); }
