@@ -24,6 +24,7 @@
 
 #define GetVkProcAddress(dev, inst, func)(vkGetDeviceProcAddr(dev,#func)==NULL)?(PFN_##func)vkGetInstanceProcAddr(inst, #func):(PFN_##func)vkGetDeviceProcAddr(dev, #func)
 
+#include <mx/mx.hpp>
 #include "vkvg_device_internal.h"
 #include "vkvg_context_internal.h"
 #include "shaders.h"
@@ -284,17 +285,29 @@ void _device_setupPipelines(VkvgDevice dev)
 #else
 	VkShaderModule modVert, modFrag;
 #endif
-	VkShaderModuleCreateInfo createInfo = { .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-											.pCode = (uint32_t*)vkvg_main_vert_spv,
-											.codeSize = vkvg_main_vert_spv_len };
-	VK_CHECK_RESULT(vkCreateShaderModule(dev->vkDev, &createInfo, NULL, &modVert));
+
+	/// prefer to compile the .spv if its not there, or changes
+	/// its better to debug a shader in real time, and you can still deploy the .spv
+	/// putting it in the header is a bit nuts and you dont save much time.. maybe 10ms. better to allow for easier debug
+
 #if defined(VKVG_LCD_FONT_FILTER) && defined(FT_CONFIG_OPTION_SUBPIXEL_RENDERING)
-	createInfo.pCode = (uint32_t*)vkvg_main_lcd_frag_spv;
-	createInfo.codeSize = vkvg_main_lcd_frag_spv_len;
+	static ion::symbol frag_spv = "shaders/vkvg_main_lcd.frag.spv";
 #else
-	createInfo.pCode = (uint32_t*)vkvg_main_frag_spv;
-	createInfo.codeSize = vkvg_main_frag_spv_len;
+	static ion::symbol frag_spv = "shaders/vkvg_main.frag.spv";
 #endif
+	static ion::symbol vert_spv = "shaders/vkvg_main.vert.spv";
+
+	static ion::array<char> frag_buffer = ion::array<char>::read_file(frag_spv);
+	static ion::array<char> vert_buffer = ion::array<char>::read_file(vert_spv);
+
+	VkShaderModuleCreateInfo createInfo = { .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+											.pCode = (uint32_t*)vert_buffer.data,
+											.codeSize = vert_buffer.len() };
+	VK_CHECK_RESULT(vkCreateShaderModule(dev->vkDev, &createInfo, NULL, &modVert));
+
+	createInfo.pCode    = (uint32_t*)frag_buffer.data;
+	createInfo.codeSize = frag_buffer.len();
+
 	VK_CHECK_RESULT(vkCreateShaderModule(dev->vkDev, &createInfo, NULL, &modFrag));
 
 	VkPipelineShaderStageCreateInfo vertStage = { .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -352,7 +365,11 @@ void _device_setupPipelines(VkvgDevice dev)
 	blendAttachmentState.alphaBlendOp = blendAttachmentState.colorBlendOp = VK_BLEND_OP_SUBTRACT;
 	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->vkDev, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipe_SUB));
 
-	colorBlendState.logicOpEnable = VK_TRUE;
+
+	VkPhysicalDeviceFeatures supportedFeatures;
+	vkGetPhysicalDeviceFeatures(dev->phy, &dev->supportedFeatures);
+
+	colorBlendState.logicOpEnable = supportedFeatures.logicOp; // problem for mac users unless this is handled already
 	blendAttachmentState.blendEnable = VK_FALSE;
 	colorBlendState.logicOp = VK_LOGIC_OP_CLEAR;
 	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->vkDev, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipe_CLEAR));

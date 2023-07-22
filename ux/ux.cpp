@@ -309,7 +309,9 @@ gfx::gfx(GPU &win) : gfx() { /// this allocates both gfx_memory and cbase::cdata
     cbase::data->size = win->sz;
     assert(cbase::data->size.x > 0 && cbase::data->size.y > 0);
     ///
-    data->tx = win->texture(cbase::data->size); 
+    data->tx = win->texture(data->device, cbase::data->size,
+        false, (VkImageUsageFlagBits)(
+            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT)); 
 
     Vulkan vk;
     VkInstance instance = vk->inst();
@@ -577,10 +579,12 @@ void app::resize(vec2i &sz, app *app) {
 }
 
 int app::run() {
-    data->win    = GPU::select({ 512, 512 }, ResizeFn(app::resize), this);
+    data->win = GPU::select({ 512, 512 }, ResizeFn(app::resize), this);
     data->canvas = gfx(data->win);
-    Device   dev = data->canvas.device();
-    GPU      win = data->canvas.window();
+    ///
+    data->canvas->device->loop([&](array<Pipeline>& pipelines) {
+        
+    });
     return 0;
 }
 

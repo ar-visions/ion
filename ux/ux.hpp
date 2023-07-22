@@ -142,6 +142,7 @@ namespace graphics {
                     console.fault("border requires 1 (size) or 2 (size, roundness) or 5 (size, tl tr br bl) values");
             }
         }
+        type_register(border_data);
     };
     /// graphics::border is an indication that this has information on color
     using border = sp<border_data>;
@@ -1399,13 +1400,13 @@ struct list_view:node {
 
         doubly<prop> meta() {
             return {
-                prop { *this, "cell-fg",    cell.fg    }, /// designer gets to set app-defaults in css; designer gets to know entire component model; designer almost immediately regrets
-                prop { *this, "cell-fg",    cell.fg    },
-                prop { *this, "cell-bg",    cell.bg    },
-                prop { *this, "odd-bg",     odd_bg     },
-                prop { *this, "column-fg",  column.fg  },
-                prop { *this, "column-bg",  column.bg  },
-                prop { *this, "column-ids", column.ids }
+                prop { "cell-fg",    cell.fg    }, /// designer gets to set app-defaults in css; designer gets to know entire component model; designer almost immediately regrets
+                prop { "cell-fg",    cell.fg    },
+                prop { "cell-bg",    cell.bg    },
+                prop { "odd-bg",     odd_bg     },
+                prop { "column-fg",  column.fg  },
+                prop { "column-bg",  column.bg  },
+                prop { "column-ids", column.ids }
             };
         }
         type_register(Members);

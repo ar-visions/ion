@@ -8,7 +8,7 @@ defines(VKVG_USE_GLUTESS
 		DEBUG
         VKSVG_SVG
         VKVG_FILL_NZ_GLUTESS
-        VKVG_PREMULT_ALPHA
+       -VKVG_PREMULT_ALPHA
         VKVG_USE_FREETYPE
         VKVG_USE_HARFBUZZ
        -VKVG_WIRED_DEBUG
@@ -37,15 +37,16 @@ FIND_PROGRAM(XXD xxd)
 # compile the shaders
 if(GLSLC AND XXD)
 	set(SHADERS_H "${module_path}/shaders.h")
-	set(SHADER_DIR "res/shaders")
-	set(SHADER_FILES ${SHADER_DIR}/*.frag ${SHADER_DIR}/*.vert ${SHADER_DIR}/*.geom  ${SHADER_DIR}/*.comp)
-	FILE(GLOB_RECURSE SHADERS RELATIVE ${module_path} ${SHADER_FILES})
+	set(SHADER_DIR "${module_path}/res/shaders")
+	file(GLOB SHADERS ${SHADER_DIR}/*.frag ${SHADER_DIR}/*.vert ${SHADER_DIR}/*.geom ${SHADER_DIR}/*.comp)
+
 	FOREACH(SHADER ${SHADERS})
-		set(shader-input ${module_path}/${SHADER})
-		set(shader-output ${CMAKE_CURRENT_BINARY_DIR}/${SHADER_DIR}/${SHADER}.spv)
+		get_filename_component(shader_name_ext ${SHADER} NAME)
+		set(shader-input ${SHADER})
+		set(shader-output ${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader_name_ext}.spv)
 		ADD_CUSTOM_COMMAND (
 		  OUTPUT ${shader-output}
-		  COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/${SHADER_DIR}"
+		  COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/shaders"
 		  COMMAND ${GLSLC} ${GLSLDEFS} ${shader-input} -o ${shader-output} --target-env=vulkan1.2
 		  COMMENT "Compiling ${shader-input}"
 		  DEPENDS ${SHADER}
@@ -66,9 +67,11 @@ if(GLSLC AND XXD)
 		GET_FILENAME_COMPONENT(SPV ${shad_spv} NAME)
 		ADD_CUSTOM_COMMAND (
 			TARGET BuildShadersHeader
-			WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/${SHADER_DIR}
+			WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/shaders
 			COMMAND ${XXD} -i ${SPV} >> ${SHADERS_H})
     
+		print("  -->  ${XXD} -i ${SPV} >> ${SHADERS_H}")
+
 	ENDFOREACH()
 	SET_SOURCE_FILES_PROPERTIES(${SHADERS_H} PROPERTIES GENERATED 1)
 	#add_definitions( -DDEBUG_VK_PERF=true )

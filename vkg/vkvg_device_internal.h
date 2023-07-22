@@ -63,6 +63,7 @@ typedef struct _vkvg_device_t {
 	VkPhysicalDeviceMemoryProperties phyMemProps;	/**< Vulkan Physical device memory properties */
 	VkPhysicalDevice		phy;					/**< Vulkan Physical device */
 	VkInstance				instance;				/**< Vulkan instance */
+	VkPhysicalDeviceFeatures supportedFeatures;
 #ifdef VKH_USE_VMA
 	void*					allocator;				/**< Vulkan Memory allocator */
 #endif
