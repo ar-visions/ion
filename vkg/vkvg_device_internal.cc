@@ -200,18 +200,22 @@ void _device_setupPipelines(VkvgDevice dev)
 {
 	VkGraphicsPipelineCreateInfo pipelineCreateInfo = { .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
 				.renderPass = dev->renderPass };
+	
+	// use VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN on non-Apple, as before.
+	VkPipelineInputAssemblyStateCreateInfo inputAssemblyState = {
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+		.topology = ion::is_apple() ? VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN
+	};
 
-	VkPipelineInputAssemblyStateCreateInfo inputAssemblyState = { .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-				.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN };
-
-	VkPipelineRasterizationStateCreateInfo rasterizationState = { .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-				.polygonMode = VK_POLYGON_MODE_FILL,
-				.cullMode = VK_CULL_MODE_NONE,
-				.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
-				.depthClampEnable = VK_FALSE,
-				.rasterizerDiscardEnable = VK_FALSE,
-				.depthBiasEnable = VK_FALSE,
-				.lineWidth = 1.0f };
+	VkPipelineRasterizationStateCreateInfo rasterizationState = {
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+		.polygonMode = VK_POLYGON_MODE_FILL,
+		.cullMode = VK_CULL_MODE_NONE,
+		.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
+		.depthClampEnable = VK_FALSE,
+		.rasterizerDiscardEnable = VK_FALSE,
+		.depthBiasEnable = VK_FALSE,
+		.lineWidth = 1.0f };
 
 	VkPipelineColorBlendAttachmentState blendAttachmentState =
 	{ .colorWriteMask = 0x0, .blendEnable = VK_TRUE,
@@ -350,11 +354,6 @@ void _device_setupPipelines(VkvgDevice dev)
 	pipelineCreateInfo.pDepthStencilState = &dsStateCreateInfo;
 	pipelineCreateInfo.pDynamicState = &dynamicState;
 	pipelineCreateInfo.layout = dev->pipelineLayout;
-
-	// use VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN on non-Apple, as before.
-	#if __APPLE__
-		inputAssemblyState.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST; 
-	#endif
 
 	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->vkDev, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipelinePolyFill));
 

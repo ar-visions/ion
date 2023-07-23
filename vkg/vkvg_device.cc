@@ -76,7 +76,7 @@ void _device_init (VkvgDevice dev, VkInstance inst, VkPhysicalDevice phy, VkDevi
 	}
 
 	VkhPhyInfo phyInfos = vkh_phyinfo_create (dev->phy, NULL);
-
+	dev->phyinfo = phyInfos;
 	dev->phyMemProps = phyInfos->memProps;
 	dev->gQueue = vkh_queue_create ((VkhDevice)dev, qFamIdx, qIndex);
 	//mtx_init (&dev->gQMutex, mtx_plain);
@@ -296,7 +296,7 @@ void vkvg_device_destroy (VkvgDevice dev)
 	vkDestroyDescriptorSetLayout	(dev->vkDev, dev->dslGrad,NULL);
 	vkDestroyDescriptorSetLayout	(dev->vkDev, dev->dslFont,NULL);
 	vkDestroyDescriptorSetLayout	(dev->vkDev, dev->dslSrc, NULL);
-	
+
 	vkDestroyPipeline				(dev->vkDev, dev->pipelinePolyFill, NULL);
 	vkDestroyPipeline				(dev->vkDev, dev->pipelineClipping, NULL);
 

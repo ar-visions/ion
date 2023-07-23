@@ -60,6 +60,7 @@ typedef struct _cached_ctx{
 
 typedef struct _vkvg_device_t {
 	VkDevice				vkDev;					/**< Vulkan Logical Device */
+	VkhPhyInfo				phyinfo;				/// deprecate the lower ones (and fix this cast with delegation)
 	VkPhysicalDeviceMemoryProperties phyMemProps;	/**< Vulkan Physical device memory properties */
 	VkPhysicalDevice		phy;					/**< Vulkan Physical device */
 	VkInstance				instance;				/**< Vulkan instance */
