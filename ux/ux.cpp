@@ -349,6 +349,47 @@ void gfx::blt_command(VkImage dst, VkCommandBuffer cb) {
 gfx::gfx(GPU &win) : gfx() { /// this allocates both gfx_memory and cbase::cdata memory (cbase has data type aliased at cbase::DC)
     data->win = win;
     data->device = Device::create(win);
+
+    data->device->postCommands = [data=data](VkImage swapImage, VkCommandBuffer cb) {
+        VkImage dst = swapImage;
+        VkImage src = data->vkh_image->image;
+        int       w = data->win->sz.x;
+        int       h = data->win->sz.y;
+        ///
+		set_image_layout(
+            cb, dst, VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+		set_image_layout(
+            cb, src, VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+		VkImageBlit bregion = { 
+            .srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+            .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+            .srcOffsets[0]  = {0},
+            .srcOffsets[1]  = {w, h, 1},
+            .dstOffsets[0]  = {0},
+            .dstOffsets[1]  = {w, h, 1}
+        };
+
+		vkCmdBlitImage(
+            cb, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &bregion, VK_FILTER_NEAREST);
+
+		set_image_layout(
+            cb, dst, VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+        
+		set_image_layout(cb, src, VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+    };
+
+
     cbase::data->size = win->sz;
     assert(cbase::data->size.x > 0 && cbase::data->size.y > 0);
 
@@ -372,7 +413,7 @@ gfx::gfx(GPU &win) : gfx() { /// this allocates both gfx_memory and cbase::cdata
     data->vkh_image        = vkh_image_create(data->vkh_device,
         VK_FORMAT_B8G8R8A8_UNORM, u32(win->sz.x), u32(win->sz.y),
         VK_IMAGE_TILING_OPTIMAL, VKH_MEMORY_USAGE_GPU_ONLY,
-        VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
     
     /// create image view, stored on the vkh image
     vkh_image_create_view(data->vkh_image,
