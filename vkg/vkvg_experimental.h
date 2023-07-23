@@ -23,6 +23,6 @@
 #define VKVG_EXPERIMENTAL_H
 
 #include "vkvg_internal.h"
-#include "vkvg.h"
+#include "vkg.hpp"
 
 #endif

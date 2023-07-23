@@ -25,6 +25,10 @@
 #define GetVkProcAddress(dev, inst, func)(vkGetDeviceProcAddr(dev,#func)==NULL)?(PFN_##func)vkGetInstanceProcAddr(inst, #func):(PFN_##func)vkGetDeviceProcAddr(dev, #func)
 
 #include <mx/mx.hpp>
+#include <vkh/vkh.h>
+#include <vkh/vkh_device.h>
+#include <vkh/vkh_phyinfo.h>
+
 #include "vkvg_device_internal.h"
 #include "vkvg_context_internal.h"
 #include "shaders.h"
@@ -347,11 +351,14 @@ void _device_setupPipelines(VkvgDevice dev)
 	pipelineCreateInfo.pDynamicState = &dynamicState;
 	pipelineCreateInfo.layout = dev->pipelineLayout;
 
-#ifndef __APPLE__
-	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->vkDev, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipelinePolyFill));
-#endif
+	// use VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN on non-Apple, as before.
+	#if __APPLE__
+		inputAssemblyState.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST; 
+	#endif
 
-	inputAssemblyState.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->vkDev, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipelinePolyFill));
+
+	inputAssemblyState.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST; //
 	dsStateCreateInfo.back = dsStateCreateInfo.front = clipingOpState;
 	dynamicState.dynamicStateCount = 5;
 	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->vkDev, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipelineClipping));
@@ -365,15 +372,13 @@ void _device_setupPipelines(VkvgDevice dev)
 	blendAttachmentState.alphaBlendOp = blendAttachmentState.colorBlendOp = VK_BLEND_OP_SUBTRACT;
 	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->vkDev, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipe_SUB));
 
-
-	VkPhysicalDeviceFeatures supportedFeatures;
-	vkGetPhysicalDeviceFeatures(dev->phy, &dev->supportedFeatures);
-
-	colorBlendState.logicOpEnable = supportedFeatures.logicOp; // problem for mac users unless this is handled already
+	colorBlendState.logicOpEnable = dev->vkhDev->phyinfo->supportedFeatures.logicOp; // problem for mac users unless this is handled already
 	blendAttachmentState.blendEnable = VK_FALSE;
 	colorBlendState.logicOp = VK_LOGIC_OP_CLEAR;
 	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->vkDev, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipe_CLEAR));
 
+	int test = 0;
+	test++;
 
 #ifdef VKVG_WIRED_DEBUG
 	colorBlendState.logicOpEnable = VK_FALSE;

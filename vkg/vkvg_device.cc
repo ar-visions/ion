@@ -128,9 +128,7 @@ void _device_init (VkvgDevice dev, VkInstance inst, VkPhysicalDevice phy, VkDevi
 		vkh_device_set_object_name((VkhDevice)dev, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, (uint64_t)dev->dslGrad, "DSLayout GRADIENT");
 		vkh_device_set_object_name((VkhDevice)dev, VK_OBJECT_TYPE_PIPELINE_LAYOUT, (uint64_t)dev->pipelineLayout, "PLLayout dev");
 
-		#ifndef __APPLE__
-			vkh_device_set_object_name((VkhDevice)dev, VK_OBJECT_TYPE_PIPELINE, (uint64_t)dev->pipelinePolyFill, "PL Poly fill");
-		#endif
+		vkh_device_set_object_name((VkhDevice)dev, VK_OBJECT_TYPE_PIPELINE, (uint64_t)dev->pipelinePolyFill, "PL Poly fill");
 		vkh_device_set_object_name((VkhDevice)dev, VK_OBJECT_TYPE_PIPELINE, (uint64_t)dev->pipelineClipping, "PL Clipping");
 		vkh_device_set_object_name((VkhDevice)dev, VK_OBJECT_TYPE_PIPELINE, (uint64_t)dev->pipe_OVER, "PL draw Over");
 		vkh_device_set_object_name((VkhDevice)dev, VK_OBJECT_TYPE_PIPELINE, (uint64_t)dev->pipe_SUB, "PL draw Substract");
@@ -143,130 +141,6 @@ void _device_init (VkvgDevice dev, VkInstance inst, VkPhysicalDevice phy, VkDevi
 #endif
 	dev->status = VKVG_STATUS_SUCCESS;
 }
-
-#define _CHECK_INST_EXT(ext)\
-if (vkh_instance_extension_supported(#ext)) {	\
-	if (pExtensions)							\
-	   pExtensions[*pExtCount] = #ext;			\
-	(*pExtCount)++;								\
-}
-void vkvg_get_required_instance_extensions (const char** pExtensions, uint32_t* pExtCount) {
-	*pExtCount = 0;
-
-	vkh_instance_extensions_check_init ();
-
-#if defined(DEBUG) && defined (VKVG_DBG_UTILS)
-	_CHECK_INST_EXT(VK_EXT_debug_utils)
-#endif
-	_CHECK_INST_EXT(VK_KHR_get_physical_device_properties2)
-
-	vkh_instance_extensions_check_release();
-}
-
-bool _get_dev_extension_is_supported (VkExtensionProperties* pExtensionProperties, uint32_t extensionCount, const char* name) {
-	for (uint32_t i=0; i<extensionCount; i++) {
-		if (strcmp(name, pExtensionProperties[i].extensionName)==0)
-			return true;
-	}
-	return false;
-}
-#define _CHECK_DEV_EXT(ext) {					\
-	if (_get_dev_extension_is_supported(pExtensionProperties, extensionCount, #ext)){\
-		if (pExtensions)							\
-			pExtensions[*pExtCount] = #ext;			\
-		(*pExtCount)++;								\
-	}\
-}
-
-vkvg_status_t vkvg_get_required_device_extensions (VkPhysicalDevice phy, const char** pExtensions, uint32_t* pExtCount) {
-	VkExtensionProperties* pExtensionProperties;
-	uint32_t extensionCount;
-
-	*pExtCount = 0;
-
-	VK_CHECK_RESULT(vkEnumerateDeviceExtensionProperties(phy, NULL, &extensionCount, NULL));
-	pExtensionProperties = (VkExtensionProperties*)malloc(extensionCount * sizeof(VkExtensionProperties));
-	VK_CHECK_RESULT(vkEnumerateDeviceExtensionProperties(phy, NULL, &extensionCount, pExtensionProperties));
-
-	//https://vulkan.lunarg.com/doc/view/1.2.162.0/mac/1.2-extensions/vkspec.html#VK_KHR_portability_subset
-	_CHECK_DEV_EXT(VK_KHR_portability_subset);
-	VkPhysicalDeviceFeatures2 phyFeat2 = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
-
-#ifdef VKVG_ENABLE_VK_SCALAR_BLOCK_LAYOUT
-	//ensure feature is implemented by driver.
-	VkPhysicalDeviceScalarBlockLayoutFeatures scalarBlockLayoutSupport = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SCALAR_BLOCK_LAYOUT_FEATURES};
-	phyFeat2.pNext = &scalarBlockLayoutSupport;
-#endif
-
-#ifdef VKVG_ENABLE_VK_TIMELINE_SEMAPHORE
-	VkPhysicalDeviceTimelineSemaphoreFeatures timelineSemaphoreSupport = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES};
-	timelineSemaphoreSupport.pNext = phyFeat2.pNext;
-	phyFeat2.pNext = &timelineSemaphoreSupport;
-#endif
-
-	vkGetPhysicalDeviceFeatures2(phy, &phyFeat2);
-
-#ifdef VKVG_ENABLE_VK_SCALAR_BLOCK_LAYOUT
-	if (!scalarBlockLayoutSupport.scalarBlockLayout) {
-		LOG(VKVG_LOG_ERR, "CREATE Device failed, vkvg compiled with VKVG_ENABLE_VK_SCALAR_BLOCK_LAYOUT and feature is not implemented for physical device.\n");
-		return VKVG_STATUS_DEVICE_ERROR;
-	}
-	_CHECK_DEV_EXT(VK_EXT_scalar_block_layout)
-#endif
-#ifdef VKVG_ENABLE_VK_TIMELINE_SEMAPHORE
-	if (!timelineSemaphoreSupport.timelineSemaphore) {
-		LOG(VKVG_LOG_ERR, "CREATE Device failed, VK_SEMAPHORE_TYPE_TIMELINE not supported.\n");
-		return VKVG_STATUS_DEVICE_ERROR;
-	}
-	_CHECK_DEV_EXT(VK_KHR_timeline_semaphore)
-#endif
-
-	return VKVG_STATUS_SUCCESS;
-}
-
-//enabledFeature12 is guarantied to be the first in pNext chain
-const void* vkvg_get_device_requirements (VkPhysicalDeviceFeatures* pEnabledFeatures) {
-
-	pEnabledFeatures->fillModeNonSolid	= VK_TRUE;
-	pEnabledFeatures->sampleRateShading	= VK_TRUE;
-	pEnabledFeatures->logicOp			= VK_TRUE;
-
-	void* pNext = NULL;
-
-#ifdef VK_VERSION_1_2
-	static VkPhysicalDeviceVulkan12Features enabledFeatures12 = {
-		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES
-#ifdef VKVG_ENABLE_VK_SCALAR_BLOCK_LAYOUT
-		,.scalarBlockLayout = VK_TRUE
-#endif
-#ifdef VKVG_ENABLE_VK_TIMELINE_SEMAPHORE
-		,.timelineSemaphore = VK_TRUE
-#endif
-	};
-	enabledFeatures12.pNext = pNext;
-	pNext = &enabledFeatures12;
-#else
-#ifdef VKVG_ENABLE_VK_SCALAR_BLOCK_LAYOUT
-	static VkPhysicalDeviceScalarBlockLayoutFeaturesEXT scalarBlockFeat = {
-		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SCALAR_BLOCK_LAYOUT_FEATURES_EXT
-		,.scalarBlockLayout = VK_TRUE
-	};
-	scalarBlockFeat.pNext = pNext;
-	pNext = &scalarBlockFeat;
-#endif
-#ifdef VKVG_ENABLE_VK_TIMELINE_SEMAPHORE
-	static VkPhysicalDeviceTimelineSemaphoreFeaturesKHR timelineSemaFeat = {
-		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES_KHR
-		,.timelineSemaphore = VK_TRUE
-	};
-	timelineSemaFeat.pNext = pNext;
-	pNext = &timelineSemaFeat;
-#endif
-#endif
-
-	return pNext;
-}
-
 
 VkvgDevice vkvg_device_create (VkSampleCountFlags samples, bool deferredResolve) {
 	LOG(VKVG_LOG_INFO, "CREATE Device\n");
@@ -295,7 +169,7 @@ VkvgDevice vkvg_device_create (VkSampleCountFlags samples, bool deferredResolve)
 #endif
 	vkh_layers_check_release();
 
-	vkvg_get_required_instance_extensions (enabledExts, &enabledExtsCount);
+	vkh_get_required_instance_extensions (enabledExts, &enabledExtsCount);
 
 #ifdef VK_VERSION_1_2
 	VkhApp app = vkh_app_create(1, 2, "vkvg", enabledLayersCount, enabledLayers, enabledExtsCount, enabledExts);
@@ -339,7 +213,7 @@ VkvgDevice vkvg_device_create (VkSampleCountFlags samples, bool deferredResolve)
 
 	enabledExtsCount=0;
 
-	if (vkvg_get_required_device_extensions (pi->phy, enabledExts, &enabledExtsCount) != VKVG_STATUS_SUCCESS){
+	if (vkh_get_required_device_extensions (pi->phy, enabledExts, &enabledExtsCount) != VKVG_STATUS_SUCCESS){
 		dev->status = VKVG_STATUS_DEVICE_ERROR;
 		vkh_app_free_phyinfos (phyCount, phys);
 		vkh_app_destroy (app);
@@ -347,7 +221,9 @@ VkvgDevice vkvg_device_create (VkSampleCountFlags samples, bool deferredResolve)
 	}
 
 	VkPhysicalDeviceFeatures enabledFeatures = {0};
-	const void* pNext = vkvg_get_device_requirements (&enabledFeatures);
+	const void* pNext = vkh_get_device_requirements (pi->phy, &enabledFeatures);
+	/// now we check for support and return what that support is.  this allows the pipeline to initialize and for us to store
+	/// what the support is, and allow for fallback.  on mac m2 mini the one not supported is logicOp.
 
 	VkDeviceCreateInfo device_info = { .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
 									   .queueCreateInfoCount = qCount,
@@ -420,9 +296,8 @@ void vkvg_device_destroy (VkvgDevice dev)
 	vkDestroyDescriptorSetLayout	(dev->vkDev, dev->dslGrad,NULL);
 	vkDestroyDescriptorSetLayout	(dev->vkDev, dev->dslFont,NULL);
 	vkDestroyDescriptorSetLayout	(dev->vkDev, dev->dslSrc, NULL);
-#ifndef __APPLE__
+	
 	vkDestroyPipeline				(dev->vkDev, dev->pipelinePolyFill, NULL);
-#endif
 	vkDestroyPipeline				(dev->vkDev, dev->pipelineClipping, NULL);
 
 	vkDestroyPipeline				(dev->vkDev, dev->pipe_OVER,	NULL);

@@ -5,7 +5,7 @@
 #include <queue>
 #include <vkh/vkh.h>
 #include <vkh/vkh_image.h>
-#include <vkg/vkvg.h>
+#include <vkg/vkg.hpp>
 
 namespace ion {
 

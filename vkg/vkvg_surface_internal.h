@@ -23,7 +23,7 @@
 #define SURFACE_INTERNAL_H
 
 #include "vkvg_internal.h"
-#include "vkvg.h"
+#include "vkg.hpp"
 #include <vkh/vkh.h>
 
 typedef struct _vkvg_surface_t {

@@ -154,7 +154,14 @@
 			"vkh_queue.h": "c",
 			"vkh_image.h": "c",
 			"functional": "cpp",
-			"*.inc": "cpp"
+			"*.inc": "cpp",
+			"vkh_presenter.h": "c",
+			"vkh_device.h": "c",
+			"vkh_app.h": "c",
+			"vkengine.h": "c",
+			"vkh.h": "c",
+			"vkg.hpp": "c",
+			"stdint.h": "c"
 		}
 	}
 }
