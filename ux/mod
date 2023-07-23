@@ -1,4 +1,4 @@
-dep(mx:async ion:net ion:media vulkan:vk ion:vkg harfbuzz:harfbuzz freetype:freetyped bzip2:bz2_static)
+dep(mx:async ion:net ion:media vulkan:vkh vulkan:vk ion:vkg harfbuzz:harfbuzz freetype:freetyped bzip2:bz2_static)
 
 if(APPLE)
     dep(IOSurface QuartzCore Metal AppKit CoreGraphics CoreFoundation Cocoa IOKit)

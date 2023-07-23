@@ -5,6 +5,7 @@
 #include <math/math.hpp>
 #include <media/media.hpp>
 #include <vk/vk.hpp>
+#include <vkh/vkh.h>
 
 struct GLFWwindow;
 
@@ -777,6 +778,7 @@ struct gfx:cbase {
 
     GPU             window();
     Device          device();
+    void       blt_command(VkImage dst, VkCommandBuffer cb);
     void draw_state_change(draw_state *ds, cbase::state_change type);
     text_metrics   measure(str text);
     str    format_ellipsis(str text, real w, text_metrics &tm_result);
@@ -786,7 +788,7 @@ struct gfx:cbase {
     void               pop();
     void              text(str text, Rect<double> rect, alignment align, vec2d offset, bool ellip);
     void              clip(graphics::shape cl);
-    Texture        texture();
+    VkhImage       texture();
     void             flush();
     void             clear(rgba8 c);
     void              font(ion::font f);

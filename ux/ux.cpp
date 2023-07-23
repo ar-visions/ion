@@ -4,6 +4,7 @@
 #include <stack>
 #include <queue>
 #include <vkh/vkh.h>
+#include <vkh/vkh_image.h>
 #include <vkg/vkvg.h>
 
 namespace ion {
@@ -18,7 +19,7 @@ struct gfx_memory {
     VkhImage       vkh_image;
     str            font_default;
     GPU            win;
-    Texture        tx;
+    
     cbase::draw_state *ds;
 
     ~gfx_memory() {
@@ -302,36 +303,87 @@ void sk_canvas_gaussian(sk_canvas_data* sk_canvas, vec2d* sz, rectd* crop) {
 
 mx_implement(gfx, cbase);
 
-/// 
+/// exposing this for now; i would rather hide it
+void gfx::blt_command(VkImage dst, VkCommandBuffer cb) {
+	int32_t w = data->win->sz.x, 
+            h = data->win->sz.y;
+
+    vkh_cmd_begin(cb,0);
+
+    set_image_layout(
+        cb, dst, VK_IMAGE_ASPECT_COLOR_BIT,
+        VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+    set_image_layout(
+        cb, data->vkh_image->image, VK_IMAGE_ASPECT_COLOR_BIT,
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+    VkImageBlit bregion = {
+        .srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+        .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+        .srcOffsets[0]  = {0},
+        .srcOffsets[1]  = {w, h, 1},
+        .dstOffsets[0]  = {0},
+        .dstOffsets[1]  = {w, h, 1}
+    };
+
+    vkCmdBlitImage(
+        cb, data->vkh_image->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &bregion, VK_FILTER_NEAREST);
+
+    set_image_layout(
+        cb, dst, VK_IMAGE_ASPECT_COLOR_BIT,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+
+    set_image_layout(
+        cb, data->vkh_image->image, VK_IMAGE_ASPECT_COLOR_BIT,
+        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+
+    vkh_cmd_end(cb);
+}
+
 gfx::gfx(GPU &win) : gfx() { /// this allocates both gfx_memory and cbase::cdata memory (cbase has data type aliased at cbase::DC)
     data->win = win;
     data->device = Device::create(win);
     cbase::data->size = win->sz;
     assert(cbase::data->size.x > 0 && cbase::data->size.y > 0);
-    ///
-    data->tx = win->texture(data->device, cbase::data->size,
-        false, (VkImageUsageFlagBits)(
-            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT)); 
 
-    Vulkan vk;
+    Vulkan     vk;
     VkInstance instance = vk->inst();
-
-    //VkvgDevice vkvg_device_create_from_vk_multisample (VkInstance inst, VkPhysicalDevice phy, VkDevice vkdev, uint32_t qFamIdx, uint32_t qIndex, VkSampleCountFlags samples, bool deferredResolve);
+    
+    /// create multi-sampled vkvg device from our vk instance / init data
+    /// here we lookup maximum sample count supported; this is needed because osme systems only support 1, 2, 4 etc
+    /// 8 is a rare exception, so it should never be hard coded into any engine
+    /// all must be looked up for feature compatibility
     data->vg_device = vkvg_device_create_from_vk_multisample(
         instance, win->phys, data->device->device,
         win->indices.graphicsFamily.value(), // swap?
         win->indices.presentFamily.value(),  // swap?
-        VkSampleCountFlags(win->getUsableSampling(VK_SAMPLE_COUNT_8_BIT)), false);
+        VkSampleCountFlags(win->getUsableSampling(VK_SAMPLE_COUNT_4_BIT)), false);
     
-    /// should merge vkh and the vk api with these use cases
-    data->vkh_device       = vkh_device_import(instance, win->phys, data->device->device);
-    data->vkh_image        = vkh_image_import(
-        data->vkh_device, data->tx->image, data->tx->format, u32(data->tx->width), u32(data->tx->height));
-    vkh_image_create_view(data->vkh_image, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT); // VK_IMAGE_ASPECT_COLOR_BIT questionable bit
+    /// import device from the 'Device' we made (we will merge these APIs asap)
+    data->vkh_device       = vkh_device_import(instance, win->phys, data->device);
+
+    /// create image with vkh, given teh vkh device we imported from our own api
+    data->vkh_image        = vkh_image_create(data->vkh_device,
+        VK_FORMAT_B8G8R8A8_UNORM, u32(win->sz.x), u32(win->sz.y),
+        VK_IMAGE_TILING_OPTIMAL, VKH_MEMORY_USAGE_GPU_ONLY,
+        VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
     
-    data->vg_surface       = vkvg_surface_create_for_VkhImage(data->vg_device, (void*)data->vkh_image); // attachment #0 in VkFramebufferCreateInfo has 8bit samples that do not match VkRenderPass's attachment at same rank
+    /// create image view, stored on the vkh image
+    vkh_image_create_view(data->vkh_image,
+        VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT);
+    
+    /// create vkvg surface with vkh image and instance a context
+    data->vg_surface       = vkvg_surface_create_for_VkhImage(data->vg_device, (void*)data->vkh_image);
     data->ctx              = vkvg_create(data->vg_surface);
-    push(); /// gfx just needs a push off the ledge. [/penguin-drops]
+
+    /// gfx just needs a push off the ledge. [/penguin-drops]
+    push(); 
     defaults();
 }
 
@@ -529,7 +581,7 @@ void gfx::clip(graphics::shape cl) {
     vkvg_clip(data->ctx);
 }
 
-Texture gfx::texture() { return data->tx; } /// associated with surface
+VkhImage gfx::texture() { return data->vkh_image; } /// associated with surface
 
 void gfx::flush() {
     vkvg_flush(data->ctx);
