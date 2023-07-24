@@ -26,10 +26,7 @@
 #include <vkh/vkh_queue.h>
 #include <vkh/vkh_phyinfo.h>
 
-#define TRY_LOAD_DEVICE_EXT(ext) {								\
-if (vkh_phyinfo_try_get_extension_properties(pi, #ext, NULL))	\
-	enabledExts[enabledExtsCount++] = #ext;						\
-}
+
 void vkvg_device_set_context_cache_size (VkvgDevice dev, uint32_t maxCount) {
 	if (maxCount == dev->cachedContextMaxCount)
 		return;
