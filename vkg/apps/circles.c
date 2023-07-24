@@ -21,18 +21,26 @@ void scaled_up() {
 
 	vkvg_destroy(ctx);
 }
+
 void fill_and_stroke () {
 	VkvgContext ctx = vkvg_create(surf);
 	vkvg_clear(ctx);
-	vkvg_set_source_rgba   (ctx, 0,0.1f,0.8f, 0.5f);
-	vkvg_set_line_width(ctx,10);
+	vkvg_set_source_rgba   (ctx, 0.0f, 0.1f, 0.8f, 0.5f);
+	vkvg_set_line_width(ctx, 22);
 
 	vkvg_arc(ctx, 300, 300, 150.f, 0, M_PIF*2);
 	vkvg_fill_preserve(ctx);
 	vkvg_stroke(ctx);
 
+	vkvg_set_source_rgba   (ctx, 0.8f, 0.8f, 0.0f, 0.5f);
+
+	vkvg_arc(ctx, 400, 450, 150.f, 0, M_PIF*2);
+	vkvg_fill_preserve(ctx);
+	vkvg_stroke(ctx);
+
 	vkvg_destroy(ctx);
 }
+
 void sizes() {
 	VkvgContext ctx = vkvg_create(surf);
 	vkvg_clear(ctx);

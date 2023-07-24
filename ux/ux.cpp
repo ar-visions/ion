@@ -401,7 +401,7 @@ gfx::gfx(GPU &win) : gfx() { /// this allocates both gfx_memory and cbase::cdata
     /// 8 is a rare exception, so it should never be hard coded into any engine
     /// all must be looked up for feature compatibility
     data->vg_device = vkvg_device_create_from_vk_multisample(
-        instance, win->phys, data->device->device,
+        instance, win->phy, data->device->device,
         win->indices.graphicsFamily.value(), // swap?
         win->indices.presentFamily.value(),  // swap?
         VkSampleCountFlags(win->getUsableSampling(VK_SAMPLE_COUNT_4_BIT)), false);

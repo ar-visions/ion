@@ -371,13 +371,11 @@ void _device_setupPipelines(VkvgDevice dev)
 	blendAttachmentState.alphaBlendOp = blendAttachmentState.colorBlendOp = VK_BLEND_OP_SUBTRACT;
 	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->vkDev, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipe_SUB));
 
-	colorBlendState.logicOpEnable = VK_FALSE;//dev->phyinfo->supportedFeatures.logicOp; // problem for mac users unless this is handled already
+	/// enable logicOp based on feature presence
+	colorBlendState.logicOpEnable = dev->phyinfo->supportedFeatures.logicOp ? VK_TRUE : VK_FALSE;
 	blendAttachmentState.blendEnable = VK_FALSE;
 	colorBlendState.logicOp = VK_LOGIC_OP_CLEAR;
 	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->vkDev, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipe_CLEAR));
-
-	int test = 0;
-	test++;
 
 #ifdef VKVG_WIRED_DEBUG
 	colorBlendState.logicOpEnable = VK_FALSE;

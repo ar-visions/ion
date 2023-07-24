@@ -191,7 +191,10 @@ int main(int argc, char* argv[]) {
 
 	bool deferredResolve = false;
 
-	device = vkvg_device_create_from_vk_multisample(vkh_app_get_inst(e->app), r->dev->phy, r->dev->dev, r->qFam, 0, samples, deferredResolve);
+	/// VkInstance is not part of the abstract in vkg/vkh/device/phys we use VkEngine
+	/// this way we know the scale and hardware constraints
+	/// i think it should replace the 'select' in GPU too
+	device = vkvg_device_create_from_vk_multisample(e, r->dev->phy, r->dev->dev, r->qFam, 0, samples, deferredResolve);
 	surf = vkvg_surface_create(device, test_width, test_height);
 
 	vkh_presenter_build_blit_cmd (r, vkvg_surface_get_vk_image(surf), test_width, test_height);
@@ -216,7 +219,7 @@ int main(int argc, char* argv[]) {
 
 	vkvg_device_destroy     (device);
 
-	vkengine_destroy (e);
+	vkengine_drop (e);
 
 	return 0;
 }

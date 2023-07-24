@@ -38,6 +38,8 @@ uint32_t test_size	= 500;	// items drawn in one run, or complexity
 uint32_t iterations	= 500;	// repeat test n times
 uint32_t test_width	= 512;
 uint32_t test_height= 512;
+float    dpi_sx		= 1.0f;
+float    dpi_sy     = 1.0f;
 bool	test_vsync	= false;
 bool 	quiet		= false;//if true, don't print details and head row
 bool 	first_test	= true;	//if multiple tests, dont print header row.
@@ -45,7 +47,6 @@ bool 	no_test_size= false;//several test consist of a single draw sequence witho
 							//those test must be preceded by setting no_test_size to 'true'
 int 	test_index	= 0;
 int		single_test = -1;	//if not < 0, contains the index of the single test to run
-
 
 static bool paused		= false;
 static bool offscreen	= false;
@@ -151,9 +152,9 @@ double standard_deviation (const double data[], int n, double mean)
 
 void init_test (uint32_t width, uint32_t height){
 	if (test_vsync)
-		e = vkengine_create (preferedPhysicalDeviceType, VK_PRESENT_MODE_FIFO_KHR, width, height);
+		e = vkengine_create (preferedPhysicalDeviceType, VK_PRESENT_MODE_FIFO_KHR, width, height, 0);
 	else
-		e = vkengine_create (preferedPhysicalDeviceType, VK_PRESENT_MODE_MAILBOX_KHR, width, height);
+		e = vkengine_create (preferedPhysicalDeviceType, VK_PRESENT_MODE_MAILBOX_KHR, width, height, 0);
 
 	VkhPresenter r = e->renderer;
 	vkengine_set_key_callback (e, key_callback);
@@ -163,7 +164,9 @@ void init_test (uint32_t width, uint32_t height){
 
 	bool deferredResolve = false;
 
-	device = vkvg_device_create_from_vk_multisample(vkh_app_get_inst(e->app), r->dev->phy, r->dev->dev, r->qFam, 0, samples, deferredResolve);
+	device = vkvg_device_create_from_vk_multisample(vkengine_get_inst(e),
+		r->dev->phy, r->dev->dev, r->qFam, 0, samples, deferredResolve);
+	
 	surf = vkvg_surface_create(device, width, height);
 
 	vkh_presenter_build_blit_cmd (r, vkvg_surface_get_vk_image(surf), width, height);
@@ -174,7 +177,7 @@ void clear_test () {
 	vkvg_surface_destroy    (surf);
 	vkvg_device_destroy     (device);
 
-	vkengine_destroy (e);
+	vkengine_drop (e);
 }
 
 #ifdef VKVG_TEST_DIRECT_DRAW
@@ -460,9 +463,9 @@ void perform_test_offscreen (void(*testfunc)(void), const char *testName, int ar
 	enabledExtsCount++;
 #endif
 
-	VkhApp app = vkh_app_create(1, 1, "vkvgTest", enabledLayersCount, enabledLayers, enabledExtsCount, enabledExts);
+	VkEngine e = vkengine_create(1, 1, "vkvgTest", enabledLayersCount, enabledLayers, enabledExtsCount, enabledExts);
 #if defined(DEBUG) && defined (VKVG_DBG_UTILS)
-	vkh_app_enable_debug_messenger(app
+	vkengine_enable_debug_messenger(e
 								   , VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT
 								   | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT
 								   | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT
@@ -473,7 +476,7 @@ void perform_test_offscreen (void(*testfunc)(void), const char *testName, int ar
 								   , NULL);
 #endif
 	bool deferredResolve = false;
-	VkhPhyInfo* phys = vkh_app_get_phyinfos (app, &phyCount, VK_NULL_HANDLE);
+	VkhPhyInfo* phys = vkengine_get_phyinfos (e, &phyCount, VK_NULL_HANDLE);
 	VkhPhyInfo pi = 0;
 	if (!vkengine_try_get_phyinfo(phys, phyCount, preferedPhysicalDeviceType, &pi))
 		if (!vkengine_try_get_phyinfo(phys, phyCount, VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, &pi))
@@ -497,12 +500,12 @@ void perform_test_offscreen (void(*testfunc)(void), const char *testName, int ar
 	VkhDevice dev = vkh_device_create(app, pi, &device_info);
 
 
-	device  = vkvg_device_create_from_vk_multisample(vkh_app_get_inst(app), dev->phy, dev->dev, pi->gQueue, 0, samples, deferredResolve);
+	device  = vkvg_device_create_from_vk_multisample(vkengine_get_inst(app), dev->phy, dev->dev, pi->gQueue, 0, samples, deferredResolve);
 	//vkvg_device_set_dpy(device, 96, 96);
 
-	vkh_app_free_phyinfos (phyCount, phys);
+	vkengine_free_phyinfos (phyCount, phys);
 
-	surf = vkvg_surface_create(device, test_width, test_height);
+	surf = vkvg_surface_create(device, test_width * dpi_sx, test_height * dpi_sy);
 
 	double start_time = 0.0, stop_time = 0.0, run_time = 0.0, run_total = 0.0, min_run_time = -1, max_run_time = 0.0;
 	double* run_time_values = (double*)malloc(iterations*sizeof(double));
@@ -542,7 +545,7 @@ void perform_test_offscreen (void(*testfunc)(void), const char *testName, int ar
 	vkvg_device_destroy     (device);
 
 	vkh_device_destroy (dev);
-	vkh_app_destroy (app);
+	vkengine_drop (e);
 
 	test_index++;
 }
@@ -553,6 +556,8 @@ void perform_test_onscreen (void(*testfunc)(void), const char *testName, int arg
 	else
 		e = vkengine_create (preferedPhysicalDeviceType, VK_PRESENT_MODE_MAILBOX_KHR, test_width, test_height);
 
+	vkengine_dpi_scale(e, &dpi_sx, &dpi_sy);
+
 	VkhPresenter r = e->renderer;
 	vkengine_set_key_callback (e, key_callback);
 	vkengine_set_mouse_but_callback (e, mouse_button_callback);
@@ -561,7 +566,7 @@ void perform_test_onscreen (void(*testfunc)(void), const char *testName, int arg
 
 	bool deferredResolve = false;
 
-	device  = vkvg_device_create_from_vk_multisample (vkh_app_get_inst (e->app), r->dev->phy, r->dev->dev, r->qFam, 0, samples, deferredResolve);
+	device  = vkvg_device_create_from_vk_multisample (vkengine_get_inst (e), r->dev->phy, r->dev->dev, r->qFam, 0, samples, deferredResolve);
 
 	vkvg_device_set_dpy (device, 96, 96);
 	if (threadAware)
@@ -572,8 +577,8 @@ void perform_test_onscreen (void(*testfunc)(void), const char *testName, int arg
 	for (uint32_t i=0; i < r->imgCount;i++)
 		surfaces[i] = vkvg_surface_create_for_VkhImage (device, r->ScBuffers[i]);
 #else
-	surf = vkvg_surface_create (device, test_width, test_height);
-	vkh_presenter_build_blit_cmd (r, vkvg_surface_get_vk_image(surf), test_width, test_height);
+	surf = vkvg_surface_create (device, test_width * dpi_sx, test_height * dpi_sy);
+	vkh_presenter_build_blit_cmd (r, vkvg_surface_get_vk_image(surf), test_width * dpi_sx, test_height * dpi_sy);
 #endif
 
 	double start_time = 0.0, stop_time = 0.0, run_time = 0.0, run_total = 0.0, min_run_time = -1, max_run_time = 0.0;
@@ -600,7 +605,6 @@ void perform_test_onscreen (void(*testfunc)(void), const char *testName, int arg
 				surfaces[i] = vkvg_surface_create_for_VkhImage (device, r->ScBuffers[i]);
 		}else{
 			surf = surfaces[r->currentScBufferIndex];
-
 			testfunc();
 
 			if (deferredResolve)
@@ -622,10 +626,12 @@ void perform_test_onscreen (void(*testfunc)(void), const char *testName, int arg
 		if (deferredResolve)
 			vkvg_surface_resolve(surf);
 		if (!vkh_presenter_draw (r)){
-			vkh_presenter_get_size (r, &test_width, &test_height);
+			vkh_presenter_get_size (r, &test_width, &test_height); /// vkh should have both vk engine and glfw facility
+			test_width  /= dpi_sx;
+			test_height /= dpi_sy;
 			vkvg_surface_destroy (surf);
-			surf = vkvg_surface_create(device, test_width, test_height);
-			vkh_presenter_build_blit_cmd (r, vkvg_surface_get_vk_image(surf), test_width, test_height);
+			surf = vkvg_surface_create(device, test_width * dpi_sx, test_height * dpi_sy);
+			vkh_presenter_build_blit_cmd (r, vkvg_surface_get_vk_image(surf), test_width * dpi_sx, test_height * dpi_sy);
 			vkDeviceWaitIdle(r->dev->dev);
 			continue;
 		}
@@ -664,7 +670,7 @@ void perform_test_onscreen (void(*testfunc)(void), const char *testName, int arg
 	
 	vkvg_device_destroy     (device);
 
-	vkengine_destroy (e);
+	vkengine_drop (e);
 	
 	test_index++;
 }
