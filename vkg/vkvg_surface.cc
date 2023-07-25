@@ -63,8 +63,8 @@ VkvgSurface vkvg_surface_create (VkvgDevice dev, uint32_t width, uint32_t height
 	if (surf->status)
 		return surf;
 
-	surf->width = MAX(1, width);
-	surf->height = MAX(1, height);
+	surf->width   = MAX(1, width)  * dev->e->vk_gpu->dpi_scale.x;
+	surf->height  = MAX(1, height) * dev->e->vk_gpu->dpi_scale.y;
 	surf->newSurf = true;//used to clear all attacments on first render pass
 
 	_create_surface_images (surf);

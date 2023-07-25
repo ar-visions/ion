@@ -92,6 +92,84 @@ void _init_ctx (VkvgContext ctx) {
 #endif
 }
 
+void vkvg_flush (VkvgContext ctx){
+	if (ctx->status)
+		return;
+	_flush_cmd_buff		(ctx);
+	_wait_ctx_flush_end	(ctx);
+/*
+#ifdef DEBUG
+
+	vec4 red = {0,0,1,1};
+	vec4 green = {0,1,0,1};
+	vec4 white = {1,1,1,1};
+
+	int j = 0;
+	while (j < dlpCount) {
+		add_line(ctx, debugLinePoints[j], debugLinePoints[j+1],green);
+		j+=2;
+		add_line(ctx, debugLinePoints[j], debugLinePoints[j+1],red);
+		j+=2;
+		add_line(ctx, debugLinePoints[j], debugLinePoints[j+1],white);
+		j+=2;
+	}
+	dlpCount = 0;
+	CmdBindPipeline(ctx->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->pSurf->dev->pipelineLineList);
+	CmdDrawIndexed(ctx->cmd, ctx->indCount-ctx->curIndStart, 1, ctx->curIndStart, 0, 1);
+	_flush_cmd_buff(ctx);
+#endif
+*/
+}
+
+void _set_dpi_scaling(VkvgContext ctx) {
+	VkvgDevice dev = ctx->vkvg;
+	if (dev->e->vk_gpu->dpi_scale.x != 1.0f || 
+		dev->e->vk_gpu->dpi_scale.y != 1.0f)
+		vkvg_scale(ctx, dev->e->vk_gpu->dpi_scale.x,
+						dev->e->vk_gpu->dpi_scale.y);
+}
+
+void _clear_context (VkvgContext ctx) {
+	//free saved context stack elmt
+	vkvg_context_save_t* next = ctx->pSavedCtxs;
+	ctx->pSavedCtxs = NULL;
+	while (next != NULL) {
+		vkvg_context_save_t* cur = next;
+		next = cur->pNext;
+		_free_ctx_save (cur);
+	}
+	//free additional stencil use in save/restore process
+	if (ctx->savedStencils) {
+		uint8_t curSaveStencil = ctx->curSavBit / 6;
+		for (int i=curSaveStencil;i>0;i--)
+			vkh_image_destroy(ctx->savedStencils[i-1]);
+		free(ctx->savedStencils);
+		ctx->savedStencils = NULL;
+		ctx->curSavBit = 0;
+	}
+
+	//remove context from double linked list of context in device
+	/*if (ctx->vkvg->lastCtx == ctx){
+		ctx->vkvg->lastCtx = ctx->pPrev;
+		if (ctx->pPrev != NULL)
+			ctx->pPrev->pNext = NULL;
+	}else if (ctx->pPrev == NULL){
+		//first elmt, and it's not last one so pnext is not null
+		ctx->pNext->pPrev = NULL;
+	}else{
+		ctx->pPrev->pNext = ctx->pNext;
+		ctx->pNext->pPrev = ctx->pPrev;
+	}*/
+	if (ctx->dashCount > 0) {
+		free(ctx->dashes);
+		ctx->dashCount = 0;
+	}
+
+	/// implicit to default state is hi-dpi scaling
+	_set_dpi_scaling(ctx);
+}
+
+
 VkvgContext vkvg_create(VkvgSurface surf)
 {
 	VkvgDevice dev = surf->vkvg;
@@ -108,6 +186,7 @@ VkvgContext vkvg_create(VkvgSurface surf)
 		_init_ctx (ctx);
 		_update_descriptor_set (ctx, surf->vkvg->emptyImg, ctx->dsSrc);
 		_clear_path	(ctx);
+		_clear_context(ctx); /// make sure hi-dpi is set on cached contexts; it was possible other bugs were introduced without the clearing of the context.
 		ctx->cmd = ctx->cmdBuffers[0];//current recording buffer
 		ctx->status = VKVG_STATUS_SUCCESS;
 		return ctx;
@@ -169,7 +248,6 @@ VkvgContext vkvg_create(VkvgSurface surf)
 	_font_cache_update_context_descset (ctx);
 	_update_descriptor_set	(ctx, surf->vkvg->emptyImg, ctx->dsSrc);
 	_update_gradient_desc_set(ctx);
-
 	_clear_path				(ctx);
 
 	ctx->cmd = ctx->cmdBuffers[0];//current recording buffer
@@ -196,72 +274,9 @@ VkvgContext vkvg_create(VkvgSurface surf)
 	vkh_device_set_object_name((VkhDevice)dev, VK_OBJECT_TYPE_BUFFER, (uint64_t)ctx->vertices.buffer, "CTX Vertex Buff");
 #endif
 
+
+	_clear_context(ctx);
 	return ctx;
-}
-void vkvg_flush (VkvgContext ctx){
-	if (ctx->status)
-		return;
-	_flush_cmd_buff		(ctx);
-	_wait_ctx_flush_end	(ctx);
-/*
-#ifdef DEBUG
-
-	vec4 red = {0,0,1,1};
-	vec4 green = {0,1,0,1};
-	vec4 white = {1,1,1,1};
-
-	int j = 0;
-	while (j < dlpCount) {
-		add_line(ctx, debugLinePoints[j], debugLinePoints[j+1],green);
-		j+=2;
-		add_line(ctx, debugLinePoints[j], debugLinePoints[j+1],red);
-		j+=2;
-		add_line(ctx, debugLinePoints[j], debugLinePoints[j+1],white);
-		j+=2;
-	}
-	dlpCount = 0;
-	CmdBindPipeline(ctx->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->pSurf->dev->pipelineLineList);
-	CmdDrawIndexed(ctx->cmd, ctx->indCount-ctx->curIndStart, 1, ctx->curIndStart, 0, 1);
-	_flush_cmd_buff(ctx);
-#endif
-*/
-}
-
-void _clear_context (VkvgContext ctx) {
-	//free saved context stack elmt
-	vkvg_context_save_t* next = ctx->pSavedCtxs;
-	ctx->pSavedCtxs = NULL;
-	while (next != NULL) {
-		vkvg_context_save_t* cur = next;
-		next = cur->pNext;
-		_free_ctx_save (cur);
-	}
-	//free additional stencil use in save/restore process
-	if (ctx->savedStencils) {
-		uint8_t curSaveStencil = ctx->curSavBit / 6;
-		for (int i=curSaveStencil;i>0;i--)
-			vkh_image_destroy(ctx->savedStencils[i-1]);
-		free(ctx->savedStencils);
-		ctx->savedStencils = NULL;
-		ctx->curSavBit = 0;
-	}
-
-	//remove context from double linked list of context in device
-	/*if (ctx->vkvg->lastCtx == ctx){
-		ctx->vkvg->lastCtx = ctx->pPrev;
-		if (ctx->pPrev != NULL)
-			ctx->pPrev->pNext = NULL;
-	}else if (ctx->pPrev == NULL){
-		//first elmt, and it's not last one so pnext is not null
-		ctx->pNext->pPrev = NULL;
-	}else{
-		ctx->pPrev->pNext = ctx->pNext;
-		ctx->pNext->pPrev = ctx->pPrev;
-	}*/
-	if (ctx->dashCount > 0) {
-		free(ctx->dashes);
-		ctx->dashCount = 0;
-	}
 }
 
 void vkvg_destroy (VkvgContext ctx)
