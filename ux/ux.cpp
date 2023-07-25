@@ -310,7 +310,7 @@ gfx::gfx(VkEngine e) : gfx() { /// this allocates both gfx_memory and cbase::cda
     assert(cbase::data->size.x > 0 && cbase::data->size.y > 0);
 
     data->vg_device = vkvg_device_create(e, VK_SAMPLE_COUNT_4_BIT, false);
-    data->vkh_image = vkh_image_create(data->e->dev,
+    data->vkh_image = vkh_image_create(data->e->vkh,
         VK_FORMAT_B8G8R8A8_UNORM, u32(e->width), u32(e->height),
         VK_IMAGE_TILING_OPTIMAL, VKH_MEMORY_USAGE_GPU_ONLY,
         VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT);

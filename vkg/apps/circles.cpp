@@ -26,17 +26,27 @@ void fill_and_stroke () {
 	VkvgContext ctx = vkvg_create(surf);
 	vkvg_clear(ctx);
 	vkvg_set_source_rgba   (ctx, 0.0f, 0.1f, 0.8f, 0.5f);
-	vkvg_set_line_width(ctx, 22);
+	vkvg_set_line_width(ctx, 2);
 
 	vkvg_arc(ctx, 300, 300, 150.f, 0, M_PIF*2);
 	vkvg_fill_preserve(ctx);
 	vkvg_stroke(ctx);
 
+	vkvg_arc(ctx, 100, 100, 50.f, 0, M_PIF*2);
+	vkvg_clip(ctx);
+
+	vkvg_set_source_rgba   (ctx, 1.0f, 1.0f, 0.0f, 0.5f);
+	vkvg_move_to(ctx, 0,   0);
+	vkvg_line_to(ctx, 200, 0);
+	vkvg_line_to(ctx, 200, 200);
+	vkvg_line_to(ctx, 0,   200);
+	vkvg_close_path(ctx);
+	vkvg_fill(ctx);
+
 	vkvg_set_source_rgba   (ctx, 0.8f, 0.8f, 0.0f, 0.5f);
 
 	vkvg_arc(ctx, 400, 450, 150.f, 0, M_PIF*2);
-	vkvg_fill_preserve(ctx);
-	vkvg_stroke(ctx);
+	vkvg_fill(ctx);
 
 	vkvg_destroy(ctx);
 }

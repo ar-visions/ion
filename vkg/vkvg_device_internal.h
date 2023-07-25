@@ -98,7 +98,7 @@ typedef struct _vkvg_device_t {
 	int						hdpi,					/**< only used for FreeType fonts and svg loading */
 							vdpi;
 
-	VkhDevice				vkh_device;				/**< old VkhDev created during vulkan context creation by @ref vkvg_device_create. */
+	VkhDevice				vkh;					/**< old VkhDev created during vulkan context creation by @ref vkvg_device_create. */
 
 	VkhImage				emptyImg;				/**< prevent unbound descriptor to trigger Validation error 61 */
 	VkSampleCountFlags		samples;				/**< samples count common to all surfaces */

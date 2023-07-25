@@ -22,10 +22,6 @@
 #ifndef VKVG_SVG_H
 #define VKVG_SVG_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #ifdef VKVG_SVG
 typedef struct _vkvg_svg_t* VkvgSvg;
 #else
@@ -100,7 +96,4 @@ void vkvg_svg_render (VkvgSvg svg, VkvgContext ctx, const char* id);
 vkvg_public
 void vkvg_svg_destroy (VkvgSvg svg);
 
-#ifdef __cplusplus
-}
-#endif
 #endif

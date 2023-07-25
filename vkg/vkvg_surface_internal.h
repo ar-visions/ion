@@ -52,10 +52,10 @@ typedef struct _vkvg_surface_t {
 }vkvg_surface;
 
 #define LOCK_SURFACE(surf) \
-	if (surf->dev->threadAware)\
+	if (surf->vkvg->threadAware)\
 		mtx_lock (&surf->mutex);
 #define UNLOCK_SURFACE(surf) \
-	if (surf->dev->threadAware)\
+	if (surf->vkvg->threadAware)\
 		mtx_unlock (&surf->mutex);
 
 void _explicit_ms_resolve (VkvgSurface surf);

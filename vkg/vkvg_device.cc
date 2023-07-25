@@ -51,14 +51,9 @@ void vkvg_device_set_context_cache_size (VkvgDevice dev, uint32_t maxCount) {
 VkvgDevice vkvg_device_create (VkEngine e, VkSampleCountFlags samples, bool deferredResolve) {
 	LOG(VKVG_LOG_INFO, "CREATE Device\n");
 	VkvgDevice dev  		= (vkvg_device*)calloc(1,sizeof(vkvg_device));
-
 	dev->refs 				= 1;
 	dev->e 					= e;
-	dev->dev 				= e->vk_device->device;
-	dev->phy				= e->vk_device->phys;
-	dev->phyinfo 			= e->pi; /// this temporary phyinfo did not need to be created; we have it already in VkEngine
-	dev->phyMemProps 		= phyInfos->memProps;
-	dev->instance 			= e->inst;
+	dev->device 			= e->vk_device->device;
 	dev->hdpi				= 72; /// these dont match other dpis of 96 else-where; it should be looked up from phys and dpi
 	dev->vdpi				= 72;
 	dev->samples			= samples;
@@ -74,14 +69,16 @@ VkvgDevice vkvg_device_create (VkEngine e, VkSampleCountFlags samples, bool defe
 
 	_device_check_best_image_tiling(dev, format);
 	if (dev->status != VKVG_STATUS_SUCCESS)
-		return;
+		return nullptr;
 
 	if (!_device_init_function_pointers (dev)){
 		dev->status = VKVG_STATUS_NULL_POINTER;
-		return;
+		return nullptr;
 	}
 
-	dev->gQueue = vkh_queue_create ((VkhDevice)dev, qFamIdx, qIndex);
+	dev->gQueue = vkh_queue_create ((VkhDevice)dev,
+		e->vk_gpu->indices.graphicsFamily.value(),
+		e->vk_gpu->indices.presentFamily.value());
 	//mtx_init (&dev->gQMutex, mtx_plain);
 
 #ifdef VKH_USE_VMA
@@ -141,7 +138,7 @@ VkvgDevice vkvg_device_create (VkEngine e, VkSampleCountFlags samples, bool defe
 #endif
 
 	dev->status = VKVG_STATUS_SUCCESS;
-	dev->vkh = vkh_device_grab(e->vkh); /// e->dev is VkhDevice
+	dev->vkh = vkh_device_grab(e->vkh); /// e->vkh is VkhDevice
 	return dev;
 }
 

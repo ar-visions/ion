@@ -125,7 +125,7 @@ typedef struct _vkvg_context_save_t {
 typedef struct _vkvg_context_t {
 	size_t				refs;		//reference count
 	vkvg_status_t		status;
-	VkvgDevice			dev;
+	VkvgDevice			vkvg;
 	VkvgSurface			pSurf;			//surface bound to context, set on creation of ctx
 #ifdef VKVG_ENABLE_VK_TIMELINE_SEMAPHORE
 	uint64_t			timelineStep;	//context cmd last submission timeline id.

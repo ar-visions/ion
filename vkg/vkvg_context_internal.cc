@@ -437,7 +437,7 @@ bool _wait_and_submit_cmd (VkvgContext ctx){
 
 #ifdef VKVG_ENABLE_VK_TIMELINE_SEMAPHORE
 	VkvgSurface surf = ctx->pSurf;
-	VkvgDevice dev = surf->dev;
+	VkvgDevice dev = surf->vkvg;
 	//vkh_timeline_wait ((VkhDevice)dev, surf->timeline, ct->timelineStep);
 	if (ctx->pattern && ctx->pattern->type == VKVG_PATTERN_TYPE_SURFACE) {
 		//add source surface timeline sync.

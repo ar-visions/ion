@@ -94,7 +94,7 @@ void _init_ctx (VkvgContext ctx) {
 
 VkvgContext vkvg_create(VkvgSurface surf)
 {
-	VkvgDevice dev = surf->dev;
+	VkvgDevice dev = surf->vkvg;
 	VkvgContext ctx = NULL;
 
 	if (_device_try_get_cached_context (dev, &ctx) ) {
@@ -106,7 +106,7 @@ VkvgContext vkvg_create(VkvgSurface surf)
 		}
 
 		_init_ctx (ctx);
-		_update_descriptor_set (ctx, surf->dev->emptyImg, ctx->dsSrc);
+		_update_descriptor_set (ctx, surf->vkvg->emptyImg, ctx->dsSrc);
 		_clear_path	(ctx);
 		ctx->cmd = ctx->cmdBuffers[0];//current recording buffer
 		ctx->status = VKVG_STATUS_SUCCESS;
@@ -132,7 +132,7 @@ VkvgContext vkvg_create(VkvgSurface surf)
 	ctx->sizePathes		= VKVG_PATHES_SIZE;
 	ctx->renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
 
-	ctx->vkvg = surf->dev;
+	ctx->vkvg = surf->vkvg;
 
 	_init_ctx (ctx);
 
@@ -167,7 +167,7 @@ VkvgContext vkvg_create(VkvgSurface surf)
 	_createDescriptorPool	(ctx);
 	_init_descriptor_sets	(ctx);
 	_font_cache_update_context_descset (ctx);
-	_update_descriptor_set	(ctx, surf->dev->emptyImg, ctx->dsSrc);
+	_update_descriptor_set	(ctx, surf->vkvg->emptyImg, ctx->dsSrc);
 	_update_gradient_desc_set(ctx);
 
 	_clear_path				(ctx);

@@ -30,7 +30,7 @@
 #define max(x,y)
 void _transition_surf_images (VkvgSurface surf) {
 	LOCK_SURFACE(surf)
-	VkvgDevice dev = surf->dev;
+	VkvgDevice dev = surf->vkvg;
 
 	//_surface_wait_cmd (surf);
 
@@ -72,7 +72,7 @@ VkvgSurface vkvg_surface_create (VkvgDevice dev, uint32_t width, uint32_t height
 	_transition_surf_images (surf);
 
 	surf->status = VKVG_STATUS_SUCCESS;
-	vkvg_device_reference (surf->dev);
+	vkvg_device_reference (surf->vkvg);
 	return surf;
 }
 VkvgSurface vkvg_surface_create_for_VkhImage (VkvgDevice dev, void* vkhImg) {
@@ -101,7 +101,7 @@ VkvgSurface vkvg_surface_create_for_VkhImage (VkvgDevice dev, void* vkhImg) {
 	//_clear_surface						(surf, VK_IMAGE_ASPECT_STENCIL_BIT);
 
 	surf->status = VKVG_STATUS_SUCCESS;
-	vkvg_device_reference (surf->dev);
+	vkvg_device_reference (surf->vkvg);
 	return surf;
 }
 //TODO: it would be better to blit in original size and create ms final image with dest surf dims
@@ -122,11 +122,11 @@ VkvgSurface vkvg_surface_create_from_bitmap (VkvgDevice dev, unsigned char* img,
 	uint32_t imgSize = width * height * 4;
 	VkImageSubresourceLayers imgSubResLayers = {VK_IMAGE_ASPECT_COLOR_BIT,0,0,1};
 	//original format image
-	VkhImage stagImg= vkh_image_create ((VkhDevice)surf->dev,VK_FORMAT_R8G8B8A8_UNORM,surf->width,surf->height,VK_IMAGE_TILING_LINEAR,
+	VkhImage stagImg= vkh_image_create ((VkhDevice)surf->vkvg,VK_FORMAT_R8G8B8A8_UNORM,surf->width,surf->height,VK_IMAGE_TILING_LINEAR,
 										 VKH_MEMORY_USAGE_GPU_ONLY,
 										 VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT);
 	//bgra bliting target
-	VkhImage tmpImg = vkh_image_create ((VkhDevice)surf->dev,surf->format,surf->width,surf->height,VK_IMAGE_TILING_LINEAR,
+	VkhImage tmpImg = vkh_image_create ((VkhDevice)surf->vkvg,surf->format,surf->width,surf->height,VK_IMAGE_TILING_LINEAR,
 										 VKH_MEMORY_USAGE_GPU_ONLY,
 										 VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT);
 	vkh_image_create_descriptor (tmpImg, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT,
@@ -205,7 +205,7 @@ VkvgSurface vkvg_surface_create_from_bitmap (VkvgDevice dev, unsigned char* img,
 	vkh_image_destroy	(tmpImg);
 
 	surf->status = VKVG_STATUS_SUCCESS;
-	vkvg_device_reference (surf->dev);
+	vkvg_device_reference (surf->vkvg);
 	return surf;
 }
 
@@ -234,8 +234,8 @@ void vkvg_surface_destroy(VkvgSurface surf)
 	}
 	UNLOCK_SURFACE(surf)
 
-	vkDestroyCommandPool(surf->dev->device, surf->cmdPool, NULL);
-	vkDestroyFramebuffer(surf->dev->device, surf->fb, NULL);
+	vkDestroyCommandPool(surf->vkvg->device, surf->cmdPool, NULL);
+	vkDestroyFramebuffer(surf->vkvg->device, surf->fb, NULL);
 
 	if (!surf->img->imported)
 		vkh_image_destroy(surf->img);
@@ -243,16 +243,16 @@ void vkvg_surface_destroy(VkvgSurface surf)
 	vkh_image_destroy(surf->imgMS);
 	vkh_image_destroy(surf->stencil);
 
-	if (surf->dev->threadAware)
+	if (surf->vkvg->threadAware)
 		mtx_destroy (&surf->mutex);
 
 #if VKVG_ENABLE_VK_TIMELINE_SEMAPHORE
-	vkDestroySemaphore (surf->dev->device, surf->timeline, NULL);
+	vkDestroySemaphore (surf->vkvg->device, surf->timeline, NULL);
 #else
-	vkDestroyFence (surf->dev->device, surf->flushFence, NULL);
+	vkDestroyFence (surf->vkvg->device, surf->flushFence, NULL);
 #endif
 
-	vkvg_device_destroy (surf->dev);
+	vkvg_device_destroy (surf->vkvg);
 	free(surf);
 }
 
@@ -274,12 +274,12 @@ VkImage vkvg_surface_get_vk_image(VkvgSurface surf)
 {
 	if (surf->status)
 		return NULL;
-	if (surf->dev->deferredResolve)
+	if (surf->vkvg->deferredResolve)
 		_explicit_ms_resolve(surf);
 	return vkh_image_get_vkimage (surf->img);
 }
 void vkvg_surface_resolve (VkvgSurface surf){
-	if (surf->status || !surf->dev->deferredResolve)
+	if (surf->status || !surf->vkvg->deferredResolve)
 		return;
 	_explicit_ms_resolve(surf);
 }
@@ -305,11 +305,11 @@ vkvg_status_t vkvg_surface_write_to_png (VkvgSurface surf, const char* path){
 		LOG(VKVG_LOG_ERR, "vkvg_surface_write_to_png failed, invalid status: %d\n", surf->status);
 		return VKVG_STATUS_INVALID_STATUS;
 	}
-	if (surf->dev->status) {
-		LOG(VKVG_LOG_ERR, "vkvg_surface_write_to_png failed, invalid device status: %d\n", surf->dev->status);
+	if (surf->vkvg->status) {
+		LOG(VKVG_LOG_ERR, "vkvg_surface_write_to_png failed, invalid device status: %d\n", surf->vkvg->status);
 		return VKVG_STATUS_INVALID_STATUS;
 	}
-	if (surf->dev->pngStagFormat == VK_FORMAT_UNDEFINED) {
+	if (surf->vkvg->pngStagFormat == VK_FORMAT_UNDEFINED) {
 		LOG(VKVG_LOG_ERR, "no suitable image format for png write\n");
 		return VKVG_STATUS_INVALID_FORMAT;
 	}
@@ -319,17 +319,17 @@ vkvg_status_t vkvg_surface_write_to_png (VkvgSurface surf, const char* path){
 	}
 	LOCK_SURFACE(surf)
 	VkImageSubresourceLayers imgSubResLayers = {VK_IMAGE_ASPECT_COLOR_BIT,0,0,1};
-	VkvgDevice dev = surf->dev;
+	VkvgDevice dev = surf->vkvg;
 
 	//RGBA to blit to, surf img is bgra
 	VkhImage stagImg;
 
 	if (dev->pngStagTiling == VK_IMAGE_TILING_LINEAR)
-		stagImg = vkh_image_create ((VkhDevice)surf->dev, dev->pngStagFormat, surf->width, surf->height, dev->pngStagTiling,
+		stagImg = vkh_image_create ((VkhDevice)surf->vkvg, dev->pngStagFormat, surf->width, surf->height, dev->pngStagTiling,
 										 VKH_MEMORY_USAGE_GPU_TO_CPU,
 										 VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT);
 	else
-		stagImg = vkh_image_create ((VkhDevice)surf->dev, dev->pngStagFormat, surf->width,surf->height, dev->pngStagTiling,
+		stagImg = vkh_image_create ((VkhDevice)surf->vkvg, dev->pngStagFormat, surf->width,surf->height, dev->pngStagTiling,
 										 VKH_MEMORY_USAGE_GPU_ONLY,
 										 VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT);
 
@@ -359,7 +359,7 @@ vkvg_status_t vkvg_surface_write_to_png (VkvgSurface surf, const char* path){
 	VkhImage stagImgLinear = stagImg;
 
 	if (dev->pngStagTiling == VK_IMAGE_TILING_OPTIMAL) {
-		stagImgLinear = vkh_image_create ((VkhDevice)surf->dev, dev->pngStagFormat, surf->width, surf->height, VK_IMAGE_TILING_LINEAR,
+		stagImgLinear = vkh_image_create ((VkhDevice)surf->vkvg, dev->pngStagFormat, surf->width, surf->height, VK_IMAGE_TILING_LINEAR,
 										  VKH_MEMORY_USAGE_GPU_TO_CPU,
 										  VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT);
 		VkImageCopy cpy = {
@@ -416,10 +416,10 @@ vkvg_status_t vkvg_surface_write_to_memory (VkvgSurface surf, unsigned char* con
 	LOCK_SURFACE(surf)
 
 	VkImageSubresourceLayers imgSubResLayers = {VK_IMAGE_ASPECT_COLOR_BIT,0,0,1};
-	VkvgDevice dev = surf->dev;
+	VkvgDevice dev = surf->vkvg;
 
 	//RGBA to blit to, surf img is bgra
-	VkhImage stagImg= vkh_image_create ((VkhDevice)surf->dev, VK_FORMAT_B8G8R8A8_UNORM ,surf->width,surf->height,VK_IMAGE_TILING_LINEAR,
+	VkhImage stagImg= vkh_image_create ((VkhDevice)surf->vkvg, VK_FORMAT_B8G8R8A8_UNORM ,surf->width,surf->height,VK_IMAGE_TILING_LINEAR,
 										 VKH_MEMORY_USAGE_GPU_TO_CPU,
 										 VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT);
 

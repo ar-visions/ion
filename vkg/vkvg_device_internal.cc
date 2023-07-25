@@ -372,7 +372,7 @@ void _device_setupPipelines(VkvgDevice dev)
 	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->device, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipe_SUB));
 
 	/// enable logicOp based on feature presence
-	colorBlendState.logicOpEnable = dev->phyinfo->supportedFeatures.logicOp ? VK_TRUE : VK_FALSE;
+	colorBlendState.logicOpEnable = dev->e->pi->supportedFeatures.logicOp ? VK_TRUE : VK_FALSE;
 	blendAttachmentState.blendEnable = VK_FALSE;
 	colorBlendState.logicOp = VK_LOGIC_OP_CLEAR;
 	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->device, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipe_CLEAR));
@@ -501,23 +501,23 @@ bool _device_init_function_pointers (VkvgDevice dev) {
 	}
 	vkh_device_init_debug_utils ((VkhDevice)dev);
 #endif
-	CmdBindPipeline			= GetVkProcAddress(dev->device, dev->instance, vkCmdBindPipeline);
-	CmdBindDescriptorSets	= GetVkProcAddress(dev->device, dev->instance, vkCmdBindDescriptorSets);
-	CmdBindIndexBuffer		= GetVkProcAddress(dev->device, dev->instance, vkCmdBindIndexBuffer);
-	CmdBindVertexBuffers	= GetVkProcAddress(dev->device, dev->instance, vkCmdBindVertexBuffers);
-	CmdDrawIndexed			= GetVkProcAddress(dev->device, dev->instance, vkCmdDrawIndexed);
-	CmdDraw					= GetVkProcAddress(dev->device, dev->instance, vkCmdDraw);
-	CmdSetStencilCompareMask= GetVkProcAddress(dev->device, dev->instance, vkCmdSetStencilCompareMask);
-	CmdSetStencilReference	= GetVkProcAddress(dev->device, dev->instance, vkCmdSetStencilReference);
-	CmdSetStencilWriteMask	= GetVkProcAddress(dev->device, dev->instance, vkCmdSetStencilWriteMask);
-	CmdBeginRenderPass		= GetVkProcAddress(dev->device, dev->instance, vkCmdBeginRenderPass);
-	CmdEndRenderPass		= GetVkProcAddress(dev->device, dev->instance, vkCmdEndRenderPass);
-	CmdSetViewport			= GetVkProcAddress(dev->device, dev->instance, vkCmdSetViewport);
-	CmdSetScissor			= GetVkProcAddress(dev->device, dev->instance, vkCmdSetScissor);
-	CmdPushConstants		= GetVkProcAddress(dev->device, dev->instance, vkCmdPushConstants);
-	WaitForFences			= GetVkProcAddress(dev->device, dev->instance, vkWaitForFences);
-	ResetFences				= GetVkProcAddress(dev->device, dev->instance, vkResetFences);
-	ResetCommandBuffer		= GetVkProcAddress(dev->device, dev->instance, vkResetCommandBuffer);
+	CmdBindPipeline			= GetVkProcAddress(dev->device, dev->e->instance, vkCmdBindPipeline);
+	CmdBindDescriptorSets	= GetVkProcAddress(dev->device, dev->e->instance, vkCmdBindDescriptorSets);
+	CmdBindIndexBuffer		= GetVkProcAddress(dev->device, dev->e->instance, vkCmdBindIndexBuffer);
+	CmdBindVertexBuffers	= GetVkProcAddress(dev->device, dev->e->instance, vkCmdBindVertexBuffers);
+	CmdDrawIndexed			= GetVkProcAddress(dev->device, dev->e->instance, vkCmdDrawIndexed);
+	CmdDraw					= GetVkProcAddress(dev->device, dev->e->instance, vkCmdDraw);
+	CmdSetStencilCompareMask= GetVkProcAddress(dev->device, dev->e->instance, vkCmdSetStencilCompareMask);
+	CmdSetStencilReference	= GetVkProcAddress(dev->device, dev->e->instance, vkCmdSetStencilReference);
+	CmdSetStencilWriteMask	= GetVkProcAddress(dev->device, dev->e->instance, vkCmdSetStencilWriteMask);
+	CmdBeginRenderPass		= GetVkProcAddress(dev->device, dev->e->instance, vkCmdBeginRenderPass);
+	CmdEndRenderPass		= GetVkProcAddress(dev->device, dev->e->instance, vkCmdEndRenderPass);
+	CmdSetViewport			= GetVkProcAddress(dev->device, dev->e->instance, vkCmdSetViewport);
+	CmdSetScissor			= GetVkProcAddress(dev->device, dev->e->instance, vkCmdSetScissor);
+	CmdPushConstants		= GetVkProcAddress(dev->device, dev->e->instance, vkCmdPushConstants);
+	WaitForFences			= GetVkProcAddress(dev->device, dev->e->instance, vkWaitForFences);
+	ResetFences				= GetVkProcAddress(dev->device, dev->e->instance, vkResetFences);
+	ResetCommandBuffer		= GetVkProcAddress(dev->device, dev->e->instance, vkResetCommandBuffer);
 	return true;
 }
 
@@ -545,7 +545,7 @@ void _device_check_best_image_tiling (VkvgDevice dev, VkFormat format) {
 	dev->pngStagFormat = VK_FORMAT_UNDEFINED;
 	for (int i = 0; i < 2; i++)
 	{
-		vkGetPhysicalDeviceFormatProperties(dev->phy, (VkFormat)pngBlitFormats[i], &phyImgProps);
+		vkGetPhysicalDeviceFormatProperties(dev->e->pi->phy, (VkFormat)pngBlitFormats[i], &phyImgProps);
 		if ((phyImgProps.linearTilingFeatures & VKVG_PNG_WRITE_IMG_REQUIREMENTS) == VKVG_PNG_WRITE_IMG_REQUIREMENTS) {
 			dev->pngStagFormat = (VkFormat)pngBlitFormats[i];
 			dev->pngStagTiling = VK_IMAGE_TILING_LINEAR;
@@ -564,12 +564,12 @@ void _device_check_best_image_tiling (VkvgDevice dev, VkFormat format) {
 	dev->stencilAspectFlag = VK_IMAGE_ASPECT_STENCIL_BIT;
 	dev->supportedTiling = (VkImageTiling)0xff;
 	
-	vkGetPhysicalDeviceFormatProperties(dev->phy, format, &phyImgProps);
+	vkGetPhysicalDeviceFormatProperties(dev->e->pi->phy, format, &phyImgProps);
 	
 	if ((phyImgProps.optimalTilingFeatures & VKVG_SURFACE_IMGS_REQUIREMENTS) == VKVG_SURFACE_IMGS_REQUIREMENTS) {
 		for (int i = 0; i < 4; i++)
 		{
-			vkGetPhysicalDeviceFormatProperties(dev->phy, (VkFormat)stencilFormats[i], &phyStencilProps);
+			vkGetPhysicalDeviceFormatProperties(dev->e->pi->phy, (VkFormat)stencilFormats[i], &phyStencilProps);
 			if (phyStencilProps.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) {
 				dev->stencilFormat = (VkFormat)stencilFormats[i];
 				if (i > 0)
@@ -582,7 +582,7 @@ void _device_check_best_image_tiling (VkvgDevice dev, VkFormat format) {
 	if ((phyImgProps.linearTilingFeatures & VKVG_SURFACE_IMGS_REQUIREMENTS) == VKVG_SURFACE_IMGS_REQUIREMENTS) {
 		for (int i = 0; i < 4; i++)
 		{
-			vkGetPhysicalDeviceFormatProperties(dev->phy, (VkFormat)stencilFormats[i], &phyStencilProps);
+			vkGetPhysicalDeviceFormatProperties(dev->e->pi->phy, (VkFormat)stencilFormats[i], &phyStencilProps);
 			if (phyStencilProps.linearTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) {
 				dev->stencilFormat = (VkFormat)stencilFormats[i];
 				if (i > 0)

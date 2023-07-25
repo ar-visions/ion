@@ -22,10 +22,6 @@
 #ifndef VKVG_H
 #define VKVG_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /** @mainpage Documentation
  *
  * VKVG is an open source 2d vector drawing library written in @b c and using [vulkan](https://www.khronos.org/vulkan/) for hardware acceleration.
@@ -63,6 +59,7 @@ extern "C" {
  */
 
 #include <vulkan/vulkan.h>
+#include <vkh/vkengine.h>
 #include <math.h>
 #include <stdbool.h>
 
@@ -2001,10 +1998,6 @@ void*			vkvg_recording_get_data (VkvgRecording rec);
 vkvg_public
 void			vkvg_recording_destroy	(VkvgRecording rec);
 /*************************************/
-#endif
-
-#ifdef __cplusplus
-}
 #endif
 
 #endif
