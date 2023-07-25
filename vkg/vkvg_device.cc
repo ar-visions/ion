@@ -56,7 +56,7 @@ VkvgDevice vkvg_device_create (VkEngine e, VkSampleCountFlags samples, bool defe
 	dev->device 			= e->vk_device->device;
 	dev->hdpi				= 72; /// these dont match other dpis of 96 else-where; it should be looked up from phys and dpi
 	dev->vdpi				= 72;
-	dev->samples			= samples;
+	dev->samples			= (VkSampleCountFlags)e->vk_gpu->getUsableSampling((VkSampleCountFlagBits)samples); /// important to filter it down because otehrwise it will break if it isnt supported
 	dev->deferredResolve	= (dev->samples == VK_SAMPLE_COUNT_1_BIT) ? false : deferredResolve;
 
 	dev->cachedContextMaxCount 	= VKVG_MAX_CACHED_CONTEXT_COUNT;
@@ -142,7 +142,7 @@ VkvgDevice vkvg_device_create (VkEngine e, VkSampleCountFlags samples, bool defe
 	return dev;
 }
 
-void vkvg_device_destroy (VkvgDevice dev)
+void vkvg_device_drop (VkvgDevice dev)
 {
 	LOCK_DEVICE
 	dev->refs--;
@@ -168,7 +168,7 @@ void vkvg_device_destroy (VkvgDevice dev)
 
 	vkDeviceWaitIdle (dev->device);
 
-	vkh_image_destroy				(dev->emptyImg);
+	vkh_image_drop				(dev->emptyImg);
 
 	vkDestroyDescriptorSetLayout	(dev->device, dev->dslGrad,NULL);
 	vkDestroyDescriptorSetLayout	(dev->device, dev->dslFont,NULL);
@@ -221,7 +221,7 @@ void vkvg_device_destroy (VkvgDevice dev)
 vkvg_status_t vkvg_device_status (VkvgDevice dev) {
 	return dev->status;
 }
-VkvgDevice vkvg_device_reference (VkvgDevice dev) {
+VkvgDevice vkvg_device_grab (VkvgDevice dev) {
 	LOCK_DEVICE
 	dev->refs++;
 	UNLOCK_DEVICE

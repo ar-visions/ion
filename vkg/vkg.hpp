@@ -586,7 +586,7 @@ vkvg_public
 VkvgDevice vkvg_device_create (VkEngine e, VkSampleCountFlags samples, bool deferredResolve);
 
 vkvg_public
-void vkvg_device_destroy (VkvgDevice dev);
+void vkvg_device_drop (VkvgDevice dev);
 /**
  * @brief Get the current status of the device.
  *
@@ -604,7 +604,7 @@ vkvg_status_t vkvg_device_status (VkvgDevice dev);
  * @return
  */
 vkvg_public
-VkvgDevice vkvg_device_reference (VkvgDevice dev);
+VkvgDevice vkvg_device_grab (VkvgDevice dev);
 /**
  * @brief Query the reference count of the device.
  *
@@ -686,7 +686,7 @@ VkvgSurface vkvg_surface_create_from_bitmap (VkvgDevice dev, unsigned char* img,
  * @return ?
  */
 vkvg_public
-VkvgSurface vkvg_surface_reference (VkvgSurface surf);
+VkvgSurface vkvg_surface_grab (VkvgSurface surf);
 /**
  * @brief Get the current reference count on this surface.
  * @param The vkvg surface to get the reference count for.
@@ -699,7 +699,7 @@ uint32_t vkvg_surface_get_reference_count (VkvgSurface surf);
  * @param The vkvg surface to destroy.
  */
 vkvg_public
-void vkvg_surface_destroy (VkvgSurface surf);
+void vkvg_surface_drop (VkvgSurface surf);
 /**
  * @brief Query the current status of the surface.
  * @param The vkvg surface to query the status for.
@@ -726,6 +726,10 @@ void vkvg_surface_clear (VkvgSurface surf);
  */
 vkvg_public
 VkImage	vkvg_surface_get_vk_image (VkvgSurface surf);
+
+vkvg_public
+VkhImage vkvg_surface_get_image(VkvgSurface surf);
+
 /**
  * @brief Get the vulkan format of the vulkan texture used as backend for this surface.
  * @param The surface to get the format for.
@@ -830,7 +834,7 @@ typedef enum _vkvg_operator {
  *
  * Creates a new #VkvgContext with all graphics state parameters set to default values and with surf as a target surface.
  * This method will always return a valid pointer even if memory allocation failed.
- * @remark This function references surf, so you can immediately call #vkvg_surface_destroy() on it if you don't need to maintain a separate reference to it.
+ * @remark This function references surf, so you can immediately call #vkvg_surface_drop() on it if you don't need to maintain a separate reference to it.
  * @param surf The target surface of the drawing operations.
  * @return A new #VkvgContext or null if an error occured.
  */

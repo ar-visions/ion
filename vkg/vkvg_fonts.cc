@@ -150,7 +150,7 @@ void _increase_font_tex_array (VkvgDevice dev){
 	cache->pensY = (int*)realloc(cache->pensY, newSize * sizeof(int));
 	void* tmp = memset (&cache->pensY[cache->texLength],0,FONT_CACHE_INIT_LAYERS*sizeof(int));
 
-	vkh_image_destroy	(cache->texture);
+	vkh_image_drop	(cache->texture);
 
 	cache->texLength   = newSize;
 	cache->texture	   = newImg;
@@ -259,7 +259,7 @@ void _font_cache_destroy (VkvgDevice dev){
 	free(cache->pensY);
 
 	vkh_buffer_reset	(&cache->buff);
-	vkh_image_destroy	(cache->texture);
+	vkh_image_drop	(cache->texture);
 	//vkFreeCommandBuffers(dev->device,dev->cmdPool, 1, &cache->cmd);
 	vkDestroyFence		(dev->device,cache->uploadFence,NULL);
 #ifdef VKVG_USE_FREETYPE
@@ -279,12 +279,12 @@ void _font_cache_destroy (VkvgDevice dev){
 
 void _font_cache_update_context_descset (VkvgContext ctx) {
 	if (ctx->fontCacheImg)
-		vkh_image_destroy (ctx->fontCacheImg);
+		vkh_image_drop (ctx->fontCacheImg);
 
 	LOCK_FONTCACHE (ctx->vkvg)
 
 	ctx->fontCacheImg = ctx->vkvg->fontCache->texture;
-	vkh_image_reference (ctx->fontCacheImg);
+	vkh_image_grab (ctx->fontCacheImg);
 
 	_update_descriptor_set (ctx, ctx->fontCacheImg, ctx->dsFont);
 

@@ -72,7 +72,7 @@ void _init_ctx (VkvgContext ctx) {
 
 	UNLOCK_SURFACE (ctx->pSurf);
 
-	vkvg_surface_reference (ctx->pSurf);
+	vkvg_surface_grab (ctx->pSurf);
 
 	if (ctx->vkvg->samples == VK_SAMPLE_COUNT_1_BIT)
 		ctx->renderPassBeginInfo.clearValueCount = 2;
@@ -142,7 +142,7 @@ void _clear_context (VkvgContext ctx) {
 	if (ctx->savedStencils) {
 		uint8_t curSaveStencil = ctx->curSavBit / 6;
 		for (int i=curSaveStencil;i>0;i--)
-			vkh_image_destroy(ctx->savedStencils[i-1]);
+			vkh_image_drop(ctx->savedStencils[i-1]);
 		free(ctx->savedStencils);
 		ctx->savedStencils = NULL;
 		ctx->curSavBit = 0;
@@ -326,7 +326,7 @@ void vkvg_destroy (VkvgContext ctx)
 		mtx_unlock (&ctx->vkvg->mutex);
 #endif
 
-	vkvg_surface_destroy(ctx->pSurf);
+	vkvg_surface_drop(ctx->pSurf);
 
 	if (!ctx->status && ctx->vkvg->cachedContextCount < VKVG_MAX_CACHED_CONTEXT_COUNT) {
 		_device_store_context (ctx);
@@ -1509,7 +1509,7 @@ void vkvg_restore (VkvgContext ctx){
 			_wait_and_submit_cmd (ctx);
 			if (!_wait_ctx_flush_end (ctx))
 				return;
-			vkh_image_destroy (savStencil);
+			vkh_image_drop (savStencil);
 		}
 	}
 

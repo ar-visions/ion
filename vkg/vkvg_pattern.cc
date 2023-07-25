@@ -35,7 +35,7 @@ VkvgPattern vkvg_pattern_create_for_surface (VkvgSurface surf){
 	pat->data = surf;
 	pat->refs = 1;
 
-	vkvg_surface_reference (surf);
+	vkvg_surface_grab (surf);
 	if (surf->status)
 		pat->status = surf->status;
 
@@ -242,7 +242,7 @@ void vkvg_pattern_destroy(VkvgPattern pat)
 
 	if (pat->type == VKVG_PATTERN_TYPE_SURFACE) {
 		VkvgSurface surf = (VkvgSurface)pat->data;
-		vkvg_surface_destroy (surf);
+		vkvg_surface_drop (surf);
 	}else
 		free (pat->data);
 

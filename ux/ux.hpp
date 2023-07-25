@@ -774,10 +774,11 @@ struct gfx:cbase {
     mx_declare(gfx, cbase, gfx_memory);
 
     /// create with a window (indicated by a name given first)
-    gfx(VkEngine e);
+    gfx(VkEngine e, VkhPresenter vkh_renderer);
 
     VkEngine        engine();
     Device          device();
+    void           resized();
     void draw_state_change(draw_state *ds, cbase::state_change type);
     text_metrics   measure(str text);
     str    format_ellipsis(str text, real w, text_metrics &tm_result);
@@ -1570,6 +1571,7 @@ struct app:composer {
     struct adata {
         GPU    win;
         gfx    canvas;
+        VkEngine e;
         lambda<Element(app&)> app_fn;
         type_register(adata);
     };

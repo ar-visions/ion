@@ -72,7 +72,7 @@ VkvgSurface vkvg_surface_create (VkvgDevice dev, uint32_t width, uint32_t height
 	_transition_surf_images (surf);
 
 	surf->status = VKVG_STATUS_SUCCESS;
-	vkvg_device_reference (surf->vkvg);
+	vkvg_device_grab (surf->vkvg);
 	return surf;
 }
 VkvgSurface vkvg_surface_create_for_VkhImage (VkvgDevice dev, void* vkhImg) {
@@ -101,7 +101,7 @@ VkvgSurface vkvg_surface_create_for_VkhImage (VkvgDevice dev, void* vkhImg) {
 	//_clear_surface						(surf, VK_IMAGE_ASPECT_STENCIL_BIT);
 
 	surf->status = VKVG_STATUS_SUCCESS;
-	vkvg_device_reference (surf->vkvg);
+	vkvg_device_grab (surf->vkvg);
 	return surf;
 }
 //TODO: it would be better to blit in original size and create ms final image with dest surf dims
@@ -180,7 +180,7 @@ VkvgSurface vkvg_surface_create_from_bitmap (VkvgDevice dev, unsigned char* img,
 	_surface_submit_cmd (surf);//lock surface?
 
 	vkh_buffer_reset	(&buff);
-	vkh_image_destroy	(stagImg);
+	vkh_image_drop	(stagImg);
 
 	surf->newSurf = false;
 
@@ -202,10 +202,10 @@ VkvgSurface vkvg_surface_create_from_bitmap (VkvgDevice dev, unsigned char* img,
 	vkvg_paint			(ctx);
 	vkvg_destroy		(ctx);
 
-	vkh_image_destroy	(tmpImg);
+	vkh_image_drop	(tmpImg);
 
 	surf->status = VKVG_STATUS_SUCCESS;
-	vkvg_device_reference (surf->vkvg);
+	vkvg_device_grab (surf->vkvg);
 	return surf;
 }
 
@@ -221,7 +221,7 @@ VkvgSurface vkvg_surface_create_from_image (VkvgDevice dev, const char* filePath
 	return surf;
 }
 
-void vkvg_surface_destroy(VkvgSurface surf)
+void vkvg_surface_drop(VkvgSurface surf)
 {
 	if (surf->status)
 		return;
@@ -238,10 +238,10 @@ void vkvg_surface_destroy(VkvgSurface surf)
 	vkDestroyFramebuffer(surf->vkvg->device, surf->fb, NULL);
 
 	if (!surf->img->imported)
-		vkh_image_destroy(surf->img);
+		vkh_image_drop(surf->img);
 
-	vkh_image_destroy(surf->imgMS);
-	vkh_image_destroy(surf->stencil);
+	vkh_image_drop(surf->imgMS);
+	vkh_image_drop(surf->stencil);
 
 	if (surf->vkvg->threadAware)
 		mtx_destroy (&surf->mutex);
@@ -252,11 +252,11 @@ void vkvg_surface_destroy(VkvgSurface surf)
 	vkDestroyFence (surf->vkvg->device, surf->flushFence, NULL);
 #endif
 
-	vkvg_device_destroy (surf->vkvg);
+	vkvg_device_drop (surf->vkvg);
 	free(surf);
 }
 
-VkvgSurface vkvg_surface_reference (VkvgSurface surf) {
+VkvgSurface vkvg_surface_grab (VkvgSurface surf) {
 	if (!surf->status) {
 		LOCK_SURFACE(surf)
 		surf->refs++;
@@ -278,6 +278,14 @@ VkImage vkvg_surface_get_vk_image(VkvgSurface surf)
 		_explicit_ms_resolve(surf);
 	return vkh_image_get_vkimage (surf->img);
 }
+
+VkhImage vkvg_surface_get_image(VkvgSurface surf)
+{
+	if (surf->status)
+		return NULL;
+	return vkh_image_grab(surf->img);
+}
+
 void vkvg_surface_resolve (VkvgSurface surf){
 	if (surf->status || !surf->vkvg->deferredResolve)
 		return;
@@ -385,7 +393,7 @@ vkvg_status_t vkvg_surface_write_to_png (VkvgSurface surf, const char* path){
 
 		_surface_submit_cmd (surf);
 
-		vkh_image_destroy (stagImg);
+		vkh_image_drop (stagImg);
 	}
 
 	void* img = vkh_image_map (stagImgLinear);
@@ -397,7 +405,7 @@ vkvg_status_t vkvg_surface_write_to_png (VkvgSurface surf, const char* path){
 	//stbi_write_png (path, (int32_t)surf->width, (int32_t)surf->height, 4, img, (int32_t)stride);
 
 	vkh_image_unmap (stagImgLinear);
-	vkh_image_destroy (stagImgLinear);
+	vkh_image_drop (stagImgLinear);
 
 	UNLOCK_SURFACE(surf)
 	return VKVG_STATUS_SUCCESS;
@@ -459,7 +467,7 @@ vkvg_status_t vkvg_surface_write_to_memory (VkvgSurface surf, unsigned char* con
 	}
 
 	vkh_image_unmap (stagImg);
-	vkh_image_destroy (stagImg);
+	vkh_image_drop (stagImg);
 
 	UNLOCK_SURFACE(surf)
 

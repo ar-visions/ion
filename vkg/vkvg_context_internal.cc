@@ -917,9 +917,9 @@ void _release_context_ressources (VkvgContext ctx) {
 	free(ctx->vertexCache);
 	free(ctx->indexCache);
 
-	vkh_image_destroy	  (ctx->fontCacheImg);
+	vkh_image_drop	  (ctx->fontCacheImg);
 	//TODO:check this for source counter
-	//vkh_image_destroy	  (ctx->source);
+	//vkh_image_drop	  (ctx->source);
 
 	free(ctx->pathes);
 	free(ctx->points);

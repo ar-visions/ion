@@ -4,6 +4,7 @@
 #include <stack>
 #include <queue>
 #include <vkh/vkh.h>
+#include <vkh/vkh_device.h>
 #include <vkh/vkh_image.h>
 #include <vkg/vkg.hpp>
 
@@ -14,17 +15,22 @@ struct gfx_memory {
     VkvgSurface    vg_surface;
     VkvgDevice     vg_device;
     VkvgContext    ctx;
-    Device         device;
+    VkhPresenter   vkh_renderer;
     VkhImage       vkh_image;
+    Device         device;
     str            font_default;
     VkEngine       e;
+    u32            width, height;
     
     cbase::draw_state *ds;
 
     ~gfx_memory() {
-        if (ctx)        vkvg_destroy(ctx);
-        if (vg_device)  vkvg_device_destroy(vg_device);
-        if (vg_surface) vkvg_surface_destroy(vg_surface);
+        if (e)            vkDeviceWaitIdle(e->vkh->device);
+        if (ctx)          vkvg_destroy(ctx);
+        if (vg_device)    vkvg_device_drop(vg_device);
+        if (vg_surface)   vkvg_surface_drop(vg_surface);
+        if (vkh_renderer) vkh_presenter_drop(vkh_renderer);
+        if (e)            vkengine_drop(e);
     }
     type_register(gfx_memory);
 };
@@ -302,30 +308,47 @@ void sk_canvas_gaussian(sk_canvas_data* sk_canvas, vec2d* sz, rectd* crop) {
 
 mx_implement(gfx, cbase);
 
-gfx::gfx(VkEngine e) : gfx() { /// this allocates both gfx_memory and cbase::cdata memory (cbase has data type aliased at cbase::DC)
+gfx::gfx(VkEngine e, VkhPresenter vkh_renderer) : gfx() { /// this allocates both gfx_memory and cbase::cdata memory (cbase has data type aliased at cbase::DC)
     data->e             = e;
     data->device        = e->vk_device;
-    cbase::data->size.x = e->width;
-    cbase::data->size.y = e->height;
-    assert(cbase::data->size.x > 0 && cbase::data->size.y > 0);
+    data->vkh_renderer  = vkh_renderer;
 
-    data->vg_device = vkvg_device_create(e, VK_SAMPLE_COUNT_4_BIT, false);
-    data->vkh_image = vkh_image_create(data->e->vkh,
-        VK_FORMAT_B8G8R8A8_UNORM, u32(e->width), u32(e->height),
-        VK_IMAGE_TILING_OPTIMAL, VKH_MEMORY_USAGE_GPU_ONLY,
-        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
-    
-    /// create image view, stored on the vkh image
-    vkh_image_create_view(data->vkh_image,
-        VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT);
-    
     /// create vkvg surface with vkh image and instance a context
-    data->vg_surface       = vkvg_surface_create_for_VkhImage(data->vg_device, (void*)data->vkh_image);
-    data->ctx              = vkvg_create(data->vg_surface);
+	data->vg_device = vkvg_device_create(e, VK_SAMPLE_COUNT_4_BIT, false);
+
+	vkvg_device_set_dpy(data->vg_device, 96, 96);
+	vkvg_device_set_thread_aware(data->vg_device, 1);
+
+    /// create surface, image and presenter
+    resized();
 
     /// gfx just needs a push off the ledge. [/penguin-drops]
     push(); 
     defaults();
+}
+
+void gfx::resized() {
+    if (data->vg_surface)
+        vkvg_surface_drop(data->vg_surface);
+    if (data->vkh_image)
+        vkh_image_drop(data->vkh_image);
+    if (data->ctx)
+        vkvg_destroy(data->ctx);
+
+    /// these should be updated (VkEngine can have VkWindow of sort eventually if we want multiple)
+    float sx, sy;
+    vkh_presenter_get_size(data->vkh_renderer, &data->width, &data->height, &sx, &sy); /// vkh should have both vk engine and glfw facility
+    data->width  /= sx; /// we use the virtual size here
+    data->height /= sy;
+    cbase::data->size.x = data->width;
+    cbase::data->size.y = data->height;
+
+    /// canvas w and h is virtual pixels; like dom and things; all user-mode stuff on top of vkvg is virtual
+	data->vg_surface = vkvg_surface_create(data->vg_device, data->width, data->height); 
+	data->vkh_image  = vkvg_surface_get_image(data->vg_surface);
+    data->ctx        = vkvg_create(data->vg_surface);
+
+    vkh_presenter_build_blit_cmd(data->vkh_renderer, data->vkh_image->image, data->width, data->height);
 }
 
 void vkvg_path(VkvgContext ctx, memory *mem) {
@@ -431,7 +454,7 @@ void gfx::image(ion::image img, graphics::shape sh, alignment align, vec2d offse
         VkvgSurface surf = vkvg_surface_create_from_bitmap(
             data->vg_device, (uint8_t*)img.pixels(), u32(img.width()), u32(img.height()));
         att = img.attach("vg-surf", surf, [surf]() {
-            vkvg_surface_destroy(surf);
+            vkvg_surface_drop(surf);
         });
         assert(att);
     }
@@ -571,15 +594,55 @@ void app::resize(vec2i &sz, app *app) {
     printf("resized: %d, %d\n", sz.x, sz.y);
 }
 
+static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+    app::adata *data = (app::adata *)glfwGetWindowUserPointer(window);
+	if (action != GLFW_PRESS)
+		return;
+	switch (key) {
+	case GLFW_KEY_SPACE:
+		break;
+	case GLFW_KEY_ESCAPE:
+        vkengine_should_close(data->e);
+		break;
+	}
+}
+
+static void char_callback (GLFWwindow* window, uint32_t c) { }
+
+static void mouse_move_callback(GLFWwindow* window, double x, double y) {
+}
+
+static void scroll_callback(GLFWwindow* window, double x, double y) {
+}
+
+static void mouse_button_callback(GLFWwindow* window, int but, int state, int mods) {
+}
+
 int app::run() {
     data->e = vkengine_create(1, 2, "ux",
         VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, VK_PRESENT_MODE_FIFO_KHR, VK_SAMPLE_COUNT_4_BIT,
-        512, 512, 0);
-    data->canvas = gfx(data->e);
-    ///
-    data->canvas->device->loop([&](array<Pipeline>& pipelines) {
-        
-    });
+        512, 512, 0, data);
+    data->canvas = gfx(data->e, data->e->renderer); /// width and height are fetched from renderer (which updates in vkengine)
+
+	vkengine_set_key_callback       (data->e, key_callback);
+	vkengine_set_mouse_but_callback (data->e, mouse_button_callback);
+	vkengine_set_cursor_pos_callback(data->e, mouse_move_callback);
+	vkengine_set_scroll_callback    (data->e, scroll_callback);
+	vkengine_set_title              (data->e, "ux");
+
+	while (!vkengine_should_close(data->e)) {
+		glfwPollEvents();
+
+		//testfunc();
+        // compose ux
+
+        /// we need an array of renderers/presenters; must work with a 3D scene, bloom shading etc
+		if (!vkh_presenter_draw(data->e->renderer)) { 
+            data->canvas.resized();
+            vkDeviceWaitIdle(data->e->vkh->device);
+			continue;
+		}
+	}
     return 0;
 }
 
