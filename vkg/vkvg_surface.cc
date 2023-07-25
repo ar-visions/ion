@@ -72,7 +72,6 @@ VkvgSurface vkvg_surface_create (VkvgDevice dev, uint32_t width, uint32_t height
 	_transition_surf_images (surf);
 
 	surf->status = VKVG_STATUS_SUCCESS;
-	vkvg_device_grab (surf->vkvg);
 	return surf;
 }
 VkvgSurface vkvg_surface_create_for_VkhImage (VkvgDevice dev, void* vkhImg) {

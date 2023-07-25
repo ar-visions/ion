@@ -192,7 +192,7 @@ VkvgSurface _create_surface (VkvgDevice dev, VkFormat format) {
 		surf->status = VKVG_STATUS_DEVICE_ERROR;
 		return surf;
 	}
-	surf->vkvg = dev;
+	surf->vkvg = vkvg_device_grab(dev);
 	surf->format = format;
 	if (dev->threadAware)
 		mtx_init (&surf->mutex, mtx_plain);

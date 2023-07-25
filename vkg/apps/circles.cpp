@@ -15,6 +15,6 @@ void fill_and_stroke () {
 
 int main(int argc, char *argv[]) {
 	no_test_size = true;
-	PERFORM_TEST (fill_and_stroke, argc, argv);
+	perform_test(fill_and_stroke, "fill_and_stroke", argc, argv);
 	return 0;
 }

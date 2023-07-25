@@ -444,7 +444,7 @@ void perform_test_offscreen (void(*testfunc)(void), const char *testName, int ar
 		VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, VK_PRESENT_MODE_FIFO_KHR, samples, test_width, test_height, 0, nullptr);
 	bool deferredResolve = false;
 	VkhPhyInfo        pi = e->pi;
-	VkhDevice        vkh = e->vkh;
+	VkhDevice        vkh = vkh_device_grab(e->vkh);
 
 	device = vkvg_device_create(e, VK_SAMPLE_COUNT_1_BIT, false);
 	//vkvg_device_set_dpy(device, 96, 96);
@@ -486,9 +486,9 @@ void perform_test_offscreen (void(*testfunc)(void), const char *testName, int ar
 		vkvg_surface_write_to_png (surf, saveToPng);
 
 	vkvg_surface_drop    (surf);
+	vkh_device_drop      (vkh);
 	vkvg_device_drop     (device);
 
-	vkh_device_drop (vkh);
 	vkengine_drop (e);
 
 	test_index++;
