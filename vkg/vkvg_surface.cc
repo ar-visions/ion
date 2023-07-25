@@ -234,8 +234,8 @@ void vkvg_surface_destroy(VkvgSurface surf)
 	}
 	UNLOCK_SURFACE(surf)
 
-	vkDestroyCommandPool(surf->dev->vkDev, surf->cmdPool, NULL);
-	vkDestroyFramebuffer(surf->dev->vkDev, surf->fb, NULL);
+	vkDestroyCommandPool(surf->dev->device, surf->cmdPool, NULL);
+	vkDestroyFramebuffer(surf->dev->device, surf->fb, NULL);
 
 	if (!surf->img->imported)
 		vkh_image_destroy(surf->img);
@@ -247,9 +247,9 @@ void vkvg_surface_destroy(VkvgSurface surf)
 		mtx_destroy (&surf->mutex);
 
 #if VKVG_ENABLE_VK_TIMELINE_SEMAPHORE
-	vkDestroySemaphore (surf->dev->vkDev, surf->timeline, NULL);
+	vkDestroySemaphore (surf->dev->device, surf->timeline, NULL);
 #else
-	vkDestroyFence (surf->dev->vkDev, surf->flushFence, NULL);
+	vkDestroyFence (surf->dev->device, surf->flushFence, NULL);
 #endif
 
 	vkvg_device_destroy (surf->dev);

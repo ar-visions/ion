@@ -73,7 +73,7 @@ bool _device_try_get_phyinfo (VkhPhyInfo* phys, uint32_t phyCount, VkPhysicalDev
 void _device_create_pipeline_cache(VkvgDevice dev){
 
 	VkPipelineCacheCreateInfo pipelineCacheCreateInfo = {.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO};
-	VK_CHECK_RESULT(vkCreatePipelineCache(dev->vkDev, &pipelineCacheCreateInfo, NULL, &dev->pipelineCache));
+	VK_CHECK_RESULT(vkCreatePipelineCache(dev->device, &pipelineCacheCreateInfo, NULL, &dev->pipelineCache));
 }
 
 VkRenderPass _device_createRenderPassNoResolve(VkvgDevice dev, VkAttachmentLoadOp loadOp, VkAttachmentLoadOp stencilLoadOp)
@@ -127,7 +127,7 @@ VkRenderPass _device_createRenderPassNoResolve(VkvgDevice dev, VkAttachmentLoadO
 				.pDependencies = dependencies
 	};
 	VkRenderPass rp;
-	VK_CHECK_RESULT(vkCreateRenderPass(dev->vkDev, &renderPassInfo, NULL, &rp));
+	VK_CHECK_RESULT(vkCreateRenderPass(dev->device, &renderPassInfo, NULL, &rp));
 	return rp;
 }
 VkRenderPass _device_createRenderPassMS(VkvgDevice dev, VkAttachmentLoadOp loadOp, VkAttachmentLoadOp stencilLoadOp)
@@ -192,7 +192,7 @@ VkRenderPass _device_createRenderPassMS(VkvgDevice dev, VkAttachmentLoadOp loadO
 				.pDependencies = dependencies
 	};
 	VkRenderPass rp;
-	VK_CHECK_RESULT(vkCreateRenderPass(dev->vkDev, &renderPassInfo, NULL, &rp));
+	VK_CHECK_RESULT(vkCreateRenderPass(dev->device, &renderPassInfo, NULL, &rp));
 	return rp;
 }
 
@@ -311,12 +311,12 @@ void _device_setupPipelines(VkvgDevice dev)
 	VkShaderModuleCreateInfo createInfo = { .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
 											.pCode = (uint32_t*)vert_buffer.data,
 											.codeSize = vert_buffer.len() };
-	VK_CHECK_RESULT(vkCreateShaderModule(dev->vkDev, &createInfo, NULL, &modVert));
+	VK_CHECK_RESULT(vkCreateShaderModule(dev->device, &createInfo, NULL, &modVert));
 
 	createInfo.pCode    = (uint32_t*)frag_buffer.data;
 	createInfo.codeSize = frag_buffer.len();
 
-	VK_CHECK_RESULT(vkCreateShaderModule(dev->vkDev, &createInfo, NULL, &modFrag));
+	VK_CHECK_RESULT(vkCreateShaderModule(dev->device, &createInfo, NULL, &modFrag));
 
 	VkPipelineShaderStageCreateInfo vertStage = { .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
 		.stage = VK_SHADER_STAGE_VERTEX_BIT,
@@ -355,27 +355,27 @@ void _device_setupPipelines(VkvgDevice dev)
 	pipelineCreateInfo.pDynamicState = &dynamicState;
 	pipelineCreateInfo.layout = dev->pipelineLayout;
 
-	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->vkDev, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipelinePolyFill));
+	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->device, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipelinePolyFill));
 
 	inputAssemblyState.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST; //
 	dsStateCreateInfo.back = dsStateCreateInfo.front = clipingOpState;
 	dynamicState.dynamicStateCount = 5;
-	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->vkDev, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipelineClipping));
+	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->device, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipelineClipping));
 
 	dsStateCreateInfo.back = dsStateCreateInfo.front = stencilOpState;
 	blendAttachmentState.colorWriteMask=0xf;
 	dynamicState.dynamicStateCount = 3;
 	pipelineCreateInfo.stageCount = 2;
-	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->vkDev, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipe_OVER));
+	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->device, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipe_OVER));
 
 	blendAttachmentState.alphaBlendOp = blendAttachmentState.colorBlendOp = VK_BLEND_OP_SUBTRACT;
-	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->vkDev, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipe_SUB));
+	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->device, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipe_SUB));
 
 	/// enable logicOp based on feature presence
 	colorBlendState.logicOpEnable = dev->phyinfo->supportedFeatures.logicOp ? VK_TRUE : VK_FALSE;
 	blendAttachmentState.blendEnable = VK_FALSE;
 	colorBlendState.logicOp = VK_LOGIC_OP_CLEAR;
-	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->vkDev, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipe_CLEAR));
+	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->device, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipe_CLEAR));
 
 #ifdef VKVG_WIRED_DEBUG
 	colorBlendState.logicOpEnable = VK_FALSE;
@@ -385,22 +385,22 @@ void _device_setupPipelines(VkvgDevice dev)
 	createInfo.pCode = (uint32_t*)wired_frag_spv;
 
 	createInfo.codeSize = wired_frag_spv_len;
-	VK_CHECK_RESULT(vkCreateShaderModule(dev->vkDev, &createInfo, NULL, &modFragWired));
+	VK_CHECK_RESULT(vkCreateShaderModule(dev->device, &createInfo, NULL, &modFragWired));
 
 	shaderStages[1].module = modFragWired;
 
 	rasterizationState.polygonMode = VK_POLYGON_MODE_LINE;
-	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->vkDev, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipelineLineList));
+	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->device, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipelineLineList));
 
 	inputAssemblyState.topology = VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
 	rasterizationState.polygonMode = VK_POLYGON_MODE_FILL;
-	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->vkDev, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipelineWired));
+	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->device, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipelineWired));
 
-	vkDestroyShaderModule(dev->vkDev, modFragWired, NULL);
+	vkDestroyShaderModule(dev->device, modFragWired, NULL);
 #endif
 
-	vkDestroyShaderModule(dev->vkDev, modVert, NULL);
-	vkDestroyShaderModule(dev->vkDev, modFrag, NULL);
+	vkDestroyShaderModule(dev->device, modVert, NULL);
+	vkDestroyShaderModule(dev->device, modFrag, NULL);
 }
 
 void _device_createDescriptorSetLayout (VkvgDevice dev) {
@@ -410,10 +410,10 @@ void _device_createDescriptorSetLayout (VkvgDevice dev) {
 	VkDescriptorSetLayoutCreateInfo dsLayoutCreateInfo = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
 														  .bindingCount = 1,
 														  .pBindings = &dsLayoutBinding };
-	VK_CHECK_RESULT(vkCreateDescriptorSetLayout(dev->vkDev, &dsLayoutCreateInfo, NULL, &dev->dslFont));
-	VK_CHECK_RESULT(vkCreateDescriptorSetLayout(dev->vkDev, &dsLayoutCreateInfo, NULL, &dev->dslSrc));
+	VK_CHECK_RESULT(vkCreateDescriptorSetLayout(dev->device, &dsLayoutCreateInfo, NULL, &dev->dslFont));
+	VK_CHECK_RESULT(vkCreateDescriptorSetLayout(dev->device, &dsLayoutCreateInfo, NULL, &dev->dslSrc));
 	dsLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	VK_CHECK_RESULT(vkCreateDescriptorSetLayout(dev->vkDev, &dsLayoutCreateInfo, NULL, &dev->dslGrad));
+	VK_CHECK_RESULT(vkCreateDescriptorSetLayout(dev->device, &dsLayoutCreateInfo, NULL, &dev->dslGrad));
 
 	VkPushConstantRange pushConstantRange[] = {
 		{VK_SHADER_STAGE_VERTEX_BIT,0,sizeof(push_constants)},
@@ -426,15 +426,15 @@ void _device_createDescriptorSetLayout (VkvgDevice dev) {
 															.pPushConstantRanges = (VkPushConstantRange*)&pushConstantRange,
 															.setLayoutCount = 3,
 															.pSetLayouts = dsls };
-	VK_CHECK_RESULT(vkCreatePipelineLayout(dev->vkDev, &pipelineLayoutCreateInfo, NULL, &dev->pipelineLayout));
+	VK_CHECK_RESULT(vkCreatePipelineLayout(dev->device, &pipelineLayoutCreateInfo, NULL, &dev->pipelineLayout));
 }
 
 void _device_wait_idle (VkvgDevice dev) {
-	vkDeviceWaitIdle (dev->vkDev);
+	vkDeviceWaitIdle (dev->device);
 }
 void _device_wait_and_reset_device_fence (VkvgDevice dev) {
-	vkWaitForFences (dev->vkDev, 1, &dev->fence, VK_TRUE, UINT64_MAX);
-	ResetFences (dev->vkDev, 1, &dev->fence);
+	vkWaitForFences (dev->device, 1, &dev->fence, VK_TRUE, UINT64_MAX);
+	ResetFences (dev->device, 1, &dev->fence);
 }
 
 bool _device_try_get_cached_context (VkvgDevice dev, VkvgContext* pCtx) {
@@ -501,23 +501,23 @@ bool _device_init_function_pointers (VkvgDevice dev) {
 	}
 	vkh_device_init_debug_utils ((VkhDevice)dev);
 #endif
-	CmdBindPipeline			= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdBindPipeline);
-	CmdBindDescriptorSets	= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdBindDescriptorSets);
-	CmdBindIndexBuffer		= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdBindIndexBuffer);
-	CmdBindVertexBuffers	= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdBindVertexBuffers);
-	CmdDrawIndexed			= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdDrawIndexed);
-	CmdDraw					= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdDraw);
-	CmdSetStencilCompareMask= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdSetStencilCompareMask);
-	CmdSetStencilReference	= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdSetStencilReference);
-	CmdSetStencilWriteMask	= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdSetStencilWriteMask);
-	CmdBeginRenderPass		= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdBeginRenderPass);
-	CmdEndRenderPass		= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdEndRenderPass);
-	CmdSetViewport			= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdSetViewport);
-	CmdSetScissor			= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdSetScissor);
-	CmdPushConstants		= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdPushConstants);
-	WaitForFences			= GetVkProcAddress(dev->vkDev, dev->instance, vkWaitForFences);
-	ResetFences				= GetVkProcAddress(dev->vkDev, dev->instance, vkResetFences);
-	ResetCommandBuffer		= GetVkProcAddress(dev->vkDev, dev->instance, vkResetCommandBuffer);
+	CmdBindPipeline			= GetVkProcAddress(dev->device, dev->instance, vkCmdBindPipeline);
+	CmdBindDescriptorSets	= GetVkProcAddress(dev->device, dev->instance, vkCmdBindDescriptorSets);
+	CmdBindIndexBuffer		= GetVkProcAddress(dev->device, dev->instance, vkCmdBindIndexBuffer);
+	CmdBindVertexBuffers	= GetVkProcAddress(dev->device, dev->instance, vkCmdBindVertexBuffers);
+	CmdDrawIndexed			= GetVkProcAddress(dev->device, dev->instance, vkCmdDrawIndexed);
+	CmdDraw					= GetVkProcAddress(dev->device, dev->instance, vkCmdDraw);
+	CmdSetStencilCompareMask= GetVkProcAddress(dev->device, dev->instance, vkCmdSetStencilCompareMask);
+	CmdSetStencilReference	= GetVkProcAddress(dev->device, dev->instance, vkCmdSetStencilReference);
+	CmdSetStencilWriteMask	= GetVkProcAddress(dev->device, dev->instance, vkCmdSetStencilWriteMask);
+	CmdBeginRenderPass		= GetVkProcAddress(dev->device, dev->instance, vkCmdBeginRenderPass);
+	CmdEndRenderPass		= GetVkProcAddress(dev->device, dev->instance, vkCmdEndRenderPass);
+	CmdSetViewport			= GetVkProcAddress(dev->device, dev->instance, vkCmdSetViewport);
+	CmdSetScissor			= GetVkProcAddress(dev->device, dev->instance, vkCmdSetScissor);
+	CmdPushConstants		= GetVkProcAddress(dev->device, dev->instance, vkCmdPushConstants);
+	WaitForFences			= GetVkProcAddress(dev->device, dev->instance, vkWaitForFences);
+	ResetFences				= GetVkProcAddress(dev->device, dev->instance, vkResetFences);
+	ResetCommandBuffer		= GetVkProcAddress(dev->device, dev->instance, vkResetCommandBuffer);
 	return true;
 }
 

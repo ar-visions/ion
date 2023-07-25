@@ -468,7 +468,7 @@ bool _wait_and_submit_cmd (VkvgContext ctx){
 
 	if (!_wait_ctx_flush_end (ctx))
 		return false;
-	ResetFences (ctx->vkvg->vkDev, 1, &ctx->flushFence);
+	ResetFences (ctx->vkvg->device, 1, &ctx->flushFence);
 	_device_submit_cmd (ctx->vkvg, &ctx->cmd, ctx->flushFence);
 #endif
 
@@ -839,7 +839,7 @@ void _update_descriptor_set (VkvgContext ctx, VkhImage img, VkDescriptorSet ds){
 			.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
 			.pImageInfo = &descSrcTex
 	};
-	vkUpdateDescriptorSets(ctx->vkvg->vkDev, 1, &writeDescriptorSet, 0, NULL);
+	vkUpdateDescriptorSets(ctx->vkvg->device, 1, &writeDescriptorSet, 0, NULL);
 }
 
 void _update_gradient_desc_set (VkvgContext ctx){
@@ -852,7 +852,7 @@ void _update_gradient_desc_set (VkvgContext ctx){
 			.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
 			.pBufferInfo = &dbi
 	};
-	vkUpdateDescriptorSets(ctx->vkvg->vkDev, 1, &writeDescriptorSet, 0, NULL);
+	vkUpdateDescriptorSets(ctx->vkvg->device, 1, &writeDescriptorSet, 0, NULL);
 }
 /*
  * Reset currently bound descriptor which image could be destroyed
@@ -860,13 +860,13 @@ void _update_gradient_desc_set (VkvgContext ctx){
 /*void _reset_src_descriptor_set (VkvgContext ctx){
 	VkvgDevice dev = ctx->pSurf->dev;
 	//VkDescriptorSet dss[] = {ctx->dsSrc};
-	vkFreeDescriptorSets	(dev->vkDev, ctx->descriptorPool, 1, &ctx->dsSrc);
+	vkFreeDescriptorSets	(dev->device, ctx->descriptorPool, 1, &ctx->dsSrc);
 
 	VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
 															  .descriptorPool = ctx->descriptorPool,
 															  .descriptorSetCount = 1,
 															  .pSetLayouts = &dev->dslSrc };
-	VK_CHECK_RESULT(vkAllocateDescriptorSets(dev->vkDev, &descriptorSetAllocateInfo, &ctx->dsSrc));
+	VK_CHECK_RESULT(vkAllocateDescriptorSets(dev->device, &descriptorSetAllocateInfo, &ctx->dsSrc));
 }*/
 
 void _createDescriptorPool (VkvgContext ctx) {
@@ -880,7 +880,7 @@ void _createDescriptorPool (VkvgContext ctx) {
 															.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
 															.poolSizeCount = 2,
 															.pPoolSizes = descriptorPoolSize };
-	VK_CHECK_RESULT(vkCreateDescriptorPool (dev->vkDev, &descriptorPoolCreateInfo, NULL, &ctx->descriptorPool));
+	VK_CHECK_RESULT(vkCreateDescriptorPool (dev->device, &descriptorPoolCreateInfo, NULL, &ctx->descriptorPool));
 }
 void _init_descriptor_sets (VkvgContext ctx){
 	VkvgDevice dev = ctx->vkvg;
@@ -889,14 +889,14 @@ void _init_descriptor_sets (VkvgContext ctx){
 															  .descriptorSetCount = 1,
 															  .pSetLayouts = &dev->dslFont
 															};
-	VK_CHECK_RESULT(vkAllocateDescriptorSets(dev->vkDev, &descriptorSetAllocateInfo, &ctx->dsFont));
+	VK_CHECK_RESULT(vkAllocateDescriptorSets(dev->device, &descriptorSetAllocateInfo, &ctx->dsFont));
 	descriptorSetAllocateInfo.pSetLayouts = &dev->dslSrc;
-	VK_CHECK_RESULT(vkAllocateDescriptorSets(dev->vkDev, &descriptorSetAllocateInfo, &ctx->dsSrc));
+	VK_CHECK_RESULT(vkAllocateDescriptorSets(dev->device, &descriptorSetAllocateInfo, &ctx->dsSrc));
 	descriptorSetAllocateInfo.pSetLayouts = &dev->dslGrad;
-	VK_CHECK_RESULT(vkAllocateDescriptorSets(dev->vkDev, &descriptorSetAllocateInfo, &ctx->dsGrad));
+	VK_CHECK_RESULT(vkAllocateDescriptorSets(dev->device, &descriptorSetAllocateInfo, &ctx->dsGrad));
 }
 void _release_context_ressources (VkvgContext ctx) {
-	VkDevice dev = ctx->vkvg->vkDev;
+	VkDevice dev = ctx->vkvg->device;
 	
 #ifndef VKVG_ENABLE_VK_TIMELINE_SEMAPHORE
 	vkDestroyFence (dev, ctx->flushFence, NULL);

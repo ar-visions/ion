@@ -166,7 +166,7 @@ void init_test (uint32_t width, uint32_t height) {
 	vkh_presenter_build_blit_cmd (r, vkvg_surface_get_vk_image(surf), width, height);
 }
 void clear_test () {
-	vkDeviceWaitIdle(e->dev->dev);
+	vkDeviceWaitIdle(e->vkh->device);
 
 	vkvg_surface_destroy    (surf);
 	vkvg_device_destroy     (device);

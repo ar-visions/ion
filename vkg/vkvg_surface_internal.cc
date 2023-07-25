@@ -165,7 +165,7 @@ void _create_framebuffer (VkvgSurface surf) {
 		attachments[0] = attachments[2];
 		frameBufferCreateInfo.attachmentCount = 2;
 	}
-	VK_CHECK_RESULT(vkCreateFramebuffer(surf->dev->vkDev, &frameBufferCreateInfo, NULL, &surf->fb));
+	VK_CHECK_RESULT(vkCreateFramebuffer(surf->dev->device, &frameBufferCreateInfo, NULL, &surf->fb));
 #if defined(DEBUG) && defined (VKVG_DBG_UTILS)
 	vkh_device_set_object_name((VkhDevice)surf->dev, VK_OBJECT_TYPE_FRAMEBUFFER, (uint64_t)surf->fb, "SURF FB");
 #endif
@@ -218,8 +218,8 @@ VkvgSurface _create_surface (VkvgDevice dev, VkFormat format) {
 	if (vkh_timeline_wait ((VkhDevice)surf->dev, surf->timeline, surf->timelineStep) == VK_SUCCESS)
 		return true;
 #else
-	if (WaitForFences (surf->dev->vkDev, 1, &surf->flushFence, VK_TRUE, VKVG_FENCE_TIMEOUT) == VK_SUCCESS) {
-		ResetFences (surf->dev->vkDev, 1, &surf->flushFence);
+	if (WaitForFences (surf->dev->device, 1, &surf->flushFence, VK_TRUE, VKVG_FENCE_TIMEOUT) == VK_SUCCESS) {
+		ResetFences (surf->dev->device, 1, &surf->flushFence);
 		return true;
 	}
 #endif
@@ -240,7 +240,7 @@ void _surface_submit_cmd (VkvgSurface surf) {
 	LOCK_DEVICE
 	vkh_cmd_submit (surf->dev->gQueue, &surf->cmd, surf->flushFence);
 	UNLOCK_DEVICE
-	WaitForFences (surf->dev->vkDev, 1, &surf->flushFence, VK_TRUE, VKVG_FENCE_TIMEOUT);
-	ResetFences (surf->dev->vkDev, 1, &surf->flushFence);
+	WaitForFences (surf->dev->device, 1, &surf->flushFence, VK_TRUE, VKVG_FENCE_TIMEOUT);
+	ResetFences (surf->dev->device, 1, &surf->flushFence);
 #endif
 }

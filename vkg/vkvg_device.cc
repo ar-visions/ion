@@ -169,37 +169,37 @@ void vkvg_device_destroy (VkvgDevice dev)
 
 	LOG(VKVG_LOG_INFO, "DESTROY Device\n");
 
-	vkDeviceWaitIdle (dev->vkDev);
+	vkDeviceWaitIdle (dev->device);
 
 	vkh_image_destroy				(dev->emptyImg);
 
-	vkDestroyDescriptorSetLayout	(dev->vkDev, dev->dslGrad,NULL);
-	vkDestroyDescriptorSetLayout	(dev->vkDev, dev->dslFont,NULL);
-	vkDestroyDescriptorSetLayout	(dev->vkDev, dev->dslSrc, NULL);
+	vkDestroyDescriptorSetLayout	(dev->device, dev->dslGrad,NULL);
+	vkDestroyDescriptorSetLayout	(dev->device, dev->dslFont,NULL);
+	vkDestroyDescriptorSetLayout	(dev->device, dev->dslSrc, NULL);
 
-	vkDestroyPipeline				(dev->vkDev, dev->pipelinePolyFill, NULL);
-	vkDestroyPipeline				(dev->vkDev, dev->pipelineClipping, NULL);
+	vkDestroyPipeline				(dev->device, dev->pipelinePolyFill, NULL);
+	vkDestroyPipeline				(dev->device, dev->pipelineClipping, NULL);
 
-	vkDestroyPipeline				(dev->vkDev, dev->pipe_OVER,	NULL);
-	vkDestroyPipeline				(dev->vkDev, dev->pipe_SUB,		NULL);
-	vkDestroyPipeline				(dev->vkDev, dev->pipe_CLEAR,	NULL);
+	vkDestroyPipeline				(dev->device, dev->pipe_OVER,	NULL);
+	vkDestroyPipeline				(dev->device, dev->pipe_SUB,		NULL);
+	vkDestroyPipeline				(dev->device, dev->pipe_CLEAR,	NULL);
 
 #ifdef VKVG_WIRED_DEBUG
-	vkDestroyPipeline				(dev->vkDev, dev->pipelineWired, NULL);
-	vkDestroyPipeline				(dev->vkDev, dev->pipelineLineList, NULL);
+	vkDestroyPipeline				(dev->device, dev->pipelineWired, NULL);
+	vkDestroyPipeline				(dev->device, dev->pipelineLineList, NULL);
 #endif
 
-	vkDestroyPipelineLayout			(dev->vkDev, dev->pipelineLayout, NULL);
-	vkDestroyPipelineCache			(dev->vkDev, dev->pipelineCache, NULL);
-	vkDestroyRenderPass				(dev->vkDev, dev->renderPass, NULL);
-	vkDestroyRenderPass				(dev->vkDev, dev->renderPass_ClearStencil, NULL);
-	vkDestroyRenderPass				(dev->vkDev, dev->renderPass_ClearAll, NULL);
+	vkDestroyPipelineLayout			(dev->device, dev->pipelineLayout, NULL);
+	vkDestroyPipelineCache			(dev->device, dev->pipelineCache, NULL);
+	vkDestroyRenderPass				(dev->device, dev->renderPass, NULL);
+	vkDestroyRenderPass				(dev->device, dev->renderPass_ClearStencil, NULL);
+	vkDestroyRenderPass				(dev->device, dev->renderPass_ClearAll, NULL);
 
-	vkWaitForFences					(dev->vkDev, 1, &dev->fence, VK_TRUE, UINT64_MAX);
-	vkDestroyFence					(dev->vkDev, dev->fence,NULL);
+	vkWaitForFences					(dev->device, 1, &dev->fence, VK_TRUE, UINT64_MAX);
+	vkDestroyFence					(dev->device, dev->fence,NULL);
 
-	vkFreeCommandBuffers			(dev->vkDev, dev->cmdPool, 1, &dev->cmd);
-	vkDestroyCommandPool			(dev->vkDev, dev->cmdPool, NULL);
+	vkFreeCommandBuffers			(dev->device, dev->cmdPool, 1, &dev->cmd);
+	vkDestroyCommandPool			(dev->device, dev->cmdPool, NULL);
 
 	vkh_queue_destroy(dev->gQueue);
 
