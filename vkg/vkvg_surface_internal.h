@@ -26,10 +26,11 @@
 #include "vkg.hpp"
 #include <vkh/vkh.h>
 
+/// surface needs to be dpi aware
 typedef struct _vkvg_surface_t {
+	size_t			refs;
 	vkvg_status_t	status;					/**< Current status of surface, affected by last operation */
-	uint32_t		references;
-	VkvgDevice		dev;
+	VkvgDevice		vkvg;
 	uint32_t		width;
 	uint32_t		height;
 	VkFormat		format;

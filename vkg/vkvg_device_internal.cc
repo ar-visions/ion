@@ -469,7 +469,7 @@ bool _device_try_get_cached_context (VkvgDevice dev, VkvgContext* pCtx) {
 	return false;
 }
 void _device_store_context (VkvgContext ctx) {
-	VkvgDevice dev = ctx->dev;
+	VkvgDevice dev = ctx->vkvg;
 
 	LOCK_DEVICE
 
@@ -483,7 +483,7 @@ void _device_store_context (VkvgContext ctx) {
 
 	LOG(VKVG_LOG_THREAD,"store context: %p, thd:%lu cached ctx: %d\n", cur->ctx, cur->thread, dev->cachedContextCount);
 
-	ctx->references++;
+	ctx->refs++;
 
 	UNLOCK_DEVICE
 }

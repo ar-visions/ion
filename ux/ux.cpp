@@ -15,10 +15,9 @@ struct gfx_memory {
     VkvgDevice     vg_device;
     VkvgContext    ctx;
     Device         device;
-    VkhDevice      vkh_device;
     VkhImage       vkh_image;
     str            font_default;
-    GPU            win;
+    VkEngine       e;
     
     cbase::draw_state *ds;
 
@@ -303,115 +302,16 @@ void sk_canvas_gaussian(sk_canvas_data* sk_canvas, vec2d* sz, rectd* crop) {
 
 mx_implement(gfx, cbase);
 
-/// exposing this for now; i would rather hide it
-void gfx::blt_command(VkImage dst, VkCommandBuffer cb) {
-	int32_t w = data->win->sz.x, 
-            h = data->win->sz.y;
-
-    vkh_cmd_begin(cb,0);
-
-    set_image_layout(
-        cb, dst, VK_IMAGE_ASPECT_COLOR_BIT,
-        VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
-
-    set_image_layout(
-        cb, data->vkh_image->image, VK_IMAGE_ASPECT_COLOR_BIT,
-        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
-
-    VkImageBlit bregion = {
-        .srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
-        .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
-        .srcOffsets[0]  = {0},
-        .srcOffsets[1]  = {w, h, 1},
-        .dstOffsets[0]  = {0},
-        .dstOffsets[1]  = {w, h, 1}
-    };
-
-    vkCmdBlitImage(
-        cb, data->vkh_image->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst,
-        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &bregion, VK_FILTER_NEAREST);
-
-    set_image_layout(
-        cb, dst, VK_IMAGE_ASPECT_COLOR_BIT,
-        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
-
-    set_image_layout(
-        cb, data->vkh_image->image, VK_IMAGE_ASPECT_COLOR_BIT,
-        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
-
-    vkh_cmd_end(cb);
-}
-
-gfx::gfx(GPU &win) : gfx() { /// this allocates both gfx_memory and cbase::cdata memory (cbase has data type aliased at cbase::DC)
-    data->win = win;
-    data->device = Device::create(win);
-
-    data->device->postCommands = [data=data](VkImage swapImage, VkCommandBuffer cb) {
-        VkImage dst = swapImage;
-        VkImage src = data->vkh_image->image;
-        int       w = data->win->sz.x;
-        int       h = data->win->sz.y;
-        ///
-		set_image_layout(
-            cb, dst, VK_IMAGE_ASPECT_COLOR_BIT,
-			VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
-
-		set_image_layout(
-            cb, src, VK_IMAGE_ASPECT_COLOR_BIT,
-			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-			VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
-
-		VkImageBlit bregion = { 
-            .srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
-            .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
-            .srcOffsets[0]  = {0},
-            .srcOffsets[1]  = {w, h, 1},
-            .dstOffsets[0]  = {0},
-            .dstOffsets[1]  = {w, h, 1}
-        };
-
-		vkCmdBlitImage(
-            cb, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-            dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &bregion, VK_FILTER_NEAREST);
-
-		set_image_layout(
-            cb, dst, VK_IMAGE_ASPECT_COLOR_BIT,
-			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
-        
-		set_image_layout(cb, src, VK_IMAGE_ASPECT_COLOR_BIT,
-			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
-    };
-
-
-    cbase::data->size = win->sz;
+gfx::gfx(VkEngine e) : gfx() { /// this allocates both gfx_memory and cbase::cdata memory (cbase has data type aliased at cbase::DC)
+    data->e             = e;
+    data->device        = e->vk_device;
+    cbase::data->size.x = e->width;
+    cbase::data->size.y = e->height;
     assert(cbase::data->size.x > 0 && cbase::data->size.y > 0);
 
-    Vulkan     vk;
-    VkInstance instance = vk->inst();
-    
-    /// create multi-sampled vkvg device from our vk instance / init data
-    /// here we lookup maximum sample count supported; this is needed because osme systems only support 1, 2, 4 etc
-    /// 8 is a rare exception, so it should never be hard coded into any engine
-    /// all must be looked up for feature compatibility
-    data->vg_device = vkvg_device_create_from_vk_multisample(
-        instance, win->phy, data->device->device,
-        win->indices.graphicsFamily.value(), // swap?
-        win->indices.presentFamily.value(),  // swap?
-        VkSampleCountFlags(win->getUsableSampling(VK_SAMPLE_COUNT_4_BIT)), false);
-    
-    /// import device from the 'Device' we made (we will merge these APIs asap)
-    data->vkh_device       = vkh_device_import(instance, win->phys, data->device);
-
-    /// create image with vkh, given teh vkh device we imported from our own api
-    data->vkh_image        = vkh_image_create(data->vkh_device,
-        VK_FORMAT_B8G8R8A8_UNORM, u32(win->sz.x), u32(win->sz.y),
+    data->vg_device = vkvg_device_create(e, VK_SAMPLE_COUNT_4_BIT, false);
+    data->vkh_image = vkh_image_create(data->e->dev,
+        VK_FORMAT_B8G8R8A8_UNORM, u32(e->width), u32(e->height),
         VK_IMAGE_TILING_OPTIMAL, VKH_MEMORY_USAGE_GPU_ONLY,
         VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
     
@@ -463,8 +363,8 @@ void vkvg_path(VkvgContext ctx, memory *mem) {
     }
 }
 
-GPU     gfx::window() { return data->win; }
-Device  gfx::device() { return data->device; }
+VkEngine gfx::engine() { return data->e; }
+Device   gfx::device() { return data->device; }
 
 /// Quake2: { computer. updated. }
 void gfx::draw_state_change(draw_state *ds, cbase::state_change type) {
@@ -672,8 +572,10 @@ void app::resize(vec2i &sz, app *app) {
 }
 
 int app::run() {
-    data->win = GPU::select({ 512, 512 }, ResizeFn(app::resize), this);
-    data->canvas = gfx(data->win);
+    data->e = vkengine_create(1, 2, "ux",
+        VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, VK_PRESENT_MODE_FIFO_KHR, VK_SAMPLE_COUNT_4_BIT,
+        512, 512, 0);
+    data->canvas = gfx(data->e);
     ///
     data->canvas->device->loop([&](array<Pipeline>& pipelines) {
         

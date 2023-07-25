@@ -58,16 +58,11 @@ typedef struct _cached_ctx{
 	struct _cached_ctx*	pNext;
 } _cached_ctx;
 
+/// vkvg device is a VkDevice with VkRenderPass and VkPipeline info
 typedef struct _vkvg_device_t {
-	VkDevice				vkDev;					/**< Vulkan Logical Device */
-	VkhPhyInfo				phyinfo;				/// deprecate the lower ones (and fix this cast with delegation)
-	VkPhysicalDeviceMemoryProperties phyMemProps;	/**< Vulkan Physical device memory properties */
-	VkPhysicalDevice		phy;					/**< Vulkan Physical device */
-	VkInstance				instance;				/**< Vulkan instance */
-	VkPhysicalDeviceFeatures supportedFeatures;
-#ifdef VKH_USE_VMA
-	void*					allocator;				/**< Vulkan Memory allocator */
-#endif
+	size_t   				refs;					/**< Reference count, prevent destroying device if still in use */
+	VkDevice				device;					/// only vulkan device is called device
+	VkEngine				e;
 
 	VkImageTiling			supportedTiling;		/**< Supported image tiling for surface, 0xFF=no support */
 	VkFormat				stencilFormat;			/**< Supported vulkan image format for stencil */
@@ -77,13 +72,12 @@ typedef struct _vkvg_device_t {
 
 	mtx_t					mutex;					/**< protect device access (queue, cahes, ...)from ctxs in separate threads */
 	bool					threadAware;			/**< if true, mutex is created and guard device queue and caches access */
-	VkhQueue				gQueue;					/**< Vulkan Queue with Graphic flag */
+	VkhQueue				gQueue;					/**< Redundant: Vulkan Queue with Graphic flag */
 
 	VkRenderPass			renderPass;				/**< Vulkan render pass, common for all surfaces */
 	VkRenderPass			renderPass_ClearStencil;/**< Vulkan render pass for first draw with context, stencil has to be cleared */
 	VkRenderPass			renderPass_ClearAll;	/**< Vulkan render pass for new surface, clear all attacments*/
-
-	uint32_t				references;				/**< Reference count, prevent destroying device if still in use */
+	
 	VkCommandPool			cmdPool;				/**< Global command pool for processing on surfaces without context */
 	VkCommandBuffer			cmd;					/**< Global command buffer */
 	VkFence					fence;					/**< this fence is kept signaled when idle, wait and reset are called before each recording. */
@@ -104,7 +98,7 @@ typedef struct _vkvg_device_t {
 	int						hdpi,					/**< only used for FreeType fonts and svg loading */
 							vdpi;
 
-	VkhDevice				vkhDev;					/**< old VkhDev created during vulkan context creation by @ref vkvg_device_create. */
+	VkhDevice				vkh_device;				/**< old VkhDev created during vulkan context creation by @ref vkvg_device_create. */
 
 	VkhImage				emptyImg;				/**< prevent unbound descriptor to trigger Validation error 61 */
 	VkSampleCountFlags		samples;				/**< samples count common to all surfaces */

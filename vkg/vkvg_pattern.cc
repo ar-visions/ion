@@ -33,7 +33,7 @@ VkvgPattern vkvg_pattern_create_for_surface (VkvgSurface surf){
 	pat->type = VKVG_PATTERN_TYPE_SURFACE;
 	pat->extend = VKVG_EXTEND_NONE;
 	pat->data = surf;
-	pat->references = 1;
+	pat->refs = 1;
 
 	vkvg_surface_reference (surf);
 	if (surf->status)
@@ -77,7 +77,7 @@ VkvgPattern vkvg_pattern_create_linear (float x0, float y0, float x1, float y1){
 
 	if (pat->data) {
 		vkvg_pattern_edit_linear(pat, x0, y0, x1, y1);
-		pat->references = 1;
+		pat->refs = 1;
 	} else
 		pat->status = VKVG_STATUS_NO_MEMORY;
 
@@ -121,7 +121,7 @@ VkvgPattern vkvg_pattern_create_radial (float cx0, float cy0, float radius0,
 
 	if (pat->data) {
 		vkvg_pattern_edit_radial (pat, cx0, cy0, radius0, cx1, cy1, radius1);
-		pat->references = 1;
+		pat->refs = 1;
 	} else
 		pat->status = VKVG_STATUS_NO_MEMORY;
 
@@ -129,13 +129,13 @@ VkvgPattern vkvg_pattern_create_radial (float cx0, float cy0, float radius0,
 }
 VkvgPattern vkvg_pattern_reference (VkvgPattern pat) {
 	if (!pat->status)
-		pat->references++;
+		pat->refs++;
 	return pat;
 }
 uint32_t vkvg_pattern_get_reference_count (VkvgPattern pat) {
 	if (pat->status)
 		return 0;
-	return pat->references;
+	return pat->refs;
 }
 vkvg_status_t vkvg_pattern_add_color_stop (VkvgPattern pat, float offset, float r, float g, float b, float a) {
 	if (pat->status)
@@ -236,8 +236,8 @@ void vkvg_pattern_destroy(VkvgPattern pat)
 {
 	if (pat->status)
 		return;
-	pat->references--;
-	if (pat->references > 0)
+	pat->refs--;
+	if (pat->refs > 0)
 		return;
 
 	if (pat->type == VKVG_PATTERN_TYPE_SURFACE) {

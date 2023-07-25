@@ -281,14 +281,14 @@ void _font_cache_update_context_descset (VkvgContext ctx) {
 	if (ctx->fontCacheImg)
 		vkh_image_destroy (ctx->fontCacheImg);
 
-	LOCK_FONTCACHE (ctx->dev)
+	LOCK_FONTCACHE (ctx->vkvg)
 
-	ctx->fontCacheImg = ctx->dev->fontCache->texture;
+	ctx->fontCacheImg = ctx->vkvg->fontCache->texture;
 	vkh_image_reference (ctx->fontCacheImg);
 
 	_update_descriptor_set (ctx, ctx->fontCacheImg, ctx->dsFont);
 
-	UNLOCK_FONTCACHE (ctx->dev)
+	UNLOCK_FONTCACHE (ctx->vkvg)
 }
 //create a new char entry and put glyph in stagging buffer, ready for upload.
 _char_ref* _prepare_char (VkvgDevice dev, VkvgText tr, uint32_t gindex){
@@ -391,7 +391,7 @@ bool _font_cache_load_font_file_in_memory (_vkvg_font_identity_t* fontId) {
 	return true;
 }
 _vkvg_font_identity_t* _font_cache_add_font_identity (VkvgContext ctx, const char* fontFilePath, const char* name){
-	_font_cache_t*	cache = (_font_cache_t*)ctx->dev->fontCache;
+	_font_cache_t*	cache = (_font_cache_t*)ctx->vkvg->fontCache;
 	if (++cache->fontsCount == 1)
 		cache->fonts = (_vkvg_font_identity_t*) malloc (cache->fontsCount * sizeof(_vkvg_font_identity_t));
 	else
@@ -424,9 +424,9 @@ _vkvg_font_t* _find_or_create_font_size (VkvgContext ctx) {
 		font->sizes = (_vkvg_font_t*) realloc (font->sizes, font->sizeCount * sizeof(_vkvg_font_t));
 	_vkvg_font_t newSize = {.charSize = ctx->selectedCharSize};
 
-	VkvgDevice dev = ctx->dev;
+	VkvgDevice dev = ctx->vkvg;
 #ifdef VKVG_USE_FREETYPE
-	_font_cache_t*	cache = (_font_cache_t*)ctx->dev->fontCache;
+	_font_cache_t*	cache = (_font_cache_t*)ctx->vkvg->fontCache;
 	FT_CHECK_RESULT(FT_New_Memory_Face (cache->library, font->fontBuffer, font->fontBufSize, 0, &newSize.face));
 	FT_CHECK_RESULT(FT_Set_Char_Size(newSize.face, 0, newSize.charSize, dev->hdpi, dev->vdpi ));
 
@@ -465,7 +465,7 @@ _vkvg_font_t* _find_or_create_font_size (VkvgContext ctx) {
 
 //try find font already resolved with fontconfig by font name
 bool _tryFindFontByName (VkvgContext ctx, _vkvg_font_identity_t** font){
-	_font_cache_t*	cache = ctx->dev->fontCache;
+	_font_cache_t*	cache = ctx->vkvg->fontCache;
 	for (int i = 0; i < cache->fontsCount; ++i) {
 		for (uint32_t j = 0; j < cache->fonts[i].namesCount; j++) {
 			if (strcmp (cache->fonts[i].names[j], ctx->selectedFontName) == 0) {
@@ -479,7 +479,7 @@ bool _tryFindFontByName (VkvgContext ctx, _vkvg_font_identity_t** font){
 
 #ifdef VKVG_USE_FONTCONFIG
 bool _tryResolveFontNameWithFontConfig (VkvgContext ctx, _vkvg_font_identity_t** resolvedFont) {
-	_font_cache_t*	cache = (_font_cache_t*)ctx->dev->fontCache;
+	_font_cache_t*	cache = (_font_cache_t*)ctx->vkvg->fontCache;
 	char* fontFile = NULL;
 
 	FcPattern* pat = FcNameParse((const FcChar8*)ctx->selectedFontName);
@@ -518,7 +518,7 @@ bool _tryResolveFontNameWithFontConfig (VkvgContext ctx, _vkvg_font_identity_t**
 //try to find corresponding font in cache (defined by context selectedFont) and create a new font entry if not found.
 void _update_current_font (VkvgContext ctx) {
 	if (ctx->currentFont == NULL){
-		LOCK_FONTCACHE(ctx->dev)
+		LOCK_FONTCACHE(ctx->vkvg)
 		if (ctx->selectedFontName[0] == 0)
 			_select_font_face (ctx, "sans");
 
@@ -527,14 +527,14 @@ void _update_current_font (VkvgContext ctx) {
 			_tryResolveFontNameWithFontConfig (ctx, &ctx->currentFont);
 #else
 			LOG(VKVG_LOG_ERR, "Unresolved font: %s\n", ctx->selectedFontName);
-			UNLOCK_FONTCACHE(ctx->dev)
+			UNLOCK_FONTCACHE(ctx->vkvg)
 			ctx->status = VKVG_STATUS_INVALID_FONT;
 			return;
 #endif
 		}
 
 		ctx->currentFontSize = _find_or_create_font_size (ctx);
-		UNLOCK_FONTCACHE(ctx->dev)
+		UNLOCK_FONTCACHE(ctx->vkvg)
 	}	
 }
 
@@ -615,9 +615,9 @@ void _font_cache_create_text_run (VkvgContext ctx, const char* text, int length,
 
 	textRun->fontId = ctx->currentFont;
 	textRun->font = ctx->currentFontSize;
-	textRun->dev = ctx->dev;
+	textRun->dev = ctx->vkvg;
 
-	LOCK_FONTCACHE (ctx->dev)
+	LOCK_FONTCACHE (ctx->vkvg)
 
 #ifdef VKVG_USE_HARFBUZZ
 	textRun->hbBuf = _get_hb_buffer (ctx->currentFontSize, text,  length);
@@ -652,7 +652,7 @@ void _font_cache_create_text_run (VkvgContext ctx, const char* text, int length,
 	free (tmp);
 #endif
 	
-	UNLOCK_FONTCACHE (ctx->dev)
+	UNLOCK_FONTCACHE (ctx->vkvg)
 
 	unsigned int string_width_in_pixels = 0;
 	for (uint32_t i=0; i < textRun->glyph_count; ++i)
@@ -714,7 +714,7 @@ void _font_cache_show_text_run (VkvgContext ctx, VkvgText tr) {
 	if (!_current_path_is_empty(ctx))
 		pen = _get_current_position(ctx);
 
-	LOCK_FONTCACHE (ctx->dev)
+	LOCK_FONTCACHE (ctx->vkvg)
 
 	for (uint32_t i=0; i < glyph_count; ++i) {
 		_char_ref* cr = tr->font->charLookup[glyph_info[i].codepoint];
@@ -762,9 +762,9 @@ void _font_cache_show_text_run (VkvgContext ctx, VkvgText tr) {
 	_finish_path(ctx);
 	_add_point (ctx, pen.x, pen.y);
 	_flush_chars_to_tex(tr->dev, tr->font);	
-	UNLOCK_FONTCACHE (ctx->dev)
+	UNLOCK_FONTCACHE (ctx->vkvg)
 
-	if (ctx->fontCacheImg != ctx->dev->fontCache->texture) {
+	if (ctx->fontCacheImg != ctx->vkvg->fontCache->texture) {
 		vkvg_flush (ctx);
 		_font_cache_update_context_descset (ctx);
 	}

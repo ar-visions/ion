@@ -181,7 +181,7 @@ int main(int argc, char* argv[]) {
 
 	_parse_args (argc, argv);
 	VkEngine e;
-	e = vkengine_create (VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, VK_PRESENT_MODE_FIFO_KHR, test_width, test_height);
+	e = vkengine_create (VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, VK_PRESENT_MODE_FIFO_KHR, samples, test_width, test_height);
 
 	VkhPresenter r = e->renderer;
 	vkengine_set_key_callback (e, key_callback);
@@ -194,7 +194,7 @@ int main(int argc, char* argv[]) {
 	/// VkInstance is not part of the abstract in vkg/vkh/device/phys we use VkEngine
 	/// this way we know the scale and hardware constraints
 	/// i think it should replace the 'select' in GPU too
-	device = vkvg_device_create_from_vk_multisample(e, r->dev->phy, r->dev->dev, r->qFam, 0, samples, deferredResolve);
+	device = e->dev;
 	surf = vkvg_surface_create(device, test_width, test_height);
 
 	vkh_presenter_build_blit_cmd (r, vkvg_surface_get_vk_image(surf), test_width, test_height);
@@ -209,11 +209,11 @@ int main(int argc, char* argv[]) {
 			vkvg_surface_destroy (surf);
 			surf = vkvg_surface_create(device, test_width, test_height);
 			vkh_presenter_build_blit_cmd (r, vkvg_surface_get_vk_image(surf), test_width, test_height);
-			vkDeviceWaitIdle(r->dev->dev);
+			vkDeviceWaitIdle(r->dev->device);
 			continue;
 		}
 	}
-	vkDeviceWaitIdle(e->dev->dev);
+	vkDeviceWaitIdle(e->vkh_dev->device);
 
 	vkvg_surface_destroy    (surf);
 

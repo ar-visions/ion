@@ -227,8 +227,8 @@ void vkvg_surface_destroy(VkvgSurface surf)
 		return;
 
 	LOCK_SURFACE(surf)
-	surf->references--;
-	if (surf->references > 0) {
+	surf->refs--;
+	if (surf->refs > 0) {
 		UNLOCK_SURFACE(surf)
 		return;
 	}
@@ -259,7 +259,7 @@ void vkvg_surface_destroy(VkvgSurface surf)
 VkvgSurface vkvg_surface_reference (VkvgSurface surf) {
 	if (!surf->status) {
 		LOCK_SURFACE(surf)
-		surf->references++;
+		surf->refs++;
 		UNLOCK_SURFACE(surf)
 	}
 	return surf;
@@ -267,7 +267,7 @@ VkvgSurface vkvg_surface_reference (VkvgSurface surf) {
 uint32_t vkvg_surface_get_reference_count (VkvgSurface surf) {
 	if (surf->status)
 		return 0;
-	return surf->references;
+	return surf->refs;
 }
 
 VkImage vkvg_surface_get_vk_image(VkvgSurface surf)
@@ -419,7 +419,7 @@ vkvg_status_t vkvg_surface_write_to_memory (VkvgSurface surf, unsigned char* con
 	VkvgDevice dev = surf->dev;
 
 	//RGBA to blit to, surf img is bgra
-	VkhImage stagImg= vkh_image_create ((VkhDevice)surf->dev,VK_FORMAT_B8G8R8A8_UNORM ,surf->width,surf->height,VK_IMAGE_TILING_LINEAR,
+	VkhImage stagImg= vkh_image_create ((VkhDevice)surf->dev, VK_FORMAT_B8G8R8A8_UNORM ,surf->width,surf->height,VK_IMAGE_TILING_LINEAR,
 										 VKH_MEMORY_USAGE_GPU_TO_CPU,
 										 VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT);
 

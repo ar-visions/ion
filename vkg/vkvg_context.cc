@@ -65,16 +65,16 @@ void _init_ctx (VkvgContext ctx) {
 	LOCK_SURFACE (ctx->pSurf)
 
 	if (ctx->pSurf->newSurf)
-		ctx->renderPassBeginInfo.renderPass = ctx->dev->renderPass_ClearAll;
+		ctx->renderPassBeginInfo.renderPass = ctx->vkvg->renderPass_ClearAll;
 	else
-		ctx->renderPassBeginInfo.renderPass = ctx->dev->renderPass_ClearStencil;
+		ctx->renderPassBeginInfo.renderPass = ctx->vkvg->renderPass_ClearStencil;
 	ctx->pSurf->newSurf = false;
 
 	UNLOCK_SURFACE (ctx->pSurf);
 
 	vkvg_surface_reference (ctx->pSurf);
 
-	if (ctx->dev->samples == VK_SAMPLE_COUNT_1_BIT)
+	if (ctx->vkvg->samples == VK_SAMPLE_COUNT_1_BIT)
 		ctx->renderPassBeginInfo.clearValueCount = 2;
 	else
 		ctx->renderPassBeginInfo.clearValueCount = 3;
@@ -132,7 +132,7 @@ VkvgContext vkvg_create(VkvgSurface surf)
 	ctx->sizePathes		= VKVG_PATHES_SIZE;
 	ctx->renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
 
-	ctx->dev = surf->dev;
+	ctx->vkvg = surf->dev;
 
 	_init_ctx (ctx);
 
@@ -158,7 +158,7 @@ VkvgContext vkvg_create(VkvgSurface surf)
 	ctx->cmdPool	= vkh_cmd_pool_create ((VkhDevice)dev, dev->gQueue->familyIndex, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
 
 #ifndef VKVG_ENABLE_VK_TIMELINE_SEMAPHORE
-	ctx->flushFence	= vkh_fence_create_signaled ((VkhDevice)ctx->dev);
+	ctx->flushFence	= vkh_fence_create_signaled ((VkhDevice)ctx->vkvg);
 #endif
 
 	_create_vertices_buff	(ctx);
@@ -174,7 +174,7 @@ VkvgContext vkvg_create(VkvgSurface surf)
 
 	ctx->cmd = ctx->cmdBuffers[0];//current recording buffer
 
-	ctx->references = 1;
+	ctx->refs = 1;
 	ctx->status = VKVG_STATUS_SUCCESS;
 
 	LOG(VKVG_LOG_DBG_ARRAYS, "INIT\tctx = %p; pathes:%ju pts:%ju vch:%d vbo:%d ich:%d ibo:%d\n", ctx,
@@ -247,8 +247,8 @@ void _clear_context (VkvgContext ctx) {
 	}
 
 	//remove context from double linked list of context in device
-	/*if (ctx->dev->lastCtx == ctx){
-		ctx->dev->lastCtx = ctx->pPrev;
+	/*if (ctx->vkvg->lastCtx == ctx){
+		ctx->vkvg->lastCtx = ctx->pPrev;
 		if (ctx->pPrev != NULL)
 			ctx->pPrev->pNext = NULL;
 	}else if (ctx->pPrev == NULL){
@@ -269,8 +269,8 @@ void vkvg_destroy (VkvgContext ctx)
 	if (ctx->status)
 		return;
 
-	ctx->references--;
-	if (ctx->references > 0)
+	ctx->refs--;
+	if (ctx->refs > 0)
 		return;
 
 	LOG(VKVG_LOG_INFO, "DESTROY Context: ctx = %p (status:%d); surf = %p\n", ctx, ctx->status, ctx->pSurf);
@@ -290,10 +290,10 @@ void vkvg_destroy (VkvgContext ctx)
 	_clear_context (ctx);
 
 #if VKVG_DBG_STATS
-	if (ctx->dev->threadAware)
-		mtx_lock (&ctx->dev->mutex);
+	if (ctx->vkvg->threadAware)
+		mtx_lock (&ctx->vkvg->mutex);
 	
-	vkvg_debug_stats_t* dbgstats = &ctx->dev->debug_stats;
+	vkvg_debug_stats_t* dbgstats = &ctx->vkvg->debug_stats;
 	if (dbgstats->sizePoints < ctx->sizePoints)
 		dbgstats->sizePoints = ctx->sizePoints;
 	if (dbgstats->sizePathes < ctx->sizePathes)
@@ -307,13 +307,13 @@ void vkvg_destroy (VkvgContext ctx)
 	if (dbgstats->sizeIBO < ctx->sizeIBO)
 		dbgstats->sizeIBO = ctx->sizeIBO;
 
-	if (ctx->dev->threadAware)
-		mtx_unlock (&ctx->dev->mutex);
+	if (ctx->vkvg->threadAware)
+		mtx_unlock (&ctx->vkvg->mutex);
 #endif
 
 	vkvg_surface_destroy(ctx->pSurf);
 
-	if (!ctx->status && ctx->dev->cachedContextCount < VKVG_MAX_CACHED_CONTEXT_COUNT) {
+	if (!ctx->status && ctx->vkvg->cachedContextCount < VKVG_MAX_CACHED_CONTEXT_COUNT) {
 		_device_store_context (ctx);
 		return;
 	}
@@ -341,13 +341,13 @@ vkvg_status_t vkvg_status (VkvgContext ctx) {
 }
 VkvgContext vkvg_reference (VkvgContext ctx) {
 	if (!ctx->status)
-		ctx->references++;
+		ctx->refs++;
 	return ctx;
 }
 uint32_t vkvg_get_reference_count (VkvgContext ctx) {
 	if (ctx->status)
 		return 0;
-	return ctx->references;
+	return ctx->refs;
 }
 void vkvg_new_sub_path (VkvgContext ctx){
 	if (ctx->status)
@@ -731,7 +731,7 @@ void _reset_clip (VkvgContext ctx) {
 	if (!ctx->cmdStarted) {
 		//if command buffer is not already started and in a renderpass, we use the renderpass
 		//with the loadop clear for stencil
-		ctx->renderPassBeginInfo.renderPass = ctx->dev->renderPass_ClearStencil;
+		ctx->renderPassBeginInfo.renderPass = ctx->vkvg->renderPass_ClearStencil;
 		//force run of one renderpass (even empty) to perform clear load op
 		_start_cmd_for_render_pass(ctx);
 		return;
@@ -767,7 +767,7 @@ void vkvg_clear (VkvgContext ctx){
 
 	_emit_draw_cmd_undrawn_vertices(ctx);
 	if (!ctx->cmdStarted) {
-		ctx->renderPassBeginInfo.renderPass = ctx->dev->renderPass_ClearAll;
+		ctx->renderPassBeginInfo.renderPass = ctx->vkvg->renderPass_ClearAll;
 		_start_cmd_for_render_pass(ctx);
 		return;
 	}
@@ -792,9 +792,9 @@ void _clip_preserve (VkvgContext ctx){
 
 	if (ctx->curFillRule == VKVG_FILL_RULE_EVEN_ODD){
 		_poly_fill				(ctx, NULL);
-		CmdBindPipeline			(ctx->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->dev->pipelineClipping);
+		CmdBindPipeline			(ctx->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->vkvg->pipelineClipping);
 	}else{
-		CmdBindPipeline			(ctx->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->dev->pipelineClipping);
+		CmdBindPipeline			(ctx->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->vkvg->pipelineClipping);
 		CmdSetStencilReference	(ctx->cmd, VK_STENCIL_FRONT_AND_BACK, STENCIL_FILL_BIT);
 		CmdSetStencilCompareMask(ctx->cmd, VK_STENCIL_FRONT_AND_BACK, STENCIL_CLIP_BIT);
 		CmdSetStencilWriteMask	(ctx->cmd, VK_STENCIL_FRONT_AND_BACK, STENCIL_FILL_BIT);
@@ -1276,7 +1276,7 @@ void vkvg_save (VkvgContext ctx){
 	RECORD(ctx, VKVG_CMD_SAVE);
 	LOG(VKVG_LOG_INFO, "SAVE CONTEXT: ctx = %p\n", ctx);
 
-	VkvgDevice dev = ctx->dev;
+	VkvgDevice dev = ctx->vkvg;
 	vkvg_context_save_t* sav = (vkvg_context_save_t*)calloc(1,sizeof(vkvg_context_save_t));
 
 	_flush_cmd_buff (ctx);
@@ -1349,7 +1349,7 @@ void vkvg_save (VkvgContext ctx){
 		vkh_cmd_label_start(ctx->cmd, "save rp", DBG_LAB_COLOR_SAV);
 	#endif
 
-		CmdBindPipeline			(ctx->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->dev->pipelineClipping);
+		CmdBindPipeline			(ctx->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->vkvg->pipelineClipping);
 
 		CmdSetStencilReference	(ctx->cmd, VK_STENCIL_FRONT_AND_BACK, STENCIL_CLIP_BIT|curSaveBit);
 		CmdSetStencilCompareMask(ctx->cmd, VK_STENCIL_FRONT_AND_BACK, STENCIL_CLIP_BIT);
@@ -1434,7 +1434,7 @@ void vkvg_restore (VkvgContext ctx){
 			vkh_cmd_label_start(ctx->cmd, "restore rp", DBG_LAB_COLOR_SAV);
 #endif
 
-			CmdBindPipeline			(ctx->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->dev->pipelineClipping);
+			CmdBindPipeline			(ctx->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx->vkvg->pipelineClipping);
 
 			CmdSetStencilReference	(ctx->cmd, VK_STENCIL_FRONT_AND_BACK, STENCIL_CLIP_BIT|curSaveBit);
 			CmdSetStencilCompareMask(ctx->cmd, VK_STENCIL_FRONT_AND_BACK, curSaveBit);
@@ -1468,10 +1468,10 @@ void vkvg_restore (VkvgContext ctx){
 			vkh_cmd_label_start(ctx->cmd, "additional stencil copy while restoring", DBG_LAB_COLOR_SAV);
 #endif
 
-			vkh_image_set_layout (ctx->cmd, ctx->pSurf->stencil, ctx->dev->stencilAspectFlag,
+			vkh_image_set_layout (ctx->cmd, ctx->pSurf->stencil, ctx->vkvg->stencilAspectFlag,
 								  VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 								  VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
-			vkh_image_set_layout (ctx->cmd, savStencil, ctx->dev->stencilAspectFlag,
+			vkh_image_set_layout (ctx->cmd, savStencil, ctx->vkvg->stencilAspectFlag,
 								  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 								  VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
 
@@ -1482,7 +1482,7 @@ void vkvg_restore (VkvgContext ctx){
 						   vkh_image_get_vkimage (savStencil),		 VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 						   vkh_image_get_vkimage (ctx->pSurf->stencil),VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 						   1, &cregion);
-			vkh_image_set_layout (ctx->cmd, ctx->pSurf->stencil, ctx->dev->stencilAspectFlag,
+			vkh_image_set_layout (ctx->cmd, ctx->pSurf->stencil, ctx->vkvg->stencilAspectFlag,
 								  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
 								  VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT);
 

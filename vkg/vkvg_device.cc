@@ -26,7 +26,10 @@
 #include <vkh/vkh_queue.h>
 #include <vkh/vkh_phyinfo.h>
 
-
+#define TRY_LOAD_DEVICE_EXT(ext) {								\
+if (vkh_phyinfo_try_get_extension_properties(pi, #ext, NULL))	\
+	enabledExts[enabledExtsCount++] = #ext;						\
+}
 void vkvg_device_set_context_cache_size (VkvgDevice dev, uint32_t maxCount) {
 	if (maxCount == dev->cachedContextMaxCount)
 		return;
@@ -43,19 +46,25 @@ void vkvg_device_set_context_cache_size (VkvgDevice dev, uint32_t maxCount) {
 	}
 	dev->cachedContextLast = cur;
 }
-void _device_init (VkvgDevice dev, VkInstance inst, VkPhysicalDevice phy, VkDevice vkdev, uint32_t qFamIdx, uint32_t qIndex, VkSampleCountFlags samples, bool deferredResolve) {
-	dev->vkDev	= vkdev;
-	dev->phy	= phy;
-	dev->instance = inst;
-	dev->hdpi	= 72;
-	dev->vdpi	= 72;
-	dev->samples= samples;
-	if (dev->samples == VK_SAMPLE_COUNT_1_BIT)
-		dev->deferredResolve = false;
-	else
-		dev->deferredResolve = deferredResolve;
 
-	dev->cachedContextMaxCount = VKVG_MAX_CACHED_CONTEXT_COUNT;
+//VkPhysicalDeviceType preferedGPU, VkPresentModeKHR presentMode, uint32_t width, uint32_t height, 0
+VkvgDevice vkvg_device_create (VkEngine e, VkSampleCountFlags samples, bool deferredResolve) {
+	LOG(VKVG_LOG_INFO, "CREATE Device\n");
+	VkvgDevice dev  		= (vkvg_device*)calloc(1,sizeof(vkvg_device));
+
+	dev->refs 				= 1;
+	dev->e 					= e;
+	dev->dev 				= e->vk_device->device;
+	dev->phy				= e->vk_device->phys;
+	dev->phyinfo 			= e->pi; /// this temporary phyinfo did not need to be created; we have it already in VkEngine
+	dev->phyMemProps 		= phyInfos->memProps;
+	dev->instance 			= e->inst;
+	dev->hdpi				= 72; /// these dont match other dpis of 96 else-where; it should be looked up from phys and dpi
+	dev->vdpi				= 72;
+	dev->samples			= samples;
+	dev->deferredResolve	= (dev->samples == VK_SAMPLE_COUNT_1_BIT) ? false : deferredResolve;
+
+	dev->cachedContextMaxCount 	= VKVG_MAX_CACHED_CONTEXT_COUNT;
 
 #if VKVG_DBG_STATS
 	dev->debug_stats = (vkvg_debug_stats_t) {0};
@@ -72,14 +81,8 @@ void _device_init (VkvgDevice dev, VkInstance inst, VkPhysicalDevice phy, VkDevi
 		return;
 	}
 
-	VkhPhyInfo phyInfos = vkh_phyinfo_create (dev->phy, NULL);
-	vkh_phyinfo_drop(dev->phyinfo);
-	dev->phyinfo = vkh_phyinfo_grab(phyInfos);
-	dev->phyMemProps = phyInfos->memProps;
 	dev->gQueue = vkh_queue_create ((VkhDevice)dev, qFamIdx, qIndex);
 	//mtx_init (&dev->gQMutex, mtx_plain);
-
-	vkh_phyinfo_drop (phyInfos);
 
 #ifdef VKH_USE_VMA
 	VmaAllocatorCreateInfo allocatorInfo = {
@@ -106,7 +109,6 @@ void _device_init (VkvgDevice dev, VkInstance inst, VkPhysicalDevice phy, VkDevi
 	}
 	_device_createDescriptorSetLayout	(dev);
 	_device_setupPipelines				(dev);
-
 	_device_create_empty_texture		(dev, format, dev->supportedTiling);
 
 #ifdef DEBUG
@@ -137,32 +139,17 @@ void _device_init (VkvgDevice dev, VkInstance inst, VkPhysicalDevice phy, VkDevi
 		vkh_device_set_object_name((VkhDevice)dev, VK_OBJECT_TYPE_SAMPLER, (uint64_t)vkh_image_get_sampler(dev->emptyImg), "empty IMG SAMPLER");
 	#endif
 #endif
+
 	dev->status = VKVG_STATUS_SUCCESS;
-}
-
-VkvgDevice vkvg_device_create_from_vk(VkInstance inst, VkPhysicalDevice phy, VkDevice vkdev, uint32_t qFamIdx, uint32_t qIndex)
-{
-	return vkvg_device_create_from_vk_multisample (inst,phy,vkdev,qFamIdx,qIndex, VK_SAMPLE_COUNT_1_BIT, false);
-}
-
-VkvgDevice vkvg_device_create_from_vk_multisample(VkInstance inst, VkPhysicalDevice phy, VkDevice vkdev, uint32_t qFamIdx, uint32_t qIndex, VkSampleCountFlags samples, bool deferredResolve)
-{
-	LOG(VKVG_LOG_INFO, "CREATE Device from vk: qFam = %d; qIdx = %d\n", qFamIdx, qIndex);
-	VkvgDevice dev = (vkvg_device*)calloc(1,sizeof(vkvg_device));
-	if (!dev) {
-		LOG(VKVG_LOG_ERR, "CREATE Device failed, no memory\n");
-		exit(-1);
-	}
-	dev->references = 1;
-	_device_init(dev, inst, phy, vkdev, qFamIdx, qIndex, samples, deferredResolve);
+	dev->vkh = vkh_device_grab(e->vkh); /// e->dev is VkhDevice
 	return dev;
 }
 
 void vkvg_device_destroy (VkvgDevice dev)
 {
 	LOCK_DEVICE
-	dev->references--;
-	if (dev->references > 0) {
+	dev->refs--;
+	if (dev->refs > 0) {
 		UNLOCK_DEVICE
 		return;
 	}
@@ -225,9 +212,9 @@ void vkvg_device_destroy (VkvgDevice dev)
 	if (dev->threadAware)
 		mtx_destroy (&dev->mutex);
 
-	if (dev->vkhDev) {
-		VkEngine e = vkh_device_get_engine(dev->vkhDev);
-		vkh_device_destroy (dev->vkhDev);
+	if (dev->vkh) {
+		VkEngine e = vkh_device_get_engine(dev->vkh);
+		vkh_device_drop (dev->vkh);
 		vkengine_drop (e);
 	}
 
@@ -239,12 +226,12 @@ vkvg_status_t vkvg_device_status (VkvgDevice dev) {
 }
 VkvgDevice vkvg_device_reference (VkvgDevice dev) {
 	LOCK_DEVICE
-	dev->references++;
+	dev->refs++;
 	UNLOCK_DEVICE
 	return dev;
 }
 uint32_t vkvg_device_get_reference_count (VkvgDevice dev) {
-	return dev->references;
+	return dev->refs;
 }
 void vkvg_device_set_dpy (VkvgDevice dev, int hdpy, int vdpy) {
 	dev->hdpi = hdpy;

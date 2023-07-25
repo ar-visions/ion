@@ -586,57 +586,8 @@ void vkvg_device_set_context_cache_size (VkvgDevice dev, uint32_t maxCount);
  * to #vkvg_surface_resolve() or
  */
 vkvg_public
-VkvgDevice vkvg_device_create (VkSampleCountFlags samples, bool deferredResolve);
-/**
- * @brief Create a new vkvg device from an existing vulkan logical device.
- *
- * Create a new #VkvgDevice connected to the vulkan context define by an instance,
- * a physical device, a logical device, a graphical queue family index and an its index.
- *
- * On success, create a new vkvg device and set its reference count to 1.
- * On error, query the device status by calling #vkvg_device_status(). Error could be
- * one of the following:
- * - VKVG_STATUS_INVALID_FORMAT: the combination of image format and tiling is not supported
- * - VKVG_STATUS_NULL_POINTER: vulkan function pointer fetching failed.
- *
- * @param inst a valid Vulkan instance to create the device from.
- * @param phy Vulkan physical device used to create the vkvg device.
- * @param vkdev Vulkan logical device to create the vkvg device for.
- * @param qFamIdx Queue family Index of the graphic queue used for drawing operations.
- * @param qIndex Index of the queue into the choosen familly, 0 in general.
- * @return The handle of the created vkvg device, or null if an error occured.
- */
-vkvg_public
-VkvgDevice vkvg_device_create_from_vk (VkInstance inst, VkPhysicalDevice phy, VkDevice vkdev, uint32_t qFamIdx, uint32_t qIndex);
-/**
- * @brief Create a new multisampled vkvg device.
- *
- * This function allows to create vkvg device for working with multisampled surfaces.
- * Multisampling is used to smooth color transitions in drawings, making lines not pixelised and
- * diagonal edges not stepped. Multisampling has a performance cost.
- * The final image of the surface, accessible by the user will be a resolved single sampled image.
- *
- * @param inst Vulkan instance to create the device from.
- * @param phy Vulkan physical device used to create the vkvg device.
- * @param vkdev Vulkan logical device to create the vkvg device for.
- * @param qFamIdx Queue family Index of the graphic queue used for drawing operations.
- * @param qIndex Index of the queue into the choosen familly, 0 in general.
- * @param samples The sample count that will be setup for the surfaces created by this device.
- * @param deferredResolve If true, the final simple sampled image of the surface will only be resolved on demand
- * when calling @ref vkvg_surface_get_vk_image or by explicitly calling @ref vkvg_multisample_surface_resolve. If false, multisampled image is resolved on each draw operation.
- * @return The handle of the created vkvg device, or null if an error occured.
- */
-vkvg_public
-VkvgDevice vkvg_device_create_from_vk_multisample (VkInstance inst, VkPhysicalDevice phy, VkDevice vkdev, uint32_t qFamIdx, uint32_t qIndex, VkSampleCountFlags samples, bool deferredResolve);
-/**
- * @brief Decrement the reference count of the device by 1. Release all its resources if count reaches 0.
- *
- * If device is referenced by several active surfaces, calling destroy will only decrement the reference count by 1.
- * When the reference count reaches 0, the vkvg device is effectively destroyed, the device pointer is freed, and
- * vulkan objects are released.
- * Vkvg Devices has to stay active as long as surfaces created by it are used.
- * @param dev The vkvg device to destroy.
- */
+VkvgDevice vkvg_device_create (VkEngine e, VkSampleCountFlags samples, bool deferredResolve);
+
 vkvg_public
 void vkvg_device_destroy (VkvgDevice dev);
 /**

@@ -187,7 +187,7 @@ VkvgSurface _create_surface (VkvgDevice dev, VkFormat format) {
 	if (!surf)
 		return (VkvgSurface)&_no_mem_status;
 
-	surf->references = 1;
+	surf->refs = 1;
 	if (dev->status != VKVG_STATUS_SUCCESS) {
 		surf->status = VKVG_STATUS_DEVICE_ERROR;
 		return surf;

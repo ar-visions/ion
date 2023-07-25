@@ -56,7 +56,7 @@ VkvgSurface _svg_load (VkvgDevice dev, NSVGimage* svg) {
 
 	nsvgDelete(svg);
 
-	surf->references = 1;
+	surf->refs = 1;
 	vkvg_device_reference (surf->dev);
 
 	return surf;
