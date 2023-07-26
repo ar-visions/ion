@@ -322,7 +322,7 @@ ssize_t sock::send(str templ, array<mx> args) {
 
 /// for already string-like memory; this could do something with the type on mx
 ssize_t sock::send(mx &v) {
-    return send((u8*)v.mem->origin, v.count() * v.type_size());
+    return send((u8*)v.mem->origin, v.count() * v.mem->type->size()); /// total_size if it has a schema, base_sz otherwise
 }
 
 void sock::load_certs(str host) {

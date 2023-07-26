@@ -415,8 +415,8 @@ struct Element:mx {
     struct edata {
         type_t           type;     /// type given
         memory*          id;       /// identifier 
-        ax               args;     /// ax = better than args
-        array<Element>  *children; /// 
+        ax               args;     /// arguments
+        array<Element>  *children; /// children elements (if provided in children { } pair<mx,mx> inherited data struct; sets key='children')
         node*            instance; /// node instance is 1:1
         map<node*>       mounts;   /// store instances of nodes in element data, so the cache management can go here where element turns to node
         node*            parent;
@@ -426,7 +426,10 @@ struct Element:mx {
     };
 
     /// default case when there is no render()
-    array<Element> &children() { return *data->children; }
+    array<Element> &children() {
+        static array<Element> e;
+        return data->children ? *data->children : e;
+    }
 
     mx_object(Element, mx, edata);
     //movable(Element);
@@ -471,10 +474,9 @@ struct Element:mx {
         return res;
     }
 
-    mx node() {
-        assert(false);
-        return mx();
-        ///return type->ctr();
+    /// the element can create its instance.. that instance is a sub-class of Element too so we use a forward
+    struct node *new_instance() {
+        return (struct node*)data->type->functions->alloc_new((struct node*)null, (struct node*)null);
     }
 };
 
@@ -872,12 +874,11 @@ struct node:Element {
         rectd               container;  /// the parent child rectangle
         int                 tab_index;  /// if 0, this is default; its all relative numbers we dont play absolutes.
         states<interaction> istates;    /// interaction states; these are referenced in qualifiers
-        vec2d                cursor;     /// set relative to the area origin
-        vec2d                scroll = {0,0};
+        vec2d               cursor;     /// set relative to the area origin
+        vec2d               scroll = {0,0};
         std::queue<fn_t>    queue;      /// this is an animation queue
         bool                active;
         bool                focused;
-        type_t              type;       /// this is the type of node, as stored by the initializer of this data
         mx                  content;
         mx                  bind;       /// bind is useful to be in mx form, as any object can be key then.
 
@@ -1272,7 +1273,8 @@ struct style:mx {
     using intern         = D;\
     intern* state;\
     C(memory*         mem) : B(mem), state(mx::data<D>()) { }\
-    C(initial<arg>  props) : B(typeof(C), props) { }\
+    C(type_t ty, initial<arg>  props) : B(ty,        props), state(defaults<intern>()) { }\
+    C(initial<arg>  props) :            B(typeof(C), props), state(defaults<intern>()) { }\
     C(mx                o) : C(o.mem->grab())  { }\
     C()                    : C(mx::alloc<C>()) { }\
     intern    &operator *() { return *state; }\
@@ -1536,36 +1538,7 @@ struct composer:mx {
     ///
     mx_object(composer, mx, cdata);
     ///
-    void update(Element e) {
-        auto fn = [&](node *instance, Element &e) {
-            bool different = !instance;
-            if (!different) {
-                /// instance != null, so we can check attributes
-                /// compare args for diffs
-                array<arg> &p = (*(Element*)instance)->args;
-                array<arg> &n = e->args;
-                size_t   plen = p.len();
-                different = plen != n.len();
-                if (!different) {
-                    /// no reason to check ordering here
-                    /// if the ordering is different then its different.
-                    /// no reason to be obtuse
-                    /// check pairs one by one; key against key, then value against value
-                    for (size_t i = 0; i < plen; i++) {
-                        arg &p_pair = p[i];
-                        arg &n_pair = n[i];
-                        if (p_pair.key   != n_pair.key || 
-                            p_pair.value != n_pair.value) {
-                            different = true;
-                            break;
-                        }
-                    }
-                }
-            }
-        };
-        fn(data->root_instance, e);
-        return ;
-    }
+    void update(Element e);
     ///
     array<node *> select_at(vec2d cur, bool active = true) {
         array<node*> inside = data->root_instance->select([&](node *n) {

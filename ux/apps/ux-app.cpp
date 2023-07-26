@@ -22,6 +22,7 @@ struct ux_view:node {
                 prop { "handler", handler}
             };
         }
+        type_register(props);
     };
 
     component(ux_view, node, props);
@@ -47,8 +48,8 @@ struct ux_view:node {
 int main() {
     return app([](app &ctx) -> Element {
         return ux_view {
-            { "id",     "main"  },
-            { "sample",  int(2) }
+            arg { "id",     "main"  },
+            arg { "sample",  int(2) }
         };
     });
 }

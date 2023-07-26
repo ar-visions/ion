@@ -618,6 +618,93 @@ static void scroll_callback(GLFWwindow* window, double x, double y) {
 static void mouse_button_callback(GLFWwindow* window, int but, int state, int mods) {
 }
 
+void composer::update(Element e) {
+    lambda<void(node *&, Element &)> fn;
+    fn = [&](node *&instance, Element &e) {
+        bool       diff = !instance;
+        size_t args_len = e->args.len();
+        if (!diff) {
+            /// instance != null, so we can check attributes
+            /// compare args for diffs
+            array<arg>    &p = (*(Element*)instance)->args; /// previous args
+            array<arg>    &n = e->args; /// new args
+            diff = args_len != p.len();
+            if (!diff) {
+                /// no reason to check against a map
+                for (size_t i = 0; i < args_len; i++) {
+                    arg &p_pair = p[i];
+                    arg &n_pair = n[i];
+                    if (p_pair.key   != n_pair.key || 
+                        p_pair.value != n_pair.value) {
+                        diff = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if (diff) {
+            /// create instance if its not there, or the type differs (if the type differs we shall delete the node)
+            if (!instance || (e->type != instance->mem->type)) {
+                if (instance)
+                    delete instance;
+                instance = e.new_instance();
+            }
+
+            /// if we get this far, its expected that we are a class with schema, and have data associated
+            assert(e->type->schema);
+            assert(e->type->schema->bind && e->type->schema->bind->data);
+            
+            /// arg set cache
+            bool pset[args_len];
+            memset(pset, 0, args_len * sizeof(bool));
+
+            /// iterate through polymorphic meta info
+            for (type_t t = e->type; t; t = t->parent) {
+                if (!t->schema)
+                    continue;
+                ///
+                type_t tdata = t->schema->bind->data;
+                u8* data_origin = (u8*)instance->mem->typed_data(tdata, 0);
+                hmap<ion::symbol, prop>* meta_map = (hmap<ion::symbol, prop> *)tdata->meta_map;
+                
+                /// its possible some classes may not have meta information defined, just skip
+                if (!meta_map)
+                    continue;
+                
+                /// iterate through args, skip those we have already set
+                for (size_t i = 0; i < args_len; i++) {
+                    if (pset[i])
+                        continue;
+                    arg &a = e->args[i];
+                    memory *key = a.key.mem;
+                    /// only support a key type of char.  we can support variables that convert to char array
+                    if (key->type == typeof(char)) {
+                        symbol s_key = (symbol)key->origin;
+                        prop *def = meta_map->lookup(s_key);
+                        if (def) {
+                            type_t prop_type = def->member_type;
+                            type_t arg_type  = a.value.type();
+                            u8    *prop_dst  = &data_origin[def->offset];
+                            u8    *arg_src   = (u8*)a.value.mem->typed_data(arg_type, 0);
+
+                            /// error on type mismatch.  this is better than conversion for now
+                            assert(arg_type == prop_type);
+                            assert(prop_type->functions && prop_type->functions->assign);
+
+                            /// set registered property with data that is of the same type
+                            prop_type->functions->assign(null, prop_dst, arg_src);
+                            pset[i] = true;
+                        }
+                    } else {
+                        console.fault("unsupported key type");
+                    }
+                }
+            }
+        }
+    };
+    fn(data->root_instance, e);
+}
+
 int app::run() {
     data->e = vkengine_create(1, 2, "ux",
         VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, VK_PRESENT_MODE_FIFO_KHR, VK_SAMPLE_COUNT_4_BIT,
@@ -635,7 +722,7 @@ int app::run() {
 
         /// update app with rendered Elements
         Element e = data->app_fn(*this);
-        update(e);
+        update (e);
 
         /// we need an array of renderers/presenters; must work with a 3D scene, bloom shading etc
 		if (!vkh_presenter_draw(data->e->renderer)) { 
