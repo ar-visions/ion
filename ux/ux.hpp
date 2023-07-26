@@ -415,8 +415,8 @@ struct Element:mx {
     struct edata {
         type_t           type;     /// type given
         memory*          id;       /// identifier 
-        ax               args;     /// ax = better than args.  we use args as a var all the time; arguments is terrible
-        array<Element>  *children; /// lol.
+        ax               args;     /// ax = better than args
+        array<Element>  *children; /// 
         node*            instance; /// node instance is 1:1
         map<node*>       mounts;   /// store instances of nodes in element data, so the cache management can go here where element turns to node
         node*            parent;
@@ -1526,7 +1526,7 @@ struct list_view:node {
 struct composer:mx {
     ///
     struct cdata {
-        node         *root;
+        node         *root_instance;
         struct vk_interface *vk;
         //fn_render     render;
         lambda<Element()> render;
@@ -1536,8 +1536,39 @@ struct composer:mx {
     ///
     mx_object(composer, mx, cdata);
     ///
+    void update(Element e) {
+        auto fn = [&](node *instance, Element &e) {
+            bool different = !instance;
+            if (!different) {
+                /// instance != null, so we can check attributes
+                /// compare args for diffs
+                array<arg> &p = (*(Element*)instance)->args;
+                array<arg> &n = e->args;
+                size_t   plen = p.len();
+                different = plen != n.len();
+                if (!different) {
+                    /// no reason to check ordering here
+                    /// if the ordering is different then its different.
+                    /// no reason to be obtuse
+                    /// check pairs one by one; key against key, then value against value
+                    for (size_t i = 0; i < plen; i++) {
+                        arg &p_pair = p[i];
+                        arg &n_pair = n[i];
+                        if (p_pair.key   != n_pair.key || 
+                            p_pair.value != n_pair.value) {
+                            different = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        };
+        fn(data->root_instance, e);
+        return ;
+    }
+    ///
     array<node *> select_at(vec2d cur, bool active = true) {
-        array<node*> inside = data->root->select([&](node *n) {
+        array<node*> inside = data->root_instance->select([&](node *n) {
             real           x = cur.x, y = cur.y;
             vec2d          o = n->offset();
             vec2d        rel = cur + o;
@@ -1550,7 +1581,7 @@ struct composer:mx {
             return (in && (!active || !std.active)) ? n : null;
         });
 
-        array<node*> actives = data->root->select([&](node *n) -> node* {
+        array<node*> actives = data->root_instance->select([&](node *n) -> node* {
              node::props &std = **n;
             return (active && std.active) ? n : null;
         });

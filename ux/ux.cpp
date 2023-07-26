@@ -633,8 +633,9 @@ int app::run() {
 	while (!vkengine_should_close(data->e)) {
 		glfwPollEvents();
 
-		//testfunc();
-        // compose ux
+        /// update app with rendered Elements
+        Element e = data->app_fn(*this);
+        update(e);
 
         /// we need an array of renderers/presenters; must work with a 3D scene, bloom shading etc
 		if (!vkh_presenter_draw(data->e->renderer)) { 
