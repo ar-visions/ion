@@ -14,11 +14,13 @@ using namespace ion;
 struct ux_view:node {
     struct props {
         int sample;
+        int sample2;
         callback handler;
         ///
         doubly<prop> meta() {
             return {
                 prop { "sample",  sample },
+                prop { "sample2", sample2 },
                 prop { "handler", handler}
             };
         }
@@ -31,7 +33,9 @@ struct ux_view:node {
         console.log("mounting");
     }
 
-    Element render() {
+    Element update() {
+        int test = 0;
+        test++;
         return button {
             { "content", fmt {"hello world: {0}", { state->sample }} },
             { "on-click",
@@ -48,8 +52,9 @@ struct ux_view:node {
 int main() {
     return app([](app &ctx) -> Element {
         return ux_view {
-            arg { "id",     "main"  },
-            arg { "sample",  int(2) }
+            arg { "id",      "main" },
+            arg { "sample",  int(2) },
+            arg { "sample2", "10"   }
         };
     });
 }

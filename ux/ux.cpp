@@ -634,7 +634,7 @@ void composer::update(Element e) {
                 for (size_t i = 0; i < args_len; i++) {
                     arg &p_pair = p[i];
                     arg &n_pair = n[i];
-                    if (p_pair.key   != n_pair.key || 
+                    if (p_pair.key   != n_pair.key ||
                         p_pair.value != n_pair.value) {
                         diff = true;
                         break;
@@ -684,8 +684,26 @@ void composer::update(Element e) {
                         if (def) {
                             type_t prop_type = def->member_type;
                             type_t arg_type  = a.value.type();
+
                             u8    *prop_dst  = &data_origin[def->offset];
                             u8    *arg_src   = (u8*)a.value.mem->typed_data(arg_type, 0);
+                            u8    *conv_inst = null;
+
+                            if (prop_type == typeof(str) && arg_type != prop_type) {
+                                /// general to_string conversion (memory of char)
+                                assert(arg_type->functions->to_string);
+                                memory *m_str = arg_type->functions->to_string(arg_src);
+                                conv_inst = (u8*)new str(m_str); /// no grab here
+                                arg_src   = (u8*)conv_inst;
+                                arg_type  = typeof(str);
+                            } else if ((arg_type == typeof(char) || arg_type == typeof(str)) && prop_type != arg_type) {
+                                /// general from_string conversion.  the class needs to have a cstr constructor
+                                assert(prop_type->functions->from_string);
+                                conv_inst = (u8*)prop_type->functions->from_string(null,
+                                    arg_type == typeof(str) ? (cstr)a.value.mem->origin : (cstr)arg_src);
+                                arg_src = (u8*)conv_inst;
+                                arg_type = prop_type;
+                            }
 
                             /// error on type mismatch.  this is better than conversion for now
                             assert(arg_type == prop_type);
@@ -694,12 +712,19 @@ void composer::update(Element e) {
                             /// set registered property with data that is of the same type
                             prop_type->functions->assign(null, prop_dst, arg_src);
                             pset[i] = true;
+                            if (conv_inst) arg_type->functions->del(null, conv_inst);
                         }
                     } else {
                         console.fault("unsupported key type");
                     }
                 }
             }
+            /// blending the update w props changed and the render abstract
+            Element elements = instance->update();
+
+            /// we use recursion based on the result of update.
+            /// update may return *this, in which case that is going to go through children Elements/nodes (default)
+            /// detect that mode because it needs different behavior
         }
     };
     fn(data->root_instance, e);

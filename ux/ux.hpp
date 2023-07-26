@@ -1041,7 +1041,7 @@ struct node:Element {
         recur(this);
     }
 
-    /// test this path in compositor
+    /// test this path in composer
     virtual Element update() {
         return *this;
     }
