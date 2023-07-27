@@ -590,12 +590,12 @@ ion::image gfx::resample(ion::size sz, real deg, graphics::shape view, vec2d axi
     return ion::image(sz, (rgba8*)pixels, scanline);
 }
 
-void app::resize(vec2i &sz, app *app) {
+void App::resize(vec2i &sz, App *app) {
     printf("resized: %d, %d\n", sz.x, sz.y);
 }
 
 static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
-    app::adata *data = (app::adata *)glfwGetWindowUserPointer(window);
+    App::adata *data = (App::adata *)glfwGetWindowUserPointer(window);
 	if (action != GLFW_PRESS)
 		return;
 	switch (key) {
@@ -720,7 +720,7 @@ void composer::update(Element e) {
                 }
             }
             /// blending the update w props changed and the render abstract
-            Element elements = instance->update();
+            Element elements = instance->update(); /// needs a 'changed' arg
 
             /// we use recursion based on the result of update.
             /// update may return *this, in which case that is going to go through children Elements/nodes (default)
@@ -730,7 +730,7 @@ void composer::update(Element e) {
     fn(data->root_instance, e);
 }
 
-int app::run() {
+int App::run() {
     data->e = vkengine_create(1, 2, "ux",
         VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, VK_PRESENT_MODE_FIFO_KHR, VK_SAMPLE_COUNT_4_BIT,
         512, 512, 0, data);
@@ -885,76 +885,73 @@ void style::cache_members() {
 }
 
 style::style(str code) : style(mx::alloc<style>()) {
-    ///
-    if (code) {
-        for (cstr sc = code.cs(); ws(sc); sc++) {
-            lambda<void(block)> parse_block;
+    for (cstr sc = code.cs(); ws(sc); sc++) {
+        lambda<void(block)> parse_block;
+        ///
+        parse_block = [&](block bl) {
+            ws(sc);
+            console.test(*sc == '.' || isalpha(*sc), "expected Type, or .name");
+            bl->quals = parse_qualifiers(&sc);
+            ws(++sc);
             ///
-            parse_block = [&](block bl) {
+            while (*sc && *sc != '}') {
+                /// read up to ;, {, or }
                 ws(sc);
-                console.test(*sc == '.' || isalpha(*sc), "expected Type, or .name");
-                bl->quals = parse_qualifiers(&sc);
-                ws(++sc);
-                ///
-                while (*sc && *sc != '}') {
-                    /// read up to ;, {, or }
-                    ws(sc);
-                    cstr start = sc;
-                    console.test(scan_to(sc, {';', '{', '}'}), "expected member expression or qualifier");
-                    if (*sc == '{') {
-                        ///
-                        block &bl_n = bl->blocks->push();
-                        bl_n->parent = bl;
+                cstr start = sc;
+                console.test(scan_to(sc, {';', '{', '}'}), "expected member expression or qualifier");
+                if (*sc == '{') {
+                    ///
+                    block &bl_n = bl->blocks->push();
+                    bl_n->parent = bl;
 
-                        /// parse sub-block
-                        sc = start;
-                        parse_block(bl_n);
-                        assert(*sc == '}');
-                        ws(++sc);
-                        ///
-                    } else if (*sc == ';') {
-                        /// read member
-                        cstr cur = start;
-                        console.test(scan_to(cur, {':'}) && (cur < sc), "expected [member:]value;");
-                        str  member = str(start, std::distance(start, cur));
-                        ws(++cur);
+                    /// parse sub-block
+                    sc = start;
+                    parse_block(bl_n);
+                    assert(*sc == '}');
+                    ws(++sc);
+                    ///
+                } else if (*sc == ';') {
+                    /// read member
+                    cstr cur = start;
+                    console.test(scan_to(cur, {':'}) && (cur < sc), "expected [member:]value;");
+                    str  member = str(start, std::distance(start, cur));
+                    ws(++cur);
 
-                        /// read value
-                        cstr vstart = cur;
-                        console.test(scan_to(cur, {';'}), "expected member:[value;]");
-                        
-                        /// this should use the regex standard api, will convert when its feasible.
-                        str  cb_value = str(vstart, std::distance(vstart, cur)).trim();
-                        str       end = cb_value.mid(-1, 1);
-                        bool       qs = cb_value.mid( 0, 1) == "\"";
-                        bool       qe = cb_value.mid(-1, 1) == "\"";
+                    /// read value
+                    cstr vstart = cur;
+                    console.test(scan_to(cur, {';'}), "expected member:[value;]");
+                    
+                    /// this should use the regex standard api, will convert when its feasible.
+                    str  cb_value = str(vstart, std::distance(vstart, cur)).trim();
+                    str       end = cb_value.mid(-1, 1);
+                    bool       qs = cb_value.mid( 0, 1) == "\"";
+                    bool       qe = cb_value.mid(-1, 1) == "\"";
 
-                        if (qs && qe) {
-                            cstr   cs = cb_value.cs();
-                            cb_value  = str::parse_quoted(&cs, cb_value.len());
-                        }
-
-                        int         i = cb_value.index_of(",");
-                        str     param = i >= 0 ? cb_value.mid(i + 1).trim() : "";
-                        str     value = i >= 0 ? cb_value.mid(0, i).trim()  : cb_value;
-                        style::transition trans = param ? style::transition(param) : null;
-                        
-                        /// check
-                        console.test(member, "member cannot be blank");
-                        console.test(value,  "value cannot be blank");
-                        bl->entries += entry::edata { member, value, trans };
-                        ws(++sc);
+                    if (qs && qe) {
+                        cstr   cs = cb_value.cs();
+                        cb_value  = str::parse_quoted(&cs, cb_value.len());
                     }
+
+                    int         i = cb_value.index_of(",");
+                    str     param = i >= 0 ? cb_value.mid(i + 1).trim() : "";
+                    str     value = i >= 0 ? cb_value.mid(0, i).trim()  : cb_value;
+                    style::transition trans = param ? style::transition(param) : null;
+                    
+                    /// check
+                    console.test(member, "member cannot be blank");
+                    console.test(value,  "value cannot be blank");
+                    bl->entries += entry::edata { member, value, trans };
+                    ws(++sc);
                 }
-                console.test(!*sc || *sc == '}', "expected closed-brace");
-            };
-            ///
-            block &n_block = data->root.push_default();
-            parse_block(n_block);
-        }
-        /// store blocks by member, the interface into all style: style::members[name]
-        cache_members();
+            }
+            console.test(!*sc || *sc == '}', "expected closed-brace");
+        };
+        ///
+        block &n_block = data->root.push_default();
+        parse_block(n_block);
     }
+    /// store blocks by member, the interface into all style: style::members[name]
+    cache_members();
 }
 
 style style::load(path p) {

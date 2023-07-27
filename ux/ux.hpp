@@ -22,10 +22,8 @@ using Assets  = map<Texture *>;
 struct text_metrics:mx {
     struct tmdata {
         real        w, h;
-        real      ascent,
-                 descent;
-        real line_height,
-              cap_height;
+        real        ascent, descent;
+        real        line_height, cap_height;
         type_register(tmdata);
     };
     mx_object(text_metrics, mx, tmdata);
@@ -48,9 +46,9 @@ namespace graphics {
         using Rounded = Rounded<r64>;
         ///
         struct sdata {
-            Rectd      bounds; /// if the ops change the bounds must be re-eval'd
-            doubly<mx> ops;
-            vec2d      mv;
+            Rectd       bounds; /// if the ops change the bounds must be re-eval'd
+            doubly<mx>  ops;
+            vec2d       mv;
             type_register(sdata);
         };
         ///
@@ -353,11 +351,11 @@ namespace user {
 
     struct key:mx {
         struct kdata {
-            num               unicode;
-            num               scan_code;
-            states<keyboard>  modifiers;
-            bool              repeat;
-            bool              up;
+            num                 unicode;
+            num                 scan_code;
+            states<keyboard>    modifiers;
+            bool                repeat;
+            bool                up;
             type_register(kdata);
         };
         mx_object(key, mx, kdata);
@@ -367,16 +365,16 @@ namespace user {
 struct event:mx {
     ///
     struct edata {
-        user::chr     unicode;
-        user::key     key;
-        vec2d          wheel_delta;
-        vec2d          cursor;
-        states<mouse>    buttons;
-        states<keyboard> modifiers;
-        size          resize;
-        mouse::etype  button_id;
-        bool          prevent_default;
-        bool          stop_propagation;
+        user::chr               unicode;
+        user::key               key;
+        vec2d                   wheel_delta;
+        vec2d                   cursor;
+        states<mouse>           buttons;
+        states<keyboard>        modifiers;
+        size                    resize;
+        mouse::etype            button_id;
+        bool                    prevent_default;
+        bool                    stop_propagation;
         type_register(edata);
     };
 
@@ -413,26 +411,19 @@ struct array_results:mx { array_results():mx() { } };
 
 struct Element:mx {
     struct edata {
-        type_t           type;     /// type given
-        memory*          id;       /// identifier 
-        ax               args;     /// arguments
-        array<Element>  *children; /// children elements (if provided in children { } pair<mx,mx> inherited data struct; sets key='children')
-        node*            instance; /// node instance is 1:1
-        map<node*>       mounts;   /// store instances of nodes in element data, so the cache management can go here where element turns to node
-        node*            parent;
-        style*           root_style; /// applied at root for multiple style trees across multiple apps
-        states<interaction> istates;
+        type_t                  type;     /// type given
+        memory*                 id;       /// identifier 
+        ax                      args;     /// arguments
+        array<Element>         *children; /// children elements (if provided in children { } pair<mx,mx> inherited data struct; sets key='children')
+        node*                   instance; /// node instance is 1:1
+        map<node*>              mounts;   /// store instances of nodes in element data, so the cache management can go here where element turns to node
+        node*                   parent;
+        style*                  root_style; /// applied at root for multiple style trees across multiple apps
+        states<interaction>     istates;
         type_register(edata);
     };
 
-    /// default case when there is no render()
-    array<Element> &children() {
-        static array<Element> e;
-        return data->children ? *data->children : e;
-    }
-
     mx_object(Element, mx, edata);
-    //movable(Element);
 
     static memory *args_id(type_t type, initial<arg> args) {
         static memory *m_id = memory::symbol("id"); /// im a token!
@@ -443,12 +434,11 @@ struct Element:mx {
         return memory::symbol(symbol(type->name));
     }
 
-    //inline Element(ax &a):mx(a.mem->grab()), e(defaults<data>()) { }
     Element(type_t type, initial<arg> args) : Element(
-        edata { type, args_id(type, args), args } // ax = array of args; i dont want the different ones but they do syn
+        edata { type, args_id(type, args), args }
     ) { }
 
-    /// inline expression of the data inside, im sure this would be common case (me 6wks later: WHERE????)
+    /// used below in each(); a simple allocation of Elements
     Element(type_t type, size_t sz) : Element(
         edata { type, null, null, new array<Element>(sz) }
     ) { }
@@ -514,6 +504,7 @@ struct listener:mx {
 };
 
 /// keep it simple for sending events, with a dispatch.  listen to them with listen()
+/// need to implement an assign with a singular callback.  these can support more than one, though.  in a component tree you can use multiple with use of context
 struct dispatch:mx {
     struct ddata {
         doubly<listener> listeners;
@@ -1255,7 +1246,7 @@ struct style:mx {
     static void init(path res = "style") {
         res.resources({".css"}, {},
             [&](path css_file) -> void {
-                for_class(css_file.cs());
+                load(css_file.cs());
             });
     }
 
@@ -1340,16 +1331,16 @@ struct object:node {
 };
 
 ///
-struct button:node {
-    enums(behavior, push,
+struct Button:node {
+    enums(Behavior, push,
         "push, label, toggle, radio",
-         push, label, toggle, radio); /// you must make aliases anyway, friend
+         push, label, toggle, radio);
     
     struct props {
-        button::behavior behavior;
+        Button::Behavior behavior;
         type_register(props);
     };
-    component(button, node, props);
+    component(Button, node, props);
 };
 
 #if 0
@@ -1571,26 +1562,26 @@ struct composer:mx {
     ///
 };
 
-struct app:composer {
+struct App:composer {
     struct adata {
         GPU    win;
         gfx    canvas;
         VkEngine e;
-        lambda<Element(app&)> app_fn;
+        lambda<Element(App&)> app_fn;
         type_register(adata);
     };
 
-    mx_object(app, composer, adata);
+    mx_object(App, composer, adata);
 
-    app(lambda<Element(app&)> app_fn) : app() {
+    App(lambda<Element(App&)> app_fn) : App() {
         data->app_fn = app_fn;
     }
     ///
     int run();
-    static void resize(vec2i &sz, app *app);
+    static void resize(vec2i &sz, App *app);
 
     operator int() { return run(); }
 };
 
-using AppFn = lambda<Element(app&)>;
+using AppFn = lambda<Element(App&)>;
 }

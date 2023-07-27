@@ -11,23 +11,23 @@ using namespace ion;
 /// audio annotation app first
 /// ------------------------------------------------------------
 
-struct ux_view:node {
+struct View:node {
     struct props {
-        int sample;
-        int sample2;
-        callback handler;
+        int         sample;
+        int         sample2;
+        callback    clicked;
         ///
         doubly<prop> meta() {
             return {
                 prop { "sample",  sample },
                 prop { "sample2", sample2 },
-                prop { "handler", handler}
+                prop { "clicked", clicked}
             };
         }
         type_register(props);
     };
 
-    component(ux_view, node, props);
+    component(View, node, props);
 
     void mounting() {
         console.log("mounting");
@@ -36,13 +36,13 @@ struct ux_view:node {
     Element update() {
         int test = 0;
         test++;
-        return button {
+        return Button { /// should support array
             { "content", fmt {"hello world: {0}", { state->sample }} },
             { "on-click",
                 callback([&](event e) {
                     console.log("on-click...");
-                    if (state->handler)
-                        state->handler(e);
+                    if (state->clicked)
+                        state->clicked(e);
                 })
             }
         };
@@ -50,11 +50,19 @@ struct ux_view:node {
 };
 
 int main() {
-    return app([](app &ctx) -> Element {
-        return ux_view {
-            arg { "id",      "main" },
-            arg { "sample",  int(2) },
-            arg { "sample2", "10"   }
+    /// use css for setting most of these properties.
+    return App([](App &ctx) -> Element {
+        return View {
+            { "id",      "main" }, /// sets id on the base node data; if there is no id then it should identify by its type
+            { "sample",  int(2) },
+            { "sample2", "10"   }, /// converts to int from char* or str
+            { "clicked",
+                callback([](event e) {
+                    printf("test!\n");
+                    int test = 0;
+                    test++;
+                })
+            }
         };
     });
 }
