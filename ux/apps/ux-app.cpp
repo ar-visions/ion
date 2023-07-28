@@ -34,8 +34,6 @@ struct View:node {
     }
 
     Element update() {
-        int test = 0;
-        test++;
         return Button {
             { "content", fmt {"hello world: {0}", { state->sample }} },
             { "on-click",
@@ -52,7 +50,7 @@ struct View:node {
 int main() {
     /// use css for setting most of these properties.
     return App([](App &ctx) -> Element {
-        static callback test = callback([](event e) {
+        static callback test = callback([](event e) { /// dont access state in here! lol.
             printf("test!\n");
             int test = 0;
             test++;

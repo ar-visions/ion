@@ -407,14 +407,7 @@ enums(interaction, undefined,
      undefined, captured, focused, hover, active, cursor);
 
 struct   map_results:mx {   map_results():mx() { } };
-struct array_results:mx { array_results():mx() { } };
-
-struct ch:pair<mx,mx> {
-    ch(array<Element> a) {
-        key   = "children";
-        value = a;
-    }
-};
+struct array_results:mx { array_results():mx() { } }; /// deprecate
 
 struct Element:mx {
     struct edata {
@@ -430,12 +423,12 @@ struct Element:mx {
 
         doubly<prop> meta() {
             return {
-                prop { children, "children" }
-            }
+                prop { "children", children }
+            };
         }
 
         operator bool() {
-            return (children.len() > 0 || instance);
+            return (type || children.len() > 0);
         }
 
         type_register(edata);
@@ -453,7 +446,7 @@ struct Element:mx {
     }
 
     Element(array<Element> ch) : Element() {
-        children = ch;
+        data->children = ch;
     }
 
     Element(type_t type, initial<arg> args) : Element(
@@ -462,7 +455,7 @@ struct Element:mx {
 
     /// used below in each(); a simple allocation of Elements
     Element(type_t type, size_t sz) : Element(
-        edata { type, null, null, new array<Element>(sz) }
+        edata { type, null, null, array<Element>(sz) }
     ) { }
 
     template <typename T>
@@ -470,7 +463,7 @@ struct Element:mx {
         Element res(typeof(map_results), a.length());
         for (auto &v:a) {
             Element ve = fn(v);
-            if (ve) *res.data->children += ve;
+            if (ve) res.data->children += ve;
         }
         return res;
     }
@@ -481,7 +474,7 @@ struct Element:mx {
         if (res.data->children)
         for (auto &[v,k]:m) {
             Element r = fn(k, v);
-            if (r) *res.data->children += r;
+            if (r) res.data->children += r;
         }
         return res;
     }
@@ -489,6 +482,13 @@ struct Element:mx {
     /// the element can create its instance.. that instance is a sub-class of Element too so we use a forward
     struct node *new_instance() {
         return (struct node*)data->type->functions->alloc_new((struct node*)null, (struct node*)null);
+    }
+};
+
+struct ch:pair<mx,mx> {
+    ch(array<Element> a) {
+        key   = "children";
+        value = a;
     }
 };
 
@@ -1023,7 +1023,7 @@ struct node:Element {
     //}
 
     inline size_t count(memory *symbol) {
-        for (Element &c: *Element::data->children)
+        for (Element &c: Element::data->children)
             if (c.data->id == symbol)
                 return 1;
         ///
@@ -1063,10 +1063,7 @@ struct node:Element {
 };
 
 struct style:mx {
-    /// construct with code
-    style(str  code);
-    style(path css) : style(css.read<str>()) { }
-
+    /// qualifier for style block
     struct qualifier:mx {
         struct members {
             str       type;
@@ -1249,8 +1246,6 @@ struct style:mx {
         inline operator bool() { return data->quals || data->entries || data->blocks; }
     };
 
-    static inline map<style> cache;
-
     struct sdata {
         array<block>      root;
         map<array<block>> members;
@@ -1266,17 +1261,12 @@ struct style:mx {
     ///
     void cache_members();
 
-    /// load .css in style res
-    static void init(path res = "style") {
-        res.resources({".css"}, {},
-            [&](path css_file) -> void {
-                load(css_file.cs());
-            });
-    }
-
-    static style load(path p);
-    static style for_class(symbol);
+    static style load();
 };
+
+/// no reason to have style separated in a single app
+/// if we have multiple styles, just reload
+template <> struct is_singleton<style::sdata> : true_type { };
 
 /// defines a component with a restricted subset and props initializer_list.
 /// this macro is used for template purposes and bypasses memory allocation.
@@ -1554,12 +1544,16 @@ struct composer:mx {
         map<mx>       args;
         type_register(cdata);
     };
+    
     ///
     mx_object(composer, mx, cdata);
-    ///
-    void update(Element e);
-    void is_different(node *&instance, Element &e);
-    void update_instance(node *&instance, Element &e);
+    
+    /// called from app
+    void update_all(Element e);
+
+    /// called recursively from update_all -> update(), also called from node generic render
+    static void update(node *parent, node *&instance, Element &e);
+    
     ///
     array<node *> select_at(vec2d cur, bool active = true) {
         array<node*> inside = data->root_instance->select([&](node *n) {

@@ -618,140 +618,167 @@ static void scroll_callback(GLFWwindow* window, double x, double y) {
 static void mouse_button_callback(GLFWwindow* window, int but, int state, int mods) {
 }
 
-void composer::update(Element e) {
-    lambda<void(node *, node *&, Element &)> fn;
-    fn = [&](node *parent, node *&instance, Element &e) {
-        bool       diff = !instance;
-        size_t args_len = e->args.len();
+/// id's can be dynamic so we cant enforce symbols, and it would be a bit lame to make the caller symbolize
+str element_id(Element &e) {
+    array<arg> &args = e->args;
+    for (arg &a: args) {
+        if (strcmp((symbol)a.key.mem->origin, "id") == 0)
+            return (cstr)a.value.mem->origin; /// convert to str
+    }
+    return e->type->name;
+}
 
+void composer::update(node *parent, node *&instance, Element &e) {
+    bool       diff = !instance;
+    size_t args_len = e->args.len();
+
+    if (!diff) {
+        /// instance != null, so we can check attributes
+        /// compare args for diffs
+        array<arg>    &p = (*(Element*)instance)->args; /// previous args
+        array<arg>    &n = e->args; /// new args
+        diff = args_len != p.len();
         if (!diff) {
-            /// instance != null, so we can check attributes
-            /// compare args for diffs
-            array<arg>    &p = (*(Element*)instance)->args; /// previous args
-            array<arg>    &n = e->args; /// new args
-            diff = args_len != p.len();
-            if (!diff) {
-                /// no reason to check against a map
-                for (size_t i = 0; i < args_len; i++) {
-                    arg &p_pair = p[i];
-                    arg &n_pair = n[i];
-                    if (p_pair.key   != n_pair.key ||
-                        p_pair.value != n_pair.value) {
-                        diff = true;
-                        break;
-                    }
+            /// no reason to check against a map
+            for (size_t i = 0; i < args_len; i++) {
+                arg &p_pair = p[i];
+                arg &n_pair = n[i];
+                if (p_pair.key   != n_pair.key ||
+                    p_pair.value != n_pair.value) {
+                    diff = true;
+                    break;
                 }
             }
         }
-        if (diff) {
-            /// create instance if its not there, or the type differs (if the type differs we shall delete the node)
-            if (!instance || (e->type != instance->mem->type)) {
-                if (instance)
-                    delete instance;
-                instance = e.new_instance();
-                (*(Element*)instance)->parent = parent;
-            }
+    }
+    if (diff) {
+        /// if we get this far, its expected that we are a class with schema, and have data associated
+        assert(e->type->schema);
+        assert(e->type->schema->bind && e->type->schema->bind->data);
 
-            /// if we get this far, its expected that we are a class with schema, and have data associated
-            assert(e->type->schema);
-            assert(e->type->schema->bind && e->type->schema->bind->data);
+        /// create instance if its not there, or the type differs (if the type differs we shall delete the node)
+        if (!instance || (e->type != instance->mem->type)) {
+            if (instance)
+                delete instance; /// Element data must also delete the nodes
+            instance = e.new_instance();
+            (*(Element*)instance)->parent = parent;
+        }
+
+        /// set properties from style
+        /// apply style across all style sheets in one shot.  i do not want it overriding style left and right
+        /// load style cache in singular database
+        style::apply(instance);
+
+        /// arg set cache
+        bool pset[args_len];
+        memset(pset, 0, args_len * sizeof(bool));
+
+        /// iterate through polymorphic meta info
+        for (type_t t = e->type; t; t = t->parent) {
+            if (!t->schema)
+                continue;
+            ///
+            type_t tdata = t->schema->bind->data;
+            u8* data_origin = (u8*)instance->mem->typed_data(tdata, 0);
+            hmap<ion::symbol, prop>* meta_map = (hmap<ion::symbol, prop> *)tdata->meta_map;
             
-            /// arg set cache
-            bool pset[args_len];
-            memset(pset, 0, args_len * sizeof(bool));
-
-            /// iterate through polymorphic meta info
-            for (type_t t = e->type; t; t = t->parent) {
-                if (!t->schema)
+            /// its possible some classes may not have meta information defined, just skip
+            if (!meta_map)
+                continue;
+            
+            /// iterate through args, skip those we have already set
+            for (size_t i = 0; i < args_len; i++) {
+                if (pset[i]) 
                     continue;
-                ///
-                type_t tdata = t->schema->bind->data;
-                u8* data_origin = (u8*)instance->mem->typed_data(tdata, 0);
-                hmap<ion::symbol, prop>* meta_map = (hmap<ion::symbol, prop> *)tdata->meta_map;
-                
-                /// its possible some classes may not have meta information defined, just skip
-                if (!meta_map)
-                    continue;
-                
-                /// iterate through args, skip those we have already set
-                for (size_t i = 0; i < args_len; i++) {
-                    if (pset[i]) 
-                        continue;
-                    arg &a = e->args[i];
-                    memory *key = a.key.mem;
-                    /// only support a key type of char.  we can support variables that convert to char array
-                    if (key->type == typeof(char)) {
-                        symbol s_key = (symbol)key->origin;
-                        prop *def = meta_map->lookup(s_key);
+                arg &a = e->args[i];
+                memory *key = a.key.mem;
+                /// only support a key type of char.  we can support variables that convert to char array
+                if (key->type == typeof(char)) {
+                    symbol s_key = (symbol)key->origin;
+                    prop *def = meta_map->lookup(s_key);
 
-                        if (strcmp(s_key, "content") == 0) {
-                            int test = 0;
-                            test++;
-                        }
-
-                        if (def) {
-                            type_t prop_type = def->member_type;
-                            type_t arg_type  = a.value.type();
-                            u8    *prop_dst  = &data_origin[def->offset];
-                            u8    *arg_src   = (u8*)a.value.mem->typed_data(arg_type, 0); /// passing int into mx recovers int, but passing lambda will give data inside.  we want to store a context
-                            u8    *conv_inst = null;
-    
-                            /// if going to string and arg is not, we convert
-                            if (prop_type == typeof(str) && arg_type != prop_type) {
-                                /// general to_string conversion (memory of char)
-                                assert(arg_type->functions->to_string);
-                                memory *m_str = arg_type->functions->to_string(arg_src);
-                                conv_inst = (u8*)new str(m_str); /// no grab here
-                                arg_src   = (u8*)conv_inst;
-                                arg_type  = typeof(str);
-                            } else if ((arg_type == typeof(char) || arg_type == typeof(str)) && prop_type != arg_type) {
-                                /// general from_string conversion.  the class needs to have a cstr constructor
-                                assert(prop_type->functions->from_string);
-                                conv_inst = (u8*)prop_type->functions->from_string(null,
-                                    arg_type == typeof(str) ? (cstr)a.value.mem->origin : (cstr)arg_src);
-                                arg_src = (u8*)conv_inst;
-                                arg_type = prop_type;
-                            }
-                            /// types should match
-                            assert(arg_type == prop_type);
-
-                            if (prop_type->traits & traits::mx_obj) {
-                                /// set by memory construction (cast conv_inst as mx which it must be)
-                                assert(!conv_inst || (arg_type->traits & traits::mx_obj) ||
-                                                     (arg_type->traits & traits::mx));
-                                prop_type->functions->set_memory(prop_dst, conv_inst ? ((mx*)conv_inst)->mem : a.value.mem);
-                            } else {
-                                /// assign property with data that is of the same type
-                                prop_type->functions->assign(null, prop_dst, arg_src);
-                            }
-                            pset[i] = true;
-                            if (conv_inst) arg_type->functions->del(null, conv_inst);
-                        }
-                    } else {
-                        console.fault("unsupported key type");
+                    if (strcmp(s_key, "content") == 0) {
+                        int test = 0;
+                        test++;
                     }
+
+                    if (def) {
+                        type_t prop_type = def->member_type;
+                        type_t arg_type  = a.value.type();
+                        u8    *prop_dst  = &data_origin[def->offset];
+                        u8    *arg_src   = (u8*)a.value.mem->typed_data(arg_type, 0); /// passing int into mx recovers int, but passing lambda will give data inside.  we want to store a context
+                        u8    *conv_inst = null;
+
+                        /// if prop type is mx, we can generalize
+                        if (prop_type == typeof(mx)) {
+                            if (arg_type != prop_type) {
+                                conv_inst = (u8*)new mx(a.value);
+                                arg_src   = (u8*)conv_inst;
+                                arg_type  = typeof(mx);
+                            }
+                        }
+                        /// if going to string and arg is not, we convert
+                        else if (prop_type == typeof(str) && arg_type != prop_type) {
+                            /// general to_string conversion (memory of char)
+                            assert(arg_type->functions->to_string);
+                            memory *m_str = arg_type->functions->to_string(arg_src);
+                            conv_inst = (u8*)new str(m_str); /// no grab here
+                            arg_src   = (u8*)conv_inst;
+                            arg_type  = typeof(str);
+                        } else if ((arg_type == typeof(char) || arg_type == typeof(str)) && prop_type != arg_type) {
+                            /// general from_string conversion.  the class needs to have a cstr constructor
+                            assert(prop_type->functions->from_string);
+                            conv_inst = (u8*)prop_type->functions->from_string(null,
+                                arg_type == typeof(str) ? (cstr)a.value.mem->origin : (cstr)arg_src);
+                            arg_src = (u8*)conv_inst;
+                            arg_type = prop_type;
+                        }
+                        /// types should match
+                        assert(arg_type == prop_type);
+
+                        if (prop_type->traits & traits::mx_obj) {
+                            /// set by memory construction (cast conv_inst as mx which it must be)
+                            assert(!conv_inst || (arg_type->traits & traits::mx_obj) ||
+                                                    (arg_type->traits & traits::mx));
+                            prop_type->functions->set_memory(prop_dst, conv_inst ? ((mx*)conv_inst)->mem : a.value.mem);
+                        } else {
+                            /// assign property with data that is of the same type
+                            prop_type->functions->assign(null, prop_dst, arg_src);
+                        }
+                        pset[i] = true;
+                        if (conv_inst) arg_type->functions->del(null, conv_inst);
+                    }
+                } else {
+                    console.fault("unsupported key type");
                 }
             }
-
-            /// blending the update w props changed and the render abstract
-            /// needs array<Element> support
-            /// that in itsself is still an 'Element', with an instance to a kind of placeholder node
-            /// the issue with that is its id-less nature, its typeless too in a way.
-            /// 
-            Element e_components = instance->update(); /// needs a 'changed' arg
-            if (e_components) {
-                fn(instance, instance->root, e_components);
-                updated = true;
-            }
-
-            /// we use recursion based on the result of update.
-            /// update may return *this, in which case that is going to go through children Elements/nodes (default)
-            /// detect that mode because it needs different behavior
         }
-        Element::edata *e_instance = (*(Element*)instance)->data;
-        if (!updated && )
-    };
-    fn(null, data->root_instance, e);
+
+        /// blending the update w props changed and the render abstract
+        /// needs array<Element> support
+        /// that in itsself is still an 'Element', with an instance to a kind of placeholder node
+        /// the issue with that is its id-less nature, its typeless too in a way.
+        /// 
+        Element render = instance->update(); /// needs a 'changed' arg
+        if (render) {
+            /// contains mount info (node instance Element data)
+            Element &edata = *(Element*)instance;
+            if (render->children) {
+                /// each child is mounted
+                for (Element &e: render->children) {
+                    str id = element_id(e);
+                    update(instance, edata->mounts[id], e);
+                }
+            } else {
+                str id = element_id(render);
+                update(instance, edata->mounts[id], render);
+            }
+        }
+    }
+}
+
+void composer::update_all(Element e) {
+    update(null, data->root_instance, e);
 }
 
 int App::run() {
@@ -771,7 +798,7 @@ int App::run() {
 
         /// update app with rendered Elements, then draw
         Element e = data->app_fn(*this);
-        update (e);
+        update_all(e);
         if (composer::data->root_instance)
             composer::data->root_instance->draw(data->canvas);
 
@@ -910,7 +937,7 @@ void style::cache_members() {
             cache_b(b);
 }
 
-style::style(str code) : style(mx::alloc<style>()) {
+void style::load(str code) {
     for (cstr sc = code.cs(); ws(sc); sc++) {
         lambda<void(block)> parse_block;
         ///
@@ -947,7 +974,7 @@ style::style(str code) : style(mx::alloc<style>()) {
                     cstr vstart = cur;
                     console.test(scan_to(cur, {';'}), "expected member:[value;]");
                     
-                    /// this should use the regex standard api, will convert when its feasible.
+                    /// needs escape sequencing?
                     str  cb_value = str(vstart, std::distance(vstart, cur)).trim();
                     str       end = cb_value.mid(-1, 1);
                     bool       qs = cb_value.mid( 0, 1) == "\"";
@@ -976,17 +1003,28 @@ style::style(str code) : style(mx::alloc<style>()) {
         block &n_block = data->root.push_default();
         parse_block(n_block);
     }
+}
+
+style style::init() {
+    style st;
+    if (st->loaded)
+        return st;
+    
+    path  style_path = "style";
+    /// there could be sub-dirs here with an argument in init
+    /// most likely defaults would be loaded first, then override dirs are run
+    /// will need to clear previous data as a singleton
+
+    style_path.resources({".css"}, {},
+        [&](path css_file) -> void {
+            str style_str = css_file.read<str>();
+            load(style_str);
+        });
+
     /// store blocks by member, the interface into all style: style::members[name]
-    cache_members();
-}
-
-style style::load(path p) {
-    return cache->count(p) ? cache[p] : (cache[p] = style(p));
-}
-
-style style::for_class(symbol class_name) {
-    path p = str::format("style/{0}.css", { class_name });
-    return load(p);
+    st.cache_members();
+    st->loaded = true;
+    return st;
 }
 
 style::entry *prop_style(node &n, prop *member) {
