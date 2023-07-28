@@ -619,10 +619,11 @@ static void mouse_button_callback(GLFWwindow* window, int but, int state, int mo
 }
 
 void composer::update(Element e) {
-    lambda<void(node *&, Element &)> fn;
-    fn = [&](node *&instance, Element &e) {
+    lambda<void(node *, node *&, Element &)> fn;
+    fn = [&](node *parent, node *&instance, Element &e) {
         bool       diff = !instance;
         size_t args_len = e->args.len();
+
         if (!diff) {
             /// instance != null, so we can check attributes
             /// compare args for diffs
@@ -648,6 +649,7 @@ void composer::update(Element e) {
                 if (instance)
                     delete instance;
                 instance = e.new_instance();
+                (*(Element*)instance)->parent = parent;
             }
 
             /// if we get this far, its expected that we are a class with schema, and have data associated
@@ -681,6 +683,12 @@ void composer::update(Element e) {
                     if (key->type == typeof(char)) {
                         symbol s_key = (symbol)key->origin;
                         prop *def = meta_map->lookup(s_key);
+
+                        if (strcmp(s_key, "content") == 0) {
+                            int test = 0;
+                            test++;
+                        }
+
                         if (def) {
                             type_t prop_type = def->member_type;
                             type_t arg_type  = a.value.type();
@@ -724,15 +732,26 @@ void composer::update(Element e) {
                     }
                 }
             }
+
             /// blending the update w props changed and the render abstract
-            Element elements = instance->update(); /// needs a 'changed' arg
+            /// needs array<Element> support
+            /// that in itsself is still an 'Element', with an instance to a kind of placeholder node
+            /// the issue with that is its id-less nature, its typeless too in a way.
+            /// 
+            Element e_components = instance->update(); /// needs a 'changed' arg
+            if (e_components) {
+                fn(instance, instance->root, e_components);
+                updated = true;
+            }
 
             /// we use recursion based on the result of update.
             /// update may return *this, in which case that is going to go through children Elements/nodes (default)
             /// detect that mode because it needs different behavior
         }
+        Element::edata *e_instance = (*(Element*)instance)->data;
+        if (!updated && )
     };
-    fn(data->root_instance, e);
+    fn(null, data->root_instance, e);
 }
 
 int App::run() {
@@ -750,9 +769,11 @@ int App::run() {
 	while (!vkengine_should_close(data->e)) {
 		glfwPollEvents();
 
-        /// update app with rendered Elements
+        /// update app with rendered Elements, then draw
         Element e = data->app_fn(*this);
         update (e);
+        if (composer::data->root_instance)
+            composer::data->root_instance->draw(data->canvas);
 
         /// we need an array of renderers/presenters; must work with a 3D scene, bloom shading etc
 		if (!vkh_presenter_draw(data->e->renderer)) { 

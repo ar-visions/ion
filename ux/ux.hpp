@@ -409,17 +409,35 @@ enums(interaction, undefined,
 struct   map_results:mx {   map_results():mx() { } };
 struct array_results:mx { array_results():mx() { } };
 
+struct ch:pair<mx,mx> {
+    ch(array<Element> a) {
+        key   = "children";
+        value = a;
+    }
+};
+
 struct Element:mx {
     struct edata {
         type_t                  type;     /// type given
         memory*                 id;       /// identifier 
         ax                      args;     /// arguments
-        array<Element>         *children; /// children elements (if provided in children { } pair<mx,mx> inherited data struct; sets key='children')
+        array<Element>          children; /// children elements (if provided in children { } pair<mx,mx> inherited data struct; sets key='children')
         node*                   instance; /// node instance is 1:1
         map<node*>              mounts;   /// store instances of nodes in element data, so the cache management can go here where element turns to node
         node*                   parent;
         style*                  root_style; /// applied at root for multiple style trees across multiple apps
         states<interaction>     istates;
+
+        doubly<prop> meta() {
+            return {
+                prop { children, "children" }
+            }
+        }
+
+        operator bool() {
+            return (children.len() > 0 || instance);
+        }
+
         type_register(edata);
     };
 
@@ -432,6 +450,10 @@ struct Element:mx {
                 return a.value.mem;
         
         return memory::symbol(symbol(type->name));
+    }
+
+    Element(array<Element> ch) : Element() {
+        children = ch;
     }
 
     Element(type_t type, initial<arg> args) : Element(
@@ -913,8 +935,6 @@ struct node:Element {
         return *n;
     }
 
-    /// base drawing routine, easiest to understand and i think favoured over a non-virtual that purely uses the meta tables in polymorphic back tracking fashion
-    /// one could lazy-cache that but i dunno.  why make drawing things complicated and covered in lambdas.  during iteration in debug you thank thy-self
     virtual void draw(gfx& canvas) {
         props::drawing &fill    = data->drawings[operation::fill];
         props::drawing &image   = data->drawings[operation::image];
@@ -927,13 +947,13 @@ struct node:Element {
             canvas.fill(fill.shape);
         }
 
-        /// if there is fill image
-        if (image.img)
+        /// if there is fill image -- this should not run in the case of default button
+        if (bool(image.img))
             canvas.image(image.img, image.shape, image.align, {0,0}, {0,0});
         
         /// if there is text (its not alpha 0, and there is text)
         if (data->content && ((data->content.type() == typeof(char)) ||
-                            (data->content.type() == typeof(str)))) {
+                             (data->content.type() == typeof(str)))) {
             canvas.color(text.color);
             canvas.text(
                 data->content.grab(), text.shape.bounds(),
@@ -976,12 +996,16 @@ struct node:Element {
         return result;
     }
 
-    // node(Element::data&); /// constructs default members.  i dont see an import use-case for members just yet
     mx_object(node, Element, props);
 
     /// does not resolve at this point, this is purely storage in element with a static default data pointer
     /// we do not set anything in data
     node(type_t type, initial<arg> args) : Element(type, args), data(defaults<props>()) { }
+
+    node(symbol id, array<Element> ch):node() {
+        data->id = id;
+        Element::data->children = ch;
+    }
 
     node *root() const {
         node  *pe = (node*)this;
@@ -1341,6 +1365,10 @@ struct Button:node {
         type_register(props);
     };
     component(Button, node, props);
+
+    Element update() {
+        return node::update();
+    }
 };
 
 #if 0
@@ -1530,6 +1558,8 @@ struct composer:mx {
     mx_object(composer, mx, cdata);
     ///
     void update(Element e);
+    void is_different(node *&instance, Element &e);
+    void update_instance(node *&instance, Element &e);
     ///
     array<node *> select_at(vec2d cur, bool active = true) {
         array<node*> inside = data->root_instance->select([&](node *n) {
