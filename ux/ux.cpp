@@ -1007,23 +1007,22 @@ void style::load(str code) {
 
 style style::init() {
     style st;
-    if (st->loaded)
-        return st;
-    
-    path  style_path = "style";
-    /// there could be sub-dirs here with an argument in init
-    /// most likely defaults would be loaded first, then override dirs are run
-    /// will need to clear previous data as a singleton
+    if (st->loaded) {
+        path  style_path = "style";
+        /// there could be sub-dirs here with an argument in init
+        /// most likely defaults would be loaded first, then override dirs are run
+        /// will need to clear previous data as a singleton
 
-    style_path.resources({".css"}, {},
-        [&](path css_file) -> void {
-            str style_str = css_file.read<str>();
-            load(style_str);
-        });
+        style_path.resources({".css"}, {},
+            [&](path css_file) -> void {
+                str style_str = css_file.read<str>();
+                load(style_str);
+            });
 
-    /// store blocks by member, the interface into all style: style::members[name]
-    st.cache_members();
-    st->loaded = true;
+        /// store blocks by member, the interface into all style: style::members[name]
+        st.cache_members();
+        st->loaded = true;
+    }
     return st;
 }
 
