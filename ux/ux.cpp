@@ -673,7 +673,7 @@ void composer::update(Element e) {
                 
                 /// iterate through args, skip those we have already set
                 for (size_t i = 0; i < args_len; i++) {
-                    if (pset[i])
+                    if (pset[i]) 
                         continue;
                     arg &a = e->args[i];
                     memory *key = a.key.mem;
@@ -684,11 +684,11 @@ void composer::update(Element e) {
                         if (def) {
                             type_t prop_type = def->member_type;
                             type_t arg_type  = a.value.type();
-
                             u8    *prop_dst  = &data_origin[def->offset];
-                            u8    *arg_src   = (u8*)a.value.mem->typed_data(arg_type, 0);
+                            u8    *arg_src   = (u8*)a.value.mem->typed_data(arg_type, 0); /// passing int into mx recovers int, but passing lambda will give data inside.  we want to store a context
                             u8    *conv_inst = null;
-
+    
+                            /// if going to string and arg is not, we convert
                             if (prop_type == typeof(str) && arg_type != prop_type) {
                                 /// general to_string conversion (memory of char)
                                 assert(arg_type->functions->to_string);
@@ -704,13 +704,18 @@ void composer::update(Element e) {
                                 arg_src = (u8*)conv_inst;
                                 arg_type = prop_type;
                             }
-
-                            /// error on type mismatch.  this is better than conversion for now
+                            /// types should match
                             assert(arg_type == prop_type);
-                            assert(prop_type->functions && prop_type->functions->assign);
 
-                            /// set registered property with data that is of the same type
-                            prop_type->functions->assign(null, prop_dst, arg_src);
+                            if (prop_type->traits & traits::mx_obj) {
+                                /// set by memory construction (cast conv_inst as mx which it must be)
+                                assert(!conv_inst || (arg_type->traits & traits::mx_obj) ||
+                                                     (arg_type->traits & traits::mx));
+                                prop_type->functions->set_memory(prop_dst, conv_inst ? ((mx*)conv_inst)->mem : a.value.mem);
+                            } else {
+                                /// assign property with data that is of the same type
+                                prop_type->functions->assign(null, prop_dst, arg_src);
+                            }
                             pset[i] = true;
                             if (conv_inst) arg_type->functions->del(null, conv_inst);
                         }
