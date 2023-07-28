@@ -1007,13 +1007,10 @@ void style::load(str code) {
 
 style style::init() {
     style st;
-    if (st->loaded) {
-        path  style_path = "style";
-        /// there could be sub-dirs here with an argument in init
-        /// most likely defaults would be loaded first, then override dirs are run
-        /// will need to clear previous data as a singleton
-
-        style_path.resources({".css"}, {},
+    if (!st->loaded) {
+        path base_path = "style";
+        /// there could be sub-dirs here with an argument
+        base_path.resources({".css"}, {},
             [&](path css_file) -> void {
                 str style_str = css_file.read<str>();
                 load(style_str);

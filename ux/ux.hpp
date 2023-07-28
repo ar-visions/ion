@@ -1247,8 +1247,9 @@ struct style:mx {
     };
 
     struct sdata {
-        array<block>      root;
-        map<array<block>> members;
+        array<block>        root;
+        map<array<block>>   members;
+        bool                loaded;
         type_register(sdata);
     };
 
@@ -1258,10 +1259,14 @@ struct style:mx {
         return data->members[s_member];
     }
 
-    ///
+    /// optimize member access by caching by member name, and type
     void cache_members();
 
-    static style load();
+    /// load all style sheets in resources
+    static void init();
+
+    /// load style sheet into instance
+    style load();
 };
 
 /// no reason to have style separated in a single app
