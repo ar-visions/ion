@@ -282,7 +282,7 @@ void terminal::fill(graphics::shape sh) {
         int      y0 = math::max(int(0),      int(r.y)),
                  y1 = math::min(int(sy - 1), int(r.y + r.h));
 
-        glyph    cg = glyph::members { 0, " ", rgba8(ds.color), rgba8(0,0,0,0) }; /// members = data
+        glyph    cg = glyph::members { 0, " ", rgba8(ds.color), rgba8 { 0,0,0,0 } }; /// members = data
 
         for (int x = x0; x <= x1; x++)
             for (int y = y0; y <= y1; y++)
@@ -898,8 +898,7 @@ doubly<style::qualifier> parse_qualifiers(style::block &bl, cstr *p) {
                 v->type = q;
         }
         if (v->type) {
-            v->ty = ident::lookup(v->type);
-            assert(v->ty);
+            v->ty = ident::lookup(v->type); /// we will need a bootstrap function that inits all the ux types. lol
         }
         array<str> ops {"!=",">=","<=",">","<","="};
         if (tail) {
@@ -988,7 +987,8 @@ void style::load(str code) {
                     console.test(scan_to(cur, {';'}), "expected member:[value;]");
                     
                     /// needs escape sequencing?
-                    str  cb_value = str(vstart, std::distance(vstart, cur)).trim();
+                    size_t len = std::distance(vstart, cur);
+                    str  cb_value = str(vstart, len).trim();
                     str       end = cb_value.mid(-1, 1);
                     bool       qs = cb_value.mid( 0, 1) == "\"";
                     bool       qe = cb_value.mid(-1, 1) == "\"";
@@ -1001,6 +1001,10 @@ void style::load(str code) {
                     int         i = cb_value.index_of(",");
                     str     param = i >= 0 ? cb_value.mid(i + 1).trim() : "";
                     str     value = i >= 0 ? cb_value.mid(0, i).trim()  : cb_value;
+                    if (param) {
+                        int test = 0;
+                        test++;
+                    }
                     style::transition trans = param ? style::transition(param) : null;
                     
                     /// check

@@ -1,6 +1,5 @@
 #pragma once
 #include <mx/mx.hpp>
-#include <math/math.hpp>
 #include <image/image.hpp>
 
 namespace ion {

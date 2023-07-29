@@ -20,7 +20,7 @@ Group:hover {
 Button:hover {
     image-region: 15p, 200ms ease-in;
     fill-color:   #faa, 200ms linear;
-    image-align:  left top, 200ms ease;
+    image-align:  left top, 200ms ease-in;
 }
 
 Button:active {

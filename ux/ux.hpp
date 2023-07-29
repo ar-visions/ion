@@ -2,9 +2,8 @@
 
 #include <async/async.hpp>
 #include <net/net.hpp>
-#include <math/math.hpp>
-#include <media/media.hpp>
 #include <image/image.hpp>
+#include <media/media.hpp>
 #include <vk/vk.hpp>
 #include <vkh/vkh.h>
 
@@ -217,7 +216,9 @@ struct scalar:mx {
     scalar(p_type prefix, real scale, s_type suffix) : scalar(sdata { prefix, scale, suffix, false }) { }
 
     scalar(str s) : scalar() {
-        str    tr  = s.trim();
+        str tr(size_t(32));
+        tr += s.trim();
+        //str    tr  = s.trim();
         size_t len = tr.len();
         bool in_symbol = isalpha(tr[0]) || tr[0] == '_' || tr[0] == '%'; /// str[0] is always guaranteed to be there
         array<str> sp   = tr.split([&](char &c) -> bool {
@@ -973,12 +974,12 @@ struct node:Element {
         }
 
         /// if there is fill image -- this should not run in the case of default button
-        if (bool(image.img))
+        if (image.img)
             canvas.image(image.img, image.shape, image.align, {0,0}, {0,0});
         
         /// if there is text (its not alpha 0, and there is text)
         if (data->content && ((data->content.type() == typeof(char)) ||
-                             (data->content.type() == typeof(str)))) {
+                              (data->content.type() == typeof(str)))) {
             canvas.color(text.color);
             canvas.text(
                 data->content.grab(), text.shape.bounds(),
@@ -986,7 +987,7 @@ struct node:Element {
         }
 
         /// if there is an effective border to draw
-        if (!!outline.color && outline.border->size > 0.0) {
+        if (outline.color && outline.border->size > 0.0) {
             canvas.color(outline.border->color);
             canvas.outline_sz(outline.border->size);
             canvas.outline(outline.shape); /// this needs to work with vshape, or border

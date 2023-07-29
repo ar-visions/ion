@@ -6,7 +6,7 @@ Button {
     text-color:   #222;
     text-label:   "This is a label 22z...";
     region:       0l 0t 0r 80h;
-    image-align:  left top, 900ms ease;
+    image-align:  left top, 900ms ease-in;
     opacity:      0.1;
 }
 
@@ -31,7 +31,7 @@ Group:hover {
 Button:hover {
     image-region: 15p, 200ms ease-in;
     fill-color:   #faa, 200ms linear;
-    image-align:  left top, 200ms ease;
+    image-align:  left top, 200ms ease-in;
 }
 
 Button:active {
