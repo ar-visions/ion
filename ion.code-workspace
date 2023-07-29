@@ -161,7 +161,8 @@
 			"vkengine.h": "c",
 			"vkh.h": "c",
 			"vkg.hpp": "c",
-			"stdint.h": "c"
+			"stdint.h": "c",
+			"csetjmp": "cpp"
 		}
 	}
 }

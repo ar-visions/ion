@@ -10,6 +10,9 @@
 
 namespace ion {
 
+//static NewFn<path> path_fn = NewFn<path>(path::_new);
+//static NewFn<array<rgba8>> ari_fn = NewFn<array<rgba8>>(array<rgba8>::_new);
+//static NewFn<image> img_fn = NewFn<image>(image::_new);
 
 struct gfx_memory {
     VkvgSurface    vg_surface;
@@ -667,7 +670,8 @@ void composer::update(node *parent, node *&instance, Element &e) {
         /// set properties from style
         /// apply style across all style sheets in one shot.  i do not want it overriding style left and right
         /// load style cache in singular database
-        style::apply(instance);
+        static style st = style::init();
+        st.apply(instance);
 
         /// arg set cache
         bool pset[args_len];
@@ -845,7 +849,7 @@ bool scan_to(cstr &cursor, array<char> chars) {
     return false;
 }
 
-doubly<style::qualifier> parse_qualifiers(cstr *p) {
+doubly<style::qualifier> parse_qualifiers(style::block &bl, cstr *p) {
     str   qstr;
     cstr start = *p;
     cstr end   = null;
@@ -893,6 +897,10 @@ doubly<style::qualifier> parse_qualifiers(cstr *p) {
             } else
                 v->type = q;
         }
+        if (v->type) {
+            v->ty = ident::lookup(v->type);
+            assert(v->ty);
+        }
         array<str> ops {"!=",">=","<=",">","<","="};
         if (tail) {
             // check for ops
@@ -913,6 +921,11 @@ doubly<style::qualifier> parse_qualifiers(cstr *p) {
     }
     *p = end;
     return result;
+}
+
+/// apply style to node; this happens prior to its arguments being set
+/// of course that messes up 'changed' doesnt it.. just store the prevs
+void style::apply(node *n) {
 }
 
 void style::cache_members() {
@@ -944,7 +957,7 @@ void style::load(str code) {
         parse_block = [&](block bl) {
             ws(sc);
             console.test(*sc == '.' || isalpha(*sc), "expected Type, or .name");
-            bl->quals = parse_qualifiers(&sc);
+            bl->quals = parse_qualifiers(bl, &sc);
             ws(++sc);
             ///
             while (*sc && *sc != '}') {
@@ -1013,7 +1026,7 @@ style style::init() {
         base_path.resources({".css"}, {},
             [&](path css_file) -> void {
                 str style_str = css_file.read<str>();
-                load(style_str);
+                st.load(style_str);
             });
 
         /// store blocks by member, the interface into all style: style::members[name]
@@ -1029,12 +1042,17 @@ style::entry *prop_style(node &n, prop *member) {
     array<style::block> &blocks = st->members(s_member); /// instance function when loading and updating style, managed map of [style::block*]
     style::entry *match = null; /// key is always a symbol, and maps are keyed by symbol
     real     best_score = 0;
+
+    /// should narrow down by type used in the various blocks by referring to the qualifier
     /// find top style pair for this member
+    type_t type = n.mem->type;
     for (style::block &block:blocks) {
-        real score = block.match(&n);
-        if (score > 0 && score >= best_score) {
-            match = block.b_entry(member->key);
-            best_score = score;
+        if (!block->types || block->types.index_of(type) >= 0) {
+            real score = block.match(&n);
+            if (score > 0 && score >= best_score) {
+                match = block.b_entry(member->key);
+                best_score = score;
+            }
         }
     }
     return match;

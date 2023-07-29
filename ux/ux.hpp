@@ -4,6 +4,7 @@
 #include <net/net.hpp>
 #include <math/math.hpp>
 #include <media/media.hpp>
+#include <image/image.hpp>
 #include <vk/vk.hpp>
 #include <vkh/vkh.h>
 
@@ -107,7 +108,7 @@ namespace graphics {
         }
 
       //void quad    (graphics::quad   q) { data->ops += q; }
-        inline void arc     (Arc a) { data->ops += a; }
+        inline void arc(Arc a) { data->ops += a; }
         operator        bool() { bounds(); return bool(data->bounds); }
         bool       operator!() { return !operator bool(); }
         shape::sdata *handle() { return data; }
@@ -859,12 +860,14 @@ struct node:Element {
             dispatch            cursor;
         } ev;
 
+        /// padding does not seem needed with this set of members and enumerable drawing types
+        /// not ALL are used for all types.  However its useful to have a generic data structure for binding and function
+        /// not sure if overflow should be used for all of these.  that might be much to deal with
         struct drawing {
-            rgba8               color; 
-            real                offset;
-            alignment           align; 
-            image               img;   
-            region              area;  
+            rgba8               color;
+            alignment           align;
+            image               img;
+            region              area;
             graphics::shape     shape; 
             graphics::cap       cap;   
             graphics::join      join;
@@ -897,7 +900,7 @@ struct node:Element {
 
         doubly<prop> meta() const {
             return {
-                prop { "id",        id        },
+                prop { "id",        id        }, /// move to Element?
                 prop { "on-hover",  ev.hover  }, /// must give member-parent-origin (std) to be able to 're-apply' somewhere else
                 prop { "on-out",    ev.out    },
                 prop { "on-down",   ev.down   },
@@ -907,7 +910,29 @@ struct node:Element {
                 prop { "on-blur",   ev.blur   },
                 prop { "on-cursor", ev.cursor },
                 prop { "on-hover",  ev.hover  },
-                prop { "content",   content   }
+                prop { "content",   content   },
+
+                prop { "image-src",      drawings[operation::image]  .img  },
+
+                prop { "fill-area",      drawings[operation::fill]   .area },
+                prop { "image-area",     drawings[operation::image]  .area },
+                prop { "outline-area",   drawings[operation::outline].area },
+                prop { "text-area",      drawings[operation::text]   .area },
+                prop { "child-area",     drawings[operation::child]  .area },
+
+                prop { "fill-color",     drawings[operation::fill]   .color },
+                prop { "image-color",    drawings[operation::image]  .color },
+                prop { "outline-color",  drawings[operation::outline].color },
+                prop { "text-color",     drawings[operation::text]   .color },
+
+                prop { "fill-border",    drawings[operation::fill]   .border },
+                prop { "image-border",   drawings[operation::image]  .border },
+                prop { "outline-border", drawings[operation::outline].border },
+                prop { "text-border",    drawings[operation::text]   .border },
+
+                prop { "image-align",    drawings[operation::image]  .align },
+                prop { "child-align",    drawings[operation::child]  .align },
+                prop { "text-align",     drawings[operation::text]   .align },
             };
         }
         type_register(props);
@@ -1066,6 +1091,7 @@ struct style:mx {
     /// qualifier for style block
     struct qualifier:mx {
         struct members {
+            type_t    ty; /// its useful to look this up (which we cant by string)
             str       type;
             str       id;
             str       state; /// member to perform operation on (boolean, if not specified)
@@ -1161,6 +1187,7 @@ struct style:mx {
             doubly<style::qualifier> quals;  /// an array of qualifiers it > could > be > this:state, or > just > that [it picks the best score, moves up for a given node to match style in]
             doubly<style::entry>     entries;
             doubly<style::block>     blocks;
+            array<type_t>            types; // if !types then its all types.
             type_register(bdata);
         };
         
@@ -1255,6 +1282,9 @@ struct style:mx {
 
     mx_object(style, mx, sdata);
 
+    void apply(node *dst);
+    void load(str code);
+
     array<block> &members(mx &s_member) {
         return data->members[s_member];
     }
@@ -1263,10 +1293,7 @@ struct style:mx {
     void cache_members();
 
     /// load all style sheets in resources
-    static void init();
-
-    /// load style sheet into instance
-    style load();
+    static style init();
 };
 
 /// no reason to have style separated in a single app
@@ -1547,6 +1574,7 @@ struct composer:mx {
         //fn_render     render;
         lambda<Element()> render;
         map<mx>       args;
+        ion::style    style;
         type_register(cdata);
     };
     

@@ -1,0 +1,11 @@
+Button {
+    radius:       0;
+    fill-color:   #08af;
+    image:        "menu.png";
+    image-region:  5l 5t 5r 5b, 200ms ease-in;
+    text-color:   #fff;
+    content:      "Text";
+    region:       0l 0t 0r 80h;
+    image-align:  left top, 900ms ease;
+    opacity:      0.1;
+}

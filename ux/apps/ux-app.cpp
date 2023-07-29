@@ -33,6 +33,7 @@ struct View:node {
         console.log("mounting");
     }
 
+    /// button should have blue bg and white text in style css
     Element update() {
         return Button {
             { "content", fmt {"hello world: {0}", { state->sample }} },
