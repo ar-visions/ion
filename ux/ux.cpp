@@ -679,7 +679,7 @@ void composer::update(node *parent, node *&instance, Element &e) {
 
         /// iterate through polymorphic meta info
         for (type_t t = e->type; t; t = t->parent) {
-            if (!t->schema)
+            if (!t->schema || !t->parent) /// mx type does not contain a schema in itself
                 continue;
             ///
             type_t tdata = t->schema->bind->data;
