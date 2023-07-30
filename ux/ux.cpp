@@ -676,12 +676,13 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
         bool pset[args_len];
         memset(pset, 0, args_len * sizeof(bool));
 
-        /// iterate through polymorphic meta info
-        for (type_t t = e->type; t; t = t->parent) {
-            if (!t->meta || !t->schema || !t->parent) /// mx type does not contain a schema in itself
+        /// iterate through polymorphic meta info on the schema bindings on these context types (the user instantiates context, not data)
+        for (type_t ctx = e->type; ctx; ctx = ctx->parent) {
+            if (!ctx->schema)
                 continue;
-            ///
-            type_t tdata = t->schema->bind->data;
+            type_t tdata = ctx->schema->bind->data;
+            if (!tdata->meta) /// mx type does not contain a schema in itself
+                continue;
             u8* data_origin = (u8*)instance->mem->typed_data(tdata, 0);
             hmap<ion::symbol, prop>* meta_map = (hmap<ion::symbol, prop> *)tdata->meta_map;
             doubly<prop>* props = (doubly<prop>*)tdata->meta;
@@ -696,8 +697,16 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
             /// dom uses invalidation for this such as property changed in a parent, element added, etc
             /// it does not need to be perfect we are not making a web browser
             style::style_map &style_avail = (*instance)->style_avail;
+            if (instance->mem->type == typeof(Button)) {
+                int test = 0;
+                test++;
+            }
             for (prop &p: *props) {
                 str &name = *p.s_key;
+                if (name == "content") {
+                    int test = 0;
+                    test++;
+                }
                 field<array<style::entry*>> *entries = style_avail->lookup(name);
                 if (entries) {
                     /// get best style matching entry for this property
@@ -808,6 +817,9 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
         /// that in itsself is still an 'Element', with an instance to a kind of placeholder node
         /// the issue with that is its id-less nature, its typeless too in a way.
         /// 
+
+        /// support transitions after first light.
+
         Element render = instance->update(); /// needs a 'changed' arg
         if (render) {
             /// contains mount info (node instance Element data)
@@ -948,6 +960,8 @@ doubly<style::qualifier> parse_qualifiers(style::block &bl, cstr *p) {
         }
         if (v->type) {
             v->ty = ident::lookup(v->type); /// we will need a bootstrap function that inits all the ux types. lol
+            if (bl->types.index_of(v->ty) == -1)
+                bl->types += v->ty;
         }
         array<str> ops {"!=",">=","<=",">","<","="};
         if (tail) {
