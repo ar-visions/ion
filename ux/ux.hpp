@@ -843,6 +843,180 @@ struct terminal:cbase {
     void              fill(graphics::shape sh);
 };
 
+
+
+
+struct style:mx {
+    /// qualifier for style block
+    struct qualifier:mx {
+        struct members {
+            type_t    ty; /// its useful to look this up (which we cant by string)
+            str       type;
+            str       id;
+            str       state; /// member to perform operation on (boolean, if not specified)
+            str       oper;  /// if specified, use non-boolean operator
+            str       value;
+            type_register(members);
+        };
+        mx_object(qualifier, mx, members);
+    };
+
+    ///
+    struct transition:mx {
+        enums(curve, none, 
+            "none, linear, ease-in, ease-out, cubic-in, cubic-out",
+             none, linear, ease_in, ease_out, cubic_in, cubic_out);
+        
+        struct members {
+            curve ct; /// curve-type, or counter-terrorist.
+            scalar<nil, duration> dur;
+            type_register(members);
+        };
+
+        mx_object(transition, mx, members);
+        transition(null_t n) : transition() { }
+
+        inline real pos(real tf) const {
+            real x = math::clamp<real>(tf, 0.0, 1.0);
+            switch (style::transition::curve::etype(data->ct)) {
+                case curve::none:      x = 1.0;                    break;
+                case curve::linear:                                break; // /*x = x*/  
+                case curve::ease_in:   x = x * x * x;              break;
+                case curve::ease_out:  x = x * x * x;              break;
+                case curve::cubic_in:  x = x * x * x;              break;
+                case curve::cubic_out: x = 1 - std::pow((1-x), 3); break;
+            };
+            return x;
+        }
+
+        template <typename T>
+        inline T operator()(T &fr, T &to, real value) const {
+            constexpr bool transitions = transitionable<T>();
+            if constexpr (transitions) {
+                real x = pos(value);
+                real i = 1.0 - x;
+                return (fr * i) + (to * x);
+            } else
+                return to;
+        }
+
+        transition(str s) : transition() {
+            if (s) {
+                array<str> sp = s.split();
+                size_t    len = sp.length();
+                ///
+                if (len == 2) {
+                    /// 0.5s ease-out [things like that]
+                    data->dur = sp[0];
+                    data->ct  = curve(sp[1]).value;
+                } else if (len == 1) {
+                    doubly<memory*> &sym = curve::symbols();
+                    if (s == str(sym[0])) {
+                        /// none
+                        data->ct  = curve::none;
+                    } else {
+                        /// 0.2s
+                        data->dur = sp[0];
+                        data->ct  = curve::linear; /// linear is set if any duration is set; none = no transition
+                    }
+                } else
+                    console.fault("transition values: none, count type, count (seconds default)");
+            }
+        }
+        ///
+        operator  bool() { return data->ct != curve::none; }
+        bool operator!() { return data->ct == curve::none; }
+    };
+
+    struct block;
+
+    /// Element or style block entry
+    struct entry:mx {
+        struct edata {
+            mx              member;
+            str             value;
+            transition      trans; 
+            block          *bl; /// block location would be nice to have; you compute a list of entries and props once and apply on update
+            mx             *mx_instance;  ///
+            void           *raw_instance; /// we run type->from_string(null, value.cs()), on style load.  we need not do this every time
+            type_register(edata);
+        };
+        mx_object(entry, mx, edata);
+    };
+
+    ///
+    struct block:mx {
+        struct bdata {
+            mx                       parent; /// pattern: reduce type rather than create pointer to same type in delegation
+            doubly<style::qualifier> quals;  /// an array of qualifiers it > could > be > this:state, or > just > that [it picks the best score, moves up for a given node to match style in]
+            doubly<style::entry>     entries;
+            doubly<style::block>     blocks;
+            array<type_t>            types; // if !types then its all types.
+            type_register(bdata);
+        };
+        
+        ///
+        mx_object(block, mx, bdata);
+        
+        ///
+        inline size_t count(str s) {
+            for (entry &p:data->entries)
+                if (p->member == s)
+                    return 1;
+            return 0;
+        }
+
+        ///
+        inline entry *b_entry(mx member_name) {
+            for (entry &p:data->entries)
+                if (p->member == member_name)
+                    return (entry*)&(mx&)p; /// this is how you get the pointer to the thing
+            return null;
+        }
+
+        size_t score(node *n);
+
+        /// each qualifier is defined as it, and all of the blocked qualifiers below.
+        /// there are more optimal data structures to use for this matching routine
+        /// state > state2 would be a nifty one, no operation indicates bool, as-is current normal syntax
+        double match(node *from);
+
+        ///
+        inline operator bool() { return data->quals || data->entries || data->blocks; }
+    };
+
+    struct sdata {
+        array<block>        root;
+        map<array<block>>   members;
+        bool                loaded;
+        type_register(sdata);
+    };
+
+    mx_object(style, mx, sdata);
+
+    using style_map = map<array<entry*>>;
+
+    style_map        compute(node *dst);
+    entry        *best_match(node *n, prop *member, array<entry*> &entries);
+    array<entry*> applicable(node *n, prop *member);
+    void                load(str code);
+    array<block>    &members(mx &s_member) {
+        return data->members[s_member];
+    }
+
+    /// optimize member access by caching by member name, and type
+    void cache_members();
+
+    /// load all style sheets in resources
+    static style init();
+};
+
+/// no reason to have style separated in a single app
+/// if we have multiple styles, just reload
+template <> struct is_singleton<style::sdata> : true_type { };
+
+
+
 enums(operation, fill,
     "fill, image, outline, text, child",
      fill, image, outline, text, child);
@@ -850,6 +1024,8 @@ enums(operation, fill,
 struct node:Element {
     /// standard props
     struct props {
+        style::style_map style_avail; /// properties outside of meta are effectively internal state only; it can be labelled as such
+        
         struct events {
             dispatch            hover;
             dispatch            out;
@@ -1088,219 +1264,6 @@ struct node:Element {
     }
 };
 
-struct style:mx {
-    /// qualifier for style block
-    struct qualifier:mx {
-        struct members {
-            type_t    ty; /// its useful to look this up (which we cant by string)
-            str       type;
-            str       id;
-            str       state; /// member to perform operation on (boolean, if not specified)
-            str       oper;  /// if specified, use non-boolean operator
-            str       value;
-            type_register(members);
-        };
-        mx_object(qualifier, mx, members);
-    };
-
-    ///
-    struct transition:mx {
-        enums(curve, none, 
-            "none, linear, ease-in, ease-out, cubic-in, cubic-out",
-             none, linear, ease_in, ease_out, cubic_in, cubic_out);
-        
-        struct members {
-            curve ct; /// curve-type, or counter-terrorist.
-            scalar<nil, duration> dur;
-            type_register(members);
-        };
-
-        mx_object(transition, mx, members);
-        transition(null_t n) : transition() { }
-
-        inline real pos(real tf) const {
-            real x = math::clamp<real>(tf, 0.0, 1.0);
-            switch (style::transition::curve::etype(data->ct)) {
-                case curve::none:      x = 1.0;                    break;
-                case curve::linear:                                break; // /*x = x*/  
-                case curve::ease_in:   x = x * x * x;              break;
-                case curve::ease_out:  x = x * x * x;              break;
-                case curve::cubic_in:  x = x * x * x;              break;
-                case curve::cubic_out: x = 1 - std::pow((1-x), 3); break;
-            };
-            return x;
-        }
-
-        template <typename T>
-        inline T operator()(T &fr, T &to, real value) const {
-            constexpr bool transitions = transitionable<T>();
-            if constexpr (transitions) {
-                real x = pos(value);
-                real i = 1.0 - x;
-                return (fr * i) + (to * x);
-            } else
-                return to;
-        }
-
-        transition(str s) : transition() {
-            if (s) {
-                array<str> sp = s.split();
-                size_t    len = sp.length();
-                ///
-                if (len == 2) {
-                    /// 0.5s ease-out [things like that]
-                    data->dur = sp[0];
-                    data->ct  = curve(sp[1]).value;
-                } else if (len == 1) {
-                    doubly<memory*> &sym = curve::symbols();
-                    if (s == str(sym[0])) {
-                        /// none
-                        data->ct  = curve::none;
-                    } else {
-                        /// 0.2s
-                        data->dur = sp[0];
-                        data->ct  = curve::linear; /// linear is set if any duration is set; none = no transition
-                    }
-                } else
-                    console.fault("transition values: none, count type, count (seconds default)");
-            }
-        }
-        ///
-        operator  bool() { return data->ct != curve::none; }
-        bool operator!() { return data->ct == curve::none; }
-    };
-
-    /// Element or style block entry
-    struct entry:mx {
-        struct edata {
-            mx              member;
-            str             value;
-            transition      trans;
-            type_register(edata);
-        };
-        mx_object(entry, mx, edata);
-    };
-
-    ///
-    struct block:mx {
-        struct bdata {
-            mx                       parent; /// pattern: reduce type rather than create pointer to same type in delegation
-            doubly<style::qualifier> quals;  /// an array of qualifiers it > could > be > this:state, or > just > that [it picks the best score, moves up for a given node to match style in]
-            doubly<style::entry>     entries;
-            doubly<style::block>     blocks;
-            array<type_t>            types; // if !types then its all types.
-            type_register(bdata);
-        };
-        
-        ///
-        mx_object(block, mx, bdata);
-        
-        ///
-        inline size_t count(str s) {
-            for (entry &p:data->entries)
-                if (p->member == s)
-                    return 1;
-            return 0;
-        }
-
-        ///
-        inline entry *b_entry(mx member_name) {
-            for (entry &p:data->entries)
-                if (p->member == member_name)
-                    return (entry*)&(mx&)p; /// this is how you get the pointer to the thing
-            return null;
-        }
-
-        size_t score(node *n) {
-            double best_sc = 0;
-            for (qualifier &q:data->quals) {
-                qualifier::members &qd = *q;
-                bool    id_match  = qd.id    &&  qd.id == n->data->id;
-                bool   id_reject  = qd.id    && !id_match;
-                bool  type_match  = qd.type  &&  strcmp((symbol)qd.type.cs(), (symbol)n->mem->type->name) == 0; /// class names are actual type names
-                bool type_reject  = qd.type  && !type_match;
-                bool state_match  = qd.state &&  n->data->istates[qd.state];
-                bool state_reject = qd.state && !state_match;
-                ///
-                if (!id_reject && !type_reject && !state_reject) {
-                    double sc = size_t(   id_match) << 1 |
-                                size_t( type_match) << 0 |
-                                size_t(state_match) << 2;
-                    best_sc = math::max(sc, best_sc);
-                }
-            }
-            return best_sc;
-        };
-
-        /// each qualifier is defined as it, and all of the blocked qualifiers below.
-        /// there are more optimal data structures to use for this matching routine
-        /// state > state2 would be a nifty one, no operation indicates bool, as-is current normal syntax
-        double match(node *from) {
-            block          &bl = *this;
-            double total_score = 0;
-            int            div = 0;
-            node            *n = from;
-            ///
-            while (bl && n) {
-                bool   is_root   = !bl->parent;
-                double score     = 0;
-                ///
-                while (n) { ///
-                    auto sc = bl.score(n);
-                    n       = n->Element::data->parent;
-                    if (sc == 0 && is_root) {
-                        score = 0;
-                        break;
-                    } else if (sc > 0) {
-                        score += double(sc) / ++div;
-                        break;
-                    }
-                }
-                total_score += score;
-                ///
-                if (score > 0) {
-                    /// proceed...
-                    bl = block(bl->parent);
-                } else {
-                    /// style not matched
-                    bl = null;
-                    total_score = 0;
-                }
-            }
-            return total_score;
-        }
-
-        ///
-        inline operator bool() { return data->quals || data->entries || data->blocks; }
-    };
-
-    struct sdata {
-        array<block>        root;
-        map<array<block>>   members;
-        bool                loaded;
-        type_register(sdata);
-    };
-
-    mx_object(style, mx, sdata);
-
-    void apply(node *dst);
-    void load(str code);
-
-    array<block> &members(mx &s_member) {
-        return data->members[s_member];
-    }
-
-    /// optimize member access by caching by member name, and type
-    void cache_members();
-
-    /// load all style sheets in resources
-    static style init();
-};
-
-/// no reason to have style separated in a single app
-/// if we have multiple styles, just reload
-template <> struct is_singleton<style::sdata> : true_type { };
-
 /// defines a component with a restricted subset and props initializer_list.
 /// this macro is used for template purposes and bypasses memory allocation.
 /// the actual instances of the component are managed by the composer.
@@ -1321,8 +1284,6 @@ template <> struct is_singleton<style::sdata> : true_type { };
     operator     intern *() { return  state; }\
     operator     intern &() { return *state; }\
     type_register(C);
-
-style::entry *prop_style(node &n, prop *member);
 
 //typedef node* (*FnFactory)();
 using FnFactory = node*(*)();
@@ -1585,8 +1546,8 @@ struct composer:mx {
     /// called from app
     void update_all(Element e);
 
-    /// called recursively from update_all -> update(), also called from node generic render
-    static void update(node *parent, node *&instance, Element &e);
+    /// called recursively from update_all -> update(), also called from node generic render (node will need a composer data member)
+    static void update(composer::cdata *composer, node *parent, node *&instance, Element &e);
     
     ///
     array<node *> select_at(vec2d cur, bool active = true) {

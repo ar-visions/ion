@@ -631,7 +631,7 @@ str element_id(Element &e) {
     return e->type->name;
 }
 
-void composer::update(node *parent, node *&instance, Element &e) {
+void composer::update(composer::cdata *composer, node *parent, node *&instance, Element &e) {
     bool       diff = !instance;
     size_t args_len = e->args.len();
 
@@ -664,14 +664,13 @@ void composer::update(node *parent, node *&instance, Element &e) {
             if (instance)
                 delete instance; /// Element data must also delete the nodes
             instance = e.new_instance();
+            str   id = element_id(e); /// needed for style computation of available entries in the style blocks
             (*(Element*)instance)->parent = parent;
+            (*(Element*)instance)->id     = id.grab();
+            
+            /// compute available properties for this node given its type, placement, and props styled 
+            (*instance)->style_avail = composer->style.compute(instance);
         }
-
-        /// set properties from style
-        /// apply style across all style sheets in one shot.  i do not want it overriding style left and right
-        /// load style cache in singular database
-        static style st = style::init();
-        st.apply(instance);
 
         /// arg set cache
         bool pset[args_len];
@@ -679,16 +678,62 @@ void composer::update(node *parent, node *&instance, Element &e) {
 
         /// iterate through polymorphic meta info
         for (type_t t = e->type; t; t = t->parent) {
-            if (!t->schema || !t->parent) /// mx type does not contain a schema in itself
+            if (!t->meta || !t->schema || !t->parent) /// mx type does not contain a schema in itself
                 continue;
             ///
             type_t tdata = t->schema->bind->data;
             u8* data_origin = (u8*)instance->mem->typed_data(tdata, 0);
             hmap<ion::symbol, prop>* meta_map = (hmap<ion::symbol, prop> *)tdata->meta_map;
-            
+            doubly<prop>* props = (doubly<prop>*)tdata->meta;
+
             /// its possible some classes may not have meta information defined, just skip
             if (!meta_map)
                 continue;
+
+            /// todo: init a changed map or list here
+
+            /// apply style to props (only do this when we need to, as this will be inefficient to do per update)
+            /// dom uses invalidation for this such as property changed in a parent, element added, etc
+            /// it does not need to be perfect we are not making a web browser
+            style::style_map &style_avail = (*instance)->style_avail;
+            for (prop &p: *props) {
+                str &name = *p.s_key;
+                field<array<style::entry*>> *entries = style_avail->lookup(name);
+                if (entries) {
+                    /// get best style matching entry for this property
+                    style::entry *best = composer->style.best_match(instance, &p, *entries);
+                    type_t prop_type = p.member_type;
+                    u8    *prop_dst  = &data_origin[p.offset];
+                    
+                    /// in many cases there will be no match
+                    if (best) {
+                        style::entry::edata *b = best->data;
+                        ///
+                        if (prop_type->traits & traits::mx_obj) {
+                            /// we lazy load from_string because when style is loaded we do not have types
+                            if (!b->mx_instance) b->mx_instance = (mx*)prop_type->functions->from_string(null, b->value.cs());
+                            
+                            /// set by memory construction (mx_instance holds memory)
+                            prop_type->functions->set_memory(prop_dst, b->mx_instance->mem);
+                        } else {
+                            /// primitive type
+                            if (!b->raw_instance) b->raw_instance = prop_type->functions->from_string(null, b->value.cs());
+                            
+                            /// assign property with data that is of the same type
+                            prop_type->functions->assign(null, prop_dst, b->raw_instance);
+                        }
+                    } else {
+                        /// if there is nothing to set to, we must set to its default initialization value (not the T default)
+                        /// that is the default the parent type constructs it to
+                        /// there remains the case of args but we do not need to handle it now
+                        if (prop_type->traits & traits::mx_obj) {
+                            prop_type->functions->set_memory(prop_dst, ((mx*)p.init_value)->mem);
+                        } else {
+                            prop_type->functions->assign(null, prop_dst, p.init_value);
+                        }
+                    }
+                }
+            }
             
             /// iterate through args, skip those we have already set
             for (size_t i = 0; i < args_len; i++) {
@@ -771,18 +816,22 @@ void composer::update(node *parent, node *&instance, Element &e) {
                 /// each child is mounted
                 for (Element &e: render->children) {
                     str id = element_id(e);
-                    update(instance, edata->mounts[id], e);
+                    update(composer, instance, edata->mounts[id], e);
                 }
             } else {
                 str id = element_id(render);
-                update(instance, edata->mounts[id], render);
+                update(composer, instance, edata->mounts[id], render);
             }
         }
     }
 }
 
 void composer::update_all(Element e) {
-    update(null, data->root_instance, e);
+    /// style is a singleton and this initializes the data
+    /// i dont favor multiple style databases. thats too complicated and not needed
+    if (!data->root_instance)
+        style::init();
+    update(data, null, data->root_instance, e);
 }
 
 int App::run() {
@@ -922,9 +971,82 @@ doubly<style::qualifier> parse_qualifiers(style::block &bl, cstr *p) {
     return result;
 }
 
-/// apply style to node; this happens prior to its arguments being set
-/// of course that messes up 'changed' doesnt it.. just store the prevs
-void style::apply(node *n) {
+size_t style::block::score(node *n) {
+    double best_sc = 0;
+    for (qualifier &q:data->quals) {
+        qualifier::members &qd = *q;
+        bool    id_match  = qd.id    &&  qd.id == n->data->id;
+        bool   id_reject  = qd.id    && !id_match;
+        bool  type_match  = qd.type  &&  strcmp((symbol)qd.type.cs(), (symbol)n->mem->type->name) == 0; /// class names are actual type names
+        bool type_reject  = qd.type  && !type_match;
+        bool state_match  = qd.state &&  n->data->istates[qd.state];
+        bool state_reject = qd.state && !state_match;
+        ///
+        if (!id_reject && !type_reject && !state_reject) {
+            double sc = size_t(   id_match) << 1 |
+                        size_t( type_match) << 0 |
+                        size_t(state_match) << 2;
+            best_sc = math::max(sc, best_sc);
+        }
+    }
+    return best_sc;
+};
+
+/// each qualifier is defined as it, and all of the blocked qualifiers below.
+/// there are more optimal data structures to use for this matching routine
+/// state > state2 would be a nifty one, no operation indicates bool, as-is current normal syntax
+double style::block::match(node *from) {
+    block          &bl = *this;
+    double total_score = 0;
+    int            div = 0;
+    node            *n = from;
+    ///
+    while (bl && n) {
+        bool   is_root   = !bl->parent;
+        double score     = 0;
+        ///
+        while (n) { ///
+            auto sc = bl.score(n);
+            n       = n->Element::data->parent;
+            if (sc == 0 && is_root) {
+                score = 0;
+                break;
+            } else if (sc > 0) {
+                score += double(sc) / ++div;
+                break;
+            }
+        }
+        total_score += score;
+        ///
+        if (score > 0) {
+            /// proceed...
+            bl = block(bl->parent);
+        } else {
+            /// style not matched
+            bl = null;
+            total_score = 0;
+        }
+    }
+    return total_score;
+}
+
+/// compute available entries for props on a node
+style::style_map style::compute(node *n) {
+    style_map avail(16);
+    ///
+    for (type_t type = n->mem->type; type; type = type->parent) {
+        if (!type->meta || !type->schema || !type->parent)
+            continue;
+        ///
+        for (prop &p: *(doubly<prop>*)type->meta) {
+            array<entry *> all = applicable(n, &p);
+            if (all) {
+                str   s_name  = p.key->grab(); /// it will free if you dont grab it
+                avail[s_name] = all;
+            }
+        }
+    }
+    return avail;
 }
 
 void style::cache_members() {
@@ -955,7 +1077,7 @@ void style::load(str code) {
         ///
         parse_block = [&](block bl) {
             ws(sc);
-            console.test(*sc == '.' || isalpha(*sc), "expected Type, or .name");
+            console.test(*sc == '.' || isalpha(*sc), "expected Type[.id], or .id");
             bl->quals = parse_qualifiers(bl, &sc);
             ws(++sc);
             ///
@@ -1010,7 +1132,7 @@ void style::load(str code) {
                     /// check
                     console.test(member, "member cannot be blank");
                     console.test(value,  "value cannot be blank");
-                    bl->entries += entry::edata { member, value, trans };
+                    bl->entries += entry::edata { member, value, trans, &bl };
                     ws(++sc);
                 }
             }
@@ -1040,25 +1162,39 @@ style style::init() {
     return st;
 }
 
-style::entry *prop_style(node &n, prop *member) {
-    style           *st = (style *)n.fetch_style();
+style::entry *style::best_match(node *n, prop *member, array<style::entry*> &entries) {
     mx         s_member = member->key;
-    array<style::block> &blocks = st->members(s_member); /// instance function when loading and updating style, managed map of [style::block*]
+    array<style::block> &blocks = members(s_member); /// instance function when loading and updating style, managed map of [style::block*]
     style::entry *match = null; /// key is always a symbol, and maps are keyed by symbol
     real     best_score = 0;
 
     /// should narrow down by type used in the various blocks by referring to the qualifier
     /// find top style pair for this member
-    type_t type = n.mem->type;
-    for (style::block &block:blocks) {
-        if (!block->types || block->types.index_of(type) >= 0) {
-            real score = block.match(&n);
-            if (score > 0 && score >= best_score) {
-                match = block.b_entry(member->key);
-                best_score = score;
-            }
+    type_t type = n->mem->type;
+    for (style::entry *e: entries) {
+        block  *bl = (*e)->bl;
+        real score = bl->match(n);
+        if (score > 0 && score >= best_score) {
+            match = bl->b_entry(member->key);
+            best_score = score;
         }
     }
     return match;
 }
+
+/// todo: move functions into itype pattern
+array<style::entry*> style::applicable(node *n, prop *member) {
+    mx         s_member = member->key;
+    array<style::block> &blocks = members(s_member);
+    array<style::entry*> result; 
+
+    type_t type = n->mem->type;
+    for (style::block &block:blocks)
+        if (!block->types || block->types.index_of(type) >= 0)
+            if (block.match(n) > 0)
+                result += block.b_entry(member->key);
+
+    return result;
+}
+
 }
