@@ -57,8 +57,6 @@ int main() {
             { "sample2", "10"   }, /// converts to int from char* or str
             { "clicked", callback([](event e) { /// dont access state in here! lol.
                 printf("test!\n");
-                int test = 0;
-                test++;
             }) }
         };
     });

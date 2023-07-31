@@ -572,7 +572,13 @@ void gfx::translate(vec2d       tr) { vkvg_translate    (data->ctx, tr.x, tr.y);
 void gfx::scale    (vec2d       sc) { vkvg_scale        (data->ctx, sc.x, sc.y);  }
 void gfx::scale    (real        sc) { vkvg_scale        (data->ctx, sc, sc);        }
 void gfx::rotate   (real      degs) { vkvg_rotate       (data->ctx, radians(degs)); }
-void gfx::fill(graphics::shape   p) {
+
+void gfx::fill(rectd &p) {
+    vkvg_rectangle(data->ctx, p.x, p.y, p.w, p.h);
+    vkvg_fill(data->ctx);
+}
+
+void gfx::fill(graphics::shape p) {
     vkvg_path(data->ctx, p.mem);
     vkvg_fill(data->ctx);
 }
@@ -986,13 +992,17 @@ doubly<style::qualifier*> parse_qualifiers(style::block &bl, cstr *p) {
 size_t style::block::score(node *pn) {
     node &n = *pn;
     double best_sc = 0;
+    Element::edata *edata = ((Element*)pn)->data;
     for (qualifier *q:quals) {
         qualifier &qd = *q;
         bool    id_match  = qd.id    &&  qd.id == n->id;
         bool   id_reject  = qd.id    && !id_match;
         bool  type_match  = qd.type  &&  strcmp((symbol)qd.type.cs(), (symbol)n.mem->type->name) == 0; /// class names are actual type names
         bool type_reject  = qd.type  && !type_match;
-        bool state_match  = qd.state &&  n->istates[qd.state]; /// dont use istate; just use props.  
+        bool state_match  = qd.state && get_bool<Element::edata>(edata, qd.state); /// a useful thing for string const input would be to flag that its already symbolized.  that way you dont look it up when you operate it back
+
+        /// dont use istate; just use props on node only, not the subclass
+
         bool state_reject = qd.state && !state_match;
 
         ///
@@ -1220,6 +1230,55 @@ bool style::impl::applicable(node *n, prop *member, array<style::entry*> &result
         }
     }
     return ret;
+}
+
+void node::draw(gfx& canvas) {
+    Element::edata *edata    = ((Element*)this)->data;
+    rect<r64>       bounds   = edata->parent ? data->bounds : rect<r64> { 0, 0, r64(canvas->width), r64(canvas->height) };
+    props::drawing &fill     = data->drawings[operation::fill];
+    props::drawing &image    = data->drawings[operation::image];
+    props::drawing &text     = data->drawings[operation::text];
+    props::drawing &outline  = data->drawings[operation::outline]; /// outline is more AR than border.  and border is a bad idea, badly defined and badly understood. outline is on the 0 pt.  just offset it if you want.
+    props::drawing &children = data->drawings[operation::child]; /// outline is more AR than border.  and border is a bad idea, badly defined and badly understood. outline is on the 0 pt.  just offset it if you want.
+    
+    /// if there is a fill color
+    if (fill.color) { /// free'd prematurely during style change (not a transition)
+        rect<r64> r = fill.area.rect(bounds);
+        canvas.color(fill.color);
+        canvas.fill(r);
+    }
+
+    /// if there is fill image
+    if (image.img) {
+        rect<r64> r = image.area.rect(bounds);
+        canvas.image(image.img, image.shape, image.align, {0,0}, {0,0});
+    }
+    
+    /// if there is text (its not alpha 0, and there is text)
+    if (data->content && ((data->content.type() == typeof(char)) ||
+                            (data->content.type() == typeof(str)))) {
+        canvas.color(text.color);
+        canvas.text(
+            data->content.grab(), text.shape.bounds(),
+            text.align, {0.0, 0.0}, true);
+    }
+
+    /// if there is an effective border to draw
+    if (outline.color && outline.border->size > 0.0) {
+        canvas.color(outline.border->color);
+        canvas.outline_sz(outline.border->size);
+        canvas.outline(outline.shape); /// this needs to work with vshape, or border
+    }
+
+    for (node *c: edata->mounts) {
+        /// clip to child
+        /// translate to child location
+        rect<r64> sub_bounds = children.area.rect(bounds);
+        canvas.translate(sub_bounds.xy());
+        rect<r64> &b = (*c)->bounds = rect<r64> { 0, 0, sub_bounds.w, sub_bounds.h };
+        //canvas.clip(0, 0, r.w, r.h);
+        c->draw(canvas);
+    }
 }
 
 }

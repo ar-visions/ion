@@ -189,6 +189,11 @@ struct scalar:mx {
     mx_object(scalar, mx, sdata);
     //movable(scalar);
 
+    scalar(P p, S s) : scalar() {
+        data->prefix = p;
+        data->suffix = s;
+    }
+
     real operator()(real origin, real size) {
         return origin + (data->is_percent ? (data->scale / 100.0 * size) : data->scale);
     }
@@ -216,11 +221,9 @@ struct scalar:mx {
     scalar(p_type prefix, real scale, s_type suffix) : scalar(sdata { prefix, scale, suffix, false }) { }
 
     scalar(str s) : scalar() {
-        str tr(size_t(32));
-        tr += s.trim();
-        //str    tr  = s.trim();
+        str tr = s.trim();
         size_t len = tr.len();
-        bool in_symbol = isalpha(tr[0]) || tr[0] == '_' || tr[0] == '%'; /// str[0] is always guaranteed to be there
+        bool in_symbol = isalpha(tr[0]) || tr[0] == '_' || tr[0] == '%';
         array<str> sp   = tr.split([&](char &c) -> bool {
             bool split  = false;
             bool symbol = isalpha(c) || (c == '_' || c == '%'); /// todo: will require hashing the enums by - and _, but for now not exposed as issue
@@ -243,6 +246,9 @@ struct scalar:mx {
             } else if (identical<S, nil>()) {
                 data->prefix = P(sp[0]);
                 data->scale  =   sp[1].real_value<real>();
+            } else if (sp.len() == 1) {
+                data->prefix = P(sp[0]);
+                data->scale = 0.0;
             } else {
                 data->prefix = P(sp[0]);
                 data->scale  =   sp[1].real_value<real>();
@@ -274,11 +280,27 @@ struct alignment:mx {
     mx_object(alignment, mx, adata);
     //movable(alignment);
 
+    alignment(scalar<xalign, distance> sx, scalar<yalign, distance> sy) : alignment() {
+        data->x = sx;
+        data->y = sy;
+    }
+
+    alignment(cstr cs) : alignment() {
+        array<str> sp = str(cs).split();
+        assert(sp.len() == 2);
+        data->x = sp[0];
+        data->y = sp[1];
+    }
     ///
-    inline alignment(str  x, str  y) : alignment { adata { x, y } } { }
-    inline alignment(real x, real y)
-         : alignment { adata { { xalign::left, x, distance::px },
-                               { yalign::top,  y, distance::px } } } { }
+    inline alignment(str  x, str  y) : alignment() {
+        data->x = x;
+        data->y = y;
+    }
+
+    inline alignment(real x, real y) : alignment() {
+        data->x = { xalign::left, x, distance::px };
+        data->y = { yalign::top,  y, distance::px };
+    }
 
     inline operator vec2d() { return vec2d { real(data->x), real(data->y) }; }
 
@@ -288,14 +310,14 @@ struct alignment:mx {
         /// todo: direct enum operator does not seem to works
         /// set x coordinate
         switch (xalign::etype(xalign(data->x))) {
-            case xalign::undefined: rs.x = nan<real>();                        break;
+            case xalign::undefined:
             case xalign::left:      rs.x = data->x(win.x,             win.w); break;
             case xalign::middle:    rs.x = data->x(win.x + win.w / 2, win.w); break;
             case xalign::right:     rs.x = data->x(win.x + win.w,     win.w); break;
         }
         /// set y coordinate
         switch (yalign::etype(yalign(data->y))) {
-            case yalign::undefined: rs.y = nan<real>();                        break;
+            case yalign::undefined:
             case yalign::top:       rs.y = data->y(win.y,             win.h); break;
             case yalign::middle:    rs.y = data->y(win.y + win.h / 2, win.h); break;
             case yalign::bottom:    rs.y = data->y(win.y + win.h,     win.h); break;
@@ -310,8 +332,10 @@ struct alignment:mx {
 /// regions can be constructed from rects if area is static or composed in another way
 struct region:mx {
     struct rdata {
-        alignment tl;
-        alignment br;
+        alignment tl = alignment { scalar<xalign, distance> { xalign::left,   distance::px },
+                                   scalar<yalign, distance> { yalign::top,    distance::px }};
+        alignment br = alignment { scalar<xalign, distance> { xalign::right,  distance::px },
+                                   scalar<yalign, distance> { yalign::bottom, distance::px }};
         type_register(rdata);
     };
 
@@ -399,17 +423,8 @@ struct event:mx {
     inline bool scan_up   (num s)   { return  data->key->scan_code == s &&  data->key->up; }
 };
 
-
 struct node;
 struct style;
-
-/// enumerables for the state bits
-enums(interaction, undefined,
-    "undefined, captured, focused, hover, active, cursor",
-     undefined, captured, focused, hover, active, cursor);
-
-struct   map_results:mx {   map_results():mx() { } };
-struct array_results:mx { array_results():mx() { } }; /// deprecate
 
 struct Element:mx {
     struct edata {
@@ -421,10 +436,19 @@ struct Element:mx {
         map<node*>              mounts;   /// store instances of nodes in element data, so the cache management can go here where element turns to node
         node*                   parent;
         style*                  root_style; /// applied at root for multiple style trees across multiple apps
-        states<interaction>     istates;
+
+        bool                    captured;
+        bool                    focused;
+        bool                    hover;
+        bool                    active;
+        bool                    cursor;
 
         doubly<prop> meta() {
             return {
+                prop { "captured", captured },
+                prop { "focused",  focused  },
+                prop { "hover",    hover    },
+                prop { "active",   active   },
                 prop { "children", children }
             };
         }
@@ -462,7 +486,7 @@ struct Element:mx {
 
     template <typename T>
     static Element each(array<T> a, lambda<Element(T &v)> fn) {
-        Element res(typeof(map_results), a.length());
+        Element res(typeof(array<Element>), a.length());
         for (auto &v:a) {
             Element ve = fn(v);
             if (ve) res.data->children += ve;
@@ -472,7 +496,7 @@ struct Element:mx {
     
     template <typename K, typename V>
     static Element each(map<V> m, lambda<Element(K &k, V &v)> fn) {
-        Element res(typeof(array_results), m.size);
+        Element res(typeof(map<Element>), m.size);
         if (res.data->children)
         for (auto &[v,k]:m) {
             Element r = fn(k, v);
@@ -815,6 +839,7 @@ struct gfx:cbase {
     void             scale(vec2d       sc);
     void             scale(real       sc);
     void            rotate(real     degs);
+    void              fill(rectd  &p);
     void              fill(graphics::shape  p);
     void          gaussian(vec2d sz, graphics::shape c);
     void           outline(graphics::shape p);
@@ -1019,7 +1044,7 @@ struct node:Element {
             return drawings[operation::child].shape;
         }
 
-        inline rectd bounds() {
+        inline rectd shape_bounds() {
             return rectd((rectd&)shape());
         }
 
@@ -1028,7 +1053,7 @@ struct node:Element {
         drawing             drawings[operation::count];
         rectd               container;  /// the parent child rectangle
         int                 tab_index;  /// if 0, this is default; its all relative numbers we dont play absolutes.
-        states<interaction> istates;    /// interaction states; these are referenced in qualifiers
+        //states<interaction> istates;    /// interaction states; these are referenced in qualifiers
         vec2d               cursor;     /// set relative to the area origin
         vec2d               scroll = {0,0};
         std::queue<fn_t>    queue;      /// this is an animation queue
@@ -1036,6 +1061,7 @@ struct node:Element {
         bool                focused;
         mx                  content;
         mx                  bind;       /// bind is useful to be in mx form, as any object can be key then.
+        rect<r64>           bounds;     /// local coordinates of this control, so x and y are 0 based
 
         doubly<prop> meta() const {
             return {
@@ -1099,38 +1125,7 @@ struct node:Element {
         return *n;
     }
 
-    virtual void draw(gfx& canvas) {
-        props::drawing &fill    = data->drawings[operation::fill];
-        props::drawing &image   = data->drawings[operation::image];
-        props::drawing &text    = data->drawings[operation::text];
-        props::drawing &outline = data->drawings[operation::outline]; /// outline is more AR than border.  and border is a bad idea, badly defined and badly understood. outline is on the 0 pt.  just offset it if you want.
-        
-        /// if there is a fill color
-        if (!!fill.color) { /// free'd prematurely during style change (not a transition)
-            canvas.color(fill.color);
-            canvas.fill(fill.shape);
-        }
-
-        /// if there is fill image -- this should not run in the case of default button
-        if (image.img)
-            canvas.image(image.img, image.shape, image.align, {0,0}, {0,0});
-        
-        /// if there is text (its not alpha 0, and there is text)
-        if (data->content && ((data->content.type() == typeof(char)) ||
-                              (data->content.type() == typeof(str)))) {
-            canvas.color(text.color);
-            canvas.text(
-                data->content.grab(), text.shape.bounds(),
-                text.align, {0.0, 0.0}, true);
-        }
-
-        /// if there is an effective border to draw
-        if (outline.color && outline.border->size > 0.0) {
-            canvas.color(outline.border->color);
-            canvas.outline_sz(outline.border->size);
-            canvas.outline(outline.shape); /// this needs to work with vshape, or border
-        }
-    }
+    virtual void draw(gfx& canvas);
 
     vec2d offset() {
         node *n = Element::data->parent;
