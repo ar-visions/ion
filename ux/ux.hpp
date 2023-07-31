@@ -848,37 +848,31 @@ struct terminal:cbase {
 
 struct style:mx {
     /// qualifier for style block
-    struct qualifier:mx {
-        struct members {
-            type_t    ty; /// its useful to look this up (which we cant by string)
-            str       type;
-            str       id;
-            str       state; /// member to perform operation on (boolean, if not specified)
-            str       oper;  /// if specified, use non-boolean operator
-            str       value;
-            type_register(members);
-        };
-        mx_object(qualifier, mx, members);
+    struct qualifier {
+        type_t    ty; /// its useful to look this up (which we cant by string)
+        str       type;
+        str       id;
+        str       state; /// member to perform operation on (boolean, if not specified)
+        str       oper;  /// if specified, use non-boolean operator
+        str       value;
+        type_register(qualifier);
     };
 
     ///
-    struct transition:mx {
+    struct transition {
         enums(curve, none, 
             "none, linear, ease-in, ease-out, cubic-in, cubic-out",
              none, linear, ease_in, ease_out, cubic_in, cubic_out);
         
-        struct members {
-            curve ct; /// curve-type, or counter-terrorist.
-            scalar<nil, duration> dur;
-            type_register(members);
-        };
+        curve ct; /// curve-type, or counter-terrorist.
+        scalar<nil, duration> dur;
+        type_register(transition);
 
-        mx_object(transition, mx, members);
-        transition(null_t n) : transition() { }
+        transition(null_t n = null) { }
 
         inline real pos(real tf) const {
             real x = math::clamp<real>(tf, 0.0, 1.0);
-            switch (style::transition::curve::etype(data->ct)) {
+            switch (ct.value) {
                 case curve::none:      x = 1.0;                    break;
                 case curve::linear:                                break; // /*x = x*/  
                 case curve::ease_in:   x = x * x * x;              break;
@@ -907,60 +901,50 @@ struct style:mx {
                 ///
                 if (len == 2) {
                     /// 0.5s ease-out [things like that]
-                    data->dur = sp[0];
-                    data->ct  = curve(sp[1]).value;
+                    dur = sp[0];
+                    ct  = curve(sp[1]).value;
                 } else if (len == 1) {
                     doubly<memory*> &sym = curve::symbols();
                     if (s == str(sym[0])) {
                         /// none
-                        data->ct  = curve::none;
+                        ct  = curve::none;
                     } else {
                         /// 0.2s
-                        data->dur = sp[0];
-                        data->ct  = curve::linear; /// linear is set if any duration is set; none = no transition
+                        dur = sp[0];
+                        ct  = curve::linear; /// linear is set if any duration is set; none = no transition
                     }
                 } else
                     console.fault("transition values: none, count type, count (seconds default)");
             }
         }
         ///
-        operator  bool() { return data->ct != curve::none; }
-        bool operator!() { return data->ct == curve::none; }
+        operator  bool() { return ct != curve::none; }
+        bool operator!() { return ct == curve::none; }
     };
 
     struct block;
 
     /// Element or style block entry
-    struct entry:mx {
-        struct edata {
-            mx              member;
-            str             value;
-            transition      trans; 
-            block          *bl; /// block location would be nice to have; you compute a list of entries and props once and apply on update
-            mx             *mx_instance;  ///
-            void           *raw_instance; /// we run type->from_string(null, value.cs()), on style load.  we need not do this every time
-            type_register(edata);
-        };
-        mx_object(entry, mx, edata);
+    struct entry {
+        mx              member;
+        str             value;
+        transition      trans; 
+        block          *bl; /// block location would be nice to have; you compute a list of entries and props once and apply on update
+        mx             *mx_instance;  ///
+        void           *raw_instance; /// we run type->from_string(null, value.cs()), on style load.  we need not do this every time
     };
 
     ///
-    struct block:mx {
-        struct bdata {
-            mx                       parent; /// pattern: reduce type rather than create pointer to same type in delegation
-            doubly<style::qualifier> quals;  /// an array of qualifiers it > could > be > this:state, or > just > that [it picks the best score, moves up for a given node to match style in]
-            doubly<style::entry>     entries;
-            doubly<style::block>     blocks;
-            array<type_t>            types; // if !types then its all types.
-            type_register(bdata);
-        };
-        
-        ///
-        mx_object(block, mx, bdata);
+    struct block {
+        block*             parent; /// pattern: reduce type rather than create pointer to same type in delegation
+        doubly<qualifier*> quals;  /// an array of qualifiers it > could > be > this:state, or > just > that [it picks the best score, moves up for a given node to match style in]
+        doubly<entry*>     entries;
+        doubly<block*>     blocks;
+        array<type_t>      types; // if !types then its all types.
         
         ///
         inline size_t count(str s) {
-            for (entry &p:data->entries)
+            for (entry *p:entries)
                 if (p->member == s)
                     return 1;
             return 0;
@@ -968,9 +952,9 @@ struct style:mx {
 
         ///
         inline entry *b_entry(mx member_name) {
-            for (entry &p:data->entries)
+            for (entry *p:entries)
                 if (p->member == member_name)
-                    return (entry*)&(mx&)p; /// this is how you get the pointer to the thing
+                    return p; /// this is how you get the pointer to the thing
             return null;
         }
 
@@ -982,40 +966,34 @@ struct style:mx {
         double match(node *from);
 
         ///
-        inline operator bool() { return data->quals || data->entries || data->blocks; }
+        inline operator bool() { return quals || entries || blocks; }
     };
-
-    struct sdata {
-        array<block>        root;
-        map<array<block>>   members;
-        bool                loaded;
-        type_register(sdata);
-    };
-
-    mx_object(style, mx, sdata);
 
     using style_map = map<array<entry*>>;
 
-    style_map        compute(node *dst);
-    entry        *best_match(node *n, prop *member, array<entry*> &entries);
-    array<entry*> applicable(node *n, prop *member);
-    void                load(str code);
-    array<block>    &members(mx &s_member) {
-        return data->members[s_member];
-    }
+    struct impl {
+        array<block*>       root;
+        map<array<block*>>  members;
+        bool                loaded;
+        style_map        compute(node *dst);
+        entry        *best_match(node *n, prop *member, array<entry*> &entries);
+        array<entry*> applicable(node *n, prop *member);
+        void                load(str code);
 
-    /// optimize member access by caching by member name, and type
-    void cache_members();
+        /// optimize member access by caching by member name, and type
+        void cache_members();
+
+        type_register(impl);
+    };
 
     /// load all style sheets in resources
     static style init();
+    mx_object(style, mx, impl);
 };
 
 /// no reason to have style separated in a single app
 /// if we have multiple styles, just reload
-template <> struct is_singleton<style::sdata> : true_type { };
-
-
+template <> struct is_singleton<style::impl> : true_type { };
 
 enums(operation, fill,
     "fill, image, outline, text, child",
@@ -1272,6 +1250,8 @@ struct node:Element {
     using parent_class   = B;\
     using context_class  = C;\
     using intern         = D;\
+    static const inline type_t ctx_t  = typeof(C);\
+    static const inline type_t data_t = typeof(D);\
     intern* state;\
     C(memory*         mem) : B(mem), state(mx::data<D>()) { }\
     C(type_t ty, initial<arg>  props) : B(ty,        props), state(defaults<intern>()) { }\

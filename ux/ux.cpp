@@ -667,9 +667,9 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
             str   id = element_id(e); /// needed for style computation of available entries in the style blocks
             (*(Element*)instance)->parent = parent;
             (*(Element*)instance)->id     = id.grab();
-            
+        
             /// compute available properties for this node given its type, placement, and props styled 
-            (*instance)->style_avail = composer->style.compute(instance);
+            (*instance)->style_avail = composer->style->compute(instance);
         }
 
         /// arg set cache
@@ -697,39 +697,34 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
             /// dom uses invalidation for this such as property changed in a parent, element added, etc
             /// it does not need to be perfect we are not making a web browser
             style::style_map &style_avail = (*instance)->style_avail;
-            if (instance->mem->type == typeof(Button)) {
-                int test = 0;
-                test++;
-            }
             for (prop &p: *props) {
                 str &name = *p.s_key;
-                if (name == "content") {
+                if (instance->mem->type == typeof(Button) && name == "content") {
                     int test = 0;
                     test++;
                 }
                 field<array<style::entry*>> *entries = style_avail->lookup(name);
                 if (entries) {
                     /// get best style matching entry for this property
-                    style::entry *best = composer->style.best_match(instance, &p, *entries);
+                    style::entry *best = composer->style->best_match(instance, &p, *entries);
                     type_t prop_type = p.member_type;
                     u8    *prop_dst  = &data_origin[p.offset];
                     
                     /// in many cases there will be no match
                     if (best) {
-                        style::entry::edata *b = best->data;
                         ///
                         if (prop_type->traits & traits::mx_obj) {
                             /// we lazy load from_string because when style is loaded we do not have types
-                            if (!b->mx_instance) b->mx_instance = (mx*)prop_type->functions->from_string(null, b->value.cs());
+                            if (!best->mx_instance) best->mx_instance = (mx*)prop_type->functions->from_string(null, best->value.cs());
                             
                             /// set by memory construction (mx_instance holds memory)
-                            prop_type->functions->set_memory(prop_dst, b->mx_instance->mem);
+                            prop_type->functions->set_memory(prop_dst, best->mx_instance->mem);
                         } else {
                             /// primitive type
-                            if (!b->raw_instance) b->raw_instance = prop_type->functions->from_string(null, b->value.cs());
+                            if (!best->raw_instance) best->raw_instance = prop_type->functions->from_string(null, best->value.cs());
                             
                             /// assign property with data that is of the same type
-                            prop_type->functions->assign(null, prop_dst, b->raw_instance);
+                            prop_type->functions->assign(null, prop_dst, best->raw_instance);
                         }
                     } else {
                         /// if there is nothing to set to, we must set to its default initialization value (not the T default)
@@ -910,7 +905,7 @@ bool scan_to(cstr &cursor, array<char> chars) {
     return false;
 }
 
-doubly<style::qualifier> parse_qualifiers(style::block &bl, cstr *p) {
+doubly<style::qualifier*> parse_qualifiers(style::block &bl, cstr *p) {
     str   qstr;
     cstr start = *p;
     cstr end   = null;
@@ -934,13 +929,15 @@ doubly<style::qualifier> parse_qualifiers(style::block &bl, cstr *p) {
     
     ///
     auto  quals = qstr.split(",");
-    doubly<style::qualifier> result;
+    doubly<style::qualifier*> result;
 
     ///
     for (str &qs:quals) {
         str  q = qs.trim();
         if (!q) continue;
-        style::qualifier &v = result->push();
+        style::qualifier *v = new style::qualifier();
+        result->push(v);
+
         int idot = q.index_of(".");
         int icol = q.index_of(":");
         str tail;
@@ -959,9 +956,9 @@ doubly<style::qualifier> parse_qualifiers(style::block &bl, cstr *p) {
                 v->type = q;
         }
         if (v->type) {
-            v->ty = ident::lookup(v->type); /// we will need a bootstrap function that inits all the ux types. lol
-            if (bl->types.index_of(v->ty) == -1)
-                bl->types += v->ty;
+            v->ty = types::lookup(v->type);
+            if (bl.types.index_of(v->ty) == -1)
+                bl.types += v->ty;
         }
         array<str> ops {"!=",">=","<=",">","<","="};
         if (tail) {
@@ -985,15 +982,16 @@ doubly<style::qualifier> parse_qualifiers(style::block &bl, cstr *p) {
     return result;
 }
 
-size_t style::block::score(node *n) {
+size_t style::block::score(node *pn) {
+    node &n = *pn;
     double best_sc = 0;
-    for (qualifier &q:data->quals) {
-        qualifier::members &qd = *q;
-        bool    id_match  = qd.id    &&  qd.id == n->data->id;
+    for (qualifier *q:quals) {
+        qualifier &qd = *q;
+        bool    id_match  = qd.id    &&  qd.id == n->id;
         bool   id_reject  = qd.id    && !id_match;
-        bool  type_match  = qd.type  &&  strcmp((symbol)qd.type.cs(), (symbol)n->mem->type->name) == 0; /// class names are actual type names
+        bool  type_match  = qd.type  &&  strcmp((symbol)qd.type.cs(), (symbol)n.mem->type->name) == 0; /// class names are actual type names
         bool type_reject  = qd.type  && !type_match;
-        bool state_match  = qd.state &&  n->data->istates[qd.state];
+        bool state_match  = qd.state &&  n->istates[qd.state];
         bool state_reject = qd.state && !state_match;
         ///
         if (!id_reject && !type_reject && !state_reject) {
@@ -1010,17 +1008,17 @@ size_t style::block::score(node *n) {
 /// there are more optimal data structures to use for this matching routine
 /// state > state2 would be a nifty one, no operation indicates bool, as-is current normal syntax
 double style::block::match(node *from) {
-    block          &bl = *this;
+    block          *bl = this;
     double total_score = 0;
     int            div = 0;
     node            *n = from;
     ///
     while (bl && n) {
-        bool   is_root   = !bl->parent;
-        double score     = 0;
+        bool   is_root = !bl->parent;
+        double score   = 0;
         ///
         while (n) { ///
-            auto sc = bl.score(n);
+            auto sc = bl->score(n);
             n       = n->Element::data->parent;
             if (sc == 0 && is_root) {
                 score = 0;
@@ -1034,7 +1032,7 @@ double style::block::match(node *from) {
         ///
         if (score > 0) {
             /// proceed...
-            bl = block(bl->parent);
+            bl = bl->parent;
         } else {
             /// style not matched
             bl = null;
@@ -1045,14 +1043,22 @@ double style::block::match(node *from) {
 }
 
 /// compute available entries for props on a node
-style::style_map style::compute(node *n) {
+style::style_map style::impl::compute(node *n) {
     style_map avail(16);
     ///
-    for (type_t type = n->mem->type; type; type = type->parent) {
-        if (!type->meta || !type->schema || !type->parent)
+    for (type_t ctx = n->mem->type; ctx; ctx = ctx->parent) {
+        if (!ctx->schema || !ctx->parent)
             continue;
+        type_t data = ctx->schema->bind->data;
+        if (!data->meta)
+            continue;
+
         ///
-        for (prop &p: *(doubly<prop>*)type->meta) {
+        for (prop &p: *(doubly<prop>*)data->meta) {
+            if (strcmp(n->mem->type->name, "Button") == 0 && *p.s_key == "content") {
+                int test = 0;
+                test++;
+            }
             array<entry *> all = applicable(n, &p);
             if (all) {
                 str   s_name  = p.key->grab(); /// it will free if you dont grab it
@@ -1063,36 +1069,40 @@ style::style_map style::compute(node *n) {
     return avail;
 }
 
-void style::cache_members() {
-    lambda<void(block &)> cache_b;
+void style::impl::cache_members() {
+    lambda<void(block*)> cache_b;
     ///
-    cache_b = [&](block &bl) -> void {
-        for (entry &e: bl->entries) {
+    cache_b = [&](block *bl) -> void {
+        for (entry *e: bl->entries) {
             bool  found = false;
             ///
-            array<block> &cache = members(e->member);
-            for (block &cb:cache)
+            if (strcmp((cstr)e->member.mem->origin, "content") == 0) {
+                int test = 0;
+                test++;
+            }
+            array<block*> &cache = members[e->member];
+            for (block *cb:cache)
                  found |= cb == bl;
             ///
             if (!found)
                  cache += bl;
         }
-        for (block &s:bl->blocks)
+        for (block *s:bl->blocks)
             cache_b(s);
     };
-    if (data->root)
-        for (block &b:data->root)
+    if (root)
+        for (block *b:root)
             cache_b(b);
 }
 
-void style::load(str code) {
+void style::impl::load(str code) {
     for (cstr sc = code.cs(); ws(sc); sc++) {
-        lambda<void(block)> parse_block;
+        lambda<void(block*)> parse_block;
         ///
-        parse_block = [&](block bl) {
+        parse_block = [&](block *bl) {
             ws(sc);
             console.test(*sc == '.' || isalpha(*sc), "expected Type[.id], or .id");
-            bl->quals = parse_qualifiers(bl, &sc);
+            bl->quals = parse_qualifiers(*bl, &sc);
             ws(++sc);
             ///
             while (*sc && *sc != '}') {
@@ -1102,7 +1112,8 @@ void style::load(str code) {
                 console.test(scan_to(sc, {';', '{', '}'}), "expected member expression or qualifier");
                 if (*sc == '{') {
                     ///
-                    block &bl_n = bl->blocks->push();
+                    block *bl_n = new style::block();
+                    bl->blocks->push(bl_n);
                     bl_n->parent = bl;
 
                     /// parse sub-block
@@ -1137,23 +1148,26 @@ void style::load(str code) {
                     int         i = cb_value.index_of(",");
                     str     param = i >= 0 ? cb_value.mid(i + 1).trim() : "";
                     str     value = i >= 0 ? cb_value.mid(0, i).trim()  : cb_value;
-                    if (param) {
-                        int test = 0;
-                        test++;
-                    }
                     style::transition trans = param ? style::transition(param) : null;
                     
                     /// check
                     console.test(member, "member cannot be blank");
                     console.test(value,  "value cannot be blank");
-                    bl->entries += entry::edata { member, value, trans, &bl };
+                    bl->entries += new entry { member, value, trans, bl };
+                    /// 
+                    if (bl->types.index_of(typeof(Button)) >= 0 && member == "content") {
+                        int test = 0;
+                        test++;
+                    }
+
                     ws(++sc);
                 }
             }
             console.test(!*sc || *sc == '}', "expected closed-brace");
         };
         ///
-        block &n_block = data->root.push_default();
+        block *n_block = new block();
+        root.push(n_block);
         parse_block(n_block);
     }
 }
@@ -1166,19 +1180,19 @@ style style::init() {
         base_path.resources({".css"}, {},
             [&](path css_file) -> void {
                 str style_str = css_file.read<str>();
-                st.load(style_str);
+                st->load(style_str);
             });
 
         /// store blocks by member, the interface into all style: style::members[name]
-        st.cache_members();
+        st->cache_members();
         st->loaded = true;
     }
     return st;
 }
 
-style::entry *style::best_match(node *n, prop *member, array<style::entry*> &entries) {
+style::entry *style::impl::best_match(node *n, prop *member, array<style::entry*> &entries) {
     mx         s_member = member->key;
-    array<style::block> &blocks = members(s_member); /// instance function when loading and updating style, managed map of [style::block*]
+    array<style::block*> &blocks = members[s_member]; /// instance function when loading and updating style, managed map of [style::block*]
     style::entry *match = null; /// key is always a symbol, and maps are keyed by symbol
     real     best_score = 0;
 
@@ -1186,7 +1200,7 @@ style::entry *style::best_match(node *n, prop *member, array<style::entry*> &ent
     /// find top style pair for this member
     type_t type = n->mem->type;
     for (style::entry *e: entries) {
-        block  *bl = (*e)->bl;
+        block *bl = e->bl;
         real score = bl->match(n);
         if (score > 0 && score >= best_score) {
             match = bl->b_entry(member->key);
@@ -1197,16 +1211,16 @@ style::entry *style::best_match(node *n, prop *member, array<style::entry*> &ent
 }
 
 /// todo: move functions into itype pattern
-array<style::entry*> style::applicable(node *n, prop *member) {
+array<style::entry*> style::impl::applicable(node *n, prop *member) {
     mx         s_member = member->key;
-    array<style::block> &blocks = members(s_member);
+    array<style::block*> &blocks = members[s_member];
     array<style::entry*> result; 
 
     type_t type = n->mem->type;
-    for (style::block &block:blocks)
+    for (style::block *block:blocks)
         if (!block->types || block->types.index_of(type) >= 0)
-            if (block.match(n) > 0)
-                result += block.b_entry(member->key);
+            if (block->match(n) > 0)
+                result += block->b_entry(member->key);
 
     return result;
 }

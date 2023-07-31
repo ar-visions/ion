@@ -51,17 +51,15 @@ struct View:node {
 int main() {
     /// use css for setting most of these properties.
     return App([](App &ctx) -> Element {
-        static callback test = callback([](event e) { /// dont access state in here! lol.
-            printf("test!\n");
-            int test = 0;
-            test++;
-        });
-
         return View {
             { "id",      "main" }, /// sets id on the base node data; if there is no id then it should identify by its type
             { "sample",  int(2) },
             { "sample2", "10"   }, /// converts to int from char* or str
-            { "clicked", test   }
+            { "clicked", callback([](event e) { /// dont access state in here! lol.
+                printf("test!\n");
+                int test = 0;
+                test++;
+            }) }
         };
     });
 }
