@@ -670,6 +670,11 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
         
             /// compute available properties for this node given its type, placement, and props styled 
             (*instance)->style_avail = composer->style->compute(instance);
+            if ((*instance)->style_avail->count("id")) {
+                (*instance)->style_avail = composer->style->compute(instance);
+                int test = 0;
+                test++;
+            }
         }
 
         /// arg set cache
@@ -699,11 +704,11 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
             style::style_map &style_avail = (*instance)->style_avail;
             for (prop &p: *props) {
                 str &name = *p.s_key;
-                if (instance->mem->type == typeof(Button) && name == "content") {
+                if (strcmp(ctx->name, "Button") == 0 && name == "content") {
                     int test = 0;
                     test++;
                 }
-                field<array<style::entry*>> *entries = style_avail->lookup(name);
+                field<array<style::entry*>> *entries = style_avail->lookup(name); // ctx name is Button, name == id, and it has a null entry for entries[0] == null with count > 
                 if (entries) {
                     /// get best style matching entry for this property
                     style::entry *best = composer->style->best_match(instance, &p, *entries);
@@ -749,12 +754,6 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
                 if (key->type == typeof(char)) {
                     symbol s_key = (symbol)key->origin;
                     prop *def = meta_map->lookup(s_key);
-
-                    if (strcmp(s_key, "content") == 0) {
-                        int test = 0;
-                        test++;
-                    }
-
                     if (def) {
                         type_t prop_type = def->member_type;
                         type_t arg_type  = a.value.type();
@@ -778,8 +777,9 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
                             conv_inst = (u8*)new str(m_str); /// no grab here
                             arg_src   = (u8*)conv_inst;
                             arg_type  = typeof(str);
-                        } else if ((arg_type == typeof(char) || arg_type == typeof(str)) && prop_type != arg_type) {
-                            /// general from_string conversion.  the class needs to have a cstr constructor
+                        }
+                        /// general from_string conversion.  the class needs to have a cstr constructor
+                        else if ((arg_type == typeof(char) || arg_type == typeof(str)) && prop_type != arg_type) {
                             assert(prop_type->functions->from_string);
                             conv_inst = (u8*)prop_type->functions->from_string(null,
                                 arg_type == typeof(str) ? (cstr)a.value.mem->origin : (cstr)arg_src);
@@ -792,7 +792,7 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
                         if (prop_type->traits & traits::mx_obj) {
                             /// set by memory construction (cast conv_inst as mx which it must be)
                             assert(!conv_inst || (arg_type->traits & traits::mx_obj) ||
-                                                    (arg_type->traits & traits::mx));
+                                                 (arg_type->traits & traits::mx));
                             prop_type->functions->set_memory(prop_dst, conv_inst ? ((mx*)conv_inst)->mem : a.value.mem);
                         } else {
                             /// assign property with data that is of the same type
@@ -837,7 +837,8 @@ void composer::update_all(Element e) {
     /// style is a singleton and this initializes the data
     /// i dont favor multiple style databases. thats too complicated and not needed
     if (!data->root_instance)
-        style::init();
+        data->style = style::init();
+    
     update(data, null, data->root_instance, e);
 }
 
@@ -991,8 +992,9 @@ size_t style::block::score(node *pn) {
         bool   id_reject  = qd.id    && !id_match;
         bool  type_match  = qd.type  &&  strcmp((symbol)qd.type.cs(), (symbol)n.mem->type->name) == 0; /// class names are actual type names
         bool type_reject  = qd.type  && !type_match;
-        bool state_match  = qd.state &&  n->istates[qd.state];
+        bool state_match  = qd.state &&  n->istates[qd.state]; /// dont use istate; just use props.  
         bool state_reject = qd.state && !state_match;
+
         ///
         if (!id_reject && !type_reject && !state_reject) {
             double sc = size_t(   id_match) << 1 |
@@ -1054,15 +1056,16 @@ style::style_map style::impl::compute(node *n) {
             continue;
 
         ///
-        for (prop &p: *(doubly<prop>*)data->meta) {
-            if (strcmp(n->mem->type->name, "Button") == 0 && *p.s_key == "content") {
+        array<entry *> all(32);
+        for (prop &p: *(doubly<prop>*)data->meta) { /// the blocks can contain a map of types with entries associated, with a * key for all
+            if (strcmp(n->mem->type->name, "Button") == 0) {
                 int test = 0;
                 test++;
             }
-            array<entry *> all = applicable(n, &p);
-            if (all) {
+            if (applicable(n, &p, all)) {
                 str   s_name  = p.key->grab(); /// it will free if you dont grab it
                 avail[s_name] = all;
+                all = array<entry *>(32);
             }
         }
     }
@@ -1076,10 +1079,6 @@ void style::impl::cache_members() {
         for (entry *e: bl->entries) {
             bool  found = false;
             ///
-            if (strcmp((cstr)e->member.mem->origin, "content") == 0) {
-                int test = 0;
-                test++;
-            }
             array<block*> &cache = members[e->member];
             for (block *cb:cache)
                  found |= cb == bl;
@@ -1101,7 +1100,7 @@ void style::impl::load(str code) {
         ///
         parse_block = [&](block *bl) {
             ws(sc);
-            console.test(*sc == '.' || isalpha(*sc), "expected Type[.id], or .id");
+            console.test(*sc == '.' || isalpha(*sc), "expected Type[.id], or .id", {});
             bl->quals = parse_qualifiers(*bl, &sc);
             ws(++sc);
             ///
@@ -1109,7 +1108,7 @@ void style::impl::load(str code) {
                 /// read up to ;, {, or }
                 ws(sc);
                 cstr start = sc;
-                console.test(scan_to(sc, {';', '{', '}'}), "expected member expression or qualifier");
+                console.test(scan_to(sc, {';', '{', '}'}), "expected member expression or qualifier", {});
                 if (*sc == '{') {
                     ///
                     block *bl_n = new style::block();
@@ -1153,13 +1152,8 @@ void style::impl::load(str code) {
                     /// check
                     console.test(member, "member cannot be blank");
                     console.test(value,  "value cannot be blank");
-                    bl->entries += new entry { member, value, trans, bl };
+                    bl->entries[member] = new entry { member, value, trans, bl };
                     /// 
-                    if (bl->types.index_of(typeof(Button)) >= 0 && member == "content") {
-                        int test = 0;
-                        test++;
-                    }
-
                     ws(++sc);
                 }
             }
@@ -1191,8 +1185,7 @@ style style::init() {
 }
 
 style::entry *style::impl::best_match(node *n, prop *member, array<style::entry*> &entries) {
-    mx         s_member = member->key;
-    array<style::block*> &blocks = members[s_member]; /// instance function when loading and updating style, managed map of [style::block*]
+    array<style::block*> &blocks = members[*member->s_key]; /// instance function when loading and updating style, managed map of [style::block*]
     style::entry *match = null; /// key is always a symbol, and maps are keyed by symbol
     real     best_score = 0;
 
@@ -1203,7 +1196,8 @@ style::entry *style::impl::best_match(node *n, prop *member, array<style::entry*
         block *bl = e->bl;
         real score = bl->match(n);
         if (score > 0 && score >= best_score) {
-            match = bl->b_entry(member->key);
+            match = bl->entries[*member->s_key];
+            assert(match);
             best_score = score;
         }
     }
@@ -1211,18 +1205,21 @@ style::entry *style::impl::best_match(node *n, prop *member, array<style::entry*
 }
 
 /// todo: move functions into itype pattern
-array<style::entry*> style::impl::applicable(node *n, prop *member) {
-    mx         s_member = member->key;
-    array<style::block*> &blocks = members[s_member];
-    array<style::entry*> result; 
-
+bool style::impl::applicable(node *n, prop *member, array<style::entry*> &result) {
+    array<style::block*> &blocks = members[*member->s_key];
     type_t type = n->mem->type;
-    for (style::block *block:blocks)
-        if (!block->types || block->types.index_of(type) >= 0)
-            if (block->match(n) > 0)
-                result += block->b_entry(member->key);
+    bool ret = false;
 
-    return result;
+    for (style::block *block:blocks) {
+        if (!block->types || block->types.index_of(type) >= 0) {
+            auto f = block->entries->lookup(*member->s_key);
+            if (f && block->match(n) > 0) {
+                result += f->value;
+                ret = true;
+            }
+        }
+    }
+    return ret;
 }
 
 }

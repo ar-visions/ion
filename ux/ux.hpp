@@ -938,25 +938,9 @@ struct style:mx {
     struct block {
         block*             parent; /// pattern: reduce type rather than create pointer to same type in delegation
         doubly<qualifier*> quals;  /// an array of qualifiers it > could > be > this:state, or > just > that [it picks the best score, moves up for a given node to match style in]
-        doubly<entry*>     entries;
+        map<entry*>        entries;
         doubly<block*>     blocks;
         array<type_t>      types; // if !types then its all types.
-        
-        ///
-        inline size_t count(str s) {
-            for (entry *p:entries)
-                if (p->member == s)
-                    return 1;
-            return 0;
-        }
-
-        ///
-        inline entry *b_entry(mx member_name) {
-            for (entry *p:entries)
-                if (p->member == member_name)
-                    return p; /// this is how you get the pointer to the thing
-            return null;
-        }
 
         size_t score(node *n);
 
@@ -977,7 +961,7 @@ struct style:mx {
         bool                loaded;
         style_map        compute(node *dst);
         entry        *best_match(node *n, prop *member, array<entry*> &entries);
-        array<entry*> applicable(node *n, prop *member);
+        bool          applicable(node *n, prop *member, array<entry*> &all);
         void                load(str code);
 
         /// optimize member access by caching by member name, and type
@@ -993,7 +977,7 @@ struct style:mx {
 
 /// no reason to have style separated in a single app
 /// if we have multiple styles, just reload
-template <> struct is_singleton<style::impl> : true_type { };
+template <> struct is_singleton<style> : true_type { };
 
 enums(operation, fill,
     "fill, image, outline, text, child",
