@@ -507,10 +507,6 @@ void gfx::pop() {
 /// 
 void gfx::text(str text, Rect<double> rect, alignment align, vec2d offset, bool ellip) {
     draw_state &ds = *data->ds;
-    rgba8 &c = ds.color;
-    ///
-    vkvg_save(data->ctx);
-    vkvg_set_source_rgba(data->ctx, c.r, c.g, c.b, c.a * ds.opacity);
     ///
     vec2d          pos  = { 0, 0 };
     text_metrics   tm;
@@ -535,7 +531,6 @@ void gfx::text(str text, Rect<double> rect, alignment align, vec2d offset, bool 
     pos              = mix(tl, br, va);
     
     vkvg_show_text(data->ctx, (symbol)text.cs());
-    vkvg_restore  (data->ctx);
 }
 
 void gfx::clip(graphics::shape cl) {
@@ -558,9 +553,18 @@ void gfx::clear(rgba8 c) {
     vkvg_restore        (data->ctx);
 }
 
-void gfx::font(ion::font f) {
-    vkvg_select_font_face(data->ctx, f->alias.cs());
-    vkvg_set_font_size   (data->ctx, f->sz);
+void gfx::font(ion::font &f) {
+    draw_state  &ds = cur();
+    ds.font = f;
+    path fpath = f.get_path();
+    assert(fpath.exists());
+
+    if (!f->loaded) {
+        f->loaded = true;
+        vkvg_load_font_from_path(data->ctx, fpath.cs(), f->name.cs());
+    }
+    vkvg_select_font_face(data->ctx, f->name.cs());
+    vkvg_set_font_size(data->ctx, f->sz);
 }
 
 void gfx::cap  (graphics::cap    c) { vkvg_set_line_cap (data->ctx, vkvg_line_cap_t (int(c))); }
@@ -571,7 +575,8 @@ void gfx::scale    (real        sc) { vkvg_scale        (data->ctx, sc, sc);    
 void gfx::rotate   (real      degs) { vkvg_rotate       (data->ctx, radians(degs)); }
 
 void gfx::color(rgba8 &c) {
-    vkvg_set_source_rgba(data->ctx, c.r / 255.0, c.g / 255.0, c.b / 255.0, c.a / 255.0);
+    cur().color = c;
+    vkvg_set_source_rgba(data->ctx, c.r, c.g, c.b, c.a);
 }
 
 void gfx::fill(rectd &p) {
@@ -1247,10 +1252,16 @@ void node::draw(gfx& canvas) {
     /// if there is text (its not alpha 0, and there is text)
     if (data->content && ((data->content.type() == typeof(char)) ||
                           (data->content.type() == typeof(str)))) {
-        canvas.color(text.color);
+        text.shape = text.area.rect(bounds);
+        rgba8 c = color_with_opacity(text.color);
+        canvas.color(c);
+        canvas.font(data->font);
+        canvas.push();
+        //canvas.translate(vec2d(0, 0));
         canvas.text(
             data->content, text.shape.bounds(),
-            text.align, {0.0, 0.0}, true);
+            text.align, {0.0, 0.0}, true); // align is undefined here
+        canvas.pop();
     }
 
     /// if there is an effective border to draw

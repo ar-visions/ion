@@ -665,26 +665,34 @@ enums(mode, regular,
 
 struct font:mx {
     struct fdata {
-        str  alias;
-        real sz;
-        path res;
+        real sz = 16;
+        str  name = "Avenir-Bold";
+        bool loaded = false;
         type_register(fdata);
     };
 
     mx_object(font, mx, fdata);
-    //movable(font);
 
-    font(str alias, real sz, path res) : font(fdata { alias, sz, res }) { }
+    font(real sz, str name) : font(fdata { sz, name }) { }
 
-    /// if there is no res, it can use font-config; there must always be an alias set, just so any cache has identity
-    static font default_font() {
-        static font def; ///
-        if        (!def) ///
-                    def = font("monaco", 16, "fonts/monaco.ttf");
-        return      def; ///
+    font(str s):font() {
+        array<str> sp = s.split();
+        assert(sp.len() == 2);
+        data->sz  = sp[0].real_value<real>();
+        data->name = sp[1];
     }
-            operator bool()    { return  data->alias; }
-    bool    operator!()        { return !data->alias; }
+
+    path get_path() {
+        assert(data->name);
+        return fmt { "fonts/{0}.ttf", { data->name } };
+    }
+
+    font update_sz(real sz) {
+        return fdata { sz, data->name };
+    }
+
+            operator bool()    { return  data->sz; }
+    bool    operator!()        { return !data->sz; }
 };
 
 ///
@@ -709,11 +717,10 @@ struct glyph:mx {
 struct cbase:mx {
     struct draw_state {
         real             outline_sz;
-        real             font_sz;
         real             line_height;
         real             opacity;
         graphics::shape  clip;
-        str              font;
+        ion::font        font;
         m44d             mat44;
         rgba8            color;
         vec2d            blur;
@@ -767,7 +774,7 @@ struct cbase:mx {
     virtual void        cap(graphics::cap   cap) { cur().cap     = cap;      }
     virtual void       join(graphics::join join) { cur().join    = join;     }
     virtual void    opacity(real        opacity) { cur().opacity = opacity;  }
-    virtual void       font(font f)            { }
+    virtual void       font(font &f)           { }
     virtual void      color(rgba8&)            { }
     virtual void   gaussian(vec2d, graphics::shape) { }
     virtual void      scale(vec2d)             { }
@@ -798,7 +805,7 @@ struct cbase:mx {
     }
 
     void    outline_sz(real sz)  { cur().outline_sz  = sz;  }
-    void    font_sz   (real sz)  { cur().font_sz     = sz;  }
+    void    font_sz   (real sz)  { cur().font = cur().font.update_sz(sz); } /// this creates a new instance (doesnt modify existing)
     void    line_height(real lh) { cur().line_height = lh;  }
     m44d    get_matrix()         { return cur().mat44;      }
     void    set_matrix(m44d m)   {        cur().mat44 = m;  }
@@ -838,7 +845,7 @@ struct gfx:cbase {
     VkhImage       texture();
     void             flush();
     void             clear(rgba8 c);
-    void              font(ion::font f);
+    void              font(ion::font &f);
     void               cap(graphics::cap  c);
     void              join(graphics::join j);
     void         translate(vec2d    tr);
@@ -1066,6 +1073,7 @@ struct node:Element {
         mx                  content;
         double              opacity = 1.0;
         rectd               bounds;     /// local coordinates of this control, so x and y are 0 based
+        ion::font           font;
 
         doubly<prop> meta() const {
             return {
@@ -1081,6 +1089,7 @@ struct node:Element {
                 prop { "on-hover",  ev.hover  },
                 prop { "content",   content   },
                 prop { "opacity",   opacity   },
+                prop { "font",      font },
 
                 prop { "image-src",      drawings[operation::image]  .img  },
 
@@ -1132,14 +1141,16 @@ struct node:Element {
         return null;
     }
 
-    double effective_opacity() {
+    rgba8 color_with_opacity(rgba8 &input) {
+        rgba8 result = input;
         node  *n = Element::data->parent;
         double o = 1.0;
         while (n) {
             o *= n->data->opacity;
             n  = n->Element::data->parent;
         }
-        return o;
+        result.a = math::round(result.a * o);
+        return result;
     }
 
     virtual void draw(gfx& canvas);
