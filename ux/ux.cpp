@@ -29,7 +29,6 @@ struct gfx_memory {
 
     ~gfx_memory() {
         if (e)            vkDeviceWaitIdle(e->vkh->device);
-        if (ctx)          vkvg_destroy(ctx);
         if (vg_device)    vkvg_device_drop(vg_device);
         if (vg_surface)   vkvg_surface_drop(vg_surface);
         if (vkh_renderer) vkh_presenter_drop(vkh_renderer);
@@ -335,8 +334,6 @@ void gfx::resized() {
         vkvg_surface_drop(data->vg_surface);
     if (data->vkh_image)
         vkh_image_drop(data->vkh_image);
-    if (data->ctx)
-        vkvg_destroy(data->ctx);
 
     /// these should be updated (VkEngine can have VkWindow of sort eventually if we want multiple)
     float sx, sy;
@@ -573,6 +570,10 @@ void gfx::scale    (vec2d       sc) { vkvg_scale        (data->ctx, sc.x, sc.y);
 void gfx::scale    (real        sc) { vkvg_scale        (data->ctx, sc, sc);        }
 void gfx::rotate   (real      degs) { vkvg_rotate       (data->ctx, radians(degs)); }
 
+void gfx::color(rgba8 &c) {
+    vkvg_set_source_rgba(data->ctx, c.r / 255.0, c.g / 255.0, c.b / 255.0, c.a / 255.0);
+}
+
 void gfx::fill(rectd &p) {
     vkvg_rectangle(data->ctx, p.x, p.y, p.w, p.h);
     vkvg_fill(data->ctx);
@@ -676,11 +677,6 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
         
             /// compute available properties for this node given its type, placement, and props styled 
             (*instance)->style_avail = composer->style->compute(instance);
-            if ((*instance)->style_avail->count("id")) {
-                (*instance)->style_avail = composer->style->compute(instance);
-                int test = 0;
-                test++;
-            }
         }
 
         /// arg set cache
@@ -710,10 +706,6 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
             style::style_map &style_avail = (*instance)->style_avail;
             for (prop &p: *props) {
                 str &name = *p.s_key;
-                if (strcmp(ctx->name, "Button") == 0 && name == "content") {
-                    int test = 0;
-                    test++;
-                }
                 field<array<style::entry*>> *entries = style_avail->lookup(name); // ctx name is Button, name == id, and it has a null entry for entries[0] == null with count > 
                 if (entries) {
                     /// get best style matching entry for this property
@@ -723,24 +715,15 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
                     
                     /// in many cases there will be no match
                     if (best) {
-                        ///
                         if (prop_type->traits & traits::mx_obj) {
-                            /// we lazy load from_string because when style is loaded we do not have types
                             if (!best->mx_instance) best->mx_instance = (mx*)prop_type->functions->from_string(null, best->value.cs());
-                            
-                            /// set by memory construction (mx_instance holds memory)
                             prop_type->functions->set_memory(prop_dst, best->mx_instance->mem);
                         } else {
-                            /// primitive type
                             if (!best->raw_instance) best->raw_instance = prop_type->functions->from_string(null, best->value.cs());
-                            
-                            /// assign property with data that is of the same type
                             prop_type->functions->assign(null, prop_dst, best->raw_instance);
                         }
                     } else {
-                        /// if there is nothing to set to, we must set to its default initialization value (not the T default)
-                        /// that is the default the parent type constructs it to
-                        /// there remains the case of args but we do not need to handle it now
+                        /// if there is nothing to set to, we must set to its default initialization value
                         if (prop_type->traits & traits::mx_obj) {
                             prop_type->functions->set_memory(prop_dst, ((mx*)p.init_value)->mem);
                         } else {
@@ -860,14 +843,25 @@ int App::run() {
 	vkengine_set_scroll_callback    (data->e, scroll_callback);
 	vkengine_set_title              (data->e, "ux");
 
+    
 	while (!vkengine_should_close(data->e)) {
 		glfwPollEvents();
 
+        VkvgContext ctx; 
+        ctx = vkvg_create(data->canvas->vg_surface);
+        data->canvas->ctx = ctx;
+
+        //vkvg_set_source_rgba(ctx, 0.0f, 0.1f, 0.8f, 0.8f);
+        //vkvg_rectangle(ctx, 0, 0, 64, 64);
+        //vkvg_fill(ctx);
+        
         /// update app with rendered Elements, then draw
         Element e = data->app_fn(*this);
         update_all(e);
         if (composer::data->root_instance)
             composer::data->root_instance->draw(data->canvas);
+
+        vkvg_destroy(ctx);
 
         /// we need an array of renderers/presenters; must work with a 3D scene, bloom shading etc
 		if (!vkh_presenter_draw(data->e->renderer)) { 
@@ -999,7 +993,7 @@ size_t style::block::score(node *pn) {
         bool   id_reject  = qd.id    && !id_match;
         bool  type_match  = qd.type  &&  strcmp((symbol)qd.type.cs(), (symbol)n.mem->type->name) == 0; /// class names are actual type names
         bool type_reject  = qd.type  && !type_match;
-        bool state_match  = qd.state && get_bool<Element::edata>(edata, qd.state); /// a useful thing for string const input would be to flag that its already symbolized.  that way you dont look it up when you operate it back
+        bool state_match  = qd.state && get_bool(typeof(Element::edata), edata, qd.state); /// a useful thing for string const input would be to flag that its already symbolized.  that way you dont look it up when you operate it back
 
         /// dont use istate; just use props on node only, not the subclass
 
@@ -1068,10 +1062,6 @@ style::style_map style::impl::compute(node *n) {
         ///
         array<entry *> all(32);
         for (prop &p: *(doubly<prop>*)data->meta) { /// the blocks can contain a map of types with entries associated, with a * key for all
-            if (strcmp(n->mem->type->name, "Button") == 0) {
-                int test = 0;
-                test++;
-            }
             if (applicable(n, &p, all)) {
                 str   s_name  = p.key->grab(); /// it will free if you dont grab it
                 avail[s_name] = all;
@@ -1250,16 +1240,16 @@ void node::draw(gfx& canvas) {
 
     /// if there is fill image
     if (image.img) {
-        rect<r64> r = image.area.rect(bounds);
+        image.shape = image.area.rect(bounds);
         canvas.image(image.img, image.shape, image.align, {0,0}, {0,0});
     }
     
     /// if there is text (its not alpha 0, and there is text)
     if (data->content && ((data->content.type() == typeof(char)) ||
-                            (data->content.type() == typeof(str)))) {
+                          (data->content.type() == typeof(str)))) {
         canvas.color(text.color);
         canvas.text(
-            data->content.grab(), text.shape.bounds(),
+            data->content, text.shape.bounds(),
             text.align, {0.0, 0.0}, true);
     }
 
@@ -1275,7 +1265,7 @@ void node::draw(gfx& canvas) {
         /// translate to child location
         rect<r64> sub_bounds = children.area.rect(bounds);
         canvas.translate(sub_bounds.xy());
-        rect<r64> &b = (*c)->bounds = rect<r64> { 0, 0, sub_bounds.w, sub_bounds.h };
+        (*c)->bounds = rect<r64> { 0, 0, sub_bounds.w, sub_bounds.h };
         //canvas.clip(0, 0, r.w, r.h);
         c->draw(canvas);
     }

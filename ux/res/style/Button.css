@@ -1,11 +1,15 @@
 Button {
-    radius:       0;
+    fill-radius:  0;
     fill-color:   #08af;
-    image:        "menu.png";
+    image-src:    "menu.png";
     image-region:  5l 5t 5r 5b, 200ms ease-in;
+    image-align:  left top, 900ms ease-in;
     text-color:   #fff;
     content:      "Text";
-    region:       0l 0t 0r 80h;
-    image-align:  left top, 900ms ease-in;
-    opacity:      0.1;
+    fill-area:    10l 10t 10r 80h;
+    opacity:      0.8;
+}
+
+Button:hover {
+    opacity:      1.0;
 }

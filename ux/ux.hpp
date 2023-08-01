@@ -441,7 +441,7 @@ struct Element:mx {
         bool                    focused;
         bool                    hover;
         bool                    active;
-        bool                    cursor;
+        vec2d                   cursor;
 
         doubly<prop> meta() {
             return {
@@ -756,13 +756,13 @@ struct cbase:mx {
     virtual void      image(ion::image, graphics::shape, vec2d, vec2d) { }
     virtual void    texture(ion::image)        { }
     virtual void      clear()                  { }
-    virtual void      clear(rgba8)             { }
+    virtual void      clear(rgba8&)            { }
     virtual tm_t    measure(str s)               { assert(false); return {}; }
     virtual void        cap(graphics::cap   cap) { cur().cap     = cap;      }
     virtual void       join(graphics::join join) { cur().join    = join;     }
     virtual void    opacity(real        opacity) { cur().opacity = opacity;  }
     virtual void       font(font f)            { }
-    virtual void      color(rgba8)             { }
+    virtual void      color(rgba8&)            { }
     virtual void   gaussian(vec2d, graphics::shape) { }
     virtual void      scale(vec2d)             { }
     virtual void     rotate(real)              { }
@@ -833,13 +833,14 @@ struct gfx:cbase {
     void             flush();
     void             clear(rgba8 c);
     void              font(ion::font f);
-    void               cap(graphics::cap   c);
-    void              join(graphics::join  j);
-    void         translate(vec2d       tr);
-    void             scale(vec2d       sc);
-    void             scale(real       sc);
-    void            rotate(real     degs);
-    void              fill(rectd  &p);
+    void               cap(graphics::cap  c);
+    void              join(graphics::join j);
+    void         translate(vec2d    tr);
+    void             scale(vec2d    sc);
+    void             scale(real     sc);
+    void            rotate(real   degs);
+    void             color(rgba8 &color);
+    void              fill(rectd    &p);
     void              fill(graphics::shape  p);
     void          gaussian(vec2d sz, graphics::shape c);
     void           outline(graphics::shape p);
@@ -1032,6 +1033,7 @@ struct node:Element {
             alignment           align;
             image               img;
             region              area;
+            region              radius;
             graphics::shape     shape; 
             graphics::cap       cap;   
             graphics::join      join;
@@ -1051,17 +1053,13 @@ struct node:Element {
         ///
         str                 id;         ///
         drawing             drawings[operation::count];
-        rectd               container;  /// the parent child rectangle
         int                 tab_index;  /// if 0, this is default; its all relative numbers we dont play absolutes.
-        //states<interaction> istates;    /// interaction states; these are referenced in qualifiers
         vec2d               cursor;     /// set relative to the area origin
         vec2d               scroll = {0,0};
         std::queue<fn_t>    queue;      /// this is an animation queue
-        bool                active;
-        bool                focused;
         mx                  content;
-        mx                  bind;       /// bind is useful to be in mx form, as any object can be key then.
-        rect<r64>           bounds;     /// local coordinates of this control, so x and y are 0 based
+        double              opacity = 1.0;
+        rectd               bounds;     /// local coordinates of this control, so x and y are 0 based
 
         doubly<prop> meta() const {
             return {
@@ -1076,6 +1074,7 @@ struct node:Element {
                 prop { "on-cursor", ev.cursor },
                 prop { "on-hover",  ev.hover  },
                 prop { "content",   content   },
+                prop { "opacity",   opacity   },
 
                 prop { "image-src",      drawings[operation::image]  .img  },
 
@@ -1090,6 +1089,10 @@ struct node:Element {
                 prop { "outline-color",  drawings[operation::outline].color },
                 prop { "text-color",     drawings[operation::text]   .color },
 
+                prop { "fill-radius",    drawings[operation::fill]   .radius },
+                prop { "image-radius",   drawings[operation::image]  .radius },
+                prop { "outline-radius", drawings[operation::outline].radius },
+
                 prop { "fill-border",    drawings[operation::fill]   .border },
                 prop { "image-border",   drawings[operation::image]  .border },
                 prop { "outline-border", drawings[operation::outline].border },
@@ -1103,26 +1106,34 @@ struct node:Element {
         type_register(props);
     };
 
-    /// type and prop name lookup in tree
-    /// there can also be an mx-based context.  it must assert that the type looked up in meta_map inherits from mx.  from there it can be ref memory,
+    /// context works by looking at meta() on the context types polymorphically, and up the parent nodes to the root context (your app)
     template <typename T>
-    T &context(memory *sym) {
-        node  *cur = (node*)this;
-        while (cur) {
-            type_t ctx = cur->mem->type;
-            if (ctx) {
-                hmap<symbol, prop> *meta_map = (hmap<symbol, prop> *)ctx->meta_map;
-                prop *def = meta_map->lookup((symbol&)*sym); /// will always need schema
-                if (def) {
-                    T &ref = def->member_ref<T>(cur->data); // require inheritance here
-                    return ref;
+    T *context(str id) {
+        node *n = (node*)this;
+        while (n) {
+            for (type_t type = n->mem->type; type; type = type->parent) {
+                if (!type->meta)
+                    continue;
+                prop* member = null;
+                u8*   addr   = get_member_address(n->mem->type, n, id, member);
+                if (addr) {
+                    assert(member->member_type == typeof(T));
+                    return (T*)addr;
                 }
             }
-            cur = cur->Element::data->parent;
+            n = n->Element::data->parent;
         }
-        assert(false);
-        T *n = null;
-        return *n;
+        return null;
+    }
+
+    double effective_opacity() {
+        node  *n = Element::data->parent;
+        double o = 1.0;
+        while (n) {
+            o *= n->data->opacity;
+            n  = n->Element::data->parent;
+        }
+        return o;
     }
 
     virtual void draw(gfx& canvas);
@@ -1514,18 +1525,17 @@ struct composer:mx {
             real           x = cur.x, y = cur.y;
             vec2d          o = n->offset();
             vec2d        rel = cur + o;
-            node::props &std = **n;
-            /// it could be Element::drawing
-            node::props::drawing &draw = std.drawings[operation::fill];
+            Element::edata *edata = n->Element::data;
+            
+            node::props::drawing &draw = n->data->drawings[operation::fill];
 
             bool in = draw.shape.contains(rel);
-            n->node::data->cursor = in ? vec2d(x, y) : vec2d(-1, -1);
-            return (in && (!active || !std.active)) ? n : null;
+            edata->cursor = in ? vec2d(x, y) : vec2d(-1, -1);
+            return (in && (!active || !edata->active)) ? n : null;
         });
 
         array<node*> actives = data->root_instance->select([&](node *n) -> node* {
-             node::props &std = **n;
-            return (active && std.active) ? n : null;
+            return (active && n->Element::data->active) ? n : null;
         });
 
         array<node*> result = array<node *>(size_t(inside.length()) + size_t(actives.length()));
