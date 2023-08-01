@@ -1311,6 +1311,9 @@ float vkvg_get_opacity (VkvgContext ctx);
  * @param rgba color coded in 32bit integer.
  */
 vkvg_public
+uint32_t vkvg_get_source_color (VkvgContext ctx);
+
+vkvg_public
 void vkvg_set_source_color (VkvgContext ctx, uint32_t c);
 /**
  * @brief set color with alpha.

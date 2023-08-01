@@ -695,137 +695,12 @@ struct font:mx {
     bool    operator!()        { return !data->sz; }
 };
 
-///
-struct glyph:mx {
-    struct members {
-        int        border;
-        str        chr;
-        rgba8      bg;
-        rgba8      fg;
-        type_register(members);
-    };
-    mx_object(glyph, mx, members);
-
-    str ansi();
-    bool operator==(glyph &lhs) {
-        return   (data->border == lhs->border) && (data->chr == lhs->chr) &&
-                 (data->bg     == lhs->bg)     && (data->fg  == lhs->fg);
-    }
-    bool operator!=(glyph &lhs) { return !operator==(lhs); }
-};
-
-struct cbase:mx {
-    struct draw_state {
-        real             outline_sz;
-        real             line_height;
-        real             opacity;
-        graphics::shape  clip;
-        ion::font        font;
-        m44d             mat44;
-        rgba8            color;
-        vec2d            blur;
-        graphics::cap    cap;
-        graphics::join   join;
-        type_register(draw_state);
-    };
-
-    ///
-    enums(state_change, defs,
-       "defs, push, pop",
-        defs, push, pop);
-    
-    struct cdata {
-        vec2i              size;
-        type_t             pixel_t;
-        doubly<draw_state> stack; /// ds = states.last()
-        draw_state*        state; /// todo: update w push and pop
-        type_register(cdata);
-    };
-
-    mx_object(cbase, mx, cdata);
-
-    protected:
-    virtual void init() { }
-    
-    draw_state &cur() {
-        if (data->stack->length() == 0)
-            data->stack += draw_state(); /// this errors in graphics::cap initialize (type construction, Deallocate error indicates stack corruption?)
-        
-        return data->stack->last();
-    }
-
-    public:
-    vec2i &size() { return data->size; }
-
-    virtual void    outline(graphics::shape) { }
-    virtual void       fill(graphics::shape) { }
-    virtual void       clip(graphics::shape cl) {
-        draw_state  &ds = cur();
-        ds.clip = cl;
-    }
-
-    virtual void      flush() { }
-    virtual void       text(str, graphics::shape, vec2d, vec2d, bool)  { }
-    virtual void      image(ion::image, graphics::shape, vec2d, vec2d) { }
-    virtual void    texture(ion::image)        { }
-    virtual void      clear()                  { }
-    virtual void      clear(rgba8&)            { }
-    virtual tm_t    measure(str s)               { assert(false); return {}; }
-    virtual void        cap(graphics::cap   cap) { cur().cap     = cap;      }
-    virtual void       join(graphics::join join) { cur().join    = join;     }
-    virtual void    opacity(real        opacity) { cur().opacity = opacity;  }
-    virtual void       font(font &f)           { }
-    virtual void      color(rgba8&)            { }
-    virtual void   gaussian(vec2d, graphics::shape) { }
-    virtual void      scale(vec2d)             { }
-    virtual void     rotate(real)              { }
-    virtual void  translate(vec2d)             { }
-    virtual void   set_char(int, int, glyph)   { } /// this needs to be tied to pixel unit (cbase 2nd T arg)
-    virtual str    get_char(int, int)          { return "";    }
-    virtual str  ansi_color(rgba8 &c, bool text) { return null;  }
-    virtual ion::image  resample(ion::size sz, real deg = 0.0f, rectd view = {}, vec2d rc = {}) {
-        return null;
-    }
-
-    virtual void draw_state_change(draw_state *ds, state_change sc) { }
-
-    /// these two arent virtual but draw_state_changed_is; do all of the things there.
-    void push() {
-        data->stack +=  cur();
-        data->state  = &cur();
-        /// first time its pushed in more hacky dependency chain ways
-        draw_state_change(data->state, state_change::push);
-    }
-
-    void  pop() {
-        data->stack->pop();
-        data->state = &cur();
-        ///
-        draw_state_change(data->state, state_change::pop);
-    }
-
-    void    outline_sz(real sz)  { cur().outline_sz  = sz;  }
-    void    font_sz   (real sz)  { cur().font = cur().font.update_sz(sz); } /// this creates a new instance (doesnt modify existing)
-    void    line_height(real lh) { cur().line_height = lh;  }
-    m44d    get_matrix()         { return cur().mat44;      }
-    void    set_matrix(m44d m)   {        cur().mat44 = m;  }
-    void      defaults()         {
-        draw_state &ds = cur();
-        ds.line_height = 1; /// its interesting to base units on a font-derrived line-height
-                            /// in the case of console context, this allows for integral rows and columns for more translatable views to context2d
-    }
-
-    /// boolean operator
-    inline operator bool() { return data->size.x > 0; }
-};
-
 struct gfx_memory;
-//template <> struct is_opaque<gfx_memory> : true_type { };
 
-/// gfx: a frontend on vkvg
-struct gfx:cbase {
+/// gfx: graphics in either vkvg or text buffer
+struct gfx:mx {
     /// data is single instanced on this cbase, and the draw_state is passed in as type for the cbase, which atleast makes it type-unique
-    mx_declare(gfx, cbase, gfx_memory);
+    mx_declare(gfx, mx, gfx_memory);
 
     /// create with a window (indicated by a name given first)
     gfx(VkEngine e, VkhPresenter vkh_renderer);
@@ -833,7 +708,7 @@ struct gfx:cbase {
     VkEngine        engine();
     Device          device();
     void           resized();
-    void draw_state_change(draw_state *ds, cbase::state_change type);
+    void          defaults();
     text_metrics   measure(str text);
     str    format_ellipsis(str text, real w, text_metrics &tm_result);
     void     draw_ellipsis(str text, real w);
@@ -861,29 +736,6 @@ struct gfx:cbase {
     str         ansi_color(rgba8 &c, bool text);
     ion::image    resample(ion::size sz, real deg, graphics::shape view, vec2d axis);
 };
-
-/// should call it text_canvas, display_buffer, tcanvas; terminal should be implementation of escape sequence/display in gfx context
-struct terminal:cbase {
-    static inline symbol reset_chr = "\u001b[0m";
-    struct tdata {
-        array<glyph> glyphs;
-        draw_state  *ds;
-        type_register(tdata);
-    };
-    terminal(vec2i sz);
-    mx_object(terminal, cbase, tdata);
-
-    void draw_state_change(draw_state &ds, cbase::state_change type);
-    str         ansi_color(rgba8 &c, bool text);
-    void          set_char(int x, int y, glyph gl);
-    str           get_char(int x, int y);
-    void              text(str s, graphics::shape vrect, alignment align, vec2d voffset, bool ellip);
-    void           outline(graphics::shape sh);
-    void              fill(graphics::shape sh);
-};
-
-
-
 
 struct style:mx {
     /// qualifier for style block

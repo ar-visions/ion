@@ -1043,6 +1043,9 @@ void vkvg_set_source_color (VkvgContext ctx, uint32_t c) {
 	ctx->curColor = c;
 	_update_cur_pattern (ctx, NULL);
 }
+uint32_t vkvg_get_source_color (VkvgContext ctx) {
+	return ctx->curColor;
+}
 void vkvg_set_source_rgb (VkvgContext ctx, float r, float g, float b) {
 	if (ctx->status)
 		return;

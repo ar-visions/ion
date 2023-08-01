@@ -24,9 +24,20 @@ struct gfx_memory {
     str            font_default;
     VkEngine       e;
     u32            width, height;
-    
-    cbase::draw_state *ds;
 
+    /// we dont need to store 
+    struct state {
+        vkvg_matrix_t mat;
+        uint32_t      color;
+        rectd         clip;
+        double           line_width;
+        vkvg_line_cap_t  line_cap;
+        vkvg_line_join_t line_join;
+    };
+
+    doubly<state> stack;
+    state        *top;
+    
     ~gfx_memory() {
         if (e)            vkDeviceWaitIdle(e->vkh->device);
         if (vg_device)    vkvg_device_drop(vg_device);
@@ -77,238 +88,10 @@ static void glfw_error(int code, symbol cstr) {
     console.log("glfw error: {0}", { str(cstr) });
 }
 
-/// used with terminal canvas
-static map<str> t_text_colors_8 = {
-    { "#000000" , "\u001b[30m" },
-    { "#ff0000",  "\u001b[31m" },
-    { "#00ff00",  "\u001b[32m" },
-    { "#ffff00",  "\u001b[33m" },
-    { "#0000ff",  "\u001b[34m" },
-    { "#ff00ff",  "\u001b[35m" },
-    { "#00ffff",  "\u001b[36m" },
-    { "#ffffff",  "\u001b[37m" }
-};
-
-static map<str> t_bg_colors_8 = {
-    { "#000000" , "\u001b[40m" },
-    { "#ff0000",  "\u001b[41m" },
-    { "#00ff00",  "\u001b[42m" },
-    { "#ffff00",  "\u001b[43m" },
-    { "#0000ff",  "\u001b[44m" },
-    { "#ff00ff",  "\u001b[45m" },
-    { "#00ffff",  "\u001b[46m" },
-    { "#ffffff",  "\u001b[47m" }
-};
-
-str terminal::ansi_color(rgba8 &c, bool text) {
-    map<str> &map = text ? t_text_colors_8 : t_bg_colors_8;
-    if (c.a < 32)
-        return "";
-    str hex = str("#") + color_value(c);
-    return map->count(hex) ? map[hex] : "";
-}
-
-void terminal::draw_state_change(draw_state &ds, cbase::state_change type) {
-    data->ds = &ds;
-    switch (type) {
-        case cbase::state_change::push:
-            break;
-        case cbase::state_change::pop:
-            break;
-        default:
-            break;
-    }
-}
-
-terminal::terminal(vec2i sz) : terminal()  {
-    cbase::data->size    = sz;
-    cbase::data->pixel_t = typeof(char);  
-    size_t n_chars = sz.x * sz.y;
-    data->glyphs = array<glyph>(ion::size({sz.y, sz.x}));
-    for (size_t i = 0; i < n_chars; i++)
-        data->glyphs += glyph {};
-}
-
-void terminal::set_char(int x, int y, glyph gl) {
-    draw_state &ds = *data->ds;
-    vec2i sz = cbase::size();
-    if (x < 0 || x >= sz.x) return;
-    if (y < 0 || y >= sz.y) return;
-    //assert(!ds.clip || sk_vshape_is_rect(ds.clip));
-    size_t index  = y * sz.y + x;
-    data->glyphs[{y, x}] = gl;
-    /*
-    ----
-    change-me: dont think this is required on 'set', but rather a filter on get
-    ----
-    if (cg.border) data->glyphs[index]->border  = cg->border;
-    if (cg.chr) {
-        str  gc = data->glyphs[index].chr;
-        if ((gc == "+") || (gc == "|" && cg.chr == "-") ||
-                            (gc == "-" && cg.chr == "|"))
-            data->glyphs[index].chr = "+";
-        else
-            data->glyphs[index].chr = cg.chr;
-    }
-    if (cg.fg) data->glyphs[index].fg = cg.fg;
-    if (cg.bg) data->glyphs[index].bg = cg.bg;
-    */
-}
-
-// gets the effective character, including bordering
-str terminal::get_char(int x, int y) {
-    cbase::draw_state &ds = *data->ds;
-    vec2i       &sz = cbase::data->size;
-    size_t       ix = math::clamp<size_t>(x, 0, sz.x - 1);
-    size_t       iy = math::clamp<size_t>(y, 0, sz.y - 1);
-    str       blank = " ";
-    
-    auto get_str = [&]() -> str {
-        auto value_at = [&](int x, int y) -> glyph * {
-            if (x < 0 || x >= sz.x) return null;
-            if (y < 0 || y >= sz.y) return null;
-            return &data->glyphs[y * sz[1] + x];
-        };
-        
-        auto is_border = [&](int x, int y) {
-            glyph *cg = value_at(x, y);
-            return cg ? ((*cg)->border > 0) : false;
-        };
-        
-        glyph::members &cg = data->glyphs[iy * sz[1] + ix];
-        auto   t  = is_border(x, y - 1);
-        auto   b  = is_border(x, y + 1);
-        auto   l  = is_border(x - 1, y);
-        auto   r  = is_border(x + 1, y);
-        auto   q  = is_border(x, y);
-        
-        if (q) {
-            if (t && b && l && r) return "\u254B"; //  +
-            if (t && b && r)      return "\u2523"; //  |-
-            if (t && b && l)      return "\u252B"; // -|
-            if (l && r && t)      return "\u253B"; // _|_
-            if (l && r && b)      return "\u2533"; //  T
-            if (l && t)           return "\u251B";
-            if (r && t)           return "\u2517";
-            if (l && b)           return "\u2513";
-            if (r && b)           return "\u250F";
-            if (t && b)           return "\u2503";
-            if (l || r)           return "\u2501";
-        }
-        return cg.chr;
-    };
-    return get_str();
-}
-
-void terminal::text(str s, graphics::shape vrect, alignment align, vec2d voffset, bool ellip) {
-    rectd    rect   =  vrect.bounds();
-    vec2i   &sz     =  cbase::size();
-    vec2d   &offset =  voffset;
-    draw_state &ds     = *data->ds;
-    int         len    =  int(s.len());
-    int         szx    = int(sz.x);
-    int         szy    = int(sz.y);
-    ///
-    if (len == 0)
-        return;
-    ///
-    int x0 = math::clamp(int(math::round(rect.x)), 0,          szx - 1);
-    int x1 = math::clamp(int(math::round(rect.x + rect.w)), 0, szx - 1);
-    int y0 = math::clamp(int(math::round(rect.y)), 0,          szy - 1);
-    int y1 = math::clamp(int(math::round(rect.y + rect.h)), 0, szy - 1);
-    int  w = (x1 - x0) + 1;
-    int  h = (y1 - y0) + 1;
-    ///
-    if (!w || !h) return;
-    ///
-    int tx = align->x == xalign::left   ? (x0) :
-             align->x == xalign::middle ? (x0 + (x1 - x0) / 2) - int(std::ceil(len / 2.0)) :
-             align->x == xalign::right  ? (x1 - len) : (x0);
-    ///
-    int ty = align->y == yalign::top    ? (y0) :
-             align->y == yalign::middle ? (y0 + (y1 - y0) / 2) - int(std::ceil(len / 2.0)) :
-             align->y == yalign::bottom ? (y1 - len) : (y0);
-    ///
-    tx           = math::clamp(tx, x0, x1);
-    ty           = math::clamp(ty, y0, y1);
-    size_t ix    = math::clamp(size_t(tx), size_t(0), size_t(szx - 1));
-    size_t iy    = math::clamp(size_t(ty), size_t(0), size_t(szy - 1));
-    size_t len_w = math::  min(size_t(x1 - tx), size_t(len));
-    ///
-    for (size_t i = 0; i < len_w; i++) {
-        int x = ix + i + offset.x;
-        int y = iy + 0 + offset.y;
-        if (x < 0 || x >= szx || y < 0 || y >= szy)
-            continue;
-        str chr = s.mid(i, 1);
-        glyph g = glyph::members { .chr = chr, .fg = ds.color };
-        set_char(tx + int(i), ty, g);
-    }
-}
-
-void terminal::outline(graphics::shape sh) {
-    draw_state &ds = *data->ds;
-    assert(sh);
-    rectd     &r = sh.bounds();
-    int     ss = math::min(2.0, math::round(ds.outline_sz));
-    rgba8  &c = ds.color;
-    glyph cg_0 = glyph::members { ss, "-", rgba8 {0,0,0,0}, rgba8 { c.r, c.g, c.b, c.a }};
-    glyph cg_1 = glyph::members { ss, "|", rgba8 {0,0,0,0}, rgba8 { c.r, c.g, c.b, c.a }};
-    
-    for (int ix = 0; ix < int(r.w); ix++) {
-        set_char(int(r.x + ix), int(r.y), cg_0);
-        if (r.h > 1)
-            set_char(int(r.x + ix), int(r.y + r.h - 1), cg_0);
-    }
-    for (int iy = 0; iy < int(r.h); iy++) {
-        set_char(int(r.x), int(r.y + iy), cg_1);
-        if (r.w > 1)
-            set_char(int(r.x + r.w - 1), int(r.y + iy), cg_1);
-    }
-}
-
-void terminal::fill(graphics::shape sh) {
-    draw_state &ds = *data->ds;
-    vec2i      &sz = cbase::size();
-    int         sx = int(sz.x);
-    int         sy = int(sz.y);
-    if (ds.color.a) {
-        rectd    &r = sh.bounds();
-        str t_color = ansi_color(ds.color, false);
-        ///
-        int      x0 = math::max(int(0),      int(r.x)),
-                 x1 = math::min(int(sx - 1), int(r.x + r.w));
-        int      y0 = math::max(int(0),      int(r.y)),
-                 y1 = math::min(int(sy - 1), int(r.y + r.h));
-
-        glyph    cg = glyph::members { 0, " ", rgba8(ds.color), rgba8 { 0,0,0,0 } }; /// members = data
-
-        for (int x = x0; x <= x1; x++)
-            for (int y = y0; y <= y1; y++)
-                set_char(x, y, cg); /// just set mem w grab()
-    }
-}
-
 struct memory;
 struct Texture;
 
-#if 0
-void sk_canvas_gaussian(sk_canvas_data* sk_canvas, vec2d* sz, rectd* crop) {
-    SkPaint  &sk     = *sk_canvas->state->backend.sk_paint;
-    SkCanvas &canvas = *sk_canvas->sk_canvas;
-    ///
-    SkImageFilters::CropRect crect = { };
-    if (crop && crop->w > 0 && crop->h > 0) {
-        SkRect rect = { SkScalar(crop->x),          SkScalar(crop->y),
-                        SkScalar(crop->x + crop->w), SkScalar(crop->y + crop->h) };
-        crect       = SkImageFilters::CropRect(rect);
-    }
-    sk_sp<SkImageFilter> filter = SkImageFilters::Blur(sks(sz->x), sks(sz->y), nullptr, crect);
-    sk.setImageFilter(std::move(filter));
-}
-#endif
-
-mx_implement(gfx, cbase);
+mx_implement(gfx, mx);
 
 gfx::gfx(VkEngine e, VkhPresenter vkh_renderer) : gfx() { /// this allocates both gfx_memory and cbase::cdata memory (cbase has data type aliased at cbase::DC)
     data->e             = e;
@@ -324,9 +107,50 @@ gfx::gfx(VkEngine e, VkhPresenter vkh_renderer) : gfx() { /// this allocates bot
     /// create surface, image and presenter
     resized();
 
+    data->state->push();
+    data->top = &data->state->last();
+
     /// gfx just needs a push off the ledge. [/penguin-drops]
-    push(); 
     defaults();
+}
+
+void gfx::defaults() {
+    vkvg_identity_matrix(data->ctx);
+    vkvg_set_source_color(data->ctx, 0x00);
+    vkvg_get_matrix(data->ctx, &top->mat);
+    vkvg_reset_clip(data->ctx);
+
+    top->clip      = rectd { 0, 0, 0, 0 }; /// null state == no clip
+    top->color     = 0xff000000;
+    top->line_cap  = VKVG_LINE_CAP_BUTT;
+    top->line_join = VKVG_LINE_JOIN_MITER;
+}
+
+void gfx::identity() {
+    vkvg_identity_matrix(data->ctx);
+}
+
+void gfx::push() {
+    gfx_memory::state &st = data->stack->push();
+    st        = data->top;
+    data->top = &data->state->last();
+    ///
+    vkvg_get_matrix(data->ctx, &top->mat);
+    data->top->line_cap   = vkvg_get_line_cap (data->ctx);
+    data->top->line_join  = vkvg_get_line_join(data->ctx);
+    data->top->line_width = vkvg_get_line_width(data->ctx);
+}
+
+void gfx::pop() {
+    data->stack->pop();
+    data->top = &data->state->last();
+    ///
+    vkvg_set_source_color(data->ctx, top->color);
+    vkvg_set_matrix      (data->ctx, &top->mat);
+    vkvg_new_path        (data->ctx); /// ??
+    vkvg_set_line_cap    (data->ctx, data->top->line_cap);
+    vkvg_set_line_join   (data->ctx, data->top->line_join);
+    vkvg_set_line_width  (data->ctx, data->top->line_width);
 }
 
 void gfx::resized() {
@@ -340,14 +164,11 @@ void gfx::resized() {
     vkh_presenter_get_size(data->vkh_renderer, &data->width, &data->height, &sx, &sy); /// vkh should have both vk engine and glfw facility
     data->width  /= sx; /// we use the virtual size here
     data->height /= sy;
-    cbase::data->size.x = data->width;
-    cbase::data->size.y = data->height;
 
     /// canvas w and h is virtual pixels; like dom and things; all user-mode stuff on top of vkvg is virtual
 	data->vg_surface = vkvg_surface_create(data->vg_device, data->width, data->height); 
 	data->vkh_image  = vkvg_surface_get_image(data->vg_surface);
-    data->ctx        = vkvg_create(data->vg_surface);
-
+    //data->ctx        = vkvg_create(data->vg_surface);
     vkh_presenter_build_blit_cmd(data->vkh_renderer, data->vkh_image->image, data->width, data->height);
 }
 
@@ -388,11 +209,6 @@ void vkvg_path(VkvgContext ctx, memory *mem) {
 
 VkEngine gfx::engine() { return data->e; }
 Device   gfx::device() { return data->device; }
-
-/// Quake2: { computer. updated. }
-void gfx::draw_state_change(draw_state *ds, cbase::state_change type) {
-    data->ds = ds;
-}
 
 text_metrics gfx::measure(str text) {
     vkvg_text_extents_t ext;
@@ -467,7 +283,7 @@ void gfx::image(ion::image img, graphics::shape sh, alignment align, vec2d offse
         ds.color.r, ds.color.g, ds.color.b, ds.color.a * ds.opacity);
     
     /// now its just of matter of scaling the little guy to fit in the box.
-    vec2d vsc = { math::min(1.0, r.w / real(sz[1])), math::min(1.0, r.h / real(sz[0])) };
+    vec2d     vsc = { math::min(1.0, r.w / real(sz[1])), math::min(1.0, r.h / real(sz[0])) };
     real       sc = (vsc.y > vsc.x) ? vsc.x : vsc.y;
     vec2d      va = vec2d(align);
     vec2d     pos = { mix(r.x, r.x + r.w - sz[1] * sc, va.x),
@@ -483,16 +299,6 @@ void gfx::image(ion::image img, graphics::shape sh, alignment align, vec2d offse
     vkvg_set_source_surface(data->ctx, surf, source.x, source.y);
     vkvg_fill(data->ctx);
     pop();
-}
-
-void gfx::push() {
-    cbase::push();
-    vkvg_save(data->ctx);
-}
-
-void gfx::pop() {
-    cbase::pop();
-    vkvg_restore(data->ctx);
 }
 
 /// would be reasonable to have a rich() method
@@ -547,10 +353,7 @@ void gfx::flush() {
 }
 
 void gfx::clear(rgba8 c) {
-    vkvg_save           (data->ctx);
-    vkvg_set_source_rgba(data->ctx, c.r, c.g, c.b, c.a);
-    vkvg_paint          (data->ctx);
-    vkvg_restore        (data->ctx);
+    vkvg_paint(data->ctx);
 }
 
 void gfx::font(ion::font &f) {
@@ -563,19 +366,35 @@ void gfx::font(ion::font &f) {
         f->loaded = true;
         vkvg_load_font_from_path(data->ctx, fpath.cs(), f->name.cs());
     }
+    
     vkvg_select_font_face(data->ctx, f->name.cs());
     vkvg_set_font_size(data->ctx, f->sz);
 }
 
-void gfx::cap  (graphics::cap    c) { vkvg_set_line_cap (data->ctx, vkvg_line_cap_t (int(c))); }
-void gfx::join (graphics::join   j) { vkvg_set_line_join(data->ctx, vkvg_line_join_t(int(j))); }
-void gfx::translate(vec2d       tr) { vkvg_translate    (data->ctx, tr.x, tr.y);  }
-void gfx::scale    (vec2d       sc) { vkvg_scale        (data->ctx, sc.x, sc.y);  }
-void gfx::scale    (real        sc) { vkvg_scale        (data->ctx, sc, sc);        }
-void gfx::rotate   (real      degs) { vkvg_rotate       (data->ctx, radians(degs)); }
+void gfx::cap(graphics::cap c) {
+    vkvg_set_line_cap (data->ctx, vkvg_line_cap_t (int(c)));
+}
+
+void gfx::join (graphics::join j) {
+    vkvg_set_line_join(data->ctx, vkvg_line_join_t(int(j)));
+}
+
+void gfx::translate(vec2d tr) {
+    vkvg_translate    (data->ctx, tr.x, tr.y);  }
+
+void gfx::scale(vec2d sc) {
+    vkvg_scale(data->ctx, sc.x, sc.y);
+}
+
+void gfx::scale(real        sc) {
+    vkvg_scale(data->ctx, sc, sc);
+}
+
+void gfx::rotate(real degs) {
+    vkvg_rotate(data->ctx, radians(degs));
+}
 
 void gfx::color(rgba8 &c) {
-    cur().color = c;
     vkvg_set_source_rgba(data->ctx, c.r, c.g, c.b, c.a);
 }
 
@@ -595,9 +414,6 @@ void gfx::outline  (graphics::shape p) {
     vkvg_path(data->ctx, p.mem);
     vkvg_stroke(data->ctx);
 }
-
-str      gfx::get_char  (int x, int y)       { return str(); }
-str      gfx::ansi_color(rgba8 &c, bool text) { return str(); }
 
 ion::image gfx::resample(ion::size sz, real deg, graphics::shape view, vec2d axis) {
     rgba8 *pixels = null;
@@ -1256,12 +1072,12 @@ void node::draw(gfx& canvas) {
         rgba8 c = color_with_opacity(text.color);
         canvas.color(c);
         canvas.font(data->font);
-        canvas.push();
-        //canvas.translate(vec2d(0, 0));
+        //canvas.push();
+        //canvas.translate(vec2d(20, 20));
         canvas.text(
             data->content, text.shape.bounds(),
             text.align, {0.0, 0.0}, true); // align is undefined here
-        canvas.pop();
+        //canvas.pop();
     }
 
     /// if there is an effective border to draw
