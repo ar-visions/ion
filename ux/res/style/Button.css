@@ -6,7 +6,7 @@ Button {
     image-align:  left top, 900ms ease-in;
     text-color:   #fff;
     content:      "Text";
-    fill-area:    10l 10t 10r 80h;
+    fill-area:    l0 t0 r0 b0;
     opacity:      0.8;
 }
 

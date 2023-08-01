@@ -150,12 +150,12 @@ namespace graphics {
 enums(nil, none, "none", none);
 
 enums(xalign, undefined,
-    "undefined, left, middle, right",
-     undefined, left, middle, right);
+    "undefined, left, middle, right, width, x",
+     undefined, left, middle, right, width, x);
     
 enums(yalign, undefined,
-    "undefined, top, middle, bottom, line",
-     undefined, top, middle, bottom, line);
+    "undefined, top, middle, bottom, line, height, y",
+     undefined, top, middle, bottom, line, height, y);
 
 enums(blending, undefined,
     "undefined, clear, src, dst, src-over, dst-over, src-in, dst-in, src-out, dst-out, src-atop, dst-atop, xor, plus, modulate, screen, overlay, color-dodge, color-burn, hard-light, soft-light, difference, exclusion, multiply, hue, saturation, color",
@@ -189,6 +189,10 @@ struct scalar:mx {
     mx_object(scalar, mx, sdata);
     //movable(scalar);
 
+    void test_func() {
+        int test = 0;
+        test++;
+    }
     scalar(P p, S s) : scalar() {
         data->prefix = p;
         data->suffix = s;
@@ -250,7 +254,13 @@ struct scalar:mx {
                 data->prefix = P(sp[0]);
                 data->scale = 0.0;
             } else {
-                data->prefix = P(sp[0]);
+                P test1 = P(str("l"));
+                P test2 = P(str("left"));
+                test_func();
+                int test = 0;
+                test++;
+
+                data->prefix = P(sp[test - 1]);
                 data->scale  =   sp[1].real_value<real>();
                 if (sp[2]) {
                     data->suffix = S(sp[2]);
@@ -311,6 +321,8 @@ struct alignment:mx {
         /// set x coordinate
         switch (xalign::etype(xalign(data->x))) {
             case xalign::undefined:
+            case xalign::x:
+            case xalign::width:
             case xalign::left:      rs.x = data->x(win.x,             win.w); break;
             case xalign::middle:    rs.x = data->x(win.x + win.w / 2, win.w); break;
             case xalign::right:     rs.x = data->x(win.x + win.w,     win.w); break;
@@ -318,6 +330,8 @@ struct alignment:mx {
         /// set y coordinate
         switch (yalign::etype(yalign(data->y))) {
             case yalign::undefined:
+            case yalign::y:
+            case yalign::height:
             case yalign::top:       rs.y = data->y(win.y,             win.h); break;
             case yalign::middle:    rs.y = data->y(win.y + win.h / 2, win.h); break;
             case yalign::bottom:    rs.y = data->y(win.y + win.h,     win.h); break;
@@ -342,12 +356,18 @@ struct region:mx {
     ///
     mx_object(region, mx, rdata);
     
-    ///
+    /// just two types supported, 4 and 1 component
     region(str s) : region() {
         array<str> a = s.trim().split();
-        data->tl = alignment { a[0], a[1] };
-        data->br = alignment { a[2], a[3] };
+        if (a.len() >= 4) {
+            data->tl = alignment { a[0], a[1] };
+            data->br = alignment { a[2], a[3] };
+        } else if (a.len() >= 1) {
+            data->tl = alignment { a[0], a[0] };
+            data->br = alignment { a[0], a[0] };
+        }
     }
+    region(cstr s):region(str(s)) { }
 
     /// when given a shape, this is in-effect a window which has static bounds
     /// this is used to convert shape abstract to a region
