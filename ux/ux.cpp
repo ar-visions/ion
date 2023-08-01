@@ -1233,8 +1233,6 @@ void node::draw(gfx& canvas) {
     
     /// if there is a fill color
     if (fill.color) { /// free'd prematurely during style change (not a transition)
-        fill.area = "l0 t0 r0 h80";
-
         rect<r64> r = fill.area.rect(bounds);
         canvas.color(fill.color);
         canvas.fill(r);

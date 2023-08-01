@@ -187,12 +187,7 @@ struct scalar:mx {
     };
 
     mx_object(scalar, mx, sdata);
-    //movable(scalar);
-
-    void test_func() {
-        int test = 0;
-        test++;
-    }
+    
     scalar(P p, S s) : scalar() {
         data->prefix = p;
         data->suffix = s;
@@ -228,13 +223,13 @@ struct scalar:mx {
         str tr = s.trim();
         size_t len = tr.len();
         bool in_symbol = isalpha(tr[0]) || tr[0] == '_' || tr[0] == '%';
-        array<str> sp   = tr.split([&](char &c) -> bool {
-            bool split  = false;
+        array<str> sp   = tr.split([&](char &c) -> int {
+            int split   = 0;
             bool symbol = isalpha(c) || (c == '_' || c == '%'); /// todo: will require hashing the enums by - and _, but for now not exposed as issue
             ///
             if (c == 0 || in_symbol != symbol) {
                 in_symbol = symbol;
-                split     = true;
+                split     = c == ' ' ? 1 : 2; // 2 == keep char
             }
             return split;
         });
@@ -252,23 +247,15 @@ struct scalar:mx {
                 data->scale  =   sp[1].real_value<real>();
             } else if (sp.len() == 1) {
                 data->prefix = P(sp[0]);
-                data->scale = 0.0;
+                data->scale  = 0.0;
             } else {
-                P test1 = P(str("l"));
-                P test2 = P(str("left"));
-                test_func();
-                int test = 0;
-                test++;
-
-                data->prefix = P(sp[test - 1]);
+                data->prefix = P(sp[0]);
                 data->scale  =   sp[1].real_value<real>();
-                if (sp[2]) {
+                if (sp.len() >= 3 && sp[2]) {
                     data->suffix = S(sp[2]);
                     if constexpr (identical<S, distance>())
                         data->is_percent = data->suffix == distance::percent;
                 }
-                data->prefix = P(sp[0]);
-                data->scale  =   sp[1].real_value<real>();
             }
         } catch (P &e) {
             console.fault("type exception in scalar construction: prefix lookup failure: {0}", { str(typeof(P)->name) });
@@ -288,7 +275,6 @@ struct alignment:mx {
 
     ///
     mx_object(alignment, mx, adata);
-    //movable(alignment);
 
     alignment(scalar<xalign, distance> sx, scalar<yalign, distance> sy) : alignment() {
         data->x = sx;
@@ -1053,7 +1039,7 @@ struct node:Element {
             alignment           align;
             image               img;
             region              area;
-            region              radius;
+            vec4d               radius;
             graphics::shape     shape; 
             graphics::cap       cap;   
             graphics::join      join;
