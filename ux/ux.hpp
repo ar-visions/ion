@@ -170,9 +170,9 @@ enums(duration, undefined,
      undefined, ns, ms, s);
 
 /// needs more distance units.  pc = parsec
-enums(distance, undefined,
-    "undefined, px, m, cm, in, ft, pc, %",
-     undefined, px, m, cm, in, ft, parsec, percent);
+enums(distance, px,
+    "px, m, cm, in, ft, pc, %",
+     px, m, cm, in, ft, parsec, percent);
 
 /// x20cm, t10% things like this.
 template <typename P, typename S>
@@ -287,6 +287,7 @@ struct alignment:mx {
         data->x = sp[0];
         data->y = sp[1];
     }
+
     ///
     inline alignment(str  x, str  y) : alignment() {
         data->x = x;
@@ -665,7 +666,7 @@ enums(mode, regular,
 
 struct font:mx {
     struct fdata {
-        real sz = 16;
+        real sz = 14;
         str  name = "Avenir-Bold";
         bool loaded = false;
         type_register(fdata);
@@ -713,6 +714,7 @@ struct gfx:mx {
     str    format_ellipsis(str text, real w, text_metrics &tm_result);
     void     draw_ellipsis(str text, real w);
     void             image(ion::image img, graphics::shape sh, alignment align, vec2d offset, vec2d source);
+    void          identity();
     void              push();
     void               pop();
     void              text(str text, Rect<double> rect, alignment align, vec2d offset, bool ellip);
@@ -720,6 +722,7 @@ struct gfx:mx {
     VkhImage       texture();
     void             flush();
     void             clear(rgba8 c);
+    void           opacity(real o);
     void              font(ion::font &f);
     void               cap(graphics::cap  c);
     void              join(graphics::join j);
@@ -732,8 +735,7 @@ struct gfx:mx {
     void              fill(graphics::shape  p);
     void          gaussian(vec2d sz, graphics::shape c);
     void           outline(graphics::shape p);
-    str           get_char(int x, int y);
-    str         ansi_color(rgba8 &c, bool text);
+    void        outline_sz(real line_width);
     ion::image    resample(ion::size sz, real deg, graphics::shape view, vec2d axis);
 };
 
@@ -1003,6 +1005,16 @@ struct node:Element {
         }
         result.a = math::round(result.a * o);
         return result;
+    }
+
+    double effective_opacity() {
+        node  *n = this;
+        double o = 1.0;
+        while (n) {
+            o *= n->data->opacity;
+            n  = n->Element::data->parent;
+        }
+        return o;
     }
 
     virtual void draw(gfx& canvas);

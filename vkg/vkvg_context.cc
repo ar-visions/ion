@@ -42,6 +42,11 @@ static VkClearValue clearValues[3] = {
 	{ .color.float32 = {0,0,0,0} }
 };
 
+float _get_dpi_scaling_x(VkvgContext ctx) {
+	VkvgDevice dev = ctx->vkvg;
+	return dev->e->vk_gpu->dpi_scale.x;
+}
+
 void _init_ctx (VkvgContext ctx) {
 	ctx->lineWidth		= 1;
 	ctx->miterLimit		= 10;
@@ -79,7 +84,9 @@ void _init_ctx (VkvgContext ctx) {
 	else
 		ctx->renderPassBeginInfo.clearValueCount = 3;
 
-	ctx->selectedCharSize	= 10 << 6;
+	float dpi = _get_dpi_scaling_x(ctx);
+	ctx->selectedCharSize	= uint32_t((float)10 * dpi) << 6;
+	ctx->fontScaling		= 1.0f / dpi;
 	ctx->currentFont		= NULL;
 	ctx->selectedFontName[0]= 0;
 	ctx->pattern			= NULL;
@@ -1209,9 +1216,9 @@ void vkvg_set_font_size (VkvgContext ctx, uint32_t size){
 		return;
 	RECORD(ctx, VKVG_CMD_SET_FONT_SIZE, size);
 #ifdef VKVG_USE_FREETYPE
-	long newSize = size << 6;
+	long newSize = (uint32_t)((float)size / ctx->fontScaling) << 6;
 #else
-	long newSize = size;
+	long newSize = (uint32_t)((float)size / ctx->fontScaling);
 #endif
 	if (ctx->selectedCharSize == newSize)
 		return;
@@ -1600,6 +1607,7 @@ void vkvg_identity_matrix (VkvgContext ctx) {
 	vkvg_matrix_t im = VKVG_IDENTITY_MATRIX;
 	ctx->pushConsts.mat = im;
 	_set_mat_inv_and_vkCmdPush (ctx);
+	_set_dpi_scaling(ctx); /// dpi scale = identity
 }
 void vkvg_set_matrix (VkvgContext ctx, const vkvg_matrix_t* matrix){
 	if (ctx->status)

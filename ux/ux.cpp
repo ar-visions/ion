@@ -14,6 +14,27 @@ namespace ion {
 //static NewFn<array<rgba8>> ari_fn = NewFn<array<rgba8>>(array<rgba8>::_new);
 //static NewFn<image> img_fn = NewFn<image>(image::_new);
 
+struct color:mx {
+    mx_object(color, mx, rgba8);
+};
+
+struct surface:mx {
+    struct sdata {
+        VkvgSurface surf;
+        type_register(sdata);
+    };
+    ///
+    surface(VkvgDevice device, image img) {
+        data->surf = vkvg_surface_create_from_bitmap(device, (u8*)img.data, img.width(), img.height());
+    }
+    ///
+    operator bool() {
+        return data->surf;
+    }
+    ///
+    mx_object(surface, mx, sdata);
+};
+
 struct gfx_memory {
     VkvgSurface    vg_surface;
     VkvgDevice     vg_device;
@@ -25,14 +46,18 @@ struct gfx_memory {
     VkEngine       e;
     u32            width, height;
 
-    /// we dont need to store 
     struct state {
-        vkvg_matrix_t mat;
-        uint32_t      color;
-        rectd         clip;
+        vkvg_matrix_t    mat;
+        uint32_t         color;
+        ion::font        font;
+        double           opacity;
+        ion::surface     surface;
+        rectd            clip;
         double           line_width;
+        double           line_height;
         vkvg_line_cap_t  line_cap;
         vkvg_line_join_t line_join;
+        /// needs surface / color indicator for source type (surface & color are both mx types)
     };
 
     doubly<state> stack;
@@ -106,24 +131,25 @@ gfx::gfx(VkEngine e, VkhPresenter vkh_renderer) : gfx() { /// this allocates bot
 
     /// create surface, image and presenter
     resized();
-
-    data->state->push();
-    data->top = &data->state->last();
-
-    /// gfx just needs a push off the ledge. [/penguin-drops]
-    defaults();
 }
 
 void gfx::defaults() {
     vkvg_identity_matrix(data->ctx);
-    vkvg_set_source_color(data->ctx, 0x00);
-    vkvg_get_matrix(data->ctx, &top->mat);
+    vkvg_get_matrix(data->ctx, &data->top->mat);
     vkvg_reset_clip(data->ctx);
 
-    top->clip      = rectd { 0, 0, 0, 0 }; /// null state == no clip
-    top->color     = 0xff000000;
-    top->line_cap  = VKVG_LINE_CAP_BUTT;
-    top->line_join = VKVG_LINE_JOIN_MITER;
+    data->top->clip        = rectd { 0, 0, 0, 0 }; /// null state == no clip
+    data->top->color       = 0xff000000;
+    data->top->opacity     = 1.0;
+    data->top->line_cap    = VKVG_LINE_CAP_BUTT;
+    data->top->line_join   = VKVG_LINE_JOIN_MITER;
+    data->top->line_width  = 1.0;
+    data->top->line_height = 1.0;
+    vkvg_set_source_color(data->ctx, 0x00);
+    vkvg_set_line_cap    (data->ctx, VKVG_LINE_CAP_BUTT);
+    vkvg_set_line_join   (data->ctx, VKVG_LINE_JOIN_MITER);
+    vkvg_set_line_width  (data->ctx, data->top->line_width);
+    vkvg_set_opacity     (data->ctx, data->top->opacity);
 }
 
 void gfx::identity() {
@@ -132,21 +158,21 @@ void gfx::identity() {
 
 void gfx::push() {
     gfx_memory::state &st = data->stack->push();
-    st        = data->top;
-    data->top = &data->state->last();
+    st        = *data->top;
+    data->top = &data->stack->last();
     ///
-    vkvg_get_matrix(data->ctx, &top->mat);
-    data->top->line_cap   = vkvg_get_line_cap (data->ctx);
-    data->top->line_join  = vkvg_get_line_join(data->ctx);
+    vkvg_get_matrix(data->ctx, &data->top->mat);
+    data->top->line_cap   = vkvg_get_line_cap  (data->ctx);
+    data->top->line_join  = vkvg_get_line_join (data->ctx);
     data->top->line_width = vkvg_get_line_width(data->ctx);
 }
 
 void gfx::pop() {
     data->stack->pop();
-    data->top = &data->state->last();
+    data->top = &data->stack->last();
     ///
-    vkvg_set_source_color(data->ctx, top->color);
-    vkvg_set_matrix      (data->ctx, &top->mat);
+    vkvg_set_source_color(data->ctx,  data->top->color);
+    vkvg_set_matrix      (data->ctx, &data->top->mat);
     vkvg_new_path        (data->ctx); /// ??
     vkvg_set_line_cap    (data->ctx, data->top->line_cap);
     vkvg_set_line_join   (data->ctx, data->top->line_join);
@@ -168,8 +194,16 @@ void gfx::resized() {
     /// canvas w and h is virtual pixels; like dom and things; all user-mode stuff on top of vkvg is virtual
 	data->vg_surface = vkvg_surface_create(data->vg_device, data->width, data->height); 
 	data->vkh_image  = vkvg_surface_get_image(data->vg_surface);
-    //data->ctx        = vkvg_create(data->vg_surface);
+
     vkh_presenter_build_blit_cmd(data->vkh_renderer, data->vkh_image->image, data->width, data->height);
+    
+
+    assert(data->stack->len() <= 1);
+
+    while (data->stack)
+        data->stack->pop();
+    data->stack->push();
+    data->top = &data->stack->last();
 }
 
 void vkvg_path(VkvgContext ctx, memory *mem) {
@@ -221,7 +255,7 @@ text_metrics gfx::measure(str text) {
         .h           =  real(ext.y_advance),
         .ascent      =  real(tm.ascent),
         .descent     =  real(tm.descent),
-        .line_height =  real(data->ds->line_height)
+        .line_height =  real(data->top->line_height)
     };
 }
 
@@ -275,13 +309,11 @@ void gfx::image(ion::image img, graphics::shape sh, alignment align, vec2d offse
         assert(att);
     }
     VkvgSurface surf = (VkvgSurface)att->data;
-    draw_state   &ds = *data->ds;
+    gfx_memory::state &top = *data->top;
     ion::size     sz = img.shape();
     rectd           &r = sh.bounds();
     assert(surf);
-    vkvg_set_source_rgba(data->ctx,
-        ds.color.r, ds.color.g, ds.color.b, ds.color.a * ds.opacity);
-    
+
     /// now its just of matter of scaling the little guy to fit in the box.
     vec2d     vsc = { math::min(1.0, r.w / real(sz[1])), math::min(1.0, r.h / real(sz[0])) };
     real       sc = (vsc.y > vsc.x) ? vsc.x : vsc.y;
@@ -312,7 +344,7 @@ void gfx::image(ion::image img, graphics::shape sh, alignment align, vec2d offse
 /// important that this info be known at time of output where clipping and ellipsis is concerned
 /// 
 void gfx::text(str text, Rect<double> rect, alignment align, vec2d offset, bool ellip) {
-    draw_state &ds = *data->ds;
+    gfx_memory::state &top = *data->top;
     ///
     vec2d          pos  = { 0, 0 };
     text_metrics   tm;
@@ -330,23 +362,27 @@ void gfx::text(str text, Rect<double> rect, alignment align, vec2d offset, bool 
 
     /// its probably useful to have a line height in the canvas
     real line_height = (-tm->descent + tm->ascent) / 1.66;
-    vec2d           tl = { rect->x,  rect->y + line_height / 2 };
-    vec2d           br = { rect->x + rect->w - tm->w,
-                            rect->y + rect->h - tm->h - line_height / 2 };
-    vec2d           va = vec2d(align);
-    pos              = mix(tl, br, va);
+    vec2d va = align.plot(rect);
+
+    va.y += line_height;
     
+    push();
+    translate(va);
     vkvg_show_text(data->ctx, (symbol)text.cs());
+    pop();
 }
 
+// supporting only rect clips for the time being
 void gfx::clip(graphics::shape cl) {
-    draw_state  &ds = cur();
-    ds.clip  = cl;
-    vkvg_path(data->ctx, cl.mem);
+    data->top->clip = cl.bounds();
+    rectd &r = data->top->clip;
+    vkvg_rectangle(data->ctx, r.x, r.y, r.w, r.h);
     vkvg_clip(data->ctx);
 }
 
-VkhImage gfx::texture() { return data->vkh_image; } /// associated with surface
+VkhImage gfx::texture() {
+    return data->vkh_image;
+} /// associated with surface
 
 void gfx::flush() {
     vkvg_flush(data->ctx);
@@ -356,9 +392,12 @@ void gfx::clear(rgba8 c) {
     vkvg_paint(data->ctx);
 }
 
+void gfx::opacity(real o) {
+    vkvg_set_opacity(data->ctx, o);
+}
+
 void gfx::font(ion::font &f) {
-    draw_state  &ds = cur();
-    ds.font = f;
+    data->top->font = f;
     path fpath = f.get_path();
     assert(fpath.exists());
 
@@ -380,13 +419,13 @@ void gfx::join (graphics::join j) {
 }
 
 void gfx::translate(vec2d tr) {
-    vkvg_translate    (data->ctx, tr.x, tr.y);  }
+    vkvg_translate(data->ctx, tr.x, tr.y);  }
 
 void gfx::scale(vec2d sc) {
     vkvg_scale(data->ctx, sc.x, sc.y);
 }
 
-void gfx::scale(real        sc) {
+void gfx::scale(real sc) {
     vkvg_scale(data->ctx, sc, sc);
 }
 
@@ -408,9 +447,13 @@ void gfx::fill(graphics::shape p) {
     vkvg_fill(data->ctx);
 }
 
-void gfx::gaussian (vec2d sz, graphics::shape c) { }
+void gfx::gaussian(vec2d sz, graphics::shape c) { }
 
-void gfx::outline  (graphics::shape p) {
+void gfx::outline_sz(real line_width) {
+    data->top->line_width = line_width;
+}
+
+void gfx::outline(graphics::shape p) {
     vkvg_path(data->ctx, p.mem);
     vkvg_stroke(data->ctx);
 }
@@ -664,17 +707,12 @@ int App::run() {
 	vkengine_set_scroll_callback    (data->e, scroll_callback);
 	vkengine_set_title              (data->e, "ux");
 
-    
 	while (!vkengine_should_close(data->e)) {
 		glfwPollEvents();
 
-        VkvgContext ctx; 
-        ctx = vkvg_create(data->canvas->vg_surface);
-        data->canvas->ctx = ctx;
-
-        //vkvg_set_source_rgba(ctx, 0.0f, 0.1f, 0.8f, 0.8f);
-        //vkvg_rectangle(ctx, 0, 0, 64, 64);
-        //vkvg_fill(ctx);
+        data->canvas->ctx = vkvg_create(data->canvas->vg_surface);
+        assert(data->canvas->stack->len() == 1);
+        data->canvas.defaults();
         
         /// update app with rendered Elements, then draw
         Element e = data->app_fn(*this);
@@ -682,7 +720,7 @@ int App::run() {
         if (composer::data->root_instance)
             composer::data->root_instance->draw(data->canvas);
 
-        vkvg_destroy(ctx);
+        vkvg_destroy(data->canvas->ctx);
 
         /// we need an array of renderers/presenters; must work with a 3D scene, bloom shading etc
 		if (!vkh_presenter_draw(data->e->renderer)) { 
@@ -1069,15 +1107,14 @@ void node::draw(gfx& canvas) {
     if (data->content && ((data->content.type() == typeof(char)) ||
                           (data->content.type() == typeof(str)))) {
         text.shape = text.area.rect(bounds);
-        rgba8 c = color_with_opacity(text.color);
-        canvas.color(c);
+        canvas.color(text.color);
+        canvas.opacity(effective_opacity());
         canvas.font(data->font);
-        //canvas.push();
-        //canvas.translate(vec2d(20, 20));
+        canvas.push();
         canvas.text(
             data->content, text.shape.bounds(),
             text.align, {0.0, 0.0}, true); // align is undefined here
-        //canvas.pop();
+        canvas.pop();
     }
 
     /// if there is an effective border to draw

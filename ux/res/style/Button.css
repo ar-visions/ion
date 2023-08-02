@@ -5,6 +5,7 @@ Button {
     image-region:  5l 5t 5r 5b, 200ms ease-in;
     image-align:  left top, 900ms ease-in;
     text-color:   #fff;
+    text-align:   middle middle;
     content:      "Text";
     fill-area:    l0 t0 r0 b0;
     opacity:      0.8;

@@ -701,6 +701,11 @@ void _show_texture (vkvg_context* ctx){
 #endif
 void _font_cache_show_text_run (VkvgContext ctx, VkvgText tr) {
 	unsigned int glyph_count;
+
+	vkvg_matrix_t mat;
+	vkvg_get_matrix(ctx, &mat);
+	vkvg_scale(ctx, ctx->fontScaling, ctx->fontScaling);
+
 #ifdef VKVG_USE_HARFBUZZ
 	hb_glyph_info_t* glyph_info = hb_buffer_get_glyph_infos (tr->hbBuf, &glyph_count);
 #else
@@ -768,6 +773,7 @@ void _font_cache_show_text_run (VkvgContext ctx, VkvgText tr) {
 		vkvg_flush (ctx);
 		_font_cache_update_context_descset (ctx);
 	}
+	vkvg_set_matrix(ctx, &mat);
 }
 
 void _font_cache_show_text (VkvgContext ctx, const char* text){
