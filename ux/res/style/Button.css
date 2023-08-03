@@ -13,5 +13,6 @@ Button {
 
 Button:hover {
     opacity:      1.0;
-    fill-color:   #ff2f;
+    fill-color:   #2f2f;
+    text-color:   #000;
 }

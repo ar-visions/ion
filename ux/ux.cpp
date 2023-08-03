@@ -432,7 +432,7 @@ void gfx::rotate(real degs) {
 }
 
 void gfx::color(rgba8 &c) {
-    vkvg_set_source_rgba(data->ctx, c.r, c.g, c.b, c.a);
+    vkvg_set_source_rgba(data->ctx, c.r / 255.0, c.g / 255.0, c.b / 255.0, c.a / 255.0);
 }
 
 void gfx::fill(rectd &p) {
@@ -1125,9 +1125,13 @@ void node::draw(gfx& canvas) {
     
     /// if there is a fill color
     if (fill.color) { /// free'd prematurely during style change (not a transition)
-        edata->fill_bounds = fill.area.rect(bounds);
+        data->fill_bounds = fill.area.rect(bounds);
+        if (edata->active) {
+            int test = 0;
+            test++;
+        }
         canvas.color(fill.color);
-        canvas.fill(r);
+        canvas.fill(data->fill_bounds);
     }
 
     /// if there is fill image

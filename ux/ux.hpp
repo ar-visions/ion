@@ -63,6 +63,7 @@ namespace graphics {
         bool contains(vec2d p) {
             if (!data->bounds)
                 bounds();
+            
             return data->bounds->contains(p);
         }
         ///
@@ -1441,13 +1442,9 @@ struct composer:mx {
             vec2d          o = n->offset();
             vec2d        rel = cur + o;
             Element::edata *edata = n->Element::data;
-            
-            bool in = n->data->bounds.contains(rel);
+            rectd &bounds = n->data->fill_bounds ? n->data->fill_bounds : n->data->bounds;
+            bool in = bounds.contains(rel);
             edata->cursor = in ? vec2d(x, y) : vec2d(-1, -1);
-            if (x > 64 && y > 64) {
-                int test = 0;
-                test++;
-            }
             return (in && (!active || !edata->active)) ? n : null;
         });
 
