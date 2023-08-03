@@ -1,5 +1,6 @@
 Button {
-    fill-radius:  0;
+    fill-area:    l32 t32 r32 b32;
+    fill-radius:  32 32 32 0;
     fill-color:   #08af;
     image-src:    "menu.png";
     image-region:  5l 5t 5r 5b, 200ms ease-in;
@@ -7,10 +8,10 @@ Button {
     text-color:   #fff;
     text-align:   middle middle;
     content:      "Text";
-    fill-area:    l0 t0 r0 b0;
     opacity:      0.8;
 }
 
 Button:hover {
     opacity:      1.0;
+    fill-color:   #ff2f;
 }

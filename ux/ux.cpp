@@ -317,9 +317,8 @@ void gfx::image(ion::image img, graphics::shape sh, alignment align, vec2d offse
     /// now its just of matter of scaling the little guy to fit in the box.
     vec2d     vsc = { math::min(1.0, r.w / real(sz[1])), math::min(1.0, r.h / real(sz[0])) };
     real       sc = (vsc.y > vsc.x) ? vsc.x : vsc.y;
-    vec2d      va = vec2d(align);
-    vec2d     pos = { mix(r.x, r.x + r.w - sz[1] * sc, va.x),
-                      mix(r.y, r.y + r.h - sz[0] * sc, va.y) };
+    vec2d     pos = { mix(r.x, r.x + r.w - sz[1] * sc, align.x),
+                      mix(r.y, r.y + r.h - sz[0] * sc, align.y) };
     
     push();
     /// translate & scale
@@ -342,7 +341,7 @@ void gfx::image(ion::image img, graphics::shape sh, alignment align, vec2d offse
 ///
 /// rect for the control area, region for the sizing within
 /// important that this info be known at time of output where clipping and ellipsis is concerned
-/// 
+
 void gfx::text(str text, Rect<double> rect, alignment align, vec2d offset, bool ellip) {
     gfx_memory::state &top = *data->top;
     ///
@@ -361,13 +360,12 @@ void gfx::text(str text, Rect<double> rect, alignment align, vec2d offset, bool 
     }
 
     /// its probably useful to have a line height in the canvas
-    real line_height = (-tm->descent + tm->ascent) / 1.66;
-    vec2d va = align.plot(rect);
+    real line_height = (-tm->descent + tm->ascent) / 1.5;
 
-    va.y += line_height;
-    
     push();
-    translate(va);
+    real text_x = align.x * (rect->w - tm->w);
+    real text_y = line_height + (align.y * (rect->h - tm->h));
+    translate(vec2d { text_x, text_y });
     vkvg_show_text(data->ctx, (symbol)text.cs());
     pop();
 }
@@ -468,8 +466,13 @@ void App::resize(vec2i &sz, App *app) {
     printf("resized: %d, %d\n", sz.x, sz.y);
 }
 
+App *app_data(GLFWwindow *window) {
+    return (App*)glfwGetWindowUserPointer(window);
+}
+
 static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
-    App::adata *data = (App::adata *)glfwGetWindowUserPointer(window);
+    App *app = app_data(window);
+    App::adata *data = app->data;
 	if (action != GLFW_PRESS)
 		return;
 	switch (key) {
@@ -481,15 +484,41 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
 	}
 }
 
-static void char_callback (GLFWwindow* window, uint32_t c) { }
+static void char_callback (GLFWwindow* window, uint32_t c) {
+    App *app = app_data(window);
+}
 
 static void mouse_move_callback(GLFWwindow* window, double x, double y) {
+    App *app            = app_data(window);
+    app->data->cursor   = vec2d { x, y };
+
+    for (node* n: app->data->hover)
+        n->Element::data->hover = false;
+    
+    app->data->hover    = app->select_at(app->data->cursor, app->data->buttons[0]);
+
+    for (node* n: app->data->hover)
+        n->Element::data->hover = true;
 }
 
 static void scroll_callback(GLFWwindow* window, double x, double y) {
+    App* app = app_data(window);
 }
 
 static void mouse_button_callback(GLFWwindow* window, int but, int state, int mods) {
+    App* app = app_data(window);
+    app->data->buttons[but] = bool(state);
+
+    for (node* n: app->data->active)
+        n->Element::data->active = false;
+    
+    if (state)
+        app->data->active = app->select_at(app->data->cursor, false);
+    else
+        app->data->active = {};
+
+    for (node* n: app->data->active)
+        n->Element::data->active = true;
 }
 
 /// id's can be dynamic so we cant enforce symbols, and it would be a bit lame to make the caller symbolize
@@ -698,7 +727,7 @@ void composer::update_all(Element e) {
 int App::run() {
     data->e = vkengine_create(1, 2, "ux",
         VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, VK_PRESENT_MODE_FIFO_KHR, VK_SAMPLE_COUNT_4_BIT,
-        512, 512, 0, data);
+        512, 512, 0, this);
     data->canvas = gfx(data->e, data->e->renderer); /// width and height are fetched from renderer (which updates in vkengine)
 
 	vkengine_set_key_callback       (data->e, key_callback);
@@ -717,8 +746,15 @@ int App::run() {
         /// update app with rendered Elements, then draw
         Element e = data->app_fn(*this);
         update_all(e);
-        if (composer::data->root_instance)
+        if (composer::data->root_instance) {
+            /// update rect
+            composer::data->root_instance->data->bounds = rectd {
+                0, 0,
+                (real)data->canvas->width,
+                (real)data->canvas->height
+            };
             composer::data->root_instance->draw(data->canvas);
+        }
 
         vkvg_destroy(data->canvas->ctx);
 
@@ -842,7 +878,7 @@ doubly<style::qualifier*> parse_qualifiers(style::block &bl, cstr *p) {
     return result;
 }
 
-size_t style::block::score(node *pn) {
+size_t style::block::score(node *pn, bool score_state) {
     node &n = *pn;
     double best_sc = 0;
     Element::edata *edata = ((Element*)pn)->data;
@@ -852,11 +888,8 @@ size_t style::block::score(node *pn) {
         bool   id_reject  = qd.id    && !id_match;
         bool  type_match  = qd.type  &&  strcmp((symbol)qd.type.cs(), (symbol)n.mem->type->name) == 0; /// class names are actual type names
         bool type_reject  = qd.type  && !type_match;
-        bool state_match  = qd.state && get_bool(typeof(Element::edata), edata, qd.state); /// a useful thing for string const input would be to flag that its already symbolized.  that way you dont look it up when you operate it back
-
-        /// dont use istate; just use props on node only, not the subclass
-
-        bool state_reject = qd.state && !state_match;
+        bool state_match  = score_state && qd.state && get_bool(typeof(Element::edata), edata, qd.state); /// a useful thing for string const input would be to flag that its already symbolized.  that way you dont look it up when you operate it back
+        bool state_reject = score_state && qd.state && !state_match;
 
         ///
         if (!id_reject && !type_reject && !state_reject) {
@@ -872,7 +905,7 @@ size_t style::block::score(node *pn) {
 /// each qualifier is defined as it, and all of the blocked qualifiers below.
 /// there are more optimal data structures to use for this matching routine
 /// state > state2 would be a nifty one, no operation indicates bool, as-is current normal syntax
-double style::block::match(node *from) {
+double style::block::match(node *from, bool match_state) {
     block          *bl = this;
     double total_score = 0;
     int            div = 0;
@@ -883,7 +916,7 @@ double style::block::match(node *from) {
         double score   = 0;
         ///
         while (n) { ///
-            auto sc = bl->score(n);
+            auto sc = bl->score(n, match_state);
             n       = n->Element::data->parent;
             if (sc == 0 && is_root) {
                 score = 0;
@@ -1053,7 +1086,7 @@ style::entry *style::impl::best_match(node *n, prop *member, array<style::entry*
     type_t type = n->mem->type;
     for (style::entry *e: entries) {
         block *bl = e->bl;
-        real score = bl->match(n);
+        real score = bl->match(n, true);
         if (score > 0 && score >= best_score) {
             match = bl->entries[*member->s_key];
             assert(match);
@@ -1072,7 +1105,7 @@ bool style::impl::applicable(node *n, prop *member, array<style::entry*> &result
     for (style::block *block:blocks) {
         if (!block->types || block->types.index_of(type) >= 0) {
             auto f = block->entries->lookup(*member->s_key);
-            if (f && block->match(n) > 0) {
+            if (f && block->match(n, false) > 0) {
                 result += f->value;
                 ret = true;
             }
@@ -1092,7 +1125,7 @@ void node::draw(gfx& canvas) {
     
     /// if there is a fill color
     if (fill.color) { /// free'd prematurely during style change (not a transition)
-        rect<r64> r = fill.area.rect(bounds);
+        edata->fill_bounds = fill.area.rect(bounds);
         canvas.color(fill.color);
         canvas.fill(r);
     }
@@ -1111,6 +1144,8 @@ void node::draw(gfx& canvas) {
         canvas.opacity(effective_opacity());
         canvas.font(data->font);
         canvas.push();
+        text.align = (cstr)"middle middle";
+        
         canvas.text(
             data->content, text.shape.bounds(),
             text.align, {0.0, 0.0}, true); // align is undefined here

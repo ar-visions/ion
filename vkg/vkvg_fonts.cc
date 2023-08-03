@@ -574,15 +574,15 @@ void _font_cache_font_extents (VkvgContext ctx, vkvg_font_extents_t *extents) {
 	FT_BBox*			bbox	= &font->face->bbox;
 	FT_Size_Metrics*	metrics = &font->face->size->metrics;
 
-	extents->ascent			= (float)(FT_MulFix(font->face->ascender, metrics->y_scale) >> 6);//metrics->ascender >> 6;
-	extents->descent		=-(float)(FT_MulFix(font->face->descender, metrics->y_scale) >> 6);//metrics->descender >> 6;
-	extents->height			= (float)(FT_MulFix(font->face->height, metrics->y_scale) >> 6);//metrics->height >> 6;
-	extents->max_x_advance	= (float)(bbox->xMax >> 6);
-	extents->max_y_advance	= (float)(bbox->yMax >> 6);
+	extents->ascent			= (float)(int(ctx->fontScaling * FT_MulFix(font->face->ascender, metrics->y_scale)) >> 6);//metrics->ascender >> 6;
+	extents->descent		=-(float)(int(ctx->fontScaling * FT_MulFix(font->face->descender, metrics->y_scale)) >> 6);//metrics->descender >> 6;
+	extents->height			= (float)(int(ctx->fontScaling * FT_MulFix(font->face->height, metrics->y_scale)) >> 6);//metrics->height >> 6;
+	extents->max_x_advance	= (float)(int(ctx->fontScaling * bbox->xMax) >> 6);
+	extents->max_y_advance	= (float)(int(ctx->fontScaling * bbox->yMax) >> 6);
 #else
-	extents->ascent			= roundf (font->scale * ctx->currentFont->ascent);
-	extents->descent		=-roundf (font->scale * ctx->currentFont->descent);
-	extents->height			= roundf (font->scale * (ctx->currentFont->ascent - ctx->currentFont->descent + ctx->currentFont->lineGap));
+	extents->ascent			= roundf (ctx->fontScaling * font->scale * ctx->currentFont->ascent);
+	extents->descent		=-roundf (ctx->fontScaling * font->scale * ctx->currentFont->descent);
+	extents->height			= roundf (ctx->fontScaling * font->scale * (ctx->currentFont->ascent - ctx->currentFont->descent + ctx->currentFont->lineGap));
 	extents->max_x_advance	= 0;//TODO
 	extents->max_y_advance	= 0;
 #endif
@@ -659,15 +659,15 @@ void _font_cache_create_text_run (VkvgContext ctx, const char* text, int length,
 		string_width_in_pixels += textRun->glyphs[i].x_advance >> 6;
 #ifdef VKVG_USE_FREETYPE
 	FT_Size_Metrics* metrics = &ctx->currentFontSize->face->size->metrics;
-	textRun->extents.height = (float)(FT_MulFix(ctx->currentFontSize->face->height, metrics->y_scale) >> 6);// (metrics->ascender + metrics->descender) >> 6;
+	textRun->extents.height = int((FT_MulFix(ctx->currentFontSize->face->height, metrics->y_scale) * ctx->fontScaling)) >> 6;// (metrics->ascender + metrics->descender) >> 6;
 #else
-	textRun->extents.height = textRun->font->ascent - textRun->font->descent + textRun->font->lineGap;
+	textRun->extents.height = int((textRun->font->ascent - textRun->font->descent + textRun->font->lineGap) * ctx->fontScaling);
 #endif
-	textRun->extents.x_advance = (float)string_width_in_pixels;
+	textRun->extents.x_advance = (float)string_width_in_pixels * ctx->fontScaling;
 	if (textRun->glyph_count > 0) {
-		textRun->extents.y_advance = (float)(textRun->glyphs[textRun->glyph_count-1].y_advance >> 6);
-		textRun->extents.x_bearing = -(float)(textRun->glyphs[0].x_offset >> 6);
-		textRun->extents.y_bearing = -(float)(textRun->glyphs[0].y_offset >> 6);
+		textRun->extents.y_advance =  (float)((int)(textRun->glyphs[textRun->glyph_count-1].y_advance * ctx->fontScaling) >> 6);
+		textRun->extents.x_bearing = -(float)((int)(textRun->glyphs[0].x_offset * ctx->fontScaling) >> 6);
+		textRun->extents.y_bearing = -(float)((int)(textRun->glyphs[0].y_offset * ctx->fontScaling) >> 6);
 	}
 
 	textRun->extents.width	= textRun->extents.x_advance;

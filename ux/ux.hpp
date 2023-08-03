@@ -149,13 +149,13 @@ namespace graphics {
 
 enums(nil, none, "none", none);
 
-enums(xalign, undefined,
-    "undefined, left, middle, right, width, x",
-     undefined, left, middle, right, width, x);
+enums(xalign, left,
+    "left, middle, right, width",
+     left, middle, right, width);
     
-enums(yalign, undefined,
-    "undefined, top, middle, bottom, line, height, y",
-     undefined, top, middle, bottom, line, height, y);
+enums(yalign, top,
+    "top, middle, bottom, height",
+     top, middle, bottom, height);
 
 enums(blending, undefined,
     "undefined, clear, src, dst, src-over, dst-over, src-in, dst-in, src-out, dst-out, src-atop, dst-atop, xor, plus, modulate, screen, overlay, color-dodge, color-burn, hard-light, soft-light, difference, exclusion, multiply, hue, saturation, color",
@@ -176,50 +176,47 @@ enums(distance, px,
 
 /// x20cm, t10% things like this.
 template <typename P, typename S>
-struct scalar:mx {
+struct scalar {
     using scalar_t = scalar<P, S>;
-    struct sdata {
-        P            prefix;
-        real         scale;
-        S            suffix;
-        bool         is_percent;
-        type_register(sdata);
-    };
+    P            prefix;
+    real         scale = 0;
+    S            suffix;
+    bool         is_percent = false;
 
-    mx_object(scalar, mx, sdata);
-    
-    scalar(P p, S s) : scalar() {
-        data->prefix = p;
-        data->suffix = s;
+    scalar() { }
+
+    scalar(P p, S s) {
+        prefix = p;
+        suffix = s;
     }
 
-    real operator()(real origin, real size) {
-        return origin + (data->is_percent ? (data->scale / 100.0 * size) : data->scale);
+    real operator()(real origin, real size, bool negative) {
+        return origin + (is_percent ? (scale / 100.0 * size) : scale) * (negative ? -1.0 : 1.0);
     }
 
     using p_type = typename P::etype;
     using s_type = typename S::etype;
 
-    inline bool operator>=(p_type p) const { return p >= data->prefix; }
-    inline bool operator> (p_type p) const { return p >  data->prefix; }
-    inline bool operator<=(p_type p) const { return p <= data->prefix; }
-    inline bool operator< (p_type p) const { return p <  data->prefix; }
-    inline bool operator>=(s_type s) const { return s >= data->suffix; }
-    inline bool operator> (s_type s) const { return s >  data->suffix; }
-    inline bool operator<=(s_type s) const { return s <= data->suffix; }
-    inline bool operator< (s_type s) const { return s <  data->suffix; }
-    inline bool operator==(p_type p) const { return p == data->prefix; }
-    inline bool operator==(s_type s) const { return s == data->suffix; }
-    inline bool operator!=(p_type p) const { return p != data->prefix; }
-    inline bool operator!=(s_type s) const { return s != data->suffix; }
+    inline bool operator>=(p_type p) const { return p >= prefix; }
+    inline bool operator> (p_type p) const { return p >  prefix; }
+    inline bool operator<=(p_type p) const { return p <= prefix; }
+    inline bool operator< (p_type p) const { return p <  prefix; }
+    inline bool operator>=(s_type s) const { return s >= suffix; }
+    inline bool operator> (s_type s) const { return s >  suffix; }
+    inline bool operator<=(s_type s) const { return s <= suffix; }
+    inline bool operator< (s_type s) const { return s <  suffix; }
+    inline bool operator==(p_type p) const { return p == prefix; }
+    inline bool operator==(s_type s) const { return s == suffix; }
+    inline bool operator!=(p_type p) const { return p != prefix; }
+    inline bool operator!=(s_type s) const { return s != suffix; }
 
-    inline operator    P() const { return p_type(data->prefix); }
-    inline operator    S() const { return s_type(data->suffix); }
-    inline operator real() const { return data->scale; }
+    inline operator    P() const { return prefix; }
+    inline operator    S() const { return suffix; }
+    inline operator real() const { return scale; }
 
-    scalar(p_type prefix, real scale, s_type suffix) : scalar(sdata { prefix, scale, suffix, false }) { }
+    scalar(p_type prefix, real scale, s_type suffix) : prefix(prefix), scale(scale), suffix(suffix), is_percent(false) { }
 
-    scalar(str s) : scalar() {
+    scalar(str s) {
         str tr = s.trim();
         size_t len = tr.len();
         bool in_symbol = isalpha(tr[0]) || tr[0] == '_' || tr[0] == '%';
@@ -236,25 +233,25 @@ struct scalar:mx {
 
         try {
             if constexpr (identical<P, nil>()) {
-                data->scale  =   sp[0].real_value<real>();
+                scale  =   sp[0].real_value<real>();
                 if (sp[1]) {
-                    data->suffix = S(sp[1]);
+                    suffix = S(sp[1]);
                     if constexpr (identical<S, distance>())
-                        data->is_percent = data->suffix == distance::percent;
+                        is_percent = suffix == distance::percent;
                 }
             } else if (identical<S, nil>()) {
-                data->prefix = P(sp[0]);
-                data->scale  =   sp[1].real_value<real>();
+                prefix = P(sp[0]);
+                scale  =   sp[1].real_value<real>();
             } else if (sp.len() == 1) {
-                data->prefix = P(sp[0]);
-                data->scale  = 0.0;
+                prefix = P(sp[0]);
+                scale  = 0.0;
             } else {
-                data->prefix = P(sp[0]);
-                data->scale  =   sp[1].real_value<real>();
+                prefix = P(sp[0]);
+                scale  =   sp[1].real_value<real>();
                 if (sp.len() >= 3 && sp[2]) {
-                    data->suffix = S(sp[2]);
+                    suffix = S(sp[2]);
                     if constexpr (identical<S, distance>())
-                        data->is_percent = data->suffix == distance::percent;
+                        is_percent = suffix == distance::percent;
                 }
             }
         } catch (P &e) {
@@ -263,112 +260,145 @@ struct scalar:mx {
             console.fault("type exception in scalar construction: suffix lookup failure: {0}", { str(typeof(S)->name) });
         }
     }
+
+    type_register(scalar);
+};
+
+/// need interpolation with enumerable type.  the alignment itsself will represent an axis
+/// alignment doesnt use the full enumerate set in xalign/yalign because its use-case is inside of the scope of that
+struct alignment {
+    real x, y;
+
+    alignment(real x = 0, real y = 0) : x(x), y(y) { }
+
+    alignment(str s) {
+        array<str> a = s.split();
+        str s0 = a[0];
+        str s1 = a.len() > 1 ? a[1] : a[0];
+
+        if (s0.numeric()) {
+            x = s0.real_value<real>();
+        } else {
+            xalign xa { s0 };
+            switch (xa.value) {
+                case xalign::left:   x = 0.0; break;
+                case xalign::middle: x = 0.5; break;
+                case xalign::right:  x = 1.0; break;
+                default: assert(false);       break;
+            }
+        }
+
+        if (s1.numeric()) {
+            y = s0.real_value<real>();
+        } else {
+            yalign ya { s1 };
+            switch (ya.value) {
+                case yalign::top:    y = 0.0; break;
+                case yalign::middle: y = 0.5; break;
+                case yalign::bottom: y = 1.0; break;
+                default: assert(false);       break;
+            }
+        }
+    }
+
+    alignment(cstr cs) : alignment(str(cs)) { }
+
+    alignment operator*(real sc) {
+        return { x * sc, y * sc };
+    }
+
+    alignment operator+(alignment &a) {
+        return { x + a.x, y + a.y };
+    }
+
+    type_register(alignment);
 };
 
 ///
-struct alignment:mx {
-    struct adata {
-        scalar<xalign, distance> x; /// these are different types
-        scalar<yalign, distance> y; /// ...
-        type_register(adata);
-    };
+struct coord {
+    scalar<xalign, distance> x; /// these are different types
+    scalar<yalign, distance> y; /// ...
 
-    ///
-    mx_object(alignment, mx, adata);
+    coord(scalar<xalign, distance> sx = {}, scalar<yalign, distance> sy = {}) : x(sx), y(sy) { }
 
-    alignment(scalar<xalign, distance> sx, scalar<yalign, distance> sy) : alignment() {
-        data->x = sx;
-        data->y = sy;
-    }
-
-    alignment(cstr cs) : alignment() {
+    coord(cstr cs) {
         array<str> sp = str(cs).split();
         assert(sp.len() == 2);
-        data->x = sp[0];
-        data->y = sp[1];
+        x = sp[0];
+        y = sp[1];
     }
 
-    ///
-    inline alignment(str  x, str  y) : alignment() {
-        data->x = x;
-        data->y = y;
+    coord(str  x, str  y) : x(x), y(y) { }
+
+    coord(real x, real y) {
+        x = scalar<xalign, distance> { xalign::left, x, distance::px };
+        y = scalar<yalign, distance> { yalign::top,  y, distance::px };
     }
 
-    inline alignment(real x, real y) : alignment() {
-        data->x = { xalign::left, x, distance::px };
-        data->y = { yalign::top,  y, distance::px };
-    }
-
-    inline operator vec2d() { return vec2d { real(data->x), real(data->y) }; }
+    operator vec2d() { return vec2d { real(x), real(y) }; }
 
     /// compute x and y coordinates given alignment cdata, and parameters for rect and offset
-    vec2d plot(rectd &win) {
+    vec2d plot(rectd &win, vec2d origin) {
         vec2d rs;
-        /// todo: direct enum operator does not seem to works
         /// set x coordinate
-        switch (xalign::etype(xalign(data->x))) {
-            case xalign::undefined:
-            case xalign::x:
-            case xalign::width:
-            case xalign::left:      rs.x = data->x(win.x,             win.w); break;
-            case xalign::middle:    rs.x = data->x(win.x + win.w / 2, win.w); break;
-            case xalign::right:     rs.x = data->x(win.x + win.w,     win.w); break;
+        switch (xalign::etype(xalign(x))) {
+            case xalign::width:     rs.x = origin.x + x.scale;
+            case xalign::left:      rs.x = x(win.x,             win.w, false); break;
+            case xalign::middle:    rs.x = x(win.x + win.w / 2, win.w, false); break;
+            case xalign::right:     rs.x = x(win.x + win.w,     win.w, true);  break;
         }
         /// set y coordinate
-        switch (yalign::etype(yalign(data->y))) {
-            case yalign::undefined:
-            case yalign::y:
-            case yalign::height:
-            case yalign::top:       rs.y = data->y(win.y,             win.h); break;
-            case yalign::middle:    rs.y = data->y(win.y + win.h / 2, win.h); break;
-            case yalign::bottom:    rs.y = data->y(win.y + win.h,     win.h); break;
-            case yalign::line:      rs.y = data->y(win.y + win.h / 2, win.h); break;
+        switch (yalign::etype(yalign(y))) {
+            case yalign::height:    rs.y = origin.y + y.scale;
+            case yalign::top:       rs.y = y(win.y,             win.h, false); break;
+            case yalign::middle:    rs.y = y(win.y + win.h / 2, win.h, false); break;
+            case yalign::bottom:    rs.y = y(win.y + win.h,     win.h, true);  break;
         }
         /// return vector of this 'corner' (top-left or bottom-right)
         return vec2d(rs);
     }
+
+    type_register(coord);
 };
 
 /// good primitive for ui, implemented in basic canvas ops.
 /// regions can be constructed from rects if area is static or composed in another way
-struct region:mx {
-    struct rdata {
-        alignment tl = alignment { scalar<xalign, distance> { xalign::left,   distance::px },
-                                   scalar<yalign, distance> { yalign::top,    distance::px }};
-        alignment br = alignment { scalar<xalign, distance> { xalign::right,  distance::px },
-                                   scalar<yalign, distance> { yalign::bottom, distance::px }};
-        type_register(rdata);
-    };
+struct region {
+    coord tl = coord { scalar<xalign, distance> { xalign::left,   distance::px },
+                       scalar<yalign, distance> { yalign::top,    distance::px }};
+    coord br = coord { scalar<xalign, distance> { xalign::right,  distance::px },
+                       scalar<yalign, distance> { yalign::bottom, distance::px }};
 
-    ///
-    mx_object(region, mx, rdata);
-    
+    region() { }
+
     /// just two types supported, 4 and 1 component
-    region(str s) : region() {
+    region(str s) {
         array<str> a = s.trim().split();
         if (a.len() >= 4) {
-            data->tl = alignment { a[0], a[1] };
-            data->br = alignment { a[2], a[3] };
+            tl = coord { a[0], a[1] };
+            br = coord { a[2], a[3] };
         } else if (a.len() >= 1) {
-            data->tl = alignment { a[0], a[0] };
-            data->br = alignment { a[0], a[0] };
+            tl = coord { a[0], a[0] };
+            br = coord { a[0], a[0] };
         }
     }
     region(cstr s):region(str(s)) { }
 
     /// when given a shape, this is in-effect a window which has static bounds
     /// this is used to convert shape abstract to a region
-    region(graphics::shape sh) : region() {
+    region(graphics::shape sh) {
         rectd b = sh.bounds();
-        data->tl   = alignment { b.x,  b.y };
-        data->br   = alignment { b.x + b.w,
-                                 b.y + b.h };
+        tl   = coord { b.x,  b.y };
+        br   = coord { b.x + b.w, b.y + b.h };
     }
     
     ///
     rectd rect(rectd &win) {
-        return rectd { data->tl.plot(win), data->br.plot(win) };
+        vec2d rel = win.xy();
+        return rectd { tl.plot(win, rel), br.plot(win, rel) };
     }
+
+    type_register(region);
 };
 
 enums(keyboard, none,
@@ -835,12 +865,12 @@ struct style:mx {
         doubly<block*>     blocks;
         array<type_t>      types; // if !types then its all types.
 
-        size_t score(node *n);
+        size_t score(node *n, bool score_state);
 
         /// each qualifier is defined as it, and all of the blocked qualifiers below.
         /// there are more optimal data structures to use for this matching routine
         /// state > state2 would be a nifty one, no operation indicates bool, as-is current normal syntax
-        double match(node *from);
+        double match(node *from, bool match_state);
 
         ///
         inline operator bool() { return quals || entries || blocks; }
@@ -927,6 +957,7 @@ struct node:Element {
         mx                  content;
         double              opacity = 1.0;
         rectd               bounds;     /// local coordinates of this control, so x and y are 0 based
+        rectd               fill_bounds;
         ion::font           font;
 
         doubly<prop> meta() const {
@@ -1402,16 +1433,21 @@ struct composer:mx {
     
     ///
     array<node *> select_at(vec2d cur, bool active = true) {
+        if (!data->root_instance)
+            return {};
+
         array<node*> inside = data->root_instance->select([&](node *n) {
             real           x = cur.x, y = cur.y;
             vec2d          o = n->offset();
             vec2d        rel = cur + o;
             Element::edata *edata = n->Element::data;
             
-            node::props::drawing &draw = n->data->drawings[operation::fill];
-
-            bool in = draw.shape.contains(rel);
+            bool in = n->data->bounds.contains(rel);
             edata->cursor = in ? vec2d(x, y) : vec2d(-1, -1);
+            if (x > 64 && y > 64) {
+                int test = 0;
+                test++;
+            }
             return (in && (!active || !edata->active)) ? n : null;
         });
 
@@ -1433,9 +1469,13 @@ struct composer:mx {
 
 struct App:composer {
     struct adata {
-        GPU    win;
-        gfx    canvas;
-        VkEngine e;
+        GPU          win;
+        gfx          canvas;
+        vec2d        cursor;
+        bool         buttons[16];
+        array<node*> active;
+        array<node*> hover;
+        VkEngine     e;
         lambda<Element(App&)> app_fn;
         type_register(adata);
     };
