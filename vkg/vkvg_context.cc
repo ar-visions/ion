@@ -691,6 +691,10 @@ vkvg_status_t vkvg_rounded_rectangle (VkvgContext ctx, float x, float y, float w
 	if (w <= 0 || h <= 0)
 		return VKVG_STATUS_INVALID_RECT;
 
+	if (radius == 0.0) {
+		return vkvg_rectangle(ctx, x, y, w, h);
+	}
+
 	if ((radius > w / 2.0f) || (radius > h / 2.0f))
 		radius = fmin (w / 2.0f, h / 2.0f);
 

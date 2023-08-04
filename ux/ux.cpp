@@ -342,10 +342,14 @@ void gfx::image(ion::image img, graphics::shape sh, alignment align, vec2d offse
 /// rect for the control area, region for the sizing within
 /// important that this info be known at time of output where clipping and ellipsis is concerned
 
+/// a background color would be nice that uses a sort of line height
+/// that line-height we would neeed to pass into this function
+/// it would just be nice to make things easier at the primitive level for text, as text ops are
+/// often repetitive and giving more functionality would improve quality across apps
 void gfx::text(str text, Rect<double> rect, alignment align, vec2d offset, bool ellip) {
     gfx_memory::state &top = *data->top;
     ///
-    vec2d          pos  = { 0, 0 };
+    vec2d          pos { 0, 0 };
     text_metrics   tm;
     str            txt;
     ///
@@ -363,10 +367,10 @@ void gfx::text(str text, Rect<double> rect, alignment align, vec2d offset, bool 
     real line_height = (-tm->descent + tm->ascent) / 1.5;
 
     push();
-    real text_x = align.x * (rect->w - tm->w);
-    real text_y = line_height + (align.y * (rect->h - tm->h));
+    real text_x = rect->x + (align.x * (rect->w - tm->w));
+    real text_y = rect->y + (line_height + (align.y * (rect->h - tm->h)));
     translate(vec2d { text_x, text_y });
-    vkvg_show_text(data->ctx, (symbol)text.cs());
+    vkvg_show_text(data->ctx, (symbol)text.cs()); /// we need a custom shader here for accelerated drawing.  that is, not render passes per character color but rather just vertices that contain everything we need
     pop();
 }
 
@@ -436,7 +440,7 @@ void gfx::color(rgba8 &c) {
 }
 
 void gfx::fill(rectd &p) {
-    vkvg_rectangle(data->ctx, p.x, p.y, p.w, p.h);
+    vkvg_rounded_rectangle(data->ctx, p.x, p.y, p.w, p.h, p.r_tl.x); /// vkvg needs a 4 component rounded rect as described in ux
     vkvg_fill(data->ctx);
 }
 
@@ -1040,6 +1044,13 @@ void style::impl::load(str code) {
                     str     param = i >= 0 ? cb_value.mid(i + 1).trim() : "";
                     str     value = i >= 0 ? cb_value.mid(0, i).trim()  : cb_value;
                     style::transition trans = param ? style::transition(param) : null;
+
+                    if (trans) {
+                        /// how to test for transitionability?  we need to dynamically do this,
+                        /// or, we would have function bindings to pointers of these
+                        /// ux is not everything to an object model and it would take considerable function additions but its not such
+                        /// a big deal to have add, and multiply...
+                    }
                     
                     /// check
                     console.test(member, "member cannot be blank");
@@ -1123,55 +1134,80 @@ void node::draw(gfx& canvas) {
     props::drawing &outline  = data->drawings[operation::outline]; /// outline is more AR than border.  and border is a bad idea, badly defined and badly understood. outline is on the 0 pt.  just offset it if you want.
     props::drawing &children = data->drawings[operation::child]; /// outline is more AR than border.  and border is a bad idea, badly defined and badly understood. outline is on the 0 pt.  just offset it if you want.
     
+    canvas.push();
+    data->fill_bounds = fill.area.rect(bounds); /// use this bounds if we do not have specific areas defined
+    
     /// if there is a fill color
     if (fill.color) { /// free'd prematurely during style change (not a transition)
-        data->fill_bounds = fill.area.rect(bounds);
-        if (edata->active) {
-            int test = 0;
-            test++;
+        if (fill.radius) {
+            vec4d r = fill.radius;
+            vec2d tl { r.x, r.x };
+            vec2d tr { r.y, r.y };
+            vec2d br { r.w, r.w };
+            vec2d bl { r.z, r.z };
+            data->fill_bounds.set_rounded(tl, tr, br, bl);
         }
+        canvas.push();
         canvas.color(fill.color);
+        canvas.opacity(effective_opacity());
         canvas.fill(data->fill_bounds);
+        canvas.pop();
     }
 
     /// if there is fill image
     if (image.img) {
         image.shape = image.area.rect(bounds);
+        canvas.push();
+        canvas.opacity(effective_opacity());
         canvas.image(image.img, image.shape, image.align, {0,0}, {0,0});
+        canvas.pop();
     }
     
     /// if there is text (its not alpha 0, and there is text)
     if (data->content && ((data->content.type() == typeof(char)) ||
                           (data->content.type() == typeof(str)))) {
-        text.shape = text.area.rect(bounds);
+        rectd text_rect = text.area ? text.area.rect(bounds) : data->fill_bounds;
+        canvas.push();
         canvas.color(text.color);
         canvas.opacity(effective_opacity());
         canvas.font(data->font);
-        canvas.push();
-        text.align = (cstr)"middle middle";
-        
         canvas.text(
-            data->content, text.shape.bounds(),
+            data->content, text_rect, /// useful to have control over text area but having a fill placement alone should make that the text area as well, unless specified as text-area
             text.align, {0.0, 0.0}, true); // align is undefined here
         canvas.pop();
+        text.shape = text_rect;
     }
 
     /// if there is an effective border to draw
     if (outline.color && outline.border->size > 0.0) {
+        rectd outline_rect = outline.area ? outline.area.rect(bounds) : data->fill_bounds;
+        if (outline.radius) {
+            vec4d r = outline.radius;
+            vec2d tl { r.x, r.x };
+            vec2d tr { r.y, r.y };
+            vec2d br { r.w, r.w };
+            vec2d bl { r.z, r.z };
+            outline_rect.set_rounded(tl, tr, br, bl);
+        }
         canvas.color(outline.border->color);
+        canvas.opacity(effective_opacity());
         canvas.outline_sz(outline.border->size);
-        canvas.outline(outline.shape); /// this needs to work with vshape, or border
+        canvas.outline(outline_rect); /// this needs to work with vshape, or border
+        outline.shape = outline_rect; /// updating for interactive logic
     }
 
     for (node *c: edata->mounts) {
         /// clip to child
         /// translate to child location
-        rect<r64> sub_bounds = children.area.rect(bounds);
+        rectd sub_bounds = children.area ? children.area.rect(bounds) : data->fill_bounds;
         canvas.translate(sub_bounds.xy());
+        canvas.opacity(effective_opacity());
         (*c)->bounds = rect<r64> { 0, 0, sub_bounds.w, sub_bounds.h };
         //canvas.clip(0, 0, r.w, r.h);
         c->draw(canvas);
     }
+
+    canvas.pop();
 }
 
 }

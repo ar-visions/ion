@@ -1,7 +1,7 @@
 Button {
     fill-area:    l32 t32 r32 b32;
     fill-radius:  32 32 32 0;
-    fill-color:   #08af;
+    fill-color:   #24fa;
     image-src:    "menu.png";
     image-region:  5l 5t 5r 5b, 200ms ease-in;
     image-align:  left top, 900ms ease-in;
@@ -13,6 +13,14 @@ Button {
 
 Button:hover {
     opacity:      1.0;
-    fill-color:   #2f2f;
-    text-color:   #000;
+    fill-color:   #24ff;
+    text-color:   #fff;
+    text-align:   right middle;
+}
+
+
+Button:active {
+    opacity:      1.0;
+    fill-color:   #84ff;
+    text-color:   #fffa;
 }

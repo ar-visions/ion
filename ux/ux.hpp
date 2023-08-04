@@ -369,6 +369,7 @@ struct region {
                        scalar<yalign, distance> { yalign::top,    distance::px }};
     coord br = coord { scalar<xalign, distance> { xalign::right,  distance::px },
                        scalar<yalign, distance> { yalign::bottom, distance::px }};
+    bool set = false;
 
     region() { }
 
@@ -382,6 +383,7 @@ struct region {
             tl = coord { a[0], a[0] };
             br = coord { a[0], a[0] };
         }
+        set = true;
     }
     region(cstr s):region(str(s)) { }
 
@@ -391,7 +393,10 @@ struct region {
         rectd b = sh.bounds();
         tl   = coord { b.x,  b.y };
         br   = coord { b.x + b.w, b.y + b.h };
+        set  = true;
     }
+
+    operator bool() { return set; }
     
     ///
     rectd rect(rectd &win) {
