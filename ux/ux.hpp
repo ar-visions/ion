@@ -793,7 +793,7 @@ struct style:mx {
             "none, linear, ease-in, ease-out, cubic-in, cubic-out",
              none, linear, ease_in, ease_out, cubic_in, cubic_out);
         
-        curve ct; /// curve-type, or counter-terrorist.
+        curve ct;
         scalar<nil, duration> dur;
         type_register(transition);
 
@@ -814,11 +814,9 @@ struct style:mx {
 
         template <typename T>
         inline T operator()(T &fr, T &to, real value) const {
-            constexpr bool transitions = transitionable<T>();
-            if constexpr (transitions) {
-                real x = pos(value);
-                real i = 1.0 - x;
-                return (fr * i) + (to * x);
+            if constexpr (has_mix<T>()) {
+                real trans = pos(value);
+                return fr.mix(to, trans);
             } else
                 return to;
         }
