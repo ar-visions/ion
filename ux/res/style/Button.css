@@ -1,12 +1,12 @@
 Button {
-    fill-area:    l32 t32 r32 b32;
+    fill-area:    l32 t32 r32 b32, 200ms ease-in;
     fill-radius:  32 32 32 0;
     fill-color:   #24fa;
     image-src:    "menu.png";
     image-region:  5l 5t 5r 5b, 200ms ease-in;
     image-align:  left top, 900ms ease-in;
     text-color:   #fff;
-    text-align:   middle middle;
+    text-align:   middle middle, 200ms ease-in;
     content:      "Text";
     opacity:      0.8;
 }
@@ -15,11 +15,12 @@ Button:hover {
     opacity:      1.0;
     fill-color:   #24ff;
     text-color:   #fff;
-    text-align:   right middle;
+    text-align:   right middle, 200ms ease-in;
 }
 
 
 Button:active {
+    fill-area:    l64 t64 r64 b64, 200ms ease-in;
     opacity:      1.0;
     fill-color:   #84ff;
     text-color:   #fffa;

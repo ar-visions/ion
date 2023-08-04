@@ -304,12 +304,9 @@ struct alignment {
 
     alignment(cstr cs) : alignment(str(cs)) { }
 
-    alignment operator*(real sc) {
-        return { x * sc, y * sc };
-    }
-
-    alignment operator+(alignment &a) {
-        return { x + a.x, y + a.y };
+    alignment mix(alignment &b, double f) {
+        return { x * (1.0 - f) + b.x * f,
+                 y * (1.0 - f) + b.y * f };
     }
 
     type_register(alignment);

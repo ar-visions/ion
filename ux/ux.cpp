@@ -581,6 +581,11 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
         bool pset[args_len];
         memset(pset, 0, args_len * sizeof(bool));
 
+        vec4d *p_radius = &instance->data->drawings[operation::fill].radius;
+        style::style_map &style_avail = (*instance)->style_avail;
+        /// stores style across the entire poly schema inside which is ok
+        /// we only look them up in context of those data structures
+
         /// iterate through polymorphic meta info on the schema bindings on these context types (the user instantiates context, not data)
         for (type_t ctx = e->type; ctx; ctx = ctx->parent) {
             if (!ctx->schema)
@@ -596,19 +601,15 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
             if (!meta_map)
                 continue;
 
-            /// todo: init a changed map or list here
-
             /// apply style to props (only do this when we need to, as this will be inefficient to do per update)
             /// dom uses invalidation for this such as property changed in a parent, element added, etc
             /// it does not need to be perfect we are not making a web browser
-            style::style_map &style_avail = (*instance)->style_avail;
             for (prop &p: *props) {
                 str &name = *p.s_key;
                 field<array<style::entry*>> *entries = style_avail->lookup(name); // ctx name is Button, name == id, and it has a null entry for entries[0] == null with count > 
                 if (entries) {
                     /// get best style matching entry for this property
                     style::entry *best = composer->style->best_match(instance, &p, *entries);
-                    
                     ///
                     type_t prop_type = p.member_type;
                     u8    *prop_dst  = &data_origin[p.offset];
@@ -618,34 +619,40 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
 
                     /// in cases there will be no match, in other cases we have already selected
                     if (best && (best != sel.entry)) {
+                        bool should_trans = best->trans && sel.member;
 
                         /// create instance and immediately assign if there is no transition
                         if (prop_type->traits & traits::mx_obj) {
                             if (!best->mx_instance) best->mx_instance = (mx*)prop_type->functions->from_string(null, best->value.cs());
-                            if (!best->trans) prop_type->functions->set_memory(prop_dst, best->mx_instance->mem);
+                            if (!should_trans) prop_type->functions->set_memory(prop_dst, best->mx_instance->mem);
                         } else {
                             if (!best->raw_instance) best->raw_instance = prop_type->functions->from_string(null, best->value.cs());
-                            if (!best->trans) prop_type->functions->assign(null, prop_dst, best->raw_instance);
+                            if (!should_trans) prop_type->functions->assign(null, prop_dst, best->raw_instance);
                         }
 
-                        /// handle transitions in the selection
-                        if (best->trans) {
-                            /// if we had a prior transition, delete the memory
-                            if (sel.from) prop_type->functions->del(null, sel.from);
+                        /// if we had a prior transition, delete the memory
+                        if (sel.from) prop_type->functions->del(null, sel.from);
 
+                        /// handle transitions, only when we have previously selected (otherwise we are transitioning from default state)
+                        if (should_trans) {
                             /// get copy of current value (new instance, and assign from current)
                             raw_t cur = prop_type->functions->alloc_new(null, null);
                             prop_type->functions->assign(null, cur, prop_dst);
-
+                            
                             /// setup data
-                            sel.member = &p;
                             sel.start  = now;
                             sel.end    = now + i64(real(best->trans.dur));
                             sel.from   = cur;
                             sel.to     = best->mx_instance ? best->mx_instance : best->raw_instance; /// redundant
-                            sel.entry  = best;
+                        } else {
+                            sel.start  = 0;
+                            sel.end    = 0;
+                            sel.from   = null;
+                            sel.to     = best->mx_instance ? best->mx_instance : best->raw_instance; /// redundant
                         }
-
+                        sel.member = &p;
+                        sel.entry  = best;
+                        ///
                     } else if (!best) {
                         /// if there is nothing to set to, we must set to its default initialization value
                         if (prop_type->traits & traits::mx_obj) {
@@ -653,17 +660,20 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
                         } else {
                             prop_type->functions->assign(null, prop_dst, p.init_value);
                         }
+                        sel.start  = 0;
+                        sel.end    = 0;
+                        sel.from   = null;
+                        sel.member = &p;
                         sel.entry = null;
                     }
                 }
             }
 
-            /// handle selected transitions (if args are set, they will be overwritten)
+            /// handle selected transitions
             for (auto &field: instance->data->selections) {
                 node::selection &sel = field.value;
-                if (sel.start > 0) {
-                    real amount = math::clamp(real(now - sel.start) / real(sel.end - sel.start), 0.0, 1.0);
-                    assert(sel.entry->member->type() == sel.member->member_type);
+                if (sel.start > 0 && sel.member->parent_type == tdata) { /// make sure we have the correct data origin!
+                    real   amount = math::clamp(real(now - sel.start) / real(sel.end - sel.start), 0.0, 1.0);
                     type_t prop_type = sel.member->member_type;
                     u8    *prop_dst  = &data_origin[sel.member->offset];
 
@@ -672,15 +682,15 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
 
                     ///
                     if (prop_type->traits & traits::mx_obj) {
-                        prop_type->functions->set_memory(prop_dst, ((mx*)p.init_value)->mem);
+                        prop_type->functions->set_memory(prop_dst, ((mx*)temp)->mem);
                     } else {
-                        prop_type->functions->assign(null, prop_dst, p.init_value);
+                        prop_type->functions->assign(null, prop_dst, temp);
                     }
 
                     prop_type->functions->del(null, temp);
                 }
             }
-            
+
             /// iterate through args, skip those we have already set
             for (size_t i = 0; i < args_len; i++) {
                 if (pset[i]) 
@@ -691,7 +701,11 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
                 if (key->type == typeof(char)) {
                     symbol s_key = (symbol)key->origin;
                     prop *def = meta_map->lookup(s_key);
+                    
                     if (def) {
+                        /// duplicates are not allowed in ux; we could handle it just not now; meta map would need to return a list not the type.  iceman: ugh!
+                        assert(def->parent_type == tdata);
+
                         type_t prop_type = def->member_type;
                         type_t arg_type  = a.value.type();
                         u8    *prop_dst  = &data_origin[def->offset];
@@ -743,14 +757,6 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
                 }
             }
         }
-
-        /// blending the update w props changed and the render abstract
-        /// needs array<Element> support
-        /// that in itsself is still an 'Element', with an instance to a kind of placeholder node
-        /// the issue with that is its id-less nature, its typeless too in a way.
-        /// 
-
-        /// support transitions after first light.
 
         Element render = instance->update(); /// needs a 'changed' arg
         if (render) {
