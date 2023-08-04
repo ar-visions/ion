@@ -538,6 +538,7 @@ str element_id(Element &e) {
 void composer::update(composer::cdata *composer, node *parent, node *&instance, Element &e) {
     bool       diff = !instance;
     size_t args_len = e->args.len();
+    i64         now = millis();
 
     if (!diff) {
         /// instance != null, so we can check attributes
@@ -607,26 +608,76 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
                 if (entries) {
                     /// get best style matching entry for this property
                     style::entry *best = composer->style->best_match(instance, &p, *entries);
+                    
+                    ///
                     type_t prop_type = p.member_type;
                     u8    *prop_dst  = &data_origin[p.offset];
                     
-                    /// in many cases there will be no match
-                    if (best) {
+                    /// dont repeat this; store best in transitions lookup for this member name
+                    node::selection &sel = instance->data->selections[name];
+
+                    /// in cases there will be no match, in other cases we have already selected
+                    if (best && (best != sel.entry)) {
+
+                        /// create instance and immediately assign if there is no transition
                         if (prop_type->traits & traits::mx_obj) {
                             if (!best->mx_instance) best->mx_instance = (mx*)prop_type->functions->from_string(null, best->value.cs());
-                            prop_type->functions->set_memory(prop_dst, best->mx_instance->mem);
+                            if (!best->trans) prop_type->functions->set_memory(prop_dst, best->mx_instance->mem);
                         } else {
                             if (!best->raw_instance) best->raw_instance = prop_type->functions->from_string(null, best->value.cs());
-                            prop_type->functions->assign(null, prop_dst, best->raw_instance);
+                            if (!best->trans) prop_type->functions->assign(null, prop_dst, best->raw_instance);
                         }
-                    } else {
+
+                        /// handle transitions in the selection
+                        if (best->trans) {
+                            /// if we had a prior transition, delete the memory
+                            if (sel.from) prop_type->functions->del(null, sel.from);
+
+                            /// get copy of current value (new instance, and assign from current)
+                            raw_t cur = prop_type->functions->alloc_new(null, null);
+                            prop_type->functions->assign(null, cur, prop_dst);
+
+                            /// setup data
+                            sel.member = &p;
+                            sel.start  = now;
+                            sel.end    = now + i64(real(best->trans.dur));
+                            sel.from   = cur;
+                            sel.to     = best->mx_instance ? best->mx_instance : best->raw_instance; /// redundant
+                            sel.entry  = best;
+                        }
+
+                    } else if (!best) {
                         /// if there is nothing to set to, we must set to its default initialization value
                         if (prop_type->traits & traits::mx_obj) {
                             prop_type->functions->set_memory(prop_dst, ((mx*)p.init_value)->mem);
                         } else {
                             prop_type->functions->assign(null, prop_dst, p.init_value);
                         }
+                        sel.entry = null;
                     }
+                }
+            }
+
+            /// handle selected transitions (if args are set, they will be overwritten)
+            for (auto &field: instance->data->selections) {
+                node::selection &sel = field.value;
+                if (sel.start > 0) {
+                    real amount = math::clamp(real(now - sel.start) / real(sel.end - sel.start), 0.0, 1.0);
+                    assert(sel.entry->member->type() == sel.member->member_type);
+                    type_t prop_type = sel.member->member_type;
+                    u8    *prop_dst  = &data_origin[sel.member->offset];
+
+                    assert(prop_type->functions->mix);
+                    raw_t temp = prop_type->functions->mix(sel.from, sel.to, amount);
+
+                    ///
+                    if (prop_type->traits & traits::mx_obj) {
+                        prop_type->functions->set_memory(prop_dst, ((mx*)p.init_value)->mem);
+                    } else {
+                        prop_type->functions->assign(null, prop_dst, p.init_value);
+                    }
+
+                    prop_type->functions->del(null, temp);
                 }
             }
             
@@ -1044,13 +1095,6 @@ void style::impl::load(str code) {
                     str     param = i >= 0 ? cb_value.mid(i + 1).trim() : "";
                     str     value = i >= 0 ? cb_value.mid(0, i).trim()  : cb_value;
                     style::transition trans = param ? style::transition(param) : null;
-
-                    if (trans) {
-                        /// how to test for transitionability?  we need to dynamically do this,
-                        /// or, we would have function bindings to pointers of these
-                        /// ux is not everything to an object model and it would take considerable function additions but its not such
-                        /// a big deal to have add, and multiply...
-                    }
                     
                     /// check
                     console.test(member, "member cannot be blank");

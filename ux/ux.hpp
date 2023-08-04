@@ -911,10 +911,21 @@ enums(operation, fill,
      fill, image, outline, text, child);
 
 struct node:Element {
+
+    struct selection {
+        prop         *member;
+        raw_t         from, to; /// these we must call new() and del()
+        i64           start, end;
+        style::entry *entry;
+        /// the memory being set is the actual prop, but we need an origin stored in form of raw_t or a doubl
+    };
+
     /// standard props
     struct props {
         style::style_map style_avail; /// properties outside of meta are effectively internal state only; it can be labelled as such
         
+        map<selection> selections; /// style selected per member
+
         struct events {
             dispatch            hover;
             dispatch            out;
