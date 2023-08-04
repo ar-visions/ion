@@ -191,11 +191,13 @@ struct unit {
             char   first = s[0];
             bool   is_numeric = first == '-' || isdigit(first);
             assert(is_numeric);
-            array<str> v = s.split([&](char ch) {
+            array<str> v = s.split([&](char ch) -> int {
                 bool n = ch == '-' || ch == '.' || isdigit(ch);
-                if (is_numeric != n)
+                if (is_numeric != n) {
                     is_numeric = !is_numeric;
-                return is_numeric;
+                    return -1;
+                }
+                return 0;
             });
             value = v[0].real_value<real>();
             if (v.length() > 1) {
@@ -306,8 +308,8 @@ struct coord {
         double ws = (x_type.value == xalign::width)  ? (rel.x / rect.w) : align.x;
         double hs = (y_type.value == yalign::height) ? (rel.y / rect.h) : align.y;
         return {
-            rect.x + rect.w * ws,
-            rect.y + rect.h * hs
+            rect.x + rect.w * ws + offset.x,
+            rect.y + rect.h * hs + offset.y
         };
     }
 
@@ -345,6 +347,14 @@ struct region {
     rectd rect(rectd &win) {
         vec2d rel = win.xy();
         return rectd { tl.plot(win, rel), br.plot(win, rel) };
+    }
+
+    region mix(region &b, double a) {
+        coord m_tl = tl.mix(b.tl, a);
+        coord m_tr = br.mix(b.br, a);
+        return region {
+            m_tl, m_tr
+        };
     }
 
     type_register(region);
