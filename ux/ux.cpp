@@ -535,6 +535,14 @@ str element_id(Element &e) {
     return e->type->name;
 }
 
+double duration_millis(duration dur) {
+    switch (dur.value) {
+        case duration::ns: return 1.0 / 1000.0;
+        case duration::ms: return 1.0;
+        case duration::s:  return 1000.0;
+    }
+}
+
 void composer::update(composer::cdata *composer, node *parent, node *&instance, Element &e) {
     bool       diff = !instance;
     size_t args_len = e->args.len();
@@ -640,8 +648,9 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
                             prop_type->functions->assign(null, cur, prop_dst);
                             
                             /// setup data
+                            double ms = duration_millis(best->trans.dur.type);
                             sel.start  = now;
-                            sel.end    = now + i64(real(best->trans.dur));
+                            sel.end    = now + best->trans.dur.value * ms;
                             sel.from   = cur;
                             sel.to     = best->mx_instance ? best->mx_instance : best->raw_instance; /// redundant
                         } else {
@@ -774,6 +783,8 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
             }
         }
     }
+    int test = 0;
+    test++;
 }
 
 void composer::update_all(Element e) {

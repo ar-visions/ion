@@ -166,103 +166,43 @@ enums(filter, none,
     "none, blur, brightness, contrast, drop-shadow, grayscale, hue-rotate, invert, opacity, saturate, sepia",
      none, blur, brightness, contrast, drop_shadow, grayscale, hue_rotate, invert, opacity, saturate, sepia);
 
-enums(duration, undefined,
-    "undefined, ns, ms, s",
-     undefined, ns, ms, s);
+enums(duration, ms,
+    "ns, ms, s",
+     ns, ms, s);
 
 /// needs more distance units.  pc = parsec
 enums(distance, px,
     "px, m, cm, in, ft, pc, %",
      px, m, cm, in, ft, parsec, percent);
 
-/// x20cm, t10% things like this.
-template <typename P, typename S>
-struct scalar {
-    using scalar_t = scalar<P, S>;
-    P            prefix;
-    real         scale = 0;
-    S            suffix;
-    bool         is_percent = false;
 
-    scalar() { }
+template <typename U>
+struct unit {
+    real value;
+    U    type;
 
-    scalar(P p, S s) {
-        prefix = p;
-        suffix = s;
-    }
+    unit() : value(0) { }
 
-    real operator()(real origin, real size, bool negative) {
-        return origin + (is_percent ? (scale / 100.0 * size) : scale) * (negative ? -1.0 : 1.0);
-    }
-
-    using p_type = typename P::etype;
-    using s_type = typename S::etype;
-
-    inline bool operator>=(p_type p) const { return p >= prefix; }
-    inline bool operator> (p_type p) const { return p >  prefix; }
-    inline bool operator<=(p_type p) const { return p <= prefix; }
-    inline bool operator< (p_type p) const { return p <  prefix; }
-    inline bool operator>=(s_type s) const { return s >= suffix; }
-    inline bool operator> (s_type s) const { return s >  suffix; }
-    inline bool operator<=(s_type s) const { return s <= suffix; }
-    inline bool operator< (s_type s) const { return s <  suffix; }
-    inline bool operator==(p_type p) const { return p == prefix; }
-    inline bool operator==(s_type s) const { return s == suffix; }
-    inline bool operator!=(p_type p) const { return p != prefix; }
-    inline bool operator!=(s_type s) const { return s != suffix; }
-
-    inline operator    P() const { return prefix; }
-    inline operator    S() const { return suffix; }
-    inline operator real() const { return scale; }
-
-    scalar(p_type prefix, real scale, s_type suffix) : prefix(prefix), scale(scale), suffix(suffix), is_percent(false) { }
-
-    scalar(str s) {
-        str tr = s.trim();
-        size_t len = tr.len();
-        bool in_symbol = isalpha(tr[0]) || tr[0] == '_' || tr[0] == '%';
-        array<str> sp   = tr.split([&](char &c) -> int {
-            int split   = 0;
-            bool symbol = isalpha(c) || (c == '_' || c == '%'); /// todo: will require hashing the enums by - and _, but for now not exposed as issue
-            ///
-            if (c == 0 || in_symbol != symbol) {
-                in_symbol = symbol;
-                split     = c == ' ' ? 1 : 2; // 2 == keep char
+    unit(str s) {
+        s = s.trim();
+        if (s.len() == 0) {
+            value = 0;
+        } else {
+            char   first = s[0];
+            bool   is_numeric = first == '-' || isdigit(first);
+            assert(is_numeric);
+            array<str> v = s.split([&](char ch) {
+                bool n = ch == '-' || ch == '.' || isdigit(ch);
+                if (is_numeric != n)
+                    is_numeric = !is_numeric;
+                return is_numeric;
+            });
+            value = v[0].real_value<real>();
+            if (v.length() > 1) {
+                type = v[1];
             }
-            return split;
-        });
-
-        try {
-            if constexpr (identical<P, nil>()) {
-                scale  =   sp[0].real_value<real>();
-                if (sp[1]) {
-                    suffix = S(sp[1]);
-                    if constexpr (identical<S, distance>())
-                        is_percent = suffix == distance::percent;
-                }
-            } else if (identical<S, nil>()) {
-                prefix = P(sp[0]);
-                scale  =   sp[1].real_value<real>();
-            } else if (sp.len() == 1) {
-                prefix = P(sp[0]);
-                scale  = 0.0;
-            } else {
-                prefix = P(sp[0]);
-                scale  =   sp[1].real_value<real>();
-                if (sp.len() >= 3 && sp[2]) {
-                    suffix = S(sp[2]);
-                    if constexpr (identical<S, distance>())
-                        is_percent = suffix == distance::percent;
-                }
-            }
-        } catch (P &e) {
-            console.fault("type exception in scalar construction: prefix lookup failure: {0}", { str(typeof(P)->name) });
-        } catch (S &e) {
-            console.fault("type exception in scalar construction: suffix lookup failure: {0}", { str(typeof(S)->name) });
         }
     }
-
-    type_register(scalar);
 };
 
 /// need interpolation with enumerable type.  the alignment itsself will represent an axis
@@ -312,49 +252,66 @@ struct alignment {
     type_register(alignment);
 };
 
-///
 struct coord {
-    scalar<xalign, distance> x; /// these are different types
-    scalar<yalign, distance> y; /// ...
+    alignment   align;
+    vec2d       offset;
+    xalign      x_type;
+    yalign      y_type;
 
-    coord(scalar<xalign, distance> sx = {}, scalar<yalign, distance> sy = {}) : x(sx), y(sy) { }
+    coord(alignment &al, vec2d &offset, xalign &xt, yalign &yt) :
+        align(al), offset(offset), x_type(xt), y_type(yt) { }
 
-    coord(cstr cs) {
-        array<str> sp = str(cs).split();
+    coord(str s) {
+        array<str> sp = s.split();
+        str       &sx = sp[0];
+        str       &sy = sp[1];
         assert(sp.len() == 2);
-        x = sp[0];
-        y = sp[1];
-    }
 
-    coord(str  x, str  y) : x(x), y(y) { }
+        x_type = str(sx[0]);
+        y_type = str(sy[0]);
 
-    coord(real x, real y) {
-        x = scalar<xalign, distance> { xalign::left, x, distance::px };
-        y = scalar<yalign, distance> { yalign::top,  y, distance::px };
-    }
+        str sx_offset = &sx[1];
+        str sy_offset = &sy[1];
 
-    operator vec2d() { return vec2d { real(x), real(y) }; }
-
-    /// compute x and y coordinates given alignment cdata, and parameters for rect and offset
-    vec2d plot(rectd &win, vec2d origin) {
-        vec2d rs;
-        /// set x coordinate
-        switch (xalign::etype(xalign(x))) {
-            case xalign::width:     rs.x = origin.x + x.scale;
-            case xalign::left:      rs.x = x(win.x,             win.w, false); break;
-            case xalign::middle:    rs.x = x(win.x + win.w / 2, win.w, false); break;
-            case xalign::right:     rs.x = x(win.x + win.w,     win.w, true);  break;
+        offset = { sx_offset.real_value<real>(), sy_offset.real_value<real>() };
+        
+        switch (x_type.value) {
+            case xalign::left:   align.x = 0.0; break;
+            case xalign::middle: align.x = 0.5; break;
+            case xalign::right:  align.x = 1.0; break;
+            case xalign::width:  align.x = 0.0; break;
+            default: break;
         }
-        /// set y coordinate
-        switch (yalign::etype(yalign(y))) {
-            case yalign::height:    rs.y = origin.y + y.scale;
-            case yalign::top:       rs.y = y(win.y,             win.h, false); break;
-            case yalign::middle:    rs.y = y(win.y + win.h / 2, win.h, false); break;
-            case yalign::bottom:    rs.y = y(win.y + win.h,     win.h, true);  break;
+
+        switch (y_type.value) {
+            case yalign::top:    align.y = 0.0; break;
+            case yalign::middle: align.y = 0.5; break;
+            case yalign::bottom: align.y = 1.0; break;
+            case yalign::height: align.y = 0.0; break;
+            default: break;
         }
-        /// return vector of this 'corner' (top-left or bottom-right)
-        return vec2d(rs);
     }
+
+    coord mix(coord &b, double a) {
+        alignment   align  = this->align.x * (1.0 - a) + b.align.x * a;
+        vec2d       offset = this->offset  * (1.0 - a) + b.offset  * a;
+        xalign      x_type = b.x_type;
+        yalign      y_type = b.y_type;
+        return coord {
+            align, offset, x_type, y_type
+        };
+    }
+
+    vec2d plot(rectd &rect, vec2d &rel) {
+        double ws = (x_type.value == xalign::width)  ? (rel.x / rect.w) : align.x;
+        double hs = (y_type.value == yalign::height) ? (rel.y / rect.h) : align.y;
+        return {
+            rect.x + rect.w * ws,
+            rect.y + rect.h * hs
+        };
+    }
+
+    coord(cstr cs) : coord(str(cs)) { }
 
     type_register(coord);
 };
@@ -362,36 +319,25 @@ struct coord {
 /// good primitive for ui, implemented in basic canvas ops.
 /// regions can be constructed from rects if area is static or composed in another way
 struct region {
-    coord tl = coord { scalar<xalign, distance> { xalign::left,   distance::px },
-                       scalar<yalign, distance> { yalign::top,    distance::px }};
-    coord br = coord { scalar<xalign, distance> { xalign::right,  distance::px },
-                       scalar<yalign, distance> { yalign::bottom, distance::px }};
+    coord tl = (cstr)"l0 t0";
+    coord br = (cstr)"r0 b0";
     bool set = false;
 
     region() { }
 
-    /// just two types supported, 4 and 1 component
-    region(str s) {
-        array<str> a = s.trim().split();
-        if (a.len() >= 4) {
-            tl = coord { a[0], a[1] };
-            br = coord { a[2], a[3] };
-        } else if (a.len() >= 1) {
-            tl = coord { a[0], a[0] };
-            br = coord { a[0], a[0] };
-        }
-        set = true;
-    }
-    region(cstr s):region(str(s)) { }
+    region(coord &tl, coord &br) : tl(tl), br(br), set(true) { }
 
-    /// when given a shape, this is in-effect a window which has static bounds
-    /// this is used to convert shape abstract to a region
-    region(graphics::shape sh) {
-        rectd b = sh.bounds();
-        tl   = coord { b.x,  b.y };
-        br   = coord { b.x + b.w, b.y + b.h };
-        set  = true;
+    region(str s) {
+        array<str> a = s.split();
+        assert(a.length() == 4);
+        str s0  = a[0] + " " + a[1];
+        str s1  = a[2] + " " + a[3];
+        tl      = s0;
+        br      = s1;
+        set     = true;
     }
+
+    region(cstr s):region(str(s)) { }
 
     operator bool() { return set; }
     
@@ -791,8 +737,10 @@ struct style:mx {
              none, linear, ease_in, ease_out, cubic_in, cubic_out);
         
         curve ct;
-        scalar<nil, duration> dur;
+        unit<duration> dur;
         type_register(transition);
+
+        
 
         transition(null_t n = null) { }
 
@@ -825,7 +773,7 @@ struct style:mx {
                 ///
                 if (len == 2) {
                     /// 0.5s ease-out [things like that]
-                    dur = sp[0];
+                    dur = unit<duration>(sp[0]);
                     ct  = curve(sp[1]).value;
                 } else if (len == 1) {
                     doubly<memory*> &sym = curve::symbols();
