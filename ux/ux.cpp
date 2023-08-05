@@ -602,7 +602,7 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
             if (!tdata->meta) /// mx type does not contain a schema in itself
                 continue;
             u8* data_origin = (u8*)instance->mem->typed_data(tdata, 0);
-            hmap<ion::symbol, prop>* meta_map = (hmap<ion::symbol, prop> *)tdata->meta_map;
+            prop_map* meta_map = (prop_map*)tdata->meta_map;
             doubly<prop>* props = (doubly<prop>*)tdata->meta;
 
             /// its possible some classes may not have meta information defined, just skip
@@ -709,9 +709,10 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
                 /// only support a key type of char.  we can support variables that convert to char array
                 if (key->type == typeof(char)) {
                     symbol s_key = (symbol)key->origin;
-                    prop *def = meta_map->lookup(s_key);
+                    prop **pdef = meta_map->lookup(s_key);
                     
-                    if (def) {
+                    if (pdef) {
+                        prop *def = *pdef;
                         /// duplicates are not allowed in ux; we could handle it just not now; meta map would need to return a list not the type.  iceman: ugh!
                         assert(def->parent_type == tdata);
 

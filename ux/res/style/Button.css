@@ -8,7 +8,6 @@ Button {
     text-area:    l96 t0 r-96 b0;
     text-color:   #fff;
     text-align:   middle middle, 200ms back out;
-    content:      "Hello.";
     opacity:      0.8;
 }
 

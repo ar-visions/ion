@@ -23,6 +23,14 @@ struct View:node {
         type_register(props);
     };
 
+    int context_var;
+
+    doubly<prop> meta() {
+        return {
+            prop { "context_var", context_var }
+        };
+    }
+
     component(View, node, props);
 
     void mounting() {
