@@ -1057,6 +1057,7 @@ struct node:Element {
         /// not sure if overflow should be used for all of these.  that might be much to deal with
         struct drawing {
             rgba8               color;
+            real                opacity;
             alignment           align;
             image               img;
             region              area;
@@ -1092,32 +1093,37 @@ struct node:Element {
 
         doubly<prop> meta() const {
             return {
-                prop { "id",        id        }, /// move to Element?
-                prop { "on-hover",  ev.hover  }, /// must give member-parent-origin (std) to be able to 're-apply' somewhere else
-                prop { "on-out",    ev.out    },
-                prop { "on-down",   ev.down   },
-                prop { "on-up",     ev.up     },
-                prop { "on-key",    ev.key    },
-                prop { "on-focus",  ev.focus  },
-                prop { "on-blur",   ev.blur   },
-                prop { "on-cursor", ev.cursor },
-                prop { "on-hover",  ev.hover  },
-                prop { "content",   content   },
-                prop { "opacity",   opacity   },
-                prop { "font",      font },
+                prop { "id",             id        }, /// move to Element?
+                prop { "on-hover",       ev.hover  },
+                prop { "on-out",         ev.out    },
+                prop { "on-down",        ev.down   },
+                prop { "on-up",          ev.up     },
+                prop { "on-key",         ev.key    },
+                prop { "on-focus",       ev.focus  },
+                prop { "on-blur",        ev.blur   },
+                prop { "on-cursor",      ev.cursor },
+                prop { "on-hover",       ev.hover  },
+                prop { "content",        content   },
+                prop { "opacity",        opacity   },
+                prop { "font",           font      },
 
-                prop { "image-src",      drawings[operation::image]  .img  },
+                prop { "image-src",      drawings[operation::image]  .img     },
 
-                prop { "fill-area",      drawings[operation::fill]   .area },
-                prop { "image-area",     drawings[operation::image]  .area },
-                prop { "outline-area",   drawings[operation::outline].area },
-                prop { "text-area",      drawings[operation::text]   .area },
-                prop { "child-area",     drawings[operation::child]  .area },
+                prop { "fill-area",      drawings[operation::fill]   .area    },
+                prop { "image-area",     drawings[operation::image]  .area    },
+                prop { "outline-area",   drawings[operation::outline].area    },
+                prop { "text-area",      drawings[operation::text]   .area    },
+                prop { "child-area",     drawings[operation::child]  .area    },
+  
+                prop { "fill-color",     drawings[operation::fill]   .color   },
+                prop { "image-color",    drawings[operation::image]  .color   },
+                prop { "outline-color",  drawings[operation::outline].color   },
+                prop { "text-color",     drawings[operation::text]   .color   },
 
-                prop { "fill-color",     drawings[operation::fill]   .color },
-                prop { "image-color",    drawings[operation::image]  .color },
-                prop { "outline-color",  drawings[operation::outline].color },
-                prop { "text-color",     drawings[operation::text]   .color },
+                prop { "fill-opacity",   drawings[operation::fill]   .opacity },
+                prop { "image-opacity",  drawings[operation::image]  .opacity },
+                prop { "outline-opacity",drawings[operation::outline].opacity },
+                prop { "text-opacity",   drawings[operation::text]   .opacity },
 
                 prop { "fill-radius",    drawings[operation::fill]   .radius },
                 prop { "image-radius",   drawings[operation::image]  .radius },
