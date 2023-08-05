@@ -7,10 +7,6 @@
 
 using namespace ion;
 
-/// ------------------------------------------------------------
-/// audio annotation app first
-/// ------------------------------------------------------------
-
 struct View:node {
     struct props {
         int         sample;
@@ -33,7 +29,6 @@ struct View:node {
         console.log("mounting");
     }
 
-    /// button should have blue bg and white text in style css
     Element update() {
         return Button {
             { "content", fmt {"hello world: {0}", { state->sample }} },
@@ -49,13 +44,12 @@ struct View:node {
 };
 
 int main() {
-    /// use css for setting most of these properties.
     return App([](App &ctx) -> Element {
         return View {
-            { "id",      "main" }, /// sets id on the base node data; if there is no id then it should identify by its type
+            { "id",      "main" },
             { "sample",  int(2) },
-            { "sample2", "10"   }, /// converts to int from char* or str
-            { "clicked", callback([](event e) { /// dont access state in here! lol.
+            { "sample2", "10"   },
+            { "clicked", callback([](event e) {
                 printf("test!\n");
             }) }
         };

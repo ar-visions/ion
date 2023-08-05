@@ -683,12 +683,12 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
                 node::selection &sel = field.value;
                 if (sel.start > 0 && sel.member->parent_type == tdata) { /// make sure we have the correct data origin!
                     real   amount = math::clamp(real(now - sel.start) / real(sel.end - sel.start), 0.0, 1.0);
+                    real   curve  = sel.entry->trans.pos(amount);
                     type_t prop_type = sel.member->member_type;
                     u8    *prop_dst  = &data_origin[sel.member->offset];
 
                     assert(prop_type->functions->mix);
-                    raw_t temp = prop_type->functions->mix(sel.from, sel.to, amount);
-
+                    raw_t temp = prop_type->functions->mix(sel.from, sel.to, curve);
                     ///
                     if (prop_type->traits & traits::mx_obj) {
                         prop_type->functions->set_memory(prop_dst, ((mx*)temp)->mem);
@@ -783,8 +783,6 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
             }
         }
     }
-    int test = 0;
-    test++;
 }
 
 void composer::update_all(Element e) {

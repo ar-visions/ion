@@ -232,7 +232,7 @@ struct alignment {
         }
 
         if (s1.numeric()) {
-            y = s0.real_value<real>();
+            y = s1.real_value<real>();
         } else {
             yalign ya { s1 };
             switch (ya.value) {
@@ -295,7 +295,7 @@ struct coord {
     }
 
     coord mix(coord &b, double a) {
-        alignment   align  = this->align.x * (1.0 - a) + b.align.x * a;
+        alignment   align  = this->align.mix(b.align, a);
         vec2d       offset = this->offset  * (1.0 - a) + b.offset  * a;
         xalign      x_type = b.x_type;
         yalign      y_type = b.y_type;
@@ -742,33 +742,201 @@ struct style:mx {
 
     ///
     struct transition {
-        enums(curve, none, 
-            "none, linear, ease-in, ease-out, cubic-in, cubic-out",
-             none, linear, ease_in, ease_out, cubic_in, cubic_out);
-        
-        curve ct;
-        unit<duration> dur;
-        type_register(transition);
+        enums(ease, linear,
+            "linear, quad, cubic, quart, quint, sine, expo, circ, back, elastic, bounce",
+             linear, quad, cubic, quart, quint, sine, expo, circ, back, elastic, bounce);
+        ///
+        enums(direction, in,
+            "in, out, in-out",
+             in, out, in_out);
 
-        
+        ease easing;
+        direction dir;
+        unit<duration> dur;
 
         transition(null_t n = null) { }
 
-        inline real pos(real tf) const {
-            real x = math::clamp<real>(tf, 0.0, 1.0);
-            switch (ct.value) {
-                case curve::none:      x = 1.0;                    break;
-                case curve::linear:                                break; // /*x = x*/  
-                case curve::ease_in:   x = x * x * x;              break;
-                case curve::ease_out:  x = x * x * x;              break;
-                case curve::cubic_in:  x = x * x * x;              break;
-                case curve::cubic_out: x = 1 - std::pow((1-x), 3); break;
+        static inline const real PI = M_PI;
+        static inline const real c1 = 1.70158;
+        static inline const real c2 = c1 * 1.525;
+        static inline const real c3 = c1 + 1;
+        static inline const real c4 = (2 * M_PI) / 3;
+        static inline const real c5 = (2 * M_PI) / 4.5;
+
+        static real ease_linear        (real x) { return x; }
+        static real ease_in_quad       (real x) { return x * x; }
+        static real ease_out_quad      (real x) { return 1 - (1 - x) * (1 - x); }
+        static real ease_in_out_quad   (real x) { return x < 0.5 ? 2 * x * x : 1 - std::pow(-2 * x + 2, 2) / 2; }
+        static real ease_in_cubic      (real x) { return x * x * x; }
+        static real ease_out_cubic     (real x) { return 1 - std::pow(1 - x, 3); }
+        static real ease_in_out_cubic  (real x) { return x < 0.5 ? 4 * x * x * x : 1 - std::pow(-2 * x + 2, 3) / 2; }
+        static real ease_in_quart      (real x) { return x * x * x * x; }
+        static real ease_out_quart     (real x) { return 1 - std::pow(1 - x, 4); }
+        static real ease_in_out_quart  (real x) { return x < 0.5 ? 8 * x * x * x * x : 1 - std::pow(-2 * x + 2, 4) / 2; }
+        static real ease_in_quint      (real x) { return x * x * x * x * x; }
+        static real ease_out_quint     (real x) { return 1 - std::pow(1 - x, 5); }
+        static real ease_in_out_quint  (real x) { return x < 0.5 ? 16 * x * x * x * x * x : 1 - std::pow(-2 * x + 2, 5) / 2; }
+        static real ease_in_sine       (real x) { return 1 - cos((x * PI) / 2); }
+        static real ease_out_sine      (real x) { return sin((x * PI) / 2); }
+        static real ease_in_out_sine   (real x) { return -(cos(PI * x) - 1) / 2; }
+        static real ease_in_expo       (real x) { return x == 0 ? 0 : std::pow(2, 10 * x - 10); }
+        static real ease_out_expo      (real x) { return x == 1 ? 1 : 1 - std::pow(2, -10 * x); }
+        static real ease_in_out_expo   (real x) {
+            return x == 0
+                ? 0
+                : x == 1
+                ? 1
+                : x < 0.5
+                ? std::pow(2, 20 * x - 10) / 2
+                : (2 - std::pow(2, -20 * x + 10)) / 2;
+        }
+        static real ease_in_circ       (real x) { return 1 - sqrt(1 - std::pow(x, 2)); }
+        static real ease_out_circ      (real x) { return sqrt(1 - std::pow(x - 1, 2)); }
+        static real ease_in_out_circ   (real x) {
+            return x < 0.5
+                ? (1 - sqrt(1 - std::pow(2 * x, 2))) / 2
+                : (sqrt(1 - std::pow(-2 * x + 2, 2)) + 1) / 2;
+        }
+        static real ease_in_back       (real x) { return c3 * x * x * x - c1 * x * x; }
+        static real ease_out_back      (real x) { return 1 + c3 * std::pow(x - 1, 3) + c1 * std::pow(x - 1, 2); }
+        static real ease_in_out_back   (real x) {
+            return x < 0.5
+                ? (std::pow(2 * x, 2) * ((c2 + 1) * 2 * x - c2)) / 2
+                : (std::pow(2 * x - 2, 2) * ((c2 + 1) * (x * 2 - 2) + c2) + 2) / 2;
+        }
+        static real ease_in_elastic    (real x) {
+            return x == 0
+                ? 0
+                : x == 1
+                ? 1
+                : -std::pow(2, 10 * x - 10) * sin((x * 10 - 10.75) * c4);
+        }
+        static real ease_out_elastic   (real x) {
+            return x == 0
+                ? 0
+                : x == 1
+                ? 1
+                : std::pow(2, -10 * x) * sin((x * 10 - 0.75) * c4) + 1;
+        }
+        static real ease_in_out_elastic(real x) {
+            return x == 0
+                ? 0
+                : x == 1
+                ? 1
+                : x < 0.5
+                ? -(std::pow(2, 20 * x - 10) * sin((20 * x - 11.125) * c5)) / 2
+                : (std::pow(2, -20 * x + 10) * sin((20 * x - 11.125) * c5)) / 2 + 1;
+        }
+        static real bounce_out(real x) {
+            const real n1 = 7.5625;
+            const real d1 = 2.75;
+            if (x < 1 / d1) {
+                return n1 * x * x;
+            } else if (x < 2 / d1) {
+                return n1 * (x - 1.5 / d1) * x + 0.75;
+            } else if (x < 2.5 / d1) {
+                return n1 * (x - 2.25 / d1) * x + 0.9375;
+            } else {
+                return n1 * (x - 2.625 / d1) * x + 0.984375;
+            }
+        }
+        static real ease_in_bounce     (real x) {
+            return 1 - bounce_out(1 - x);
+        }
+        static real ease_out_bounce    (real x) { return bounce_out(x); }
+        static real ease_in_out_bounce (real x) {
+            return x < 0.5
+                ? (1 - bounce_out(1 - 2 * x)) / 2
+                : (1 + bounce_out(2 * x - 1)) / 2;
+        }
+
+        /// functions are courtesy of easings.net; just organized them into 2 enumerables compatible with web
+        real pos(real tf) const {
+            real x = math::clamp(tf, 0.0, 1.0);
+            switch (easing.value) {
+                case ease::linear:
+                    switch (dir.value) {
+                        case direction::in:      return ease_linear(x);
+                        case direction::out:     return ease_linear(x);
+                        case direction::in_out:  return ease_linear(x);
+                    }
+                    break;
+                case ease::quad:
+                    switch (dir.value) {
+                        case direction::in:      return ease_in_quad(x);
+                        case direction::out:     return ease_out_quad(x);
+                        case direction::in_out:  return ease_in_out_quad(x);
+                    }
+                    break;
+                case ease::cubic:
+                    switch (dir.value) {
+                        case direction::in:      return ease_in_cubic(x);
+                        case direction::out:     return ease_out_cubic(x);
+                        case direction::in_out:  return ease_in_out_cubic(x);
+                    }
+                    break;
+                case ease::quart:
+                    switch (dir.value) {
+                        case direction::in:      return ease_in_quart(x);
+                        case direction::out:     return ease_out_quart(x);
+                        case direction::in_out:  return ease_in_out_quart(x);
+                    }
+                    break;
+                case ease::quint:
+                    switch (dir.value) {
+                        case direction::in:      return ease_in_quint(x);
+                        case direction::out:     return ease_out_quint(x);
+                        case direction::in_out:  return ease_in_out_quint(x);
+                    }
+                    break;
+                case ease::sine:
+                    switch (dir.value) {
+                        case direction::in:      return ease_in_sine(x);
+                        case direction::out:     return ease_out_sine(x);
+                        case direction::in_out:  return ease_in_out_sine(x);
+                    }
+                    break;
+                case ease::expo:
+                    switch (dir.value) {
+                        case direction::in:      return ease_in_expo(x);
+                        case direction::out:     return ease_out_expo(x);
+                        case direction::in_out:  return ease_in_out_expo(x);
+                    }
+                    break;
+                case ease::circ:
+                    switch (dir.value) {
+                        case direction::in:      return ease_in_circ(x);
+                        case direction::out:     return ease_out_circ(x);
+                        case direction::in_out:  return ease_in_out_circ(x);
+                    }
+                    break;
+                case ease::back:
+                    switch (dir.value) {
+                        case direction::in:      return ease_in_back(x);
+                        case direction::out:     return ease_out_back(x);
+                        case direction::in_out:  return ease_in_out_back(x);
+                    }
+                    break;
+                case ease::elastic:
+                    switch (dir.value) {
+                        case direction::in:      return ease_in_elastic(x);
+                        case direction::out:     return ease_out_elastic(x);
+                        case direction::in_out:  return ease_in_out_elastic(x);
+                    }
+                    break;
+                case ease::bounce:
+                    switch (dir.value) {
+                        case direction::in:      return ease_in_bounce(x);
+                        case direction::out:     return ease_out_bounce(x);
+                        case direction::in_out:  return ease_in_out_bounce(x);
+                    }
+                    break;
             };
             return x;
         }
 
         template <typename T>
-        inline T operator()(T &fr, T &to, real value) const {
+        T operator()(T &fr, T &to, real value) const {
             if constexpr (has_mix<T>()) {
                 real trans = pos(value);
                 return fr.mix(to, trans);
@@ -780,28 +948,20 @@ struct style:mx {
             if (s) {
                 array<str> sp = s.split();
                 size_t    len = sp.length();
-                ///
-                if (len == 2) {
-                    /// 0.5s ease-out [things like that]
-                    dur = unit<duration>(sp[0]);
-                    ct  = curve(sp[1]).value;
-                } else if (len == 1) {
-                    doubly<memory*> &sym = curve::symbols();
-                    if (s == str(sym[0])) {
-                        /// none
-                        ct  = curve::none;
-                    } else {
-                        /// 0.2s
-                        dur = sp[0];
-                        ct  = curve::linear; /// linear is set if any duration is set; none = no transition
-                    }
-                } else
-                    console.fault("transition values: none, count type, count (seconds default)");
+                /// syntax:
+                /// 500ms [ease [out]]
+                /// 0.2s -- will be linear with in (argument meaningless for linear but applies to all others)
+                dur    = unit<duration>(sp[0]);
+                printf("sp[1] = %s\n", sp[1].cs());
+                easing = sp.len() > 1 ? ease(sp[1])      : ease();
+                dir    = sp.len() > 2 ? direction(sp[2]) : direction();
             }
         }
         ///
-        operator  bool() { return ct != curve::none; }
-        bool operator!() { return ct == curve::none; }
+        operator  bool() { return dur.value >  0; }
+        bool operator!() { return dur.value <= 0; }
+
+        type_register(transition);
     };
 
     struct block;
