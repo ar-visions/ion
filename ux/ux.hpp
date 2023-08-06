@@ -1608,6 +1608,7 @@ struct App:composer {
         array<node*> active;
         array<node*> hover;
         VkEngine     e;
+        VkSurfaceKHR capture_surfaces[2];
         lambda<Element(App&)> app_fn;
         type_register(adata);
     };
@@ -1617,7 +1618,10 @@ struct App:composer {
     App(lambda<Element(App&)> app_fn) : App() {
         data->app_fn = app_fn;
     }
-    ///
+    
+    /// this should be in vk instance
+    int set_capture_surface(int index, void *layer_data);
+    
     int run();
     static void resize(vec2i &sz, App *app);
 

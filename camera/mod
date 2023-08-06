@@ -1,0 +1,9 @@
+dep(mx:async ion:media)
+
+if(APPLE)
+    dep(IOSurface QuartzCore Metal CoreMedia CoreFoundation Cocoa IOKit AVFoundation)
+endif()
+
+cflags(+-fobjc-arc)
+
+cpp(17)

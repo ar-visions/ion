@@ -4,6 +4,7 @@
 #include <image/image.hpp>
 #include <media/media.hpp>
 #include <ux/ux.hpp>
+#include <camera/camera.hpp>
 
 using namespace ion;
 

@@ -7,6 +7,7 @@
 #include <vkh/vkh_device.h>
 #include <vkh/vkh_image.h>
 #include <vkg/vkg.hpp>
+#include <camera/camera.hpp>
 
 namespace ion {
 
@@ -795,10 +796,49 @@ void composer::update_all(Element e) {
     update(data, null, data->root_instance, e);
 }
 
+int App::set_capture_surface(int index, void *layer_data) {
+    
+    #ifdef __APPLE__
+
+    typedef VkFlags VkMetalSurfaceCreateFlagsEXT;
+
+    typedef struct VkMetalSurfaceCreateInfoEXT
+    {
+        VkStructureType                 sType;
+        const void*                     pNext;
+        VkMetalSurfaceCreateFlagsEXT    flags;
+        const void*                     pLayer;
+    } VkMetalSurfaceCreateInfoEXT;
+
+    typedef VkResult (*PFN_vkCreateMetalSurfaceEXT)(VkInstance,const VkMetalSurfaceCreateInfoEXT*,const VkAllocationCallbacks*,VkSurfaceKHR*);
+
+    PFN_vkCreateMetalSurfaceEXT vkCreateMetalSurfaceEXT;
+    vkCreateMetalSurfaceEXT = (PFN_vkCreateMetalSurfaceEXT)
+        vkGetInstanceProcAddr(data->e->instance, "vkCreateMetalSurfaceEXT");
+    if (!vkCreateMetalSurfaceEXT) {
+        printf("Vulkan instance missing VK_EXT_metal_surface extension\n");
+        return VK_ERROR_EXTENSION_NOT_PRESENT;
+    }
+    
+    VkMetalSurfaceCreateInfoEXT ci = {
+        .sType  = VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT,
+        .pLayer = layer_data
+    };
+    ///
+    VkResult metal_res = vkCreateMetalSurfaceEXT(data->e->instance, &ci, null, &data->capture_surfaces[index]);
+    #endif
+    return 0;
+}
+
+void on_capture(void *mtl_texture, void *layer_data) { /// layer_data is constant 
+    printf("got texture: %p\n", mtl_texture);
+}
+
 int App::run() {
     data->e = vkengine_create(1, 2, "ux",
         VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, VK_PRESENT_MODE_FIFO_KHR, VK_SAMPLE_COUNT_4_BIT,
         512, 512, 0, this);
+
     data->canvas = gfx(data->e, data->e->renderer); /// width and height are fetched from renderer (which updates in vkengine)
 
 	vkengine_set_key_callback       (data->e, key_callback);
@@ -806,6 +846,9 @@ int App::run() {
 	vkengine_set_cursor_pos_callback(data->e, mouse_move_callback);
 	vkengine_set_scroll_callback    (data->e, scroll_callback);
 	vkengine_set_title              (data->e, "ux");
+
+    Camera cam;
+    cam.start_capture(on_capture, data);
 
 	while (!vkengine_should_close(data->e)) {
 		glfwPollEvents();
@@ -836,6 +879,8 @@ int App::run() {
 			continue;
 		}
 	}
+
+    cam.stop_capture();
     return 0;
 }
 
