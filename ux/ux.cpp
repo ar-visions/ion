@@ -799,7 +799,7 @@ void composer::update_all(Element e) {
 int App::run() {
     data->e = vkengine_create(1, 2, "ux",
         VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, VK_PRESENT_MODE_FIFO_KHR, VK_SAMPLE_COUNT_4_BIT,
-        512, 512, 0, this);
+        1920 / 2, 1080 / 2, 0, this);
 
     data->canvas = gfx(data->e, data->e->renderer); /// width and height are fetched from renderer (which updates in vkengine)
 
@@ -810,10 +810,8 @@ int App::run() {
 	vkengine_set_title              (data->e, "ux");
 
     data->cameras  = array<Camera>(32);
-    data->cameras += Camera { data->e, 0 };
+    data->cameras += Camera { data->e, 0, 1920, 1080, 30 };
     data->cameras[0].start_capture();
-
-    usleep(2000000);
 
 	while (!vkengine_should_close(data->e)) {
 		glfwPollEvents();
@@ -840,8 +838,11 @@ int App::run() {
         }
         */
 
-        vkh_presenter_build_blit_cmd(data->e->renderer,
-            data->cameras[0].image->image, 512, 512);
+        /// 
+        if (data->cameras[0].image)
+            vkh_presenter_build_blit_cmd(data->e->renderer,
+                data->cameras[0].image->image,
+                512, 512);
     
         if (false && data->cameras[0].image) {
             VkvgSurface surf = vkvg_surface_create_for_VkhImage(data->canvas->vg_device, data->cameras[0].image);

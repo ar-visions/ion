@@ -108,13 +108,16 @@ AVCaptureDevice* select_camera(int camera_index) {
     size_t width = CVPixelBufferGetWidth(imageBuffer);
     size_t height = CVPixelBufferGetHeight(imageBuffer);
     
+    
     MTLTextureDescriptor *textureDescriptor = [MTLTextureDescriptor
-        texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm width:width height:height mipmapped:NO];
+        texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+        width:width height:height mipmapped:NO];
     
     CVMetalTextureRef metalTextureRef = nil;
 
     CVReturn status = CVMetalTextureCacheCreateTextureFromImage(
-        kCFAllocatorDefault, _metalTextureCache, imageBuffer, nil, textureDescriptor.pixelFormat, width, height, 0, &metalTextureRef);
+        kCFAllocatorDefault, _metalTextureCache, imageBuffer, nil,
+        textureDescriptor.pixelFormat, width, height, 0, &metalTextureRef);
     
     if (status != kCVReturnSuccess) {
         NSLog(@"Error creating Metal texture from CVPixelBuffer");
@@ -123,58 +126,11 @@ AVCaptureDevice* select_camera(int camera_index) {
     
     self.currentFrameTexture = CVMetalTextureGetTexture(metalTextureRef);
 
-
-
-    /*
-
-    id<MTLTexture> texture = self.currentFrameTexture;
-
-    NSUInteger bytesPerPixel = 4; // Assuming RGBA format (32 bits per pixel)
-    NSUInteger bytesPerRow = texture.width * bytesPerPixel;
-
-    // Calculate the total number of bytes needed for the entire texture.
-    NSUInteger bufferSize = texture.width * texture.height * bytesPerPixel;
-
-    // Allocate a buffer to store the pixel data.
-    uint8_t *pixelData = (uint8_t *)malloc(bufferSize);
-
-    // Create a region that covers the entire texture.
-    MTLRegion region = {
-        {0, 0, 0},          // origin (x, y, z)
-        {texture.width, texture.height, 1} // size (width, height, depth)
-    };
-
-    // Get the raw pixel data from the texture.
-    [texture getBytes:pixelData
-        bytesPerRow:bytesPerRow
-            fromRegion:region
-        mipmapLevel:0];
-
-    /// image::image(size sz, rgba8 *px, int scanline) : array() {
-
-    static bool abc;
-    if (!abc) {
-        ion::image img { ion::size { 1080, 1920 }, (ion::rgba8*)pixelData, 1920 };
-        img.save("/Users/kalen/Desktop/abc.png");
-        abc = true;
-    }
-
-    // Now, the pixelData array contains the raw pixel data of the texture.
-    // Each pixel consists of 4 bytes (RGBA format), and you can access the individual
-    // pixel values using appropriate indexing.
-
-    // Don't forget to free the allocated memory when you're done with the pixel data.
-    free(pixelData);
-
-    //CAMetalLayer* metalLayer = [CAMetalLayer layer]; /// make sure this is single instance
-    */
-    
-    /// when the user is done with the frame it should signal
     if (self.captureCallback) {
         self.captureCallback((__bridge void*)self.currentFrameTexture, 0, self.ctx);
     }
 
-    CFRelease(metalTextureRef); /// we want to avoid releasing this until we get a signal that the user is done with it
+    CFRelease(metalTextureRef);
 }
 
 @end
