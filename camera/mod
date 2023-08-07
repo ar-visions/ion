@@ -1,4 +1,4 @@
-dep(vulkan:vkh)
+dep(ion:vkg)
 
 if(APPLE)
     dep(IOSurface QuartzCore Metal CoreMedia CoreFoundation Cocoa IOKit AVFoundation)

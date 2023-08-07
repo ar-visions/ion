@@ -813,14 +813,16 @@ int App::run() {
     data->cameras += Camera { data->e, 0 };
     data->cameras[0].start_capture();
 
+    usleep(8000000);
+
 	while (!vkengine_should_close(data->e)) {
 		glfwPollEvents();
 
         data->e->vk_device->mtx.lock();
 
-        data->canvas->ctx = vkvg_create(data->canvas->vg_surface);
-        assert(data->canvas->stack->len() == 1);
-        data->canvas.defaults();
+        //data->canvas->ctx = vkvg_create(data->canvas->vg_surface);
+        //assert(data->canvas->stack->len() == 1);
+        //data->canvas.defaults();
         
         /// update app with rendered Elements, then draw
 
@@ -837,8 +839,11 @@ int App::run() {
             composer::data->root_instance->draw(data->canvas);
         }
         */
-       
-        if (data->cameras[0].image) {
+
+        vkh_presenter_build_blit_cmd(data->e->renderer,
+            data->cameras[0].image->image, 1920, 1080);
+    
+        if (false && data->cameras[0].image) {
             VkvgSurface surf = vkvg_surface_create_for_VkhImage(data->canvas->vg_device, data->cameras[0].image);
             vkvg_set_source_surface(data->canvas->ctx, surf, 0, 0);
             vkvg_rectangle(data->canvas->ctx, 0, 0, 1920, 1080);
@@ -848,7 +853,7 @@ int App::run() {
         }
 
 
-        vkvg_destroy(data->canvas->ctx);
+        //vkvg_destroy(data->canvas->ctx);
 
         /// we need an array of renderers/presenters; must work with a 3D scene, bloom shading etc
 		if (!vkh_presenter_draw(data->e->renderer)) { 
