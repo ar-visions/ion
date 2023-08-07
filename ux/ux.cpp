@@ -842,7 +842,7 @@ int App::run() {
         if (data->cameras[0].image)
             vkh_presenter_build_blit_cmd(data->e->renderer,
                 data->cameras[0].image->image,
-                512, 512);
+                data->cameras[0].width / 2, data->cameras[0].height / 2);
     
         if (false && data->cameras[0].image) {
             VkvgSurface surf = vkvg_surface_create_for_VkhImage(data->canvas->vg_device, data->cameras[0].image);
