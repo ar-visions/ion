@@ -813,7 +813,7 @@ int App::run() {
     data->cameras += Camera { data->e, 0 };
     data->cameras[0].start_capture();
 
-    usleep(8000000);
+    usleep(2000000);
 
 	while (!vkengine_should_close(data->e)) {
 		glfwPollEvents();
@@ -841,7 +841,7 @@ int App::run() {
         */
 
         vkh_presenter_build_blit_cmd(data->e->renderer,
-            data->cameras[0].image->image, 1920, 1080);
+            data->cameras[0].image->image, 512, 512);
     
         if (false && data->cameras[0].image) {
             VkvgSurface surf = vkvg_surface_create_for_VkhImage(data->canvas->vg_device, data->cameras[0].image);

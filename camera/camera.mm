@@ -30,40 +30,41 @@ void global_callback(void *metal_texture, void *metal_layer, void *context) {
 
     static id<MTLTexture> metalTexture;
 
-    const NSUInteger width         = 1920;
-    const NSUInteger height        = 1080;
-    const NSUInteger bytesPerPixel = 4; // Assuming 4 bytes per pixel (RGBA)
-    const NSUInteger bytesPerRow   = width * bytesPerPixel;
-    const NSUInteger imageSize     = width * height * bytesPerPixel;
+    if (metalTexture) {
+        const NSUInteger width         = 512;
+        const NSUInteger height        = 512;
+        const NSUInteger bytesPerPixel = 4; // Assuming 4 bytes per pixel (RGBA)
+        const NSUInteger bytesPerRow   = width * bytesPerPixel;
+        const NSUInteger imageSize     = width * height * bytesPerPixel;
 
-    // Define your plain color here (RGBA format, 8 bits per channel)
-    unsigned char colorData[] = { 255, 0, 0, 255 }; // Red color, fully opaque
+        // Define your plain color here (RGBA format, 8 bits per channel)
+        unsigned char colorData[] = { 255, 0, 255, 255 }; // Pink, fully opaque
 
-    id<MTLBuffer> colorBuffer = [device newBufferWithBytes:colorData length:imageSize options:MTLResourceStorageModeShared];
+        id<MTLBuffer> colorBuffer = [device newBufferWithBytes:colorData length:imageSize options:MTLResourceStorageModeShared];
 
-    MTLTextureDescriptor *textureDescriptor = [[MTLTextureDescriptor alloc] init];
-    textureDescriptor.pixelFormat = MTLPixelFormatBGRA8Unorm;
-    textureDescriptor.width = width;
-    textureDescriptor.height = height;
+        MTLTextureDescriptor *textureDescriptor = [[MTLTextureDescriptor alloc] init];
+        textureDescriptor.pixelFormat = MTLPixelFormatBGRA8Unorm;
+        textureDescriptor.width = width;
+        textureDescriptor.height = height;
 
-    id<MTLTexture> metalTexture = [device newTextureWithDescriptor:textureDescriptor];
+        metalTexture = [device newTextureWithDescriptor:textureDescriptor];
 
-    MTLRegion region = {
-        { 0, 0, 0 },                     // Origin
-        { width, height, 1 }             // Size
-    };
+        MTLRegion region = {
+            { 0, 0, 0 },                     // Origin
+            { width, height, 1 }             // Size
+        };
 
-    // Copy color data from the buffer to the texture
-    [metalTexture replaceRegion:region mipmapLevel:0 withBytes:[colorBuffer contents] bytesPerRow:bytesPerRow];
-
-
-
+        // Copy color data from the buffer to the texture
+        [metalTexture replaceRegion:region mipmapLevel:0 withBytes:[colorBuffer contents] bytesPerRow:bytesPerRow];
+    }
+    
 
     //if (camera->image)
     //    vkh_image_drop(camera->image);
 
     /// this needs further debugging via the blit operation
     /// it reports no planes (the planes would be seemingly created here?)
+    void *metal_texture2 = (__bridge void*)metalTexture;
     camera->image = vkh_image_create(
         camera->e->vkh, VK_FORMAT_B8G8R8A8_UNORM, 1920, 1080, VK_IMAGE_TILING_OPTIMAL, VKH_MEMORY_USAGE_GPU_ONLY,
         VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT, metal_texture);
