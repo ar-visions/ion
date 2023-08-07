@@ -21,8 +21,8 @@ void global_callback(void *metal_texture, void *metal_layer, void *context) {
         vkh_image_drop(camera->image);
 
     camera->image = vkh_image_create(
-        camera->e->vkh, VK_FORMAT_B8G8R8A8_UNORM, 1920, 1080, VK_IMAGE_TILING_OPTIMAL,
-        VKH_MEMORY_USAGE_GPU_ONLY, (VkImageUsageFlags)0, metal_texture);
+        camera->e->vkh, VK_FORMAT_B8G8R8A8_UNORM, 1920, 1080, VK_IMAGE_TILING_OPTIMAL, VKH_MEMORY_USAGE_GPU_ONLY,
+        VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT, metal_texture);
 
     camera->e->vk_device->mtx.unlock();
 }

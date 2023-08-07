@@ -125,7 +125,7 @@ gfx::gfx(VkEngine e, VkhPresenter vkh_renderer) : gfx() { /// this allocates bot
     data->vkh_renderer  = vkh_renderer;
 
     /// create vkvg surface with vkh image and instance a context
-	data->vg_device = vkvg_device_create(e, VK_SAMPLE_COUNT_4_BIT, false);
+	data->vg_device = vkvg_device_create(e, VK_SAMPLE_COUNT_1_BIT, false);
 
 	vkvg_device_set_dpy(data->vg_device, 96, 96);
 	vkvg_device_set_thread_aware(data->vg_device, 1);
@@ -824,7 +824,7 @@ int App::run() {
         
         /// update app with rendered Elements, then draw
 
-    /*
+        /*
         Element e = data->app_fn(*this);
         update_all(e);
         if (composer::data->root_instance) {
@@ -836,8 +836,8 @@ int App::run() {
             };
             composer::data->root_instance->draw(data->canvas);
         }
-    */
-   
+        */
+       
         if (data->cameras[0].image) {
             VkvgSurface surf = vkvg_surface_create_for_VkhImage(data->canvas->vg_device, data->cameras[0].image);
             vkvg_set_source_surface(data->canvas->ctx, surf, 0, 0);
