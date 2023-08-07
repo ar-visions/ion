@@ -796,44 +796,6 @@ void composer::update_all(Element e) {
     update(data, null, data->root_instance, e);
 }
 
-int App::set_capture_surface(int index, void *layer_data) {
-    
-    #ifdef __APPLE__
-
-    typedef VkFlags VkMetalSurfaceCreateFlagsEXT;
-
-    typedef struct VkMetalSurfaceCreateInfoEXT
-    {
-        VkStructureType                 sType;
-        const void*                     pNext;
-        VkMetalSurfaceCreateFlagsEXT    flags;
-        const void*                     pLayer;
-    } VkMetalSurfaceCreateInfoEXT;
-
-    typedef VkResult (*PFN_vkCreateMetalSurfaceEXT)(VkInstance,const VkMetalSurfaceCreateInfoEXT*,const VkAllocationCallbacks*,VkSurfaceKHR*);
-
-    PFN_vkCreateMetalSurfaceEXT vkCreateMetalSurfaceEXT;
-    vkCreateMetalSurfaceEXT = (PFN_vkCreateMetalSurfaceEXT)
-        vkGetInstanceProcAddr(data->e->instance, "vkCreateMetalSurfaceEXT");
-    if (!vkCreateMetalSurfaceEXT) {
-        printf("Vulkan instance missing VK_EXT_metal_surface extension\n");
-        return VK_ERROR_EXTENSION_NOT_PRESENT;
-    }
-    
-    VkMetalSurfaceCreateInfoEXT ci = {
-        .sType  = VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT,
-        .pLayer = layer_data
-    };
-    ///
-    VkResult metal_res = vkCreateMetalSurfaceEXT(data->e->instance, &ci, null, &data->capture_surfaces[index]);
-    #endif
-    return 0;
-}
-
-void on_capture(void *mtl_texture, void *layer_data) { /// layer_data is constant 
-    printf("got texture: %p\n", mtl_texture);
-}
-
 int App::run() {
     data->e = vkengine_create(1, 2, "ux",
         VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, VK_PRESENT_MODE_FIFO_KHR, VK_SAMPLE_COUNT_4_BIT,
@@ -847,17 +809,22 @@ int App::run() {
 	vkengine_set_scroll_callback    (data->e, scroll_callback);
 	vkengine_set_title              (data->e, "ux");
 
-    Camera cam;
-    cam.start_capture(on_capture, data);
+    data->cameras  = array<Camera>(32);
+    data->cameras += Camera { data->e, 1 };
+    data->cameras[0].start_capture();
 
 	while (!vkengine_should_close(data->e)) {
 		glfwPollEvents();
+
+        data->e->vk_device->mtx.lock();
 
         data->canvas->ctx = vkvg_create(data->canvas->vg_surface);
         assert(data->canvas->stack->len() == 1);
         data->canvas.defaults();
         
         /// update app with rendered Elements, then draw
+
+    /*
         Element e = data->app_fn(*this);
         update_all(e);
         if (composer::data->root_instance) {
@@ -869,6 +836,22 @@ int App::run() {
             };
             composer::data->root_instance->draw(data->canvas);
         }
+    */
+   
+        if (data->cameras[0].image) {
+            //VkvgSurface surf = vkvg_surface_create_for_VkhImage(data->canvas->vg_device, data->cameras[0].image);
+
+            image img(path("/Users/kalen/Desktop/abc.png"));
+            VkvgSurface surf = vkvg_surface_create_from_bitmap(data->canvas->vg_device, (u8*)img.data, 1920, 1080);
+
+
+            vkvg_set_source_surface(data->canvas->ctx, surf, 0, 0);
+            vkvg_rectangle(data->canvas->ctx, 0, 0, 1920, 1080);
+            vkvg_fill(data->canvas->ctx);
+
+            vkvg_surface_drop(surf);
+        }
+
 
         vkvg_destroy(data->canvas->ctx);
 
@@ -876,11 +859,11 @@ int App::run() {
 		if (!vkh_presenter_draw(data->e->renderer)) { 
             data->canvas.resized();
             vkDeviceWaitIdle(data->e->vkh->device);
-			continue;
 		}
+        data->e->vk_device->mtx.unlock();
 	}
 
-    cam.stop_capture();
+    data->cameras[0].stop_capture();
     return 0;
 }
 

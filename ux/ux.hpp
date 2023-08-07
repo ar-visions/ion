@@ -6,6 +6,7 @@
 #include <media/media.hpp>
 #include <vk/vk.hpp>
 #include <vkh/vkh.h>
+#include <camera/camera.hpp>
 
 struct GLFWwindow;
 
@@ -1601,6 +1602,7 @@ struct composer:mx {
 
 struct App:composer {
     struct adata {
+        array<Camera> cameras;
         GPU          win;
         gfx          canvas;
         vec2d        cursor;
@@ -1608,7 +1610,6 @@ struct App:composer {
         array<node*> active;
         array<node*> hover;
         VkEngine     e;
-        VkSurfaceKHR capture_surfaces[2];
         lambda<Element(App&)> app_fn;
         type_register(adata);
     };
@@ -1618,9 +1619,6 @@ struct App:composer {
     App(lambda<Element(App&)> app_fn) : App() {
         data->app_fn = app_fn;
     }
-    
-    /// this should be in vk instance
-    int set_capture_surface(int index, void *layer_data);
     
     int run();
     static void resize(vec2i &sz, App *app);

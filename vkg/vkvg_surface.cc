@@ -88,7 +88,7 @@ VkvgSurface vkvg_surface_create_for_VkhImage (VkvgDevice dev, void* vkhImg) {
 	surf->width = img->infos.extent.width;
 	surf->height= img->infos.extent.height;
 
-	surf->img = img;
+	surf->img = vkh_image_grab(img); /// vkvg needed generic ref counts across the board; still in the process of making sure this is the case
 
 	vkh_image_create_sampler(img, VK_FILTER_NEAREST, VK_FILTER_NEAREST,
 							 VK_SAMPLER_MIPMAP_MODE_NEAREST,VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);

@@ -1,4 +1,5 @@
 #import <camera/apple.h>
+#import <media/media.hpp>
 
 @interface metal_capture () <AVCaptureVideoDataOutputSampleBufferDelegate>
 @property (nonatomic, strong) AVCaptureSession         *captureSession;
@@ -11,11 +12,12 @@
 @property (nonatomic, assign) CVMetalTextureCacheRef    metalTextureCache;
 @property (nonatomic, assign) CaptureCallback           captureCallback;
 @property (nonatomic, assign) void*                     ctx;
+@property (nonatomic, assign) int                       camera_index;
 @end
 
 @implementation metal_capture
 
-- (instancetype)initWithCallback:(CaptureCallback)callback context:(void*)ctx {
+- (instancetype)initWithCallback:(CaptureCallback)callback context:(void*)ctx camera_index:(int)camera_index {
     self = [super init];
     if (self) {
         _captureSession = [[AVCaptureSession alloc] init];
@@ -24,6 +26,7 @@
         _metalCommandQueue = [_metalDevice newCommandQueue];
         _captureCallback = callback;
         _ctx = ctx;
+        _camera_index = camera_index;
         // Create the Metal texture cache
         CVMetalTextureCacheCreate(kCFAllocatorDefault, nil, _metalDevice, nil, &_metalTextureCache);
     }
@@ -35,16 +38,12 @@
     CFRelease(_metalTextureCache);
 }
 
-AVCaptureDevice* select_best_camera() {
+AVCaptureDevice* select_camera(int camera_index) {
     #pragma clang diagnostic push
     #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    NSArray<AVCaptureDevice *> *devices = [AVCaptureDevice devicesWithMediaType:AVMediaTypeVideo];
+    NSArray<AVCaptureDevice *> *devices = [AVCaptureDevice devicesWithMediaType:AVMediaTypeVideo];    
     #pragma clang diagnostic pop
-
-    if (devices.count >= 2)
-        return devices[1];
-    
-    return devices.count == 1 ? devices[0] : nil;
+    return (devices.count > camera_index) ? devices[camera_index] : nil;
 }
 
 - (void)startCapture {
@@ -56,12 +55,13 @@ AVCaptureDevice* select_best_camera() {
     }
 
     // Create an AVCaptureDevice for the webcam (front or back camera)
-    AVCaptureDevice *videoDevice = select_best_camera();
-    //AVCaptureDevice *videoDevice = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
+    AVCaptureDevice *videoDevice = select_camera(_camera_index);
+    NSAssert(videoDevice, @"camera not found at index: %d", _camera_index);
 
     // Create an AVCaptureDeviceInput using the video device
     NSError *error = nil;
     _videoInput = [AVCaptureDeviceInput deviceInputWithDevice:videoDevice error:&error];
+    
     if (error) {
         NSLog(@"Error creating AVCaptureDeviceInput: %@", error);
         return;
@@ -123,11 +123,55 @@ AVCaptureDevice* select_best_camera() {
     
     self.currentFrameTexture = CVMetalTextureGetTexture(metalTextureRef);
 
-    CAMetalLayer* metalLayer = [CAMetalLayer layer]; /// make sure this is single instance
 
+
+    /*
+
+    id<MTLTexture> texture = self.currentFrameTexture;
+
+    NSUInteger bytesPerPixel = 4; // Assuming RGBA format (32 bits per pixel)
+    NSUInteger bytesPerRow = texture.width * bytesPerPixel;
+
+    // Calculate the total number of bytes needed for the entire texture.
+    NSUInteger bufferSize = texture.width * texture.height * bytesPerPixel;
+
+    // Allocate a buffer to store the pixel data.
+    uint8_t *pixelData = (uint8_t *)malloc(bufferSize);
+
+    // Create a region that covers the entire texture.
+    MTLRegion region = {
+        {0, 0, 0},          // origin (x, y, z)
+        {texture.width, texture.height, 1} // size (width, height, depth)
+    };
+
+    // Get the raw pixel data from the texture.
+    [texture getBytes:pixelData
+        bytesPerRow:bytesPerRow
+            fromRegion:region
+        mipmapLevel:0];
+
+    /// image::image(size sz, rgba8 *px, int scanline) : array() {
+
+    static bool abc;
+    if (!abc) {
+        ion::image img { ion::size { 1080, 1920 }, (ion::rgba8*)pixelData, 1920 };
+        img.save("/Users/kalen/Desktop/abc.png");
+        abc = true;
+    }
+
+    // Now, the pixelData array contains the raw pixel data of the texture.
+    // Each pixel consists of 4 bytes (RGBA format), and you can access the individual
+    // pixel values using appropriate indexing.
+
+    // Don't forget to free the allocated memory when you're done with the pixel data.
+    free(pixelData);
+
+    //CAMetalLayer* metalLayer = [CAMetalLayer layer]; /// make sure this is single instance
+    */
+    
     /// when the user is done with the frame it should signal
     if (self.captureCallback) {
-        self.captureCallback((__bridge void*)self.currentFrameTexture, (__bridge void*)metalLayer, self.ctx);
+        self.captureCallback((__bridge void*)self.currentFrameTexture, 0, self.ctx);
     }
 
     CFRelease(metalTextureRef); /// we want to avoid releasing this until we get a signal that the user is done with it

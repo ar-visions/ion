@@ -5,7 +5,7 @@ typedef void(*CaptureCallback)(void*, void*, void*);
 
 @interface metal_capture : NSObject
 
-- (instancetype)initWithCallback:(CaptureCallback)callback context:(void*)ctx;
+- (instancetype)initWithCallback:(CaptureCallback)callback context:(void*)ctx camera_index:(int)camera_index;
 - (void)startCapture;
 - (void)stopCapture;
 @end
