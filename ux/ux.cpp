@@ -810,7 +810,7 @@ int App::run() {
 	vkengine_set_title              (data->e, "ux");
 
     data->cameras  = array<Camera>(32);
-    data->cameras += Camera { data->e, 1 };
+    data->cameras += Camera { data->e, 0 };
     data->cameras[0].start_capture();
 
 	while (!vkengine_should_close(data->e)) {
@@ -839,12 +839,7 @@ int App::run() {
     */
    
         if (data->cameras[0].image) {
-            //VkvgSurface surf = vkvg_surface_create_for_VkhImage(data->canvas->vg_device, data->cameras[0].image);
-
-            image img(path("/Users/kalen/Desktop/abc.png"));
-            VkvgSurface surf = vkvg_surface_create_from_bitmap(data->canvas->vg_device, (u8*)img.data, 1920, 1080);
-
-
+            VkvgSurface surf = vkvg_surface_create_for_VkhImage(data->canvas->vg_device, data->cameras[0].image);
             vkvg_set_source_surface(data->canvas->ctx, surf, 0, 0);
             vkvg_rectangle(data->canvas->ctx, 0, 0, 1920, 1080);
             vkvg_fill(data->canvas->ctx);

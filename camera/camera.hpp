@@ -9,7 +9,8 @@ namespace ion {
 struct Camera {
     VkEngine        e;
     int             camera_index;
-    VkhImage        image;
+    //VkvgSurface     surface;
+    VkhImage        image; // -- todo: vulkan extension needs to work to convert the metal texture to vk.  the documented one does not seem to work. it should be traced
     opaque_capture *capture;
 
     Camera();
