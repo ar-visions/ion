@@ -181,6 +181,11 @@ void gfx::pop() {
     vkvg_set_line_width  (data->ctx, data->top->line_width);
 }
 
+void gfx::rect(rectd r) {
+    vkvg_rectangle(data->ctx,
+        r.x, r.y, r.w, r.h);
+}
+
 void gfx::resized() {
     if (data->vg_surface)
         vkvg_surface_drop(data->vg_surface);
@@ -820,27 +825,32 @@ int App::run() {
         data->e->vk_device->mtx.lock();
 
         data->canvas->ctx = vkvg_create(data->canvas->vg_surface);
+        
+        /*
         assert(data->canvas->stack->len() == 1);
-        data->canvas.clear(rgba8 { 0, 0, 0, 0 });
-        data->canvas.defaults();
+        rgba8 blue = { 0, 0, 255, 255 };
+        data->canvas.color(blue);
+        rectd r = { 0, 0, 256, 256 };
+        data->canvas.fill(r);
+        //data->canvas.clear(rgba8 { 0, 0, 255, 255 });
+        */
 
         
         if (data->cameras[0].image) {
-            VkvgSurface surf = vkvg_surface_copy_VkImage(
-                data->canvas->vg_device, data->cameras[0].image,
-                data->cameras[0].width, data->cameras[0].height);
-            
-            ///
-            vkvg_save(data->canvas->ctx);
+            /// this seems to be transparent
+            image img = image(path("/Users/kalen/Desktop/test.png"));
+            //VkvgSurface surf = vkvg_surface_copy_VkImage(
+            //    data->canvas->vg_device, data->cameras[0].image, 64, 64);
+            VkvgSurface surf = vkvg_surface_create_from_bitmap(data->canvas->vg_device, (u8*)img.data, 64, 64);
             vkvg_set_source_surface(data->canvas->ctx, surf, 0, 0);
-            vkvg_rectangle(data->canvas->ctx, 0, 0, 1920, 1080);
+            vkvg_rectangle(data->canvas->ctx, 0, 0, 32, 32);
             vkvg_fill(data->canvas->ctx);
-            vkvg_restore(data->canvas->ctx);
             vkvg_surface_drop(surf);
+            vkvg_set_source_rgba(data->canvas->ctx, 0.5, 0.0, 0.0, 1.0);
         }
         
         /// update app with rendered Elements, then draw
-        /*
+        
         Element e = data->app_fn(*this);
         update_all(e);
         if (composer::data->root_instance) {
@@ -851,7 +861,7 @@ int App::run() {
                 (real)data->canvas->height
             };
             composer::data->root_instance->draw(data->canvas);
-        }*/
+        }
 
         /// 
         //if (data->cameras[0].image)

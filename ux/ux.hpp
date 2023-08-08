@@ -719,6 +719,7 @@ struct gfx:mx {
     void         translate(vec2d    tr);
     void             scale(vec2d    sc);
     void             scale(real     sc);
+    void              rect(rectd     r);
     void            rotate(real   degs);
     void             color(rgba8 &color);
     void              fill(rectd    &p);
