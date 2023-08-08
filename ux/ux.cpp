@@ -805,9 +805,12 @@ void composer::update_all(Element e) {
 int App::run() {
     data->e = vkengine_create(1, 2, "ux",
         VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, VK_PRESENT_MODE_FIFO_KHR, VK_SAMPLE_COUNT_4_BIT,
-        512, 512, 0, this);
+        1920, 1080, 0, this);
 
     data->canvas = gfx(data->e, data->e->renderer); /// width and height are fetched from renderer (which updates in vkengine)
+
+    image img = image(path("/Users/kalen/Desktop/test.png"));
+    image img2 = image(path("/Users/kalen/Desktop/test2.png"));
 
 	vkengine_set_key_callback       (data->e, key_callback);
 	vkengine_set_mouse_but_callback (data->e, mouse_button_callback);
@@ -824,7 +827,8 @@ int App::run() {
 
         data->e->vk_device->mtx.lock();
 
-        data->canvas->ctx = vkvg_create(data->canvas->vg_surface);
+        VkvgContext ctx = vkvg_create(data->canvas->vg_surface);
+        data->canvas->ctx = ctx;
         
         /*
         assert(data->canvas->stack->len() == 1);
@@ -837,20 +841,42 @@ int App::run() {
 
         
         if (data->cameras[0].image) {
-            /// this seems to be transparent
-            image img = image(path("/Users/kalen/Desktop/test.png"));
-            //VkvgSurface surf = vkvg_surface_copy_VkImage(
-            //    data->canvas->vg_device, data->cameras[0].image, 64, 64);
-            VkvgSurface surf = vkvg_surface_create_from_bitmap(data->canvas->vg_device, (u8*)img.data, 64, 64);
-            vkvg_set_source_surface(data->canvas->ctx, surf, 0, 0);
-            vkvg_rectangle(data->canvas->ctx, 0, 0, 32, 32);
-            vkvg_fill(data->canvas->ctx);
-            vkvg_surface_drop(surf);
-            vkvg_set_source_rgba(data->canvas->ctx, 0.5, 0.0, 0.0, 1.0);
+            //VkvgSurface surf2 = vkvg_surface_copy_VkImage(
+            //    data->canvas->vg_device, data->cameras[0].image, 1920, 1080);
+            
+            int w = img.width(), h = img.height();
+            VkvgSurface surf_test1 = vkvg_surface_create_from_bitmap(data->canvas->vg_device, (u8*)img.data, w, h);
+            VkvgSurface surf_test2 = vkvg_surface_create_from_bitmap(data->canvas->vg_device, (u8*)img2.data, w, h);
+
+            //vkvg_set_source_surface(ctx, surf2, 0, 0);
+            //vkvg_rectangle(ctx, 0, 0, w, h);
+            //vkvg_fill(ctx);
+            //vkvg_surface_drop(surf2);
+            //vkvg_set_source_rgba(ctx, 0.5, 0.0, 0.0, 1.0);
+
+            vkvg_set_source_surface(ctx, surf_test2, 0, 0);
+            vkvg_rectangle(ctx, 0, 0, w, h);
+            vkvg_fill(ctx);
+            vkvg_flush(ctx);
+            vkvg_surface_drop(surf_test2);
+            vkvg_set_source_rgba(ctx, 0.5, 0.0, 1.0, 1.0);
+
+            vkvg_set_line_width(ctx, 4.0);
+            vkvg_move_to(ctx, 0, 0);
+            vkvg_line_to(ctx, 256, 256);
+            vkvg_stroke(ctx);
+
+            /*vkvg_set_source_surface(ctx, surf_test1, 0, 0);
+            vkvg_rectangle(ctx, 0, 0, w / 8, h / 8);
+            vkvg_fill(ctx);
+            vkvg_surface_drop(surf_test1);
+            vkvg_set_source_rgba(ctx, 0.5, 0.0, 0.0, 1.0);
+            */
         }
         
         /// update app with rendered Elements, then draw
         
+        /*
         Element e = data->app_fn(*this);
         update_all(e);
         if (composer::data->root_instance) {
@@ -861,7 +887,7 @@ int App::run() {
                 (real)data->canvas->height
             };
             composer::data->root_instance->draw(data->canvas);
-        }
+        }*/
 
         /// 
         //if (data->cameras[0].image)
@@ -870,7 +896,7 @@ int App::run() {
         //        data->cameras[0].width / 2, data->cameras[0].height / 2); 
 
 
-        vkvg_destroy(data->canvas->ctx);
+        vkvg_destroy(ctx);
 
         /// we need an array of renderers/presenters; must work with a 3D scene, bloom shading etc
 		if (!vkh_presenter_draw(data->e->renderer)) { 
