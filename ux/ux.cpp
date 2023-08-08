@@ -125,7 +125,7 @@ gfx::gfx(VkEngine e, VkhPresenter vkh_renderer) : gfx() { /// this allocates bot
     data->vkh_renderer  = vkh_renderer;
 
     /// create vkvg surface with vkh image and instance a context
-	data->vg_device = vkvg_device_create(e, VK_SAMPLE_COUNT_1_BIT, false);
+	data->vg_device = vkvg_device_create(e, VK_SAMPLE_COUNT_4_BIT, false);
 
 	vkvg_device_set_dpy(data->vg_device, 96, 96);
 	vkvg_device_set_thread_aware(data->vg_device, 1);
@@ -133,6 +133,7 @@ gfx::gfx(VkEngine e, VkhPresenter vkh_renderer) : gfx() { /// this allocates bot
     /// create surface, image and presenter
     resized();
 }
+
 
 void gfx::defaults() {
     vkvg_identity_matrix(data->ctx);
@@ -799,7 +800,7 @@ void composer::update_all(Element e) {
 int App::run() {
     data->e = vkengine_create(1, 2, "ux",
         VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, VK_PRESENT_MODE_FIFO_KHR, VK_SAMPLE_COUNT_4_BIT,
-        1920 / 2, 1080 / 2, 0, this);
+        512, 512, 0, this);
 
     data->canvas = gfx(data->e, data->e->renderer); /// width and height are fetched from renderer (which updates in vkengine)
 
@@ -818,12 +819,27 @@ int App::run() {
 
         data->e->vk_device->mtx.lock();
 
-        //data->canvas->ctx = vkvg_create(data->canvas->vg_surface);
-        //assert(data->canvas->stack->len() == 1);
-        //data->canvas.defaults();
+        data->canvas->ctx = vkvg_create(data->canvas->vg_surface);
+        assert(data->canvas->stack->len() == 1);
+        data->canvas.clear(rgba8 { 0, 0, 0, 0 });
+        data->canvas.defaults();
+
+        
+        if (data->cameras[0].image) {
+            VkvgSurface surf = vkvg_surface_copy_VkImage(
+                data->canvas->vg_device, data->cameras[0].image,
+                data->cameras[0].width, data->cameras[0].height);
+            
+            ///
+            vkvg_save(data->canvas->ctx);
+            vkvg_set_source_surface(data->canvas->ctx, surf, 0, 0);
+            vkvg_rectangle(data->canvas->ctx, 0, 0, 1920, 1080);
+            vkvg_fill(data->canvas->ctx);
+            vkvg_restore(data->canvas->ctx);
+            vkvg_surface_drop(surf);
+        }
         
         /// update app with rendered Elements, then draw
-
         /*
         Element e = data->app_fn(*this);
         update_all(e);
@@ -835,26 +851,16 @@ int App::run() {
                 (real)data->canvas->height
             };
             composer::data->root_instance->draw(data->canvas);
-        }
-        */
+        }*/
 
         /// 
-        if (data->cameras[0].image)
-            vkh_presenter_build_blit_cmd(data->e->renderer,
-                data->cameras[0].image->image,
-                data->cameras[0].width / 2, data->cameras[0].height / 2);
-    
-        if (false && data->cameras[0].image) {
-            VkvgSurface surf = vkvg_surface_create_for_VkhImage(data->canvas->vg_device, data->cameras[0].image);
-            vkvg_set_source_surface(data->canvas->ctx, surf, 0, 0);
-            vkvg_rectangle(data->canvas->ctx, 0, 0, 1920, 1080);
-            vkvg_fill(data->canvas->ctx);
-
-            vkvg_surface_drop(surf);
-        }
+        //if (data->cameras[0].image)
+        //    vkh_presenter_build_blit_cmd(data->e->renderer,
+        //        data->cameras[0].image->image,
+        //        data->cameras[0].width / 2, data->cameras[0].height / 2); 
 
 
-        //vkvg_destroy(data->canvas->ctx);
+        vkvg_destroy(data->canvas->ctx);
 
         /// we need an array of renderers/presenters; must work with a 3D scene, bloom shading etc
 		if (!vkh_presenter_draw(data->e->renderer)) { 

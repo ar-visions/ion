@@ -23,6 +23,7 @@
 #include "vkvg_device_internal.h"
 #include "vkvg_surface_internal.h"
 #include "vkvg_context_internal.h"
+#include <vkh/vkh_image.h>
 #include <vkh/vkh_queue.h>
 #include <vkh/vkh_phyinfo.h>
 
@@ -30,6 +31,42 @@
 if (vkh_phyinfo_try_get_extension_properties(pi, #ext, NULL))	\
 	enabledExts[enabledExtsCount++] = #ext;						\
 }
+
+void vkvg_image_blt(VkvgDevice dev, VkhImage dst, VkhImage src, VkOffset3D dst_extent, VkOffset3D src_extent, VkFilter filter) {
+	VkCommandBuffer commandBuffer = vkh_cmd_buff_create((VkhDevice)dev, dev->cmdPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+
+    VkImageBlit blitRegion = {};
+    blitRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    blitRegion.srcSubresource.mipLevel = 0;
+    blitRegion.srcSubresource.baseArrayLayer = 0;
+    blitRegion.srcSubresource.layerCount = 1;
+    blitRegion.srcOffsets[1] = src_extent;//{ extent.width, extent.height, 1 };
+
+    blitRegion.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    blitRegion.dstSubresource.mipLevel = 0;
+    blitRegion.dstSubresource.baseArrayLayer = 0;
+    blitRegion.dstSubresource.layerCount = 1;
+    blitRegion.dstOffsets[1] = dst_extent;//{ extent.width, extent.height, 1 };
+
+    vkCmdBlitImage(
+        commandBuffer,
+        src->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        dst->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        1, &blitRegion,
+        filter
+    );
+
+	vkEndCommandBuffer(commandBuffer);
+    VkSubmitInfo submit {
+		.sType 				= VK_STRUCTURE_TYPE_SUBMIT_INFO,
+		.commandBufferCount = 1,
+		.pCommandBuffers 	= &commandBuffer
+	};
+    vkQueueSubmit(dev->gQueue->queue, 1, &submit, VK_NULL_HANDLE);
+    vkQueueWaitIdle(dev->gQueue->queue);
+	vkFreeCommandBuffers(dev->device, dev->cmdPool, 1, &commandBuffer);
+}
+
 void vkvg_device_set_context_cache_size (VkvgDevice dev, uint32_t maxCount) {
 	if (maxCount == dev->cachedContextMaxCount)
 		return;

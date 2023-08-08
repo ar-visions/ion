@@ -670,7 +670,9 @@ VkvgSurface vkvg_surface_create_from_image (VkvgDevice dev, const char* filePath
  * @return A new surface, or null if an error occured.
  */
 vkvg_public
-VkvgSurface vkvg_surface_create_for_VkhImage (VkvgDevice dev, void* vkhImg);
+VkvgSurface vkvg_surface_create_for_VkhImage (VkvgDevice dev, void* vkhImg,
+	bool framebuffer = true, bool secondary = false);
+
 /**
  * @brief Create a new vkvg surface from an in memory rgba bitmap
  * @param dev The vkvg device used for creating the surface.
@@ -681,6 +683,13 @@ VkvgSurface vkvg_surface_create_for_VkhImage (VkvgDevice dev, void* vkhImg);
  */
 vkvg_public
 VkvgSurface vkvg_surface_create_from_bitmap (VkvgDevice dev, unsigned char* img, uint32_t width, uint32_t height);
+
+vkvg_public
+VkvgSurface vkvg_surface_copy_VkImage(VkvgDevice dev, VkhImage img, uint32_t width, uint32_t height);
+
+vkvg_public
+void vkvg_image_blt(VkvgDevice dev, VkhImage dst, VkhImage src, VkOffset3D dst_extent, VkOffset3D src_extent, VkFilter filter);
+
 /**
  * @brief Increment reference count on the surface by one.
  * @param The vkvg surface to increment the reference count for.

@@ -165,6 +165,7 @@ void _create_framebuffer (VkvgSurface surf) {
 		attachments[0] = attachments[2];
 		frameBufferCreateInfo.attachmentCount = 2;
 	}
+	/// not required!  only for the 'primary' surface
 	VK_CHECK_RESULT(vkCreateFramebuffer(surf->vkvg->device, &frameBufferCreateInfo, NULL, &surf->fb));
 #if defined(DEBUG) && defined (VKVG_DBG_UTILS)
 	vkh_device_set_object_name((VkhDevice)surf->vkvg, VK_OBJECT_TYPE_FRAMEBUFFER, (uint64_t)surf->fb, "SURF FB");

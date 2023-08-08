@@ -35,16 +35,16 @@ void _transition_surf_images (VkvgSurface surf) {
 	//_surface_wait_cmd (surf);
 
 	vkh_cmd_begin (surf->cmd,VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-	VkhImage imgMs = surf->imgMS;
-	if (imgMs != NULL)
-		vkh_image_set_layout(surf->cmd, imgMs, VK_IMAGE_ASPECT_COLOR_BIT,
+	if (surf->imgMS)
+		vkh_image_set_layout(surf->cmd, surf->imgMS, VK_IMAGE_ASPECT_COLOR_BIT,
 							 VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 							 VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
 
 	vkh_image_set_layout(surf->cmd, surf->img, VK_IMAGE_ASPECT_COLOR_BIT,
 					 VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 					 VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
-	vkh_image_set_layout (surf->cmd, surf->stencil, dev->stencilAspectFlag,
+	if (surf->stencil)
+		vkh_image_set_layout (surf->cmd, surf->stencil, dev->stencilAspectFlag,
 						  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
 						  VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT);
 	vkh_cmd_end (surf->cmd);
@@ -74,7 +74,9 @@ VkvgSurface vkvg_surface_create (VkvgDevice dev, uint32_t width, uint32_t height
 	surf->status = VKVG_STATUS_SUCCESS;
 	return surf;
 }
-VkvgSurface vkvg_surface_create_for_VkhImage (VkvgDevice dev, void* vkhImg) {
+
+VkvgSurface vkvg_surface_create_for_VkhImage (VkvgDevice dev, void* vkhImg,
+		bool framebuffer, bool secondary) {
 	VkvgSurface surf = _create_surface(dev, FB_COLOR_FORMAT);
 	if (surf->status)
 		return surf;
@@ -85,16 +87,19 @@ VkvgSurface vkvg_surface_create_for_VkhImage (VkvgDevice dev, void* vkhImg) {
 	}
 
 	VkhImage img = (VkhImage)vkhImg;
-	surf->width = img->infos.extent.width;
-	surf->height= img->infos.extent.height;
+	surf->width  = img->infos.extent.width;
+	surf->height = img->infos.extent.height;
 
 	surf->img = vkh_image_grab(img); /// vkvg needed generic ref counts across the board; still in the process of making sure this is the case
 
+	/// this needs arguments!
 	vkh_image_create_sampler(img, VK_FILTER_NEAREST, VK_FILTER_NEAREST,
 							 VK_SAMPLER_MIPMAP_MODE_NEAREST,VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
 
-	_create_surface_secondary_images	(surf);
-	_create_framebuffer					(surf);
+	if (secondary)
+		_create_surface_secondary_images	(surf);
+	if (framebuffer)
+		_create_framebuffer					(surf);
 
 	_transition_surf_images (surf);
 	//_clear_surface						(surf, VK_IMAGE_ASPECT_STENCIL_BIT);
@@ -103,6 +108,23 @@ VkvgSurface vkvg_surface_create_for_VkhImage (VkvgDevice dev, void* vkhImg) {
 	vkvg_device_grab (surf->vkvg);
 	return surf;
 }
+
+VkvgSurface vkvg_surface_copy_VkImage(VkvgDevice dev, VkhImage src, uint32_t width, uint32_t height) {
+	///
+	VkhImage img = vkh_image_create(
+        (VkhDevice)dev, VK_FORMAT_B8G8R8A8_UNORM, width, height,
+        VK_IMAGE_TILING_OPTIMAL, VKH_MEMORY_USAGE_GPU_ONLY,
+        VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+
+	///
+	vkvg_image_blt(dev, img, src, VkOffset3D { width, height, 1 }, VkOffset3D { width, height, 1 }, VK_FILTER_LINEAR);
+
+	/// create vkh image, drop image ref so there is just 1 upon return
+	VkvgSurface surf = vkvg_surface_create_for_VkhImage(dev, img, false, false);
+	vkh_image_drop(img);
+	return surf;
+}
+
 //TODO: it would be better to blit in original size and create ms final image with dest surf dims
 VkvgSurface vkvg_surface_create_from_bitmap (VkvgDevice dev, unsigned char* img, uint32_t width, uint32_t height) {
 	VkvgSurface surf = _create_surface(dev, FB_COLOR_FORMAT);
