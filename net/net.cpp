@@ -4,32 +4,16 @@
 #include <image/image.hpp>
 #include <media/media.hpp>
 
+#ifndef WIN32
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
-#include <iostream>
-#include <cstring>
-
-#ifdef _WIN32
-#   include <Winsock2.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #else
-#   include <arpa/inet.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #endif
-
-/*
-#include <wolfssl/options.h>
-#include <wolfssl/ssl.h>
-#include <wolfssl/test.h>
-#include <wolfssl/wolfio.h>
-///
-#ifdef _WIN32
-#   include <Winsock2.h>
-#else
-#   include <arpa/inet.h>
-#endif
-///
-#include <errno.h>
-*/
 
 #include <mbedtls/net_sockets.h>
 #include <mbedtls/ssl.h>
@@ -37,13 +21,8 @@
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/error.h>
 #include <mbedtls/debug.h>
-#include <iostream>
-#include <string>
+
 #include <cstring>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <unistd.h>
 
 namespace ion {
 
@@ -265,15 +244,19 @@ sock sock::connect(uri url) {
     }
     
     str  str_port = str::from_integer(port);
-    symbol s_host = symbol(host.cs());
-    symbol s_port = symbol(str_port.cs());
-    ret = mbedtls_ssl_set_hostname(&isc->ssl, s_host);
+
+
+    ion::symbol s_hostname = ion::symbol(host.cs());
+    ion::symbol s_port = ion::symbol(str_port.cs());
+
+
+    ret = mbedtls_ssl_set_hostname(&isc->ssl, s_hostname);
     if (ret != 0) {
         std::cerr << "mbedtls_ssl_set_hostname failed: " << ret << std::endl;
         return {};
     }
     
-    ret = mbedtls_net_connect(&isc->ctx, s_host, s_port, MBEDTLS_NET_PROTO_TCP);
+    ret = mbedtls_net_connect(&isc->ctx, s_hostname, s_port, MBEDTLS_NET_PROTO_TCP);
     if (ret != 0) {
         std::cerr << "mbedtls_net_connect failed: " << ret << std::endl;
         return {};
@@ -299,12 +282,12 @@ sock::sock(role r, uri addr) : sock() {
     ///
     assert(addr.proto() == "https");
     ///
-    str s_addr = addr.host();
+    str s_address = addr.host();
     int i_port = addr.port();
-    load_certs(s_addr);
+    load_certs(s_address);
     
     if (data->role == role::server)
-        bind(s_addr, i_port);
+        bind(s_address, i_port);
 }
 
 ssize_t sock::recv(unsigned char* buf, size_t len) {

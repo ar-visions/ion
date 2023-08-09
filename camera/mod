@@ -1,4 +1,4 @@
-dep(vk:vkh)
+dep(vulkan:vkh)
 cpp(17)
 
 if(APPLE)

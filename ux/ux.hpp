@@ -7,6 +7,7 @@
 #include <vk/vk.hpp>
 #include <vkh/vkh.h>
 #include <camera/camera.hpp>
+#include <ux/canvas.hpp>
 
 struct GLFWwindow;
 
@@ -32,6 +33,8 @@ struct text_metrics:mx {
 
 using tm_t = text_metrics;
 
+struct SkPath;
+
 /// would be nice to handle basically everything model-wise in graphics
 namespace graphics {
     enums(cap, none,
@@ -47,9 +50,14 @@ namespace graphics {
         using Rounded = Rounded<r64>;
         ///
         struct sdata {
-            Rectd       bounds; /// if the ops change the bounds must be re-eval'd
-            doubly<mx>  ops;
-            vec2d       mv;
+            type_t      type;           /// type of shape (null for operations)
+            Rectd       bounds;         /// boundaries, or identity of shape primitive
+            doubly<mx>  ops;            /// operation list (or verbs)
+            vec2d       mv;             /// movement cursor
+            SkPath*     sk_path;        /// saved sk_path; (invalidated when changed)
+            SkPath*     sk_offset;      /// applied offset; this only works for positive offset
+            real        cache_offset;   /// when sk_path/sk_offset made, this is set
+            real        offset;         /// current state for offset; an sk_path is not made because it may not be completed by the user
             type_register(sdata);
         };
         ///
@@ -90,8 +98,9 @@ namespace graphics {
 
         shape(rectd r4, real rx = nan<real>(), real ry = nan<real>()) : shape() {
             bool use_rect = std::isnan(rx) || rx == 0 || ry == 0;
-            data->bounds = use_rect ? Rect(r4) : 
-                                      Rect(Rounded(r4, rx, std::isnan(ry) ? rx : ry)); /// type forwards
+            data->type   = use_rect ? typeof(Rectd) : typeof(Rounded);
+            data->bounds = use_rect ? Rectd(r4) : 
+                                      Rectd(Rounded(r4, rx, std::isnan(ry) ? rx : ry)); /// type forwards
         }
 
         bool is_rect () { return data->bounds.type() == typeof(rectd)          && !data->ops; }
