@@ -7,7 +7,6 @@
 #include <vk/vk.hpp>
 #include <vkh/vkh.h>
 #include <camera/camera.hpp>
-#include <ux/canvas.hpp>
 
 struct GLFWwindow;
 
@@ -21,14 +20,13 @@ using Image   = image;
 using strings = array<str>;
 using Assets  = map<Texture *>;
 
-struct text_metrics:mx {
-    struct tmdata {
-        real        w, h;
-        real        ascent, descent;
-        real        line_height, cap_height;
-        type_register(tmdata);
-    };
-    mx_object(text_metrics, mx, tmdata);
+struct text_metrics {
+    real            w = 0,
+                    h = 0;
+    real       ascent = 0,
+              descent = 0;
+    real  line_height = 0,
+           cap_height = 0;
 };
 
 using tm_t = text_metrics;
@@ -126,7 +124,7 @@ namespace graphics {
 
     struct border_data {
         real size, tl, tr, bl, br;
-        rgba8 color;
+        rgbad color;
         inline bool operator==(const border_data &b) const { return b.tl == tl && b.tr == tr && b.bl == bl && b.br == br; }
         inline bool operator!=(const border_data &b) const { return !operator==(b); }
 
@@ -695,50 +693,6 @@ struct font:mx {
     bool    operator!()        { return !data->sz; }
 };
 
-struct gfx_memory;
-
-/// gfx: graphics in either vkvg or text buffer
-struct gfx:mx {
-    /// data is single instanced on this cbase, and the draw_state is passed in as type for the cbase, which atleast makes it type-unique
-    mx_declare(gfx, mx, gfx_memory);
-
-    /// create with a window (indicated by a name given first)
-    gfx(VkEngine e, VkhPresenter vkh_renderer);
-
-    VkEngine        engine();
-    Device          device();
-    void           resized();
-    void          defaults();
-    text_metrics   measure(str text);
-    str    format_ellipsis(str text, real w, text_metrics &tm_result);
-    void     draw_ellipsis(str text, real w);
-    void             image(ion::image img, graphics::shape sh, alignment align, vec2d offset, vec2d source);
-    void          identity();
-    void              push();
-    void               pop();
-    void              text(str text, Rect<double> rect, alignment align, vec2d offset, bool ellip);
-    void              clip(graphics::shape cl);
-    VkhImage       texture();
-    void             flush();
-    void             clear(rgba8 c);
-    void           opacity(real o);
-    void              font(ion::font &f);
-    void               cap(graphics::cap  c);
-    void              join(graphics::join j);
-    void         translate(vec2d    tr);
-    void             scale(vec2d    sc);
-    void             scale(real     sc);
-    void              rect(rectd     r);
-    void            rotate(real   degs);
-    void             color(rgba8 &color);
-    void              fill(rectd    &p);
-    void              fill(graphics::shape  p);
-    void          gaussian(vec2d sz, graphics::shape c);
-    void           outline(graphics::shape p);
-    void        outline_sz(real line_width);
-    ion::image    resample(ion::size sz, real deg, graphics::shape view, vec2d axis);
-};
-
 struct style:mx {
     /// qualifier for style block
     struct qualifier {
@@ -1036,6 +990,7 @@ enums(operation, fill,
     "fill, image, outline, text, child",
      fill, image, outline, text, child);
 
+struct Canvas;
 struct node:Element {
 
     struct selection {
@@ -1067,7 +1022,7 @@ struct node:Element {
         /// not ALL are used for all types.  However its useful to have a generic data structure for binding and function
         /// not sure if overflow should be used for all of these.  that might be much to deal with
         struct drawing {
-            rgba8               color;
+            rgbad               color;
             real                opacity;
             alignment           align;
             image               img;
@@ -1195,7 +1150,7 @@ struct node:Element {
         return o;
     }
 
-    virtual void draw(gfx& canvas);
+    virtual void draw(Canvas& canvas);
 
     vec2d offset() {
         node *n = Element::data->parent;
@@ -1494,10 +1449,10 @@ struct list_view:node {
         auto draw_rect = [&](rgba8 &c, rectd &h_line) {
             rectr  r   = h_line;
             shape vs  = r; /// todo: decide on final xy scaling for text and gfx; we need a the same unit scales
-            canvas.push();
+            canvas.save();
             canvas.color(c);
             canvas.outline(vs);
-            canvas.pop();
+            canvas.restore();
         };
         Column  nc = null;
         auto cells = [&] (lambda<void(Column::data &, rectd &)> fn) {
@@ -1614,7 +1569,7 @@ struct App:composer {
     struct adata {
         array<Camera> cameras;
         GPU          win;
-        gfx          canvas;
+        Canvas      *canvas;
         vec2d        cursor;
         bool         buttons[16];
         array<node*> active;

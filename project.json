@@ -21,6 +21,19 @@
             }
         },
         {
+            "name":     "depot_tools",
+            "version":  "m112",
+            "url":      "https://chromium.googlesource.com/chromium/tools/depot_tools.git",
+            "commit":   "467991e727a44401ec3e3476b52517404595678d",
+            "resource": true
+        },
+        {
+            "name":     "skia",
+            "version":  "m112",
+            "url":      "https://skia.googlesource.com/skia.git",
+            "commit":   "4262dd0aa5c5a8a356016a349901532f313855ad"
+        },
+        {
             "name":     "ogg",
             "version":  "1.3.5",
             "url":      "https://github.com/xiph/ogg",
