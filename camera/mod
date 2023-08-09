@@ -1,9 +1,9 @@
-dep(ion:vkg)
+dep(vk:vkh)
+cpp(17)
 
 if(APPLE)
     dep(IOSurface QuartzCore Metal CoreMedia CoreFoundation Cocoa IOKit AVFoundation)
+    cflags(+-fobjc-arc)
+else()
+    src(-apple.mm)
 endif()
-
-cflags(+-fobjc-arc)
-
-cpp(17)

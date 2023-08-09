@@ -1,7 +1,7 @@
 #pragma once
 #include <media/media.hpp>
 #include <vkh/vkh.h>
-#include <vkg/vkg.hpp>
+//#include <vkg/vkg.hpp>
 
 struct opaque_capture;
 
@@ -13,7 +13,6 @@ struct Camera {
     int             width        = 1920;
     int             height       = 1080;
     int             rate         = 30;
-    VkvgSurface     surface      = null;
     VkhImage        image        = null;
     opaque_capture *capture;
 

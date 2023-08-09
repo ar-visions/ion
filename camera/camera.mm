@@ -1,5 +1,7 @@
 #include <camera/camera.hpp>
+#ifdef __APPLE__
 #import <camera/apple.h>
+#endif
 #include <memory>
 #include <vk/vk.hpp>
 #include <vkh/vkh_device.h>
@@ -7,6 +9,12 @@
 
 using namespace ion;
 
+Camera::Camera() { }
+
+Camera::Camera(VkEngine e, int camera_index, int width, int height, int rate) : 
+    e(e), camera_index(camera_index), width(width), height(height), rate(rate) { }
+
+#ifdef __APPLE__
 
 struct opaque_capture {
     metal_capture *capture;
@@ -23,11 +31,6 @@ void global_callback(void *metal_texture, void *metal_layer, void *context) {
     camera->e->vk_device->mtx.unlock();
 }
 
-Camera::Camera() { }
-
-Camera::Camera(VkEngine e, int camera_index, int width, int height, int rate) : 
-    e(e), camera_index(camera_index), width(width), height(height), rate(rate) { }
-
 /// Camera will resolve the vulkan texture in this module (not doing this in ux/app lol)
 void Camera::start_capture() {
     capture          = new opaque_capture();
@@ -40,3 +43,13 @@ void Camera::stop_capture() {
     delete capture;
     capture = null;
 }
+
+#else
+
+void Camera::start_capture() {
+}
+
+void Camera::stop_capture() {
+}
+
+#endif

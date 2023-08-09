@@ -6,7 +6,7 @@
 #include <vkh/vkh.h>
 #include <vkh/vkh_device.h>
 #include <vkh/vkh_image.h>
-#include <vkg/vkg.hpp>
+//#include <vkg/vkg.hpp>
 #include <camera/camera.hpp>
 
 namespace ion {

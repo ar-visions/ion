@@ -17,8 +17,8 @@ inline var ModelDef(str name, Schema schema) {
 struct Remote {
         int64_t value;
             str remote;
-    Remote(int64_t value)                  : value(value)                 { }
-    Remote(std::nullptr_t n = nullptr)          : value(-1)                    { }
+    Remote(int64_t value) : value(value) { }
+    Remote(null_t = null) : value(-1) { }
     Remote(str remote, int64_t value = -1) : value(value), remote(remote) { }
     operator int64_t() { return value; }
     operator var() {

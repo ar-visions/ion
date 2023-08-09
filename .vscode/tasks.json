@@ -6,7 +6,7 @@
             "type": "shell",
             "command": "make ux-app -j1",
 			"options": {
-                "cwd": "${workspaceFolder}/../ion/build"
+                "cwd": "C:\\Users\\kalen\\src\\ion\\build"
             },
             "group": {
                 "kind": "build",

@@ -11,18 +11,6 @@
             "commit":   "47862078af4a204c4220f028656a19ddd3922144"
         },
         {
-            "name":     "sqlite3",
-            "version":  "1.0.30",
-            "url":      "https://github.com/alex85k/sqlite3-cmake",
-            "commit":   "121e7d273436c5de88956f559b940b8d69cadfbe"
-        },
-        {
-            "name":     "shine",
-            "version":  "1.0.2",
-            "url":      "https://github.com/toots/shine",
-            "commit":   "ab5e3526b64af1a2eaa43aa6f441a7312e013519"
-        },
-        {
             "name":     "opus",
             "version":  "1.4",
             "url":      "https://github.com/xiph/opus",

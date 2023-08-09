@@ -37,9 +37,9 @@
 
 //todo:this could be used to define a default background
 static VkClearValue clearValues[3] = {
-	{ .color.float32 = {0,0,0,0} },
-	{ .depthStencil  = {1.0f, 0} },
-	{ .color.float32 = {0,0,0,0} }
+	{ .color = { .float32 = {0,0,0,0} }},
+	{ .depthStencil = {1.0f, 0} },
+	{ .color = { .float32 = {0,0,0,0} }}
 };
 
 float _get_dpi_scaling_x(VkvgContext ctx) {
