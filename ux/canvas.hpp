@@ -1,14 +1,15 @@
 #pragma once
 #include <ux/ux.hpp>
 
-namespace ion {
 struct ICanvas;
+namespace ion {
+
 struct Canvas:mx {
     mx_declare(Canvas, mx, ICanvas);
 
     Canvas(VkEngine e, VkhImage image, vec2i sz);
-    u32 width();
-    u32 height();
+    u32 get_width();
+    u32 get_height();
     void resize(VkhImage image, int width, int height);
     void font(ion::font &f);
     void save();

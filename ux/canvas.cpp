@@ -1,28 +1,389 @@
+#include <skia/include/core/SkImage.h>
 
 #define  SK_VULKAN
-#include <skia/include/core/SkImage.h>
 #include <skia/include/gpu/vk/GrVkBackendContext.h>
 #include <skia/include/gpu/GrBackendSurface.h>
 #include <skia/include/gpu/GrDirectContext.h>
-#include <skia/include/gpu/gl/GrGLInterface.h>
+
+#include <skia/include/core/SkPath.h>
 #include <skia/include/core/SkFont.h>
+#include <skia/include/core/SkBitmap.h>
 #include <skia/include/core/SkCanvas.h>
 #include <skia/include/core/SkColorSpace.h>
 #include <skia/include/core/SkSurface.h>
 #include <skia/include/core/SkFontMgr.h>
 #include <skia/include/core/SkFontMetrics.h>
 #include <skia/include/core/SkPathMeasure.h>
+#include <skia/include/core/SkPathUtils.h>
+#include <skia/include/utils/SkParsePath.h>
 #include <skia/include/core/SkTextBlob.h>
 #include <skia/include/effects/SkGradientShader.h>
 #include <skia/include/effects/SkImageFilters.h>
 #include <skia/include/effects/SkDashPathEffect.h>
 
+
+#include "skia/include/core/SkAlphaType.h"
+#include "skia/include/core/SkCanvas.h"
+#include "skia/include/core/SkColor.h"
+#include "skia/include/core/SkColorType.h"
+#include "skia/include/core/SkImageInfo.h"
+#include "skia/include/core/SkRefCnt.h"
+#include "skia/include/core/SkSurface.h"
+#include "skia/include/core/SkTypes.h"
+#include "skia/include/gpu/GrDirectContext.h"
+#include "skia/include/gpu/ganesh/SkSurfaceGanesh.h"
+#include "skia/include/gpu/vk/GrVkBackendContext.h"
+#include "skia/include/gpu/vk/VulkanExtensions.h"
+//#include "skia/tools/gpu/vk/VkTestUtils.h"
+
 #include <ux/ux.hpp>
 #include <ux/canvas.hpp>
 #include <media/media.hpp>
 #include <vk/vk.hpp>
+#include <vkh/vkh_device.h>
+#include <vkh/vkh_image.h>
+#include <vkh/vkh_presenter.h>
 
 using namespace ion;
+
+static SkPoint rotate90(const SkPoint& p) { return {p.fY, -p.fX}; }
+static SkPoint rotate180(const SkPoint& p) { return p * -1; }
+static SkPoint setLength(SkPoint p, float len) {
+    if (!p.setLength(len)) {
+        SkDebugf("Failed to set point length\n");
+    }
+    return p;
+}
+static bool isClockwise(const SkPoint& a, const SkPoint& b) { return a.cross(b) > 0; }
+
+/** Helper class for constructing paths, with undo support */
+class PathRecorder {
+public:
+    SkPath getPath() const {
+        return SkPath::Make(fPoints.data(), fPoints.size(), fVerbs.data(), fVerbs.size(), nullptr,
+                            0, SkPathFillType::kWinding);
+    }
+
+    void moveTo(SkPoint p) {
+        fVerbs.push_back(SkPath::kMove_Verb);
+        fPoints.push_back(p);
+    }
+
+    void lineTo(SkPoint p) {
+        fVerbs.push_back(SkPath::kLine_Verb);
+        fPoints.push_back(p);
+    }
+
+    void close() { fVerbs.push_back(SkPath::kClose_Verb); }
+
+    void rewind() {
+        fVerbs.clear();
+        fPoints.clear();
+    }
+
+    int countPoints() const { return fPoints.size(); }
+
+    int countVerbs() const { return fVerbs.size(); }
+
+    bool getLastPt(SkPoint* lastPt) const {
+        if (fPoints.empty()) {
+            return false;
+        }
+        *lastPt = fPoints.back();
+        return true;
+    }
+
+    void setLastPt(SkPoint lastPt) {
+        if (fPoints.empty()) {
+            moveTo(lastPt);
+        } else {
+            fPoints.back().set(lastPt.fX, lastPt.fY);
+        }
+    }
+
+    const std::vector<uint8_t>& verbs() const { return fVerbs; }
+
+    const std::vector<SkPoint>& points() const { return fPoints; }
+
+private:
+    std::vector<uint8_t> fVerbs;
+    std::vector<SkPoint> fPoints;
+};
+
+/// this was more built into skia before, now it is in tools
+class SkPathStroker2 {
+public:
+    // Returns the fill path
+    SkPath getFillPath(const SkPath& path, const SkPaint& paint);
+
+private:
+    struct PathSegment {
+        SkPath::Verb fVerb;
+        SkPoint fPoints[4];
+    };
+
+    float fRadius;
+    SkPaint::Cap fCap;
+    SkPaint::Join fJoin;
+    PathRecorder fInner, fOuter;
+
+    // Initialize stroker state
+    void initForPath(const SkPath& path, const SkPaint& paint);
+
+    // Strokes a line segment
+    void strokeLine(const PathSegment& line, bool needsMove);
+
+    // Adds an endcap to fOuter
+    enum class CapLocation { Start, End };
+    void endcap(CapLocation loc);
+
+    // Adds a join between the two segments
+    void join(const PathSegment& prev, const PathSegment& curr);
+
+    // Appends path in reverse to result
+    static void appendPathReversed(const PathRecorder& path, PathRecorder* result);
+
+    // Returns the segment unit normal
+    static SkPoint unitNormal(const PathSegment& seg, float t);
+
+    // Returns squared magnitude of line segments.
+    static float squaredLineLength(const PathSegment& lineSeg);
+};
+
+void SkPathStroker2::initForPath(const SkPath& path, const SkPaint& paint) {
+    fRadius = paint.getStrokeWidth() / 2;
+    fCap = paint.getStrokeCap();
+    fJoin = paint.getStrokeJoin();
+    fInner.rewind();
+    fOuter.rewind();
+}
+
+SkPath SkPathStroker2::getFillPath(const SkPath& path, const SkPaint& paint) {
+    initForPath(path, paint);
+
+    // Trace the inner and outer paths simultaneously. Inner will therefore be
+    // recorded in reverse from how we trace the outline.
+    SkPath::Iter it(path, false);
+    PathSegment segment, prevSegment;
+    bool firstSegment = true;
+    while ((segment.fVerb = it.next(segment.fPoints)) != SkPath::kDone_Verb) {
+        // Join to the previous segment
+        if (!firstSegment) {
+            join(prevSegment, segment);
+        }
+
+        // Stroke the current segment
+        switch (segment.fVerb) {
+            case SkPath::kLine_Verb:
+                strokeLine(segment, firstSegment);
+                break;
+            case SkPath::kMove_Verb:
+                // Don't care about multiple contours currently
+                continue;
+            default:
+                SkDebugf("Unhandled path verb %d\n", segment.fVerb);
+                break;
+        }
+
+        std::swap(segment, prevSegment);
+        firstSegment = false;
+    }
+
+    // Open contour => endcap at the end
+    const bool isClosed = path.isLastContourClosed();
+    if (isClosed) {
+        SkDebugf("Unhandled closed contour\n");
+    } else {
+        endcap(CapLocation::End);
+    }
+
+    // Walk inner path in reverse, appending to result
+    appendPathReversed(fInner, &fOuter);
+    endcap(CapLocation::Start);
+
+    return fOuter.getPath();
+}
+
+void SkPathStroker2::strokeLine(const PathSegment& line, bool needsMove) {
+    const SkPoint tangent = line.fPoints[1] - line.fPoints[0];
+    const SkPoint normal = rotate90(tangent);
+    const SkPoint offset = setLength(normal, fRadius);
+    if (needsMove) {
+        fOuter.moveTo(line.fPoints[0] + offset);
+        fInner.moveTo(line.fPoints[0] - offset);
+    }
+    fOuter.lineTo(line.fPoints[1] + offset);
+    fInner.lineTo(line.fPoints[1] - offset);
+}
+
+void SkPathStroker2::endcap(CapLocation loc) {
+    const auto buttCap = [this](CapLocation loc) {
+        if (loc == CapLocation::Start) {
+            // Back at the start of the path: just close the stroked outline
+            fOuter.close();
+        } else {
+            // Inner last pt == first pt when appending in reverse
+            SkPoint innerLastPt;
+            fInner.getLastPt(&innerLastPt);
+            fOuter.lineTo(innerLastPt);
+        }
+    };
+
+    switch (fCap) {
+        case SkPaint::kButt_Cap:
+            buttCap(loc);
+            break;
+        default:
+            SkDebugf("Unhandled endcap %d\n", fCap);
+            buttCap(loc);
+            break;
+    }
+}
+
+void SkPathStroker2::join(const PathSegment& prev, const PathSegment& curr) {
+    const auto miterJoin = [this](const PathSegment& prev, const PathSegment& curr) {
+        // Common path endpoint of the two segments is the midpoint of the miter line.
+        const SkPoint miterMidpt = curr.fPoints[0];
+
+        SkPoint before = unitNormal(prev, 1);
+        SkPoint after = unitNormal(curr, 0);
+
+        // Check who's inside and who's outside.
+        PathRecorder *outer = &fOuter, *inner = &fInner;
+        if (!isClockwise(before, after)) {
+            std::swap(inner, outer);
+            before = rotate180(before);
+            after = rotate180(after);
+        }
+
+        const float cosTheta = before.dot(after);
+        if (SkScalarNearlyZero(1 - cosTheta)) {
+            // Nearly identical normals: don't bother.
+            return;
+        }
+
+        // Before and after have the same origin and magnitude, so before+after is the diagonal of
+        // their rhombus. Origin of this vector is the midpoint of the miter line.
+        SkPoint miterVec = before + after;
+
+        // Note the relationship (draw a right triangle with the miter line as its hypoteneuse):
+        //     sin(theta/2) = strokeWidth / miterLength
+        // so miterLength = strokeWidth / sin(theta/2)
+        // where miterLength is the length of the miter from outer point to inner corner.
+        // miterVec's origin is the midpoint of the miter line, so we use strokeWidth/2.
+        // Sqrt is just an application of half-angle identities.
+        const float sinHalfTheta = sqrtf(0.5 * (1 + cosTheta));
+        const float halfMiterLength = fRadius / sinHalfTheta;
+        miterVec.setLength(halfMiterLength);  // TODO: miter length limit
+
+        // Outer: connect to the miter point, and then to t=0 (on outside stroke) of next segment.
+        const SkPoint dest = setLength(after, fRadius);
+        outer->lineTo(miterMidpt + miterVec);
+        outer->lineTo(miterMidpt + dest);
+
+        // Inner miter is more involved. We're already at t=1 (on inside stroke) of 'prev'.
+        // Check 2 cases to see we can directly connect to the inner miter point
+        // (midpoint - miterVec), or if we need to add extra "loop" geometry.
+        const SkPoint prevUnitTangent = rotate90(before);
+        const float radiusSquared = fRadius * fRadius;
+        // 'alpha' is angle between prev tangent and the curr inwards normal
+        const float cosAlpha = prevUnitTangent.dot(-after);
+        // Solve triangle for len^2:  radius^2 = len^2 + (radius * sin(alpha))^2
+        // This is the point at which the inside "corner" of curr at t=0 will lie on a
+        // line connecting the inner and outer corners of prev at t=0. If len is below
+        // this threshold, the inside corner of curr will "poke through" the start of prev,
+        // and we'll need the inner loop geometry.
+        const float threshold1 = radiusSquared * cosAlpha * cosAlpha;
+        // Solve triangle for len^2:  halfMiterLen^2 = radius^2 + len^2
+        // This is the point at which the inner miter point will lie on the inner stroke
+        // boundary of the curr segment. If len is below this threshold, the miter point
+        // moves 'inside' of the stroked outline, and we'll need the inner loop geometry.
+        const float threshold2 = halfMiterLength * halfMiterLength - radiusSquared;
+        // If a segment length is smaller than the larger of the two thresholds,
+        // we'll have to add the inner loop geometry.
+        const float maxLenSqd = std::max(threshold1, threshold2);
+        const bool needsInnerLoop =
+                squaredLineLength(prev) < maxLenSqd || squaredLineLength(curr) < maxLenSqd;
+        if (needsInnerLoop) {
+            // Connect to the miter midpoint (common path endpoint of the two segments),
+            // and then to t=0 (on inside) of the next segment. This adds an interior "loop" of
+            // geometry that handles edge cases where segment lengths are shorter than the
+            // stroke width.
+            inner->lineTo(miterMidpt);
+            inner->lineTo(miterMidpt - dest);
+        } else {
+            // Directly connect to inner miter point.
+            inner->setLastPt(miterMidpt - miterVec);
+        }
+    };
+
+    switch (fJoin) {
+        case SkPaint::kMiter_Join:
+            miterJoin(prev, curr);
+            break;
+        default:
+            SkDebugf("Unhandled join %d\n", fJoin);
+            miterJoin(prev, curr);
+            break;
+    }
+}
+
+void SkPathStroker2::appendPathReversed(const PathRecorder& path, PathRecorder* result) {
+    const int numVerbs = path.countVerbs();
+    const int numPoints = path.countPoints();
+    const std::vector<uint8_t>& verbs = path.verbs();
+    const std::vector<SkPoint>& points = path.points();
+
+    for (int i = numVerbs - 1, j = numPoints; i >= 0; i--) {
+        auto verb = static_cast<SkPath::Verb>(verbs[i]);
+        switch (verb) {
+            case SkPath::kLine_Verb: {
+                j -= 1;
+                SkASSERT(j >= 1);
+                result->lineTo(points[j - 1]);
+                break;
+            }
+            case SkPath::kMove_Verb:
+                // Ignore
+                break;
+            default:
+                SkASSERT(false);
+                break;
+        }
+    }
+}
+
+SkPoint SkPathStroker2::unitNormal(const PathSegment& seg, float t) {
+    if (seg.fVerb != SkPath::kLine_Verb) {
+        SkDebugf("Unhandled verb for unit normal %d\n", seg.fVerb);
+    }
+
+    (void)t;  // Not needed for lines
+    const SkPoint tangent = seg.fPoints[1] - seg.fPoints[0];
+    const SkPoint normal = rotate90(tangent);
+    return setLength(normal, 1);
+}
+
+float SkPathStroker2::squaredLineLength(const PathSegment& lineSeg) {
+    SkASSERT(lineSeg.fVerb == SkPath::kLine_Verb);
+    const SkPoint diff = lineSeg.fPoints[1] - lineSeg.fPoints[0];
+    return diff.dot(diff);
+}
+
+
+
+SkFont &font_handle(ion::font &font) {
+    if (!font->sk_font) {
+        /// dpi scaling is supported at the SkTypeface level, just add the scale x/y
+        path p = font.get_path();
+        auto t = SkTypeface::MakeFromFile((symbol)p.cs());
+        font->sk_font = new SkFont(t);
+    }
+    return *(SkFont*)font->sk_font;
+}
+
+
+
 
 
 inline SkColor sk_color(rgbad c) {
@@ -49,7 +410,7 @@ struct Skia {
 
         //GrBackendFormat gr_conv = GrBackendFormat::MakeVk(VK_FORMAT_R8G8B8_SRGB);
         sk_sp<GrDirectContext> sk_context;
-        
+
         GrVkBackendContext grc {
             e->vk->inst(),
             e->vk_gpu->phys,
@@ -76,30 +437,33 @@ struct Skia {
     }
 };
 
+/// canvas renders to image, and can manage the renderer/resizing
 struct ICanvas {
+    VkEngine               e = null;
+    VkhPresenter    renderer = null;
     sk_sp<SkSurface> sk_surf = null;
     SkCanvas      *sk_canvas = null;
     vec2i                 sz = { 0, 0 };
-    VkhImage           image = null;
+    VkhImage        vk_image = null;
 
     struct state {
-        image       img;
+        ion::image  img;
         double      outline_sz;
         double      font_scale;
         double      opacity;
         m44d        m;
         rgbad       color;
-        shape       clip;
+        graphics::shape clip;
         vec2d       blur;
         ion::font   font;
         SkPaint     ps;
     };
 
     state *top = null;
-    doubly<SkPaint> stack;
+    doubly<state> stack;
 
-    ICanvas(VkEngine &e, VkhImage &image, vec2i &sz) : e(e), sz(sz) {
-        resize(image, sz.x, sz.y);
+    void outline_sz(double sz) {
+        top->outline_sz = sz;
     }
 
     void color(rgbad &c) {
@@ -110,49 +474,51 @@ struct ICanvas {
         top->opacity = o;
     }
 
-    void resize(VkhImage &image, int width, int height) {
-        if (!image) {
-            image = vkh_image_create(
+    /// can be given an image
+    void canvas_resize(VkhImage &image, int width, int height) {
+        if (vk_image)
+            vkh_image_drop(vk_image);
+        if (!image)
+            vk_image = vkh_image_create(
                 e->vkh, VK_FORMAT_B8G8R8A8_UNORM, u32(width), u32(height),
                 VK_IMAGE_TILING_OPTIMAL, VKH_MEMORY_USAGE_GPU_ONLY,
                 VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|
                 VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+        else {
+            /// option: we can know dpi here as declared by the user
+            vk_image = vkh_image_grab(image);
+            assert(width == vk_image->width && height == vk_image->height);
         }
-        this->image = vkh_image_grab(image);
+        
         sz = vec2i { width, height };
         ///
-        GrDirectContext *ctx    = Skia::Context()->sk_context.get();
+        GrDirectContext *ctx    = Skia::Context(e)->sk_context.get();
         auto imi                = GrVkImageInfo { };
-        imi.fImage              = image->image;
+        imi.fImage              = vk_image->image;
         imi.fImageTiling        = VK_IMAGE_TILING_OPTIMAL;
         imi.fImageLayout        = VK_IMAGE_LAYOUT_UNDEFINED;
         imi.fFormat             = VK_FORMAT_R8G8B8A8_UNORM;
     ///imi.fImageUsageFlags    = VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT|VK_IMAGE_USAGE_SAMPLED_BIT;//VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // i dont think so.
         imi.fSampleCount        = 1;
         imi.fLevelCount         = 1;
-        imi.fCurrentQueueFamily = e->gpu->graphicsFamily.value();
+        imi.fCurrentQueueFamily = e->vk_gpu->indices.graphicsFamily.value();
         imi.fProtected          = GrProtected::kNo;
         imi.fSharingMode        = VK_SHARING_MODE_EXCLUSIVE;
 
         auto rt = GrBackendRenderTarget { sz.x, sz.y, imi };
-        sk_surf = SkSurface::MakeFromBackendRenderTarget(ctx, rt,
+        sk_surf = SkSurfaces::WrapBackendRenderTarget(ctx, rt,
                     kBottomLeft_GrSurfaceOrigin, kRGBA_8888_SkColorType, null, null);
         sk_canvas = sk_surf->getCanvas();
-        
+    }
+
+    void app_resize() {
         /// these should be updated (VkEngine can have VkWindow of sort eventually if we want multiple)
-        //float sx, sy;
-        //vkh_presenter_get_size(data->vkh_renderer, &width, &height, &sx, &sy); /// vkh should have both vk engine and glfw facility
-        //data->width  /= sx; /// we use the virtual size here
-        //data->height /= sy;
-
-        vkh_presenter_build_blit_cmd(data->vkh_renderer, image->image, width, height);
-        
-        assert(data->stack->len() <= 1);
-
-        while (data->stack)
-            data->stack->pop();
-        data->stack->push();
-        data->top = &data->stack->last();
+        float sx, sy;
+        u32 width, height;
+        vkh_presenter_get_size(renderer, &width, &height, &sx, &sy); /// vkh/vk should have both vk engine and glfw facility
+        VkhImage img = null;
+        canvas_resize(img, width, height);
+        vkh_presenter_build_blit_cmd(renderer, vk_image->image, width, height);
     }
 
     SkPath *sk_path(graphics::shape &sh) {
@@ -160,17 +526,17 @@ struct ICanvas {
         // shape.sk_path 
         if (!shape.sk_path) {
             shape.sk_path = new SkPath { };
-            SkPath &p     = *shape.sk_path;
+            SkPath &p     = *(SkPath*)shape.sk_path;
 
             /// efficient serialization of types as Skia does not spend the time to check for these primitives
             if (shape.type == typeof(rectd)) {
-                rectd &m = mem->ref<rectd>();
+                rectd &m = sh->bounds;
                 SkRect r = SkRect {
                     m.x, m.y, m.x + m.w, m.y + m.h
                 };
                 p.Rect(r);
             } else if (shape.type == typeof(Rounded<double>)) {
-                Rounded<double>::rdata &m = mem->ref<Rounded<double>::rdata>();
+                Rounded<double>::rdata &m = sh->bounds.mem->ref<Rounded<double>::rdata>();
                 p.moveTo  (m.tl_x.x, m.tl_x.y);
                 p.lineTo  (m.tr_x.x, m.tr_x.y);
                 p.cubicTo (m.c0.x,   m.c0.y, m.c1.x, m.c1.y, m.tr_y.x, m.tr_y.y);
@@ -181,7 +547,7 @@ struct ICanvas {
                 p.lineTo  (m.tl_y.x, m.tl_y.y);
                 p.cubicTo (m.c0d.x,  m.c0d.y, m.c1d.x, m.c1d.y, m.tl_x.x, m.tl_x.y);
             } else {
-                graphics::shape::sdata &m = mem->ref<graphics::shape::sdata>();
+                graphics::shape::sdata &m = *sh.data;
                 for (mx &o:m.ops) {
                     type_t t = o.type();
                     if (t == typeof(Movement)) {
@@ -198,37 +564,40 @@ struct ICanvas {
 
         /// issue here is reading the data, which may not be 'sdata', but Rect, Rounded
         /// so the case below is 
-        if (bool(shape.sk_offset) && o_cache == o)
-            return shape.sk_offset;
+        if (bool(shape.sk_offset) && shape.cache_offset == shape.offset)
+            return (SkPath*)shape.sk_offset;
         ///
-        if (!std::isnan(o) && o != 0) {
+        if (!std::isnan(shape.offset) && shape.offset != 0) {
             assert(shape.sk_path); /// must have an actual series of shape operations in skia
             ///
-            delete sk_offset;
-            sk_offset = new SkPath(*shape.sk_path);
-            o_cache = o;
+            delete (SkPath*)shape.sk_offset;
+
+            SkPath *o = (SkPath*)shape.sk_offset;
+            shape.cache_offset = shape.offset;
             ///
             SkPath  fpath;
-            SkPaint cp = SkPaint(ps);
+            SkPaint cp = SkPaint(top->ps);
             cp.setStyle(SkPaint::kStroke_Style);
-            cp.setStrokeWidth(std::abs(o) * 2);
+            cp.setStrokeWidth(std::abs(shape.offset) * 2);
             cp.setStrokeJoin(SkPaint::kRound_Join);
-            cp.getFillPath((const SkPath &)*shape.sk_path, &fpath);
+
+            SkPathStroker2 stroker;
+            SkPath offset_path = stroker.getFillPath(*(SkPath*)shape.sk_path, cp);
+            shape.sk_offset = new SkPath(offset_path);
             
-            auto vrbs = shape.sk_path->countVerbs();
-            auto pnts = shape.sk_path->countPoints();
+            auto vrbs = ((SkPath*)shape.sk_path)->countVerbs();
+            auto pnts = ((SkPath*)shape.sk_path)->countPoints();
             std::cout << "sk_path = " << (void *)shape.sk_path << ", pointer = " << (void *)this << " verbs = " << vrbs << ", points = " << pnts << "\n";
             ///
-            if (o < 0) {
-                sk_offset->reverseAddPath(fpath);
-                last_offset->setFillType(SkPathFillType::kWinding);
+            if (shape.offset < 0) {
+                o->reverseAddPath(fpath);
+                o->setFillType(SkPathFillType::kWinding);
             } else
-                last_offset->addPath(fpath);
+                o->addPath(fpath);
             ///
-            //output->p->toggleInverseFillType();
-            return last_offset;
+            return o;
         }
-        return shape.sk_path;
+        return (SkPath*)shape.sk_path;
     }
 
     void font(ion::font &f) { 
@@ -236,7 +605,7 @@ struct ICanvas {
     }
 
     void save() {
-        state &s = stack.push();
+        state &s = stack->push();
         if (top) {
             s = *top;
         } else {
@@ -250,12 +619,12 @@ struct ICanvas {
     void    clear(rgbad c) { sk_canvas->clear(sk_color(c)); }
 
     void    flush() {
-        sk_canvas->flush();
+        //sk_canvas->flush();
     }
 
     void  restore() {
-        stack.pop();
-        top = stack.len() ? &stack.last() : null;
+        stack->pop();
+        top = stack->len() ? &stack->last() : null;
         sk_canvas->restore();
     }
 
@@ -265,8 +634,8 @@ struct ICanvas {
     /// measuring text would just be its length, line height 1.
     text_metrics measure(str &text) {
         SkFontMetrics mx;
-        SkFont     &font = top->font.handle();
-        auto         adv = font.measureText(text.cstr(), text.size(), SkTextEncoding::kUTF8);
+        SkFont     &font = font_handle(top->font);
+        auto         adv = font.measureText(text.cs(), text.len(), SkTextEncoding::kUTF8);
         auto          lh = font.getMetrics(&mx);
         return text_metrics {
             .w           = adv,
@@ -284,7 +653,7 @@ struct ICanvas {
     str ellipsis(str &text, rectd &rect, text_metrics &tm) {
         const str el = "...";
         str       cur, *p = &text;
-        int       trim = p->size();
+        int       trim = p->len();
         tm             = measure((str &)el);
         
         if (tm.w >= rect.w)
@@ -295,31 +664,31 @@ struct ICanvas {
                 if (tm.w <= rect.w || trim == 0)
                     break;
                 if (tm.w > rect.w && trim >= 1) {
-                    cur = text.substr(0, --trim) + el;
+                    cur = text.mid(0, --trim) + el;
                     p   = &cur;
                 }
             }
         return (trim == 0) ? "" : (p == &text) ? text : cur;
     }
 
-    void image(ion::image &image, rectd &rect, alignment &align, vec2 &offset) {
-        State   *s = (State *)top->b_state; // backend state (this)
-        SkPaint ps = SkPaint(s->ps);
-        vec2   pos = { 0, 0 };
+    void image(ion::image &image, rectd &rect, alignment &align, vec2d &offset) {
+        SkPaint ps = SkPaint(top->ps);
+        vec2d  pos = { 0, 0 };
         vec2i  isz = image.size();
         
         ps.setColor(sk_color(top->color));
         if (top->opacity != 1.0f)
             ps.setAlpha(float(ps.getAlpha()) * float(top->opacity));
         
-        /// cache management;
-        if (!image.pixels.attachments()) {
+        /// cache SkImage using memory attachments
+        attachment *att = image.mem->find_attachment("sk-image");
+        if (!att) {
             SkBitmap bm;
-            rgba    *px = image.pixels.data<rgba>();
+            rgba8   *px = image.pixels();
             SkImageInfo info = SkImageInfo::Make(isz.x, isz.y, kRGBA_8888_SkColorType, kUnpremul_SkAlphaType);
             bm.installPixels(info, px, image.stride());
-            sk_sp<SkImage> *im = new sk_sp<SkImage>(SkImage::MakeFromBitmap(bm)); /// meta-smart.
-            image.pixels.attach("sk-image", im, [im](var &) { delete im; });
+            sk_sp<SkImage> *im = new sk_sp<SkImage>(bm.asImage());
+            image.mem->attach("sk-image", im, [im]() { delete im; });
         }
         
         /// now its just of matter of scaling the little guy to fit in the box.
@@ -328,8 +697,8 @@ struct ICanvas {
         real sc  = (scy > scx) ? scx : scy;
         
         /// no enums were harmed during the making of this function
-        pos.x = interp(rect.x, rect.x + rect.w - isz.x * sc, align->x);
-        pos.y = interp(rect.y, rect.y + rect.h - isz.y * sc, align->y);
+        pos.x = mix(rect.x, rect.x + rect.w - isz.x * sc, align.x);
+        pos.y = mix(rect.y, rect.y + rect.h - isz.y * sc, align.y);
         
         sk_canvas->save();
         sk_canvas->translate(pos.x + offset.x, pos.y + offset.y);
@@ -337,21 +706,20 @@ struct ICanvas {
         SkCubicResampler c;
         sk_canvas->scale(sc, sc);
         sk_canvas->drawImage(
-            ((sk_sp<SkImage> *)image.pixels["sk-image"].n_value.vstar)->get(),
+            ((sk_sp<SkImage> *)att->data)->get(),
             SkScalar(0), SkScalar(0), SkSamplingOptions(c), &ps);
         sk_canvas->restore();
     }
     /// would be reasonable to have a rich() method
 
     /// the lines are most definitely just text() calls, it should be up to the user to perform multiline.
-    void text(str &text, rectd &rect, vec2 &align, vec2 &offset, bool ellip) {
-        State   *s = (State *)top->b_state; // backend state (this)
-        SkPaint ps = SkPaint(s->ps);
+    void text(str &text, rectd &rect, vec2d &align, vec2d &offset, bool ellip) {
+        SkPaint ps = SkPaint(top->ps);
         ps.setColor(sk_color(top->color));
         if (top->opacity != 1.0f)
             ps.setAlpha(float(ps.getAlpha()) * float(top->opacity));
-        SkFont  &f = *top->font.handle();
-        vec2   pos = { 0, 0 };
+        SkFont  &f = font_handle(top->font);
+        vec2d  pos = { 0, 0 };
         str  stext;
         str *ptext = &text;
         text_metrics tm;
@@ -360,11 +728,9 @@ struct ICanvas {
             ptext  = &stext;
         } else
             tm     = measure(*ptext);
-        auto    tb = SkTextBlob::MakeFromText(ptext->cstr(), ptext->size(), (const SkFont &)f, SkTextEncoding::kUTF8);
-        pos.x = (align.x == Align::End)    ? rect.x + rect.w     - tm.w :
-                (align.x == Align::Middle) ? rect.x + rect.w / 2 - tm.w / 2 : rect.x;
-        pos.y = (align.y == Align::End)    ? rect.y + rect.h     - tm.h :
-                (align.y == Align::Middle) ? rect.y + rect.h / 2 - tm.h / 2 - ((-tm.descent + tm.ascent) / 1.66) : rect.y;
+        auto    tb = SkTextBlob::MakeFromText(ptext->cs(), ptext->len(), (const SkFont &)f, SkTextEncoding::kUTF8);
+        pos.x = mix(rect.x, rect.w - tm.w, align.x);
+        pos.y = mix(rect.y, rect.h - tm.h, align.y) - ((-tm.descent + tm.ascent) / 1.66);
         sk_canvas->drawTextBlob(
             tb, SkScalar(pos.x + offset.x),
                 SkScalar(pos.y + offset.y), ps);
@@ -377,41 +743,40 @@ struct ICanvas {
     void outline(rectd &rect) {
         SkPaint ps = SkPaint(top->ps);
         ///
-        ps.setAntiAlias(!path.is_rect());
+        ps.setAntiAlias(true);
         ps.setColor(sk_color(top->color));
+        ps.setStroke(true);
         ///
         if (top->opacity != 1.0f)
             ps.setAlpha(float(ps.getAlpha()) * float(top->opacity));
-        
-        sk_canvas->strokePath(sk_path(path), ps);
+        graphics::shape sh = rect;
+        SkRect r = { rect.x, rect.y, rect.x + rect.w, rect.y + rect.h };
+        sk_canvas->drawRect(r, ps);
     }
 
     void outline(graphics::shape &shape) {
         SkPaint ps = SkPaint(top->ps);
         ///
-        ps.setAntiAlias(!path.is_rect());
+        ps.setAntiAlias(!shape.is_rect());
         ps.setColor(sk_color(top->color));
+        ps.setStroke(true);
         ///
         if (top->opacity != 1.0f)
             ps.setAlpha(float(ps.getAlpha()) * float(top->opacity));
         
-        sk_canvas->strokePath(sk_path(shape), ps);
-    }
-
-    void Canvas::outline_sz(double sz) {
-        data->outline_sz(sz);
+        sk_canvas->drawPath(*sk_path(shape), ps);
     }
 
     void cap(graphics::cap &c) {
-        top->ps.setStrokeCap(c == graphics::cap::Blunt ? SkPaint::kSquare_Cap :
-                             c == graphics::cap::Round ? SkPaint::kRound_Cap  :
+        top->ps.setStrokeCap(c == graphics::cap::blunt ? SkPaint::kSquare_Cap :
+                             c == graphics::cap::round ? SkPaint::kRound_Cap  :
                                                          SkPaint::kButt_Cap);
     }
 
     void join(graphics::join &j) {
-        top->ps.setStrokeJoin(j == Join::Bevel ? SkPaint::kBevel_Join :
-                              j == Join::Round ? SkPaint::kRound_Join  :
-                                                 SkPaint::kMiter_Join);
+        top->ps.setStrokeJoin(j == graphics::join::bevel ? SkPaint::kBevel_Join :
+                              j == graphics::join::round ? SkPaint::kRound_Join  :
+                                                          SkPaint::kMiter_Join);
     }
 
     void translate(vec2d &tr) {
@@ -442,7 +807,7 @@ struct ICanvas {
     // we are to put everything in path.
     void fill(graphics::shape &path) {
         if (path.is_rect())
-            return fill(path.rect);
+            return fill(path->bounds);
         ///
         SkPaint ps = SkPaint(top->ps);
         ///
@@ -452,14 +817,14 @@ struct ICanvas {
         if (top->opacity != 1.0f)
             ps.setAlpha(float(ps.getAlpha()) * float(top->opacity));
         
-        sk_canvas->drawPath(sk_path(path), ps);
+        sk_canvas->drawPath(*sk_path(path), ps);
     }
 
     void clip(graphics::shape &path) {
-        sk_canvas->clipPath(sk_path(path));
+        sk_canvas->clipPath(*sk_path(path));
     }
 
-    void gaussian(vec2 &sz, rectd &crop) {
+    void gaussian(vec2d &sz, rectd &crop) {
         SkImageFilters::CropRect crect = { };
         if (crop) {
             SkRect rect = { SkScalar(crop.x),          SkScalar(crop.y),
@@ -467,19 +832,41 @@ struct ICanvas {
             crect       = SkImageFilters::CropRect(rect);
         }
         sk_sp<SkImageFilter> filter = SkImageFilters::Blur(sz.x, sz.y, nullptr, crect);
-        host->state.blur = sz;
+        top->blur = sz;
         top->ps.setImageFilter(std::move(filter));
     }
 };
 
-
 mx_implement(Canvas, mx);
 
-u32 Canvas::width() { return data->sz.x; }
-u32 Canvas::height() { return data->sz.y; }
+Canvas::Canvas(VkhImage &image) : Canvas() {
+    data->e = image->vkh->e;
+    data->canvas_resize(image, sz.x, sz.y);
+}
 
-void Canvas::resize(VkhImage image, int width, int height) {
-    return data->resize(image, width, height);
+Canvas::Canvas(VkhPresenter &renderer) : Canvas() {
+    data->e = renderer->vkh->e;
+    data->renderer = renderer;
+    data->app_resize();
+}
+
+void outline_sz(double sz) {
+    top->outline_sz = sz;
+}
+
+u32 Canvas::get_width() { return data->sz.x; }
+u32 Canvas::get_height() { return data->sz.y; }
+
+void Canvas::outline_sz(double sz) {
+    data->outline_sz(sz);
+}
+
+void Canvas::canvas_resize(VkhImage image, int width, int height) {
+    return data->canvas_resize(image, width, height);
+}
+
+void Canvas::app_resize() {
+    return data->app_resize();
 }
 
 void Canvas::font(ion::font f) {

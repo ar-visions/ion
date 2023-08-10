@@ -31,8 +31,6 @@ struct text_metrics {
 
 using tm_t = text_metrics;
 
-struct SkPath;
-
 /// would be nice to handle basically everything model-wise in graphics
 namespace graphics {
     enums(cap, none,
@@ -46,18 +44,20 @@ namespace graphics {
     struct shape:mx {
         using Rect    = Rect   <r64>;
         using Rounded = Rounded<r64>;
+
         ///
         struct sdata {
             type_t      type;           /// type of shape (null for operations)
             Rectd       bounds;         /// boundaries, or identity of shape primitive
             doubly<mx>  ops;            /// operation list (or verbs)
             vec2d       mv;             /// movement cursor
-            SkPath*     sk_path;        /// saved sk_path; (invalidated when changed)
-            SkPath*     sk_offset;      /// applied offset; this only works for positive offset
+            void*       sk_path;        /// saved sk_path; (invalidated when changed)
+            void*       sk_offset;      /// applied offset; this only works for positive offset
             real        cache_offset;   /// when sk_path/sk_offset made, this is set
             real        offset;         /// current state for offset; an sk_path is not made because it may not be completed by the user
             type_register(sdata);
         };
+        
         ///
         mx_object(shape, mx, sdata);
 
@@ -98,7 +98,7 @@ namespace graphics {
             bool use_rect = std::isnan(rx) || rx == 0 || ry == 0;
             data->type   = use_rect ? typeof(Rectd) : typeof(Rounded);
             data->bounds = use_rect ? Rectd(r4) : 
-                                      Rectd(Rounded(r4, rx, std::isnan(ry) ? rx : ry)); /// type forwards
+                                        Rectd(Rounded(r4, rx, std::isnan(ry) ? rx : ry)); /// type forwards
         }
 
         bool is_rect () { return data->bounds.type() == typeof(rectd)          && !data->ops; }
@@ -115,7 +115,7 @@ namespace graphics {
             data->ops += ion::Movement(v);
         }
 
-      //void quad    (graphics::quad   q) { data->ops += q; }
+        //void quad    (graphics::quad   q) { data->ops += q; }
         inline void arc(Arc a) { data->ops += a; }
         operator        bool() { bounds(); return bool(data->bounds); }
         bool       operator!() { return !operator bool(); }
@@ -666,6 +666,7 @@ struct font:mx {
         real sz = 14;
         str  name = "Avenir-Bold";
         bool loaded = false;
+        void *sk_font = null;
         type_register(fdata);
     };
 

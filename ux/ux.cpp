@@ -809,7 +809,7 @@ bool style::impl::applicable(node *n, prop *member, array<style::entry*> &result
 
 void node::draw(Canvas& canvas) {
     Element::edata *edata    = ((Element*)this)->data;
-    rect<r64>       bounds   = edata->parent ? data->bounds : rect<r64> { 0, 0, r64(canvas.width()), r64(canvas.height()) };
+    rect<r64>       bounds   = edata->parent ? data->bounds : rect<r64> { 0, 0, r64(canvas.get_width()), r64(canvas.get_height()) };
     props::drawing &fill     = data->drawings[operation::fill];
     props::drawing &image    = data->drawings[operation::image];
     props::drawing &text     = data->drawings[operation::text];
