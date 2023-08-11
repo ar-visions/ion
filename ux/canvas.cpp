@@ -4,7 +4,7 @@
 #include <skia/include/gpu/vk/GrVkBackendContext.h>
 #include <skia/include/gpu/GrBackendSurface.h>
 #include <skia/include/gpu/GrDirectContext.h>
-
+#include <skia/include/gpu/vk/VulkanExtensions.h>
 #include <skia/include/core/SkPath.h>
 #include <skia/include/core/SkFont.h>
 #include <skia/include/core/SkBitmap.h>
@@ -400,39 +400,38 @@ inline SkColor sk_color(rgba8 c) {
 }
 
 struct Skia {
-    sk_sp<GrDirectContext> sk_context;
+    GrDirectContext *sk_context;
 
-    Skia(sk_sp<GrDirectContext> sk_context) : sk_context(sk_context) { }
+    Skia(GrDirectContext *sk_context) : sk_context(sk_context) { }
     
     static Skia *Context(VkEngine e) {
         static struct Skia *sk = null;
         if (sk) return sk;
 
         //GrBackendFormat gr_conv = GrBackendFormat::MakeVk(VK_FORMAT_R8G8B8_SRGB);
-        sk_sp<GrDirectContext> sk_context;
-
+        Vulkan vk;
         GrVkBackendContext grc {
-            e->vk->inst(),
+            vk->inst(),
             e->vk_gpu->phys,
             e->vk_device->device,
             e->vk_device->graphicsQueue,
             e->vk_gpu->indices.graphicsFamily.value(),
-            e->vk->version
+            vk->version
         };
-
-        grc.fMaxAPIVersion = e->vk->version;
+        //grc.fVkExtensions -- not sure if we need to populate this with our extensions, but it has no interface to do so
+        grc.fMaxAPIVersion = vk->version;
 
 
         //grc.fVkExtensions = new GrVkExtensions(); // internal needs population perhaps
         grc.fGetProc = [](cchar_t *name, VkInstance inst, VkDevice dev) -> PFN_vkVoidFunction {
             return (dev == VK_NULL_HANDLE) ? vkGetInstanceProcAddr(inst, name) :
-                                                vkGetDeviceProcAddr  (dev,  name);
+                                             vkGetDeviceProcAddr  (dev,  name);
         };
 
-        sk_context = GrDirectContext::MakeVulkan(grc);
-
-        assert(sk_context);
-        sk = new Skia(sk_context);
+        static GrDirectContext *ctx = GrDirectContext::MakeVulkan2(grc);
+ 
+        assert(ctx);
+        sk = new Skia(ctx);
         return sk;
     }
 };
@@ -461,6 +460,11 @@ struct ICanvas {
 
     state *top = null;
     doubly<state> stack;
+
+    ICanvas() {
+        int test = 0;
+        test++;
+    }
 
     void outline_sz(double sz) {
         top->outline_sz = sz;
@@ -492,7 +496,7 @@ struct ICanvas {
         
         sz = vec2i { width, height };
         ///
-        GrDirectContext *ctx    = Skia::Context(e)->sk_context.get();
+        GrDirectContext *ctx    = Skia::Context(e)->sk_context;
         auto imi                = GrVkImageInfo { };
         imi.fImage              = vk_image->image;
         imi.fImageTiling        = VK_IMAGE_TILING_OPTIMAL;
@@ -505,9 +509,11 @@ struct ICanvas {
         imi.fProtected          = GrProtected::kNo;
         imi.fSharingMode        = VK_SHARING_MODE_EXCLUSIVE;
 
+        auto color_space = SkColorSpace::MakeSRGB();
         auto rt = GrBackendRenderTarget { sz.x, sz.y, imi };
         sk_surf = SkSurfaces::WrapBackendRenderTarget(ctx, rt,
-                    kBottomLeft_GrSurfaceOrigin, kRGBA_8888_SkColorType, null, null);
+                    kBottomLeft_GrSurfaceOrigin, kRGBA_8888_SkColorType,
+                    color_space, null);
         sk_canvas = sk_surf->getCanvas();
     }
 
@@ -603,7 +609,7 @@ struct ICanvas {
     void font(ion::font &f) { 
         top->font = f;
     }
-
+    
     void save() {
         state &s = stack->push();
         if (top) {
@@ -713,7 +719,7 @@ struct ICanvas {
     /// would be reasonable to have a rich() method
 
     /// the lines are most definitely just text() calls, it should be up to the user to perform multiline.
-    void text(str &text, rectd &rect, vec2d &align, vec2d &offset, bool ellip) {
+    void text(str &text, rectd &rect, alignment &align, vec2d &offset, bool ellip) {
         SkPaint ps = SkPaint(top->ps);
         ps.setColor(sk_color(top->color));
         if (top->opacity != 1.0f)
@@ -835,31 +841,25 @@ struct ICanvas {
         top->blur = sz;
         top->ps.setImageFilter(std::move(filter));
     }
+    type_register(ICanvas);
 };
 
 mx_implement(Canvas, mx);
 
-Canvas::Canvas(VkhImage &image) : Canvas() {
+// we need to give VkEngine too, if we want to support image null
+Canvas::Canvas(VkhImage image) : Canvas() {
     data->e = image->vkh->e;
-    data->canvas_resize(image, sz.x, sz.y);
+    data->canvas_resize(image, image->width, image->height);
 }
 
-Canvas::Canvas(VkhPresenter &renderer) : Canvas() {
+Canvas::Canvas(VkhPresenter renderer) : Canvas() {
     data->e = renderer->vkh->e;
     data->renderer = renderer;
     data->app_resize();
 }
 
-void outline_sz(double sz) {
-    top->outline_sz = sz;
-}
-
 u32 Canvas::get_width() { return data->sz.x; }
 u32 Canvas::get_height() { return data->sz.y; }
-
-void Canvas::outline_sz(double sz) {
-    data->outline_sz(sz);
-}
 
 void Canvas::canvas_resize(VkhImage image, int width, int height) {
     return data->canvas_resize(image, width, height);
@@ -903,7 +903,7 @@ vec2i   Canvas::size() {
     return data->size();
 }
 
-text_metrics measure(str text) {
+text_metrics Canvas::measure(str text) {
     return data->measure(text);
 }
 
@@ -911,11 +911,11 @@ str     Canvas::ellipsis(str text, rectd rect, text_metrics &tm) {
     return data->ellipsis(text, rect, tm);
 }
 
-void    Canvas::image(image img, rectd rect, alignment align, vec2d offset) {
+void    Canvas::image(ion::image img, rectd rect, alignment align, vec2d offset) {
     return data->image(img, rect, align, offset);
 }
 
-void    Canvas::text(str text, rectd rect, vec2d align, vec2d offset, bool ellip) {
+void    Canvas::text(str text, rectd rect, alignment align, vec2d offset, bool ellip) {
     return data->text(text, rect, align, offset, ellip);
 }
 

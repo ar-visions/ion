@@ -22,9 +22,9 @@
         },
         {
             "name":     "skia",
-            "version":  "m112",
+            "version":  "m116",
             "url":      "https://skia.googlesource.com/skia.git",
-            "commit":   "4262dd0aa5c5a8a356016a349901532f313855ad"
+            "branch":   "remotes/origin/chrome/m116"
         },
         {
             "name":     "ogg",
@@ -41,6 +41,12 @@
                 "args": ["-DOP_DISABLE_HTTP=Yes","-DOP_DISABLE_DOCS=Yes","-DOP_DISABLE_EXAMPLES=Yes"],
                 "path": "."
             }
+        },
+        {
+            "name":     "shine",
+            "version":  "3.1.1",
+            "url":      "https://github.com/toots/shine",
+            "commit":   "97f188e"
         },
         {
             "name":     "speexdsp",

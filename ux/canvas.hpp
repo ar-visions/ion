@@ -7,11 +7,14 @@ namespace ion {
 struct Canvas:mx {
     mx_declare(Canvas, mx, ICanvas);
 
-    Canvas(VkEngine e, VkhImage image, vec2i sz);
+    Canvas(VkhImage image);
+    Canvas(VkhPresenter renderer);
+
     u32 get_width();
     u32 get_height();
-    void resize(VkhImage image, int width, int height);
-    void font(ion::font &f);
+    void canvas_resize(VkhImage image, int width, int height);
+    void app_resize();
+    void font(ion::font f);
     void save();
     void clear();
     void clear(rgbad c);
@@ -21,7 +24,7 @@ struct Canvas:mx {
     void opacity(double o);
     vec2i size();
     text_metrics measure(str text);
-    str ellipsis(str &text, rectd rect, text_metrics &tm);
+    str ellipsis(str text, rectd rect, text_metrics &tm);
     void image(image img, rectd rect, alignment align, vec2d offset);
     void text(str text, rectd rect, alignment align, vec2d offset, bool ellip);
     void clip(rectd path);

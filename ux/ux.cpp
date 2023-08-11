@@ -395,9 +395,7 @@ int App::run() {
         VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, VK_PRESENT_MODE_FIFO_KHR, VK_SAMPLE_COUNT_4_BIT,
         1920, 1080, 0, this);
 
-    data->canvas = new Canvas(data->e, null, vec2i {
-        data->e->renderer->width,
-        data->e->renderer->height }); /// width and height are fetched from renderer (which updates in vkengine)
+    data->canvas = new Canvas(data->e->renderer); /// width and height are fetched from renderer (which updates in vkengine)
 
     image img = image(path("/Users/kalen/Desktop/test.png"));
     image img2 = image(path("/Users/kalen/Desktop/test2.png"));
@@ -408,37 +406,29 @@ int App::run() {
 	vkengine_set_scroll_callback    (data->e, scroll_callback);
 	vkengine_set_title              (data->e, "ux");
 
-    data->cameras  = array<Camera>(32);
-    data->cameras += Camera { data->e, 0, 1920, 1080, 30 };
-    data->cameras[0].start_capture();
+    //data->cameras  = array<Camera>(32);
+    //data->cameras += Camera { data->e, 0, 1920, 1080, 30 };
+    //data->cameras[0].start_capture();
 
 	while (!vkengine_should_close(data->e)) {
 		glfwPollEvents();
 
         data->e->vk_device->mtx.lock();
 
-        /// should not need to reinit the sk_canvas each frame (hope not!)
-        //VkvgContext ctx = vkvg_create(data->canvas->vg_surface);
-        //data->canvas->ctx = ctx;
-        
-        if (data->cameras[0].image) {
-            int w = img.width(), h = img.height();
-        }
+
         
         /// update app with rendered Elements, then draw
-        
-        /*
         Element e = data->app_fn(*this);
         update_all(e);
         if (composer::data->root_instance) {
             /// update rect
             composer::data->root_instance->data->bounds = rectd {
                 0, 0,
-                (real)data->canvas->width,
-                (real)data->canvas->height
+                (real)data->canvas->get_width(),
+                (real)data->canvas->get_height()
             };
-            composer::data->root_instance->draw(data->canvas);
-        }*/
+            composer::data->root_instance->draw(*data->canvas);
+        }
 
         /// 
         //if (data->cameras[0].image)
@@ -448,10 +438,7 @@ int App::run() {
 
         /// we need an array of renderers/presenters; must work with a 3D scene, bloom shading etc
 		if (!vkh_presenter_draw(data->e->renderer)) {
-            u32 width, height;
-            float sx, sy;
-            vkh_presenter_get_size(data->e->renderer, &width, &height, &sx, &sy); /// vkh should have both vk engine and glfw facility
-            data->canvas->resize(null, width, height);
+            data->canvas->app_resize();
             vkDeviceWaitIdle(data->e->vkh->device);
 		}
         data->e->vk_device->mtx.unlock();

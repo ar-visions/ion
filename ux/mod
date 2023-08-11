@@ -6,9 +6,7 @@ else()
     dep(X11)
 endif()
 
-# skia headers are incredibly lame, and reference their own 'include' path hard coded. simply not a library.
-# they also reference their own basic source root.
-includes(${INSTALL_PREFIX}/../extern/skia-m112)
+includes(${INSTALL_PREFIX}/../extern/skia-m116)
 includes(${INSTALL_PREFIX}/include/skia)
 
 cpp(17)
