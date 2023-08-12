@@ -9,10 +9,10 @@ python3 tools/git-sync-deps
 # trivial abi is what gets me.. who wouldnt want a trivial abi.. who rationalizes having an option for that
 # everything is good but your abi looks too trivial for us
 gn gen out/Vulkan --args='
-is_official_build=false skia_use_vulkan=true skia_use_vma=true skia_use_gpu=true 
-skia_enable_tools=false skia_use_gl=true skia_use_expat=false 
-skia_enable_fontmgr_empty=true skia_enable_svg=false skia_use_icu=false is_debug=true 
-is_component_build=false is_trivial_abi=true werror=true skia_use_fonthost_mac=false 
+is_official_build=false skia_use_vulkan=true skia_use_vma=true skia_enable_gpu=true 
+skia_enable_tools=false skia_use_gl=true skia_use_expat=true 
+skia_enable_fontmgr_empty=false skia_enable_svg=false skia_use_icu=true is_debug=false 
+is_component_build=false is_trivial_abi=false werror=true skia_use_fonthost_mac=true 
 skia_use_angle=false skia_use_dng_sdk=false skia_use_dawn=false skia_use_webgl=false 
 skia_use_webgpu=false skia_use_expat=false skia_use_fontconfig=false skia_use_freetype=true 
 skia_use_libheif=false skia_use_libjpeg_turbo_decode=false skia_use_libjpeg_turbo_encode=false 

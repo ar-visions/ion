@@ -10,8 +10,8 @@ struct Canvas:mx {
     Canvas(VkhImage image);
     Canvas(VkhPresenter renderer);
 
-    u32 get_width();
-    u32 get_height();
+    u32 get_virtual_width();
+    u32 get_virtual_height();
     void canvas_resize(VkhImage image, int width, int height);
     void app_resize();
     void font(ion::font f);

@@ -7,6 +7,7 @@
 #include <skia/include/gpu/vk/VulkanExtensions.h>
 #include <skia/include/core/SkPath.h>
 #include <skia/include/core/SkFont.h>
+#include <skia/include/core/SkRRect.h>
 #include <skia/include/core/SkBitmap.h>
 #include <skia/include/core/SkCanvas.h>
 #include <skia/include/core/SkColorSpace.h>
@@ -20,7 +21,6 @@
 #include <skia/include/effects/SkGradientShader.h>
 #include <skia/include/effects/SkImageFilters.h>
 #include <skia/include/effects/SkDashPathEffect.h>
-
 
 #include "skia/include/core/SkAlphaType.h"
 #include "skia/include/core/SkCanvas.h"
@@ -428,22 +428,24 @@ struct Skia {
                                              vkGetDeviceProcAddr  (dev,  name);
         };
 
-        static GrDirectContext *ctx = GrDirectContext::MakeVulkan2(grc);
+        static sk_sp<GrDirectContext> ctx = GrDirectContext::MakeVulkan(grc);
  
         assert(ctx);
-        sk = new Skia(ctx);
+        sk = new Skia(ctx.get());
         return sk;
     }
 };
 
 /// canvas renders to image, and can manage the renderer/resizing
 struct ICanvas {
+    GrDirectContext     *ctx = null;
     VkEngine               e = null;
     VkhPresenter    renderer = null;
     sk_sp<SkSurface> sk_surf = null;
     SkCanvas      *sk_canvas = null;
     vec2i                 sz = { 0, 0 };
     VkhImage        vk_image = null;
+    vec2d          dpi_scale = { 1, 1 };
 
     struct state {
         ion::image  img;
@@ -461,11 +463,6 @@ struct ICanvas {
     state *top = null;
     doubly<state> stack;
 
-    ICanvas() {
-        int test = 0;
-        test++;
-    }
-
     void outline_sz(double sz) {
         top->outline_sz = sz;
     }
@@ -482,13 +479,75 @@ struct ICanvas {
     void canvas_resize(VkhImage &image, int width, int height) {
         if (vk_image)
             vkh_image_drop(vk_image);
-        if (!image)
+        if (!image) {
             vk_image = vkh_image_create(
-                e->vkh, VK_FORMAT_B8G8R8A8_UNORM, u32(width), u32(height),
+                e->vkh, VK_FORMAT_R8G8B8A8_UNORM, u32(width), u32(height),
                 VK_IMAGE_TILING_OPTIMAL, VKH_MEMORY_USAGE_GPU_ONLY,
                 VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|
                 VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT);
-        else {
+
+            // test code to clear the image with a color (no result from SkCanvas currently!)
+            // this results in a color drawn after the renderer blits the VkImage to the window
+            // this image is given to 
+            VkDevice device = e->vk_device->device;
+            VkQueue  queue  = e->renderer->queue;
+            VkImage  image  = vk_image->image;
+
+            VkCommandBuffer commandBuffer = e->vk_device->command_begin();
+
+            // Assume you have a VkDevice, VkPhysicalDevice, VkQueue, and VkCommandBuffer already set up.
+            VkImageMemoryBarrier barrier = {};
+            barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            barrier.srcAccessMask = 0;
+            barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier.image = image;
+            barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            barrier.subresourceRange.baseMipLevel = 0;
+            barrier.subresourceRange.levelCount = 1;
+            barrier.subresourceRange.baseArrayLayer = 0;
+            barrier.subresourceRange.layerCount = 1;
+
+            vkCmdPipelineBarrier(
+                commandBuffer,
+                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                0,
+                0, nullptr,
+                0, nullptr,
+                1, &barrier
+            );
+
+            // Clear the image with blue color
+            VkClearColorValue clearColor = { 0.4f, 0.0f, 0.5f, 1.0f };
+            vkCmdClearColorImage(
+                commandBuffer,
+                image,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                &clearColor,
+                1,
+                &barrier.subresourceRange
+            );
+
+            // Transition image layout to SHADER_READ_ONLY_OPTIMAL
+            barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            vkCmdPipelineBarrier(
+                commandBuffer,
+                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                0,
+                0, nullptr,
+                0, nullptr,
+                1, &barrier
+            );
+
+            e->vk_device->command_submit(commandBuffer);
+
+        } else {
             /// option: we can know dpi here as declared by the user
             vk_image = vkh_image_grab(image);
             assert(width == vk_image->width && height == vk_image->height);
@@ -496,7 +555,7 @@ struct ICanvas {
         
         sz = vec2i { width, height };
         ///
-        GrDirectContext *ctx    = Skia::Context(e)->sk_context;
+        ctx                     = Skia::Context(e)->sk_context;
         auto imi                = GrVkImageInfo { };
         imi.fImage              = vk_image->image;
         imi.fImageTiling        = VK_IMAGE_TILING_OPTIMAL;
@@ -515,6 +574,8 @@ struct ICanvas {
                     kBottomLeft_GrSurfaceOrigin, kRGBA_8888_SkColorType,
                     color_space, null);
         sk_canvas = sk_surf->getCanvas();
+        dpi_scale = e->vk_gpu->dpi_scale;
+        identity();
     }
 
     void app_resize() {
@@ -524,7 +585,8 @@ struct ICanvas {
         vkh_presenter_get_size(renderer, &width, &height, &sx, &sy); /// vkh/vk should have both vk engine and glfw facility
         VkhImage img = null;
         canvas_resize(img, width, height);
-        vkh_presenter_build_blit_cmd(renderer, vk_image->image, width, height);
+        vkh_presenter_build_blit_cmd(renderer, vk_image->image,
+            width / dpi_scale.x, height / dpi_scale.y);
     }
 
     SkPath *sk_path(graphics::shape &sh) {
@@ -621,11 +683,27 @@ struct ICanvas {
         top = &s;
     }
 
+    void identity() {
+        sk_canvas->resetMatrix();
+        sk_canvas->scale(dpi_scale.x, dpi_scale.y);
+    }
+
+    void set_matrix() {
+    }
+
+    m44d get_matrix() {
+        SkM44 skm = sk_canvas->getLocalToDevice();
+        m44d res(0.0);
+        return res;
+    }
+
+
     void    clear()        { sk_canvas->clear(sk_color(top->color)); }
     void    clear(rgbad c) { sk_canvas->clear(sk_color(c)); }
 
     void    flush() {
-        //sk_canvas->flush();
+        ctx->flush();
+        ctx->submit();
     }
 
     void  restore() {
@@ -807,7 +885,19 @@ struct ICanvas {
         SkRect   r = SkRect {
             SkScalar(rect.x),          SkScalar(rect.y),
             SkScalar(rect.x + rect.w), SkScalar(rect.y + rect.h) };
-        sk_canvas->drawRect(r, ps);
+        if (rect.rounded) {
+            SkRRect rr;
+            SkVector corners[4] = {
+                { rect.r_tl.x, rect.r_tl.y },
+                { rect.r_tr.x, rect.r_tr.y },
+                { rect.r_br.x, rect.r_br.y },
+                { rect.r_bl.x, rect.r_bl.y }
+            };
+            rr.setRectRadii(r, corners);
+            sk_canvas->drawRRect(rr, ps);
+        } else {
+            sk_canvas->drawRect(r, ps);
+        }
     }
 
     // we are to put everything in path.
@@ -858,8 +948,8 @@ Canvas::Canvas(VkhPresenter renderer) : Canvas() {
     data->app_resize();
 }
 
-u32 Canvas::get_width() { return data->sz.x; }
-u32 Canvas::get_height() { return data->sz.y; }
+u32 Canvas::get_virtual_width()  { return data->sz.x / data->dpi_scale.x; }
+u32 Canvas::get_virtual_height() { return data->sz.y / data->dpi_scale.y; }
 
 void Canvas::canvas_resize(VkhImage image, int width, int height) {
     return data->canvas_resize(image, width, height);

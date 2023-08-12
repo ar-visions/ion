@@ -393,7 +393,7 @@ void composer::update_all(Element e) {
 int App::run() {
     data->e = vkengine_create(1, 2, "ux",
         VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, VK_PRESENT_MODE_FIFO_KHR, VK_SAMPLE_COUNT_4_BIT,
-        1920, 1080, 0, this);
+        512, 512, 0, this);
 
     data->canvas = new Canvas(data->e->renderer); /// width and height are fetched from renderer (which updates in vkengine)
 
@@ -410,27 +410,29 @@ int App::run() {
     //data->cameras += Camera { data->e, 0, 1920, 1080, 30 };
     //data->cameras[0].start_capture();
 
+    Canvas &canvas = *data->canvas;
 	while (!vkengine_should_close(data->e)) {
 		glfwPollEvents();
 
         data->e->vk_device->mtx.lock();
 
-
+        rgbad c = { 0.0, 0.0, 0.0, 1.0 };
+        canvas.clear(c);
         
-        /// update app with rendered Elements, then draw
         Element e = data->app_fn(*this);
         update_all(e);
         if (composer::data->root_instance) {
             /// update rect
             composer::data->root_instance->data->bounds = rectd {
                 0, 0,
-                (real)data->canvas->get_width(),
-                (real)data->canvas->get_height()
+                (real)data->canvas->get_virtual_width(),
+                (real)data->canvas->get_virtual_height()
             };
             composer::data->root_instance->draw(*data->canvas);
         }
 
-        /// 
+        canvas.flush();
+
         //if (data->cameras[0].image)
         //    vkh_presenter_build_blit_cmd(data->e->renderer,
         //        data->cameras[0].image->image,
@@ -444,7 +446,7 @@ int App::run() {
         data->e->vk_device->mtx.unlock();
 	}
 
-    data->cameras[0].stop_capture();
+    //data->cameras[0].stop_capture();
     return 0;
 }
 
@@ -796,7 +798,7 @@ bool style::impl::applicable(node *n, prop *member, array<style::entry*> &result
 
 void node::draw(Canvas& canvas) {
     Element::edata *edata    = ((Element*)this)->data;
-    rect<r64>       bounds   = edata->parent ? data->bounds : rect<r64> { 0, 0, r64(canvas.get_width()), r64(canvas.get_height()) };
+    rect<r64>       bounds   = edata->parent ? data->bounds : rect<r64> { 0, 0, r64(canvas.get_virtual_width()), r64(canvas.get_virtual_height()) };
     props::drawing &fill     = data->drawings[operation::fill];
     props::drawing &image    = data->drawings[operation::image];
     props::drawing &text     = data->drawings[operation::text];
