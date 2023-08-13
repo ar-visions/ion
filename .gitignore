@@ -1,6 +1,7 @@
 build
 build*
 !*.sh
+!*.gn
 .DS_Store
 Thumbs.db
 ssl
