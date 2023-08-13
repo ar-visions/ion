@@ -1,0 +1,425 @@
+diff --git a/BUILD.gn b/BUILD.gn
+index 9c9dcd77f1..12f6105a7f 100644
+--- a/BUILD.gn
++++ b/BUILD.gn
+@@ -177,6 +177,9 @@ opts("ssse3") {
+   sources = skia_opts.ssse3_sources
+   if (!is_clang && is_win) {
+     defines = [ "SK_CPU_SSE_LEVEL=SK_CPU_SSE_LEVEL_SSSE3" ]
++    if (is_mingw) {
++      cflags = [ "-mssse3" ]
++    }
+   } else {
+     cflags = [ "-mssse3" ]
+   }
+@@ -185,7 +188,7 @@ opts("ssse3") {
+ opts("avx") {
+   enabled = is_x86
+   sources = skia_opts.avx_sources
+-  if (is_win) {
++  if (is_win && !is_mingw) {
+     cflags = [ "/arch:AVX" ]
+   } else {
+     cflags = [ "-mavx" ]
+@@ -195,7 +198,7 @@ opts("avx") {
+ opts("hsw") {
+   enabled = is_x86
+   sources = skia_opts.hsw_sources
+-  if (is_win) {
++  if (is_win && !is_mingw) {
+     cflags = [ "/arch:AVX2" ]
+   } else {
+     cflags = [ "-march=haswell" ]
+@@ -1030,7 +1033,11 @@ optional("gpu") {
+     } else if (is_win && !skia_enable_winuwp) {
+       sources += [ "src/gpu/ganesh/gl/win/GrGLMakeNativeInterface_win.cpp" ]
+       if (target_cpu != "arm64") {
+-        libs += [ "OpenGL32.lib" ]
++        if (!is_mingw){
++            libs += [ "OpenGL32.lib" ]
++        } else {
++            libs += [ "opengl32" ]
++        }
+       }
+     } else {
+       sources += [ "src/gpu/ganesh/gl/GrGLMakeNativeInterface_none.cpp" ]
+@@ -1582,18 +1589,35 @@ skia_component("skia") {
+       "src/ports/SkOSFile_win.cpp",
+       "src/ports/SkOSLibrary_win.cpp",
+     ]
+-    libs += [
+-      "Ole32.lib",
+-      "OleAut32.lib",
+-    ]
+-
+-    if (!skia_enable_winuwp) {
++    if (!is_mingw) {
++      libs += [
++        "Ole32.lib",
++        "OleAut32.lib",
++      ]
++    } else {
+       libs += [
+-        "FontSub.lib",
+-        "User32.lib",
+-        "Usp10.lib",
++        "ole32",
++        "oleaut32",
++        "uuid"
+       ]
+     }
++
++    if (!skia_enable_winuwp) {
++      if (!is_mingw) {
++        libs += [
++          "FontSub.lib",
++          "User32.lib",
++          "Usp10.lib",
++        ]
++      } else {
++        libs += [
++          "fontsub",
++          "user32",
++          "usp10"
++        ]
++      }
++
++    }
+   } else {
+     sources += [
+       "src/ports/SkOSFile_posix.cpp",
+@@ -2042,9 +2066,17 @@ if (skia_enable_tools) {
+         ]
+       } else if (is_win) {
+         sources += [ "tools/gpu/gl/win/CreatePlatformGLTestContext_win.cpp" ]
+-        libs += [ "Gdi32.lib" ]
++        if (!is_mingw) {
++          libs += [ "Gdi32.lib" ]
++        } else {
++          libs += [ "gdi32" ]
++        }
+         if (target_cpu != "arm64") {
+-          libs += [ "OpenGL32.lib" ]
++          if (!is_mingw) {
++            libs += [ "OpenGL32.lib" ]
++          } else {
++            libs += [ "opengl32" ]
++          }
+         }
+       }
+     }
+diff --git a/gn/BUILDCONFIG.gn b/gn/BUILDCONFIG.gn
+index acf4a5403f..e4bbdc7877 100644
+--- a/gn/BUILDCONFIG.gn
++++ b/gn/BUILDCONFIG.gn
+@@ -71,6 +71,8 @@ is_mac = current_os == "mac"
+ is_wasm = current_os == "wasm"
+ is_win = current_os == "win"
+ 
++is_mingw = exec_script("//gn/is_mingw.py", [cc], "value")
++
+ # This is just to make the Dawn build files happy. Skia itself uses target_os = "linux"
+ # for ChromeOS, so this variable will not affect Skia proper.
+ is_chromeos = false
+@@ -130,7 +132,7 @@ if (is_android) {
+   }
+ }
+ 
+-if (target_os == "win") {
++if (target_os == "win" && !is_mingw) {
+   # By default we look for 2017 (Enterprise, Pro, and Community), then 2015. If MSVC is installed in a
+   # non-default location, you can set win_vc to inform us where it is.
+ 
+@@ -141,7 +143,7 @@ if (target_os == "win") {
+                         # directory.
+ }
+ 
+-if (target_os == "win") {
++if (target_os == "win" && !is_mingw) {
+   if (win_toolchain_version == "") {
+     win_toolchain_version = exec_script("//gn/highest_version_dir.py",
+                                         [
+@@ -234,7 +236,7 @@ if (!is_official_build) {
+       [ "//gn/skia:warnings_for_public_headers" ]
+ }
+ 
+-if (is_win) {
++if (is_win && !is_mingw) {
+   # Windows tool chain
+   set_default_toolchain("//gn/toolchain:msvc")
+   default_toolchain_name = "msvc"
+diff --git a/gn/skia/BUILD.gn b/gn/skia/BUILD.gn
+index ba42fd2f53..5534b92af7 100644
+--- a/gn/skia/BUILD.gn
++++ b/gn/skia/BUILD.gn
+@@ -62,7 +62,7 @@ config("default") {
+   # Disable warnings about unknown attributes.
+   # (These unknown attribute warnings are on by default, so we don't make
+   # disabling them part of :warnings, as some targets remove :warnings.)
+-  if (is_win && !is_clang) {
++  if (is_win && !is_clang && !is_mingw) {
+     cflags += [
+       "/wd5030",
+       "/wd5051",
+@@ -101,11 +101,25 @@ config("default") {
+     if (is_clang && target_cpu == "arm64") {
+       cflags += [ "--target=arm64-windows" ]
+     }
+-    cflags += [
+-      "/bigobj",  # Some of our files are bigger than the regular limits.
+-      "/utf-8",  # Set Source and Executable character sets to UTF-8.
+-    ]
+-    cflags_cc += [ "/std:c++17" ]
++    if (!is_mingw) {
++      cflags += [
++        "/bigobj",  # Some of our files are bigger than the regular limits.
++        "/utf-8",  # Set Source and Executable character sets to UTF-8.
++      ]
++      _include_dirs = [
++        "$win_vc/Tools/MSVC/$win_toolchain_version/include",
++        "$win_sdk/Include/$win_sdk_version/shared",
++        "$win_sdk/Include/$win_sdk_version/ucrt",
++        "$win_sdk/Include/$win_sdk_version/um",
++        "$win_sdk/Include/$win_sdk_version/winrt",
++      ]
++      cflags_cc += [ "/std:c++17" ]
++    } else {
++      cflags_c  += ["-fvisibility-inlines-hidden"]
++      cflags_cc += [ "-std=c++17" ]
++      _include_dirs = []
++    }
++    
+     defines += [
+       "_CRT_SECURE_NO_WARNINGS",  # Disables warnings about sscanf().
+       "_HAS_EXCEPTIONS=0",  # Disables exceptions in MSVC STL.
+@@ -113,15 +127,7 @@ config("default") {
+       "NOMINMAX",
+     ]
+ 
+-    _include_dirs = [
+-      "$win_vc/Tools/MSVC/$win_toolchain_version/include",
+-      "$win_sdk/Include/$win_sdk_version/shared",
+-      "$win_sdk/Include/$win_sdk_version/ucrt",
+-      "$win_sdk/Include/$win_sdk_version/um",
+-      "$win_sdk/Include/$win_sdk_version/winrt",
+-    ]
+-
+-    if (is_clang) {
++    if (is_clang && !is_mingw) {
+       foreach(dir, _include_dirs) {
+         cflags += [
+           "-imsvc",
+@@ -131,12 +137,16 @@ config("default") {
+     } else {
+       include_dirs = _include_dirs
+     }
++    if (!is_mingw) {
++      lib_dirs = [
++        "$win_sdk/Lib/$win_sdk_version/ucrt/$target_cpu",
++        "$win_sdk/Lib/$win_sdk_version/um/$target_cpu",
++        "$win_vc/Tools/MSVC/$win_toolchain_version/lib/$target_cpu",
++      ]
++    } else {
++      lib_dirs = []
++    }
+ 
+-    lib_dirs = [
+-      "$win_sdk/Lib/$win_sdk_version/ucrt/$target_cpu",
+-      "$win_sdk/Lib/$win_sdk_version/um/$target_cpu",
+-      "$win_vc/Tools/MSVC/$win_toolchain_version/lib/$target_cpu",
+-    ]
+   } else {
+     cflags += [
+       "-fstrict-aliasing",
+@@ -155,7 +165,7 @@ config("default") {
+       "-mfpu=neon",
+       "-mthumb",
+     ]
+-  } else if (current_cpu == "x86" && !is_win) {
++  } else if (current_cpu == "x86" && (!is_win || is_mingw)) {
+     asmflags += [ "-m32" ]
+     cflags += [
+       "-m32",
+@@ -165,7 +175,7 @@ config("default") {
+     ldflags += [ "-m32" ]
+   }
+ 
+-  if (malloc != "" && !is_win) {
++  if (malloc != "" && (!is_win || is_mingw)) {
+     cflags += [
+       "-fno-builtin-malloc",
+       "-fno-builtin-calloc",
+@@ -182,7 +192,7 @@ config("default") {
+ 
+   if (show_includes) {
+     assert(is_clang, "show_includes requires clang to build.")
+-    if (is_win) {
++    if (is_win && !is_mingw) {
+       cflags += [
+         "/clang:-H",
+         "/clang:-fshow-skipped-includes",
+@@ -315,7 +325,7 @@ config("default") {
+     ldflags += [ "--sysroot=$skia_emsdk_dir/upstream/emscripten/cache/sysroot" ]
+   }
+ 
+-  if (is_win && !is_clang && sanitize == "ASAN") {
++  if (is_win && !is_clang && !is_mingw && sanitize == "ASAN") {
+     sanitizers = "address"
+     cflags += [ "/fsanitize=$sanitizers" ]
+   } else if (sanitize != "" && sanitize != "MSVC") {
+@@ -379,14 +389,14 @@ config("default") {
+ 
+ # See skia:9731.
+ config("recover_pointer_overflow") {
+-  if (sanitize == "ASAN" && !(is_win && !is_clang)) {
++  if (sanitize == "ASAN" && !(is_win && !is_clang && !is_mingw)) {
+     cflags = [ "-fsanitize-recover=pointer-overflow" ]
+   }
+ }
+ 
+ config("no_exceptions") {
+-  # Exceptions are disabled by default on Windows.  (Use /EHsc to enable them.)
+-  if (!is_win) {
++  # Exceptions are disabled by default on MSVC.  (Use /EHsc to enable them.)
++  if (!is_win || is_mingw) {
+     cflags_cc = [ "-fno-exceptions" ]
+     cflags_objcc = cflags_cc
+   }
+@@ -399,14 +409,14 @@ config("warnings") {
+   cflags_objcc = []
+ 
+   if (werror) {
+-    if (is_win) {
++    if (is_win && !is_mingw) {
+       cflags += [ "/WX" ]
+     } else {
+       cflags += [ "-Werror" ]
+     }
+   }
+ 
+-  if (is_win) {
++  if (is_win && !is_mingw) {
+     cflags += [
+       "/W3",  # Turn on lots of warnings.
+ 
+@@ -630,7 +640,7 @@ config("debug_symbols") {
+       "-gline-tables-only",
+       "-funwind-tables",  # Helps make in-process backtraces fuller.
+     ]
+-  } else if (is_win) {
++  } else if (is_win && !is_mingw) {
+     cflags = [ "/Z7" ]
+     if (is_clang) {
+       cflags += [ "-gcodeview-ghash" ]
+@@ -648,7 +658,7 @@ config("debug_symbols") {
+ 
+ config("no_rtti") {
+   if (sanitize != "ASAN") {  # -fsanitize=vptr requires RTTI
+-    if (is_win) {
++    if (is_win && !is_mingw) {
+       cflags_cc = [ "/GR-" ]
+     } else {
+       cflags_cc = [ "-fno-rtti" ]
+@@ -659,7 +669,7 @@ config("no_rtti") {
+ 
+ config("optimize") {
+   ldflags = []
+-  if (is_win) {
++  if (is_win && !is_mingw) {
+     cflags = [
+       "/O2",
+       "/Zc:inline",
+@@ -726,7 +736,7 @@ config("executable") {
+       "-rdynamic",
+       "-Wl,-rpath,\$ORIGIN",
+     ]
+-  } else if (is_win) {
++  } else if (is_win && !is_mingw) {
+     ldflags = [
+       "/SUBSYSTEM:CONSOLE",  # Quiet "no subsystem specified; CONSOLE assumed".
+       "/INCREMENTAL:NO",  # Quiet warnings about failing to incrementally link
+diff --git a/gn/toolchain/BUILD.gn b/gn/toolchain/BUILD.gn
+index dcf79cc842..51534089d5 100644
+--- a/gn/toolchain/BUILD.gn
++++ b/gn/toolchain/BUILD.gn
+@@ -322,6 +322,9 @@ template("gcc_like_toolchain") {
+       if (is_mac || is_ios) {
+         rpath = "-Wl,-install_name,@rpath/$soname"
+       }
++      if (is_mingw) {
++        rpath = ""  # For PE/COFF the soname argument has no effect
++      }
+ 
+       rspfile = "{{output}}.rsp"
+       rspfile_content = "{{inputs}}"
+@@ -339,11 +342,22 @@ template("gcc_like_toolchain") {
+         _end_group = ""
+       }
+ 
+-      command = "$link -shared {{ldflags}} $_start_group @$rspfile {{frameworks}} {{solibs}} $_end_group {{libs}} $rpath -o {{output}}"
++      _mingw_flags = ""
++      if (!is_mingw) {
++         # mingw: have MinGW linker generate a .def file and a .a import library
++        if (!is_clang) {
++          _mingw_flags += "-Wl,--dll "
++        }
++        _mingw_flags += "-Wl,--output-def=$soname.def -Wl,--out-implib=$soname.a "
++      }
++      command = "$link -shared {{ldflags}} $_start_group @$rspfile {{frameworks}} {{solibs}} $_end_group $_mingw_flags {{libs}} $rpath -o {{output}}"
++
+       outputs = [ "{{root_out_dir}}/$soname" ]
+       output_prefix = "lib"
+       if (is_mac || is_ios) {
+         default_output_extension = ".dylib"
++      } else if (is_mingw) {
++        default_output_extension = ".dll"
+       } else {
+         default_output_extension = ".so"
+       }
+diff --git a/third_party/third_party.gni b/third_party/third_party.gni
+index cbcd16cf38..8224596953 100644
+--- a/third_party/third_party.gni
++++ b/third_party/third_party.gni
+@@ -13,7 +13,7 @@ template("third_party_config") {
+     if (enabled) {
+       forward_variables_from(invoker, "*", [ "include_dirs" ])
+       cflags = []
+-      if (is_win) {
++      if (is_win && !is_mingw) {
+         include_dirs = invoker.include_dirs
+         if (is_clang) {
+           foreach(dir, invoker.include_dirs) {
+@@ -92,7 +92,7 @@ template("third_party") {
+       if (!defined(cflags)) {
+         cflags = []
+       }
+-      if (is_win) {
++      if (is_win && !is_mingw) {
+         cflags += [ "/w" ]
+       } else {
+         cflags += [ "-w" ]
+diff --git a/tools/git-sync-deps b/tools/git-sync-deps
+index 5281b0f231..fdd1a3fab4 100755
+--- a/tools/git-sync-deps
++++ b/tools/git-sync-deps
+@@ -264,12 +264,14 @@ def main(argv):
+     return 1
+ 
+   git_sync_deps(deps_file_path, argv, verbose)
+-  subprocess.check_call(
+-      [sys.executable,
+-       os.path.join(os.path.dirname(deps_file_path), 'bin', 'fetch-gn')])
+-  subprocess.check_call(
+-      [sys.executable,
+-       os.path.join(os.path.dirname(deps_file_path), 'bin', 'activate-emsdk')])
++  # this is what MINGW package does, and its a good idea in general
++  # fetching gn is what gn actually does already.
++  #subprocess.check_call(
++  #    [sys.executable,
++  #     os.path.join(os.path.dirname(deps_file_path), 'bin', 'fetch-gn')])
++  #subprocess.check_call(
++  #    [sys.executable,
++  #     os.path.join(os.path.dirname(deps_file_path), 'bin', 'activate-emsdk')])
+   return 0
+ 
+ 
