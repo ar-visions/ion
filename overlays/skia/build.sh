@@ -2,13 +2,23 @@
 export DEPOT_TOOLS_UPDATE=0
 export PATH="$(pwd)/../depot_tools:$PATH"
 
+PYTHON3="python3"
+GN="gn"
+NINJA="ninja"
+
+if [ -n "$MSYSTEM" ]; then
+    PYTHON3="/mingw64/bin/python3"
+    GN="/mingw64/bin/gn"
+    NINJA="/mingw64/bin/ninja"
+fi
+
 # run the command to sync dependencies
-python3 tools/git-sync-deps
+$PYTHON3 tools/git-sync-deps
 
 # configure with these (im sure this is only 12% of skia configurables) NOT debug
 # trivial abi is what gets me.. who wouldnt want a trivial abi.. who rationalizes having an option for that
 # everything is good but your abi looks too trivial for us
-gn gen out/Vulkan --args='
+$GN gen out/Vulkan --args='
 is_official_build=false skia_use_vulkan=true skia_use_vma=true skia_enable_gpu=true 
 skia_enable_tools=false skia_use_gl=true skia_use_expat=true 
 skia_enable_fontmgr_empty=false skia_enable_svg=false skia_use_icu=true is_debug=false 
@@ -31,4 +41,4 @@ skia_canvaskit_legacy_draw_vertices_blend_mode=false skia_canvaskit_enable_debug
 skia_canvaskit_enable_paragraph=false skia_canvaskit_enable_webgl=false skia_canvaskit_enable_webgpu=false'
 
 # run build
-ninja -C out/Vulkan
+$NINJA -C out/Vulkan
