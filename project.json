@@ -21,6 +21,13 @@
             }
         },
         {
+            "name":     "depot_tools",
+            "version":  "aug7-23",
+            "url":      "https://chromium.googlesource.com/chromium/tools/depot_tools.git",
+            "commit":   "02e70b435732a41d3d251f7c861110c6ee91f65b",
+            "resource": true
+        },
+        {
             "name":     "skia",
             "version":  "m116",
             "url":      "https://skia.googlesource.com/skia.git",

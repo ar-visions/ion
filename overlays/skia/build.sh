@@ -1,6 +1,6 @@
-# this is a 'resource' directory in extern without a version
-# having issue with depot_tools, disabling for now
-#export PATH="$(pwd)/../depot_tools:$PATH"
+# use project's depot_tools
+export DEPOT_TOOLS_UPDATE=0
+export PATH="$(pwd)/../depot_tools:$PATH"
 
 # run the command to sync dependencies
 python3 tools/git-sync-deps
