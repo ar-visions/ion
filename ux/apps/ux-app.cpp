@@ -40,7 +40,7 @@ struct View:node {
 
     Element update() {
         return Button {
-            { "content", fmt {"hello world: {0}", { state->sample }} },
+            { "content", fmt {"hello world: {0}\nhello world: {0}", { state->sample }} },
             { "on-click",
                 callback([&](event e) {
                     console.log("on-click...");

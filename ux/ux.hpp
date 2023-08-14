@@ -1061,7 +1061,6 @@ struct node:Element {
         rectd               bounds;     /// local coordinates of this control, so x and y are 0 based
         rectd               fill_bounds;
         ion::font           font;
-
         mx                  lines_content; /// cache of content when lines are made
         array<str>          lines;
 
@@ -1081,6 +1080,8 @@ struct node:Element {
                 prop { "on-blur",        ev.blur   },
                 prop { "on-cursor",      ev.cursor },
                 prop { "on-hover",       ev.hover  },
+
+                prop { "editable",       editable },
 
                 prop { "opacity",        opacity   },
 

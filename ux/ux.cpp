@@ -397,8 +397,8 @@ int App::run() {
 
     data->canvas = new Canvas(data->e->renderer); /// width and height are fetched from renderer (which updates in vkengine)
 
-    image img = image(path("/Users/kalen/Desktop/test.png"));
-    image img2 = image(path("/Users/kalen/Desktop/test2.png"));
+    //image img = image(path("/Users/kalen/Desktop/test.png"));
+    //image img2 = image(path("/Users/kalen/Desktop/test2.png"));
 
 	vkengine_set_key_callback       (data->e, key_callback);
 	vkengine_set_mouse_but_callback (data->e, mouse_button_callback);
@@ -796,6 +796,9 @@ bool style::impl::applicable(node *n, prop *member, array<style::entry*> &result
     return ret;
 }
 
+/// place text before drawing? or, place text as we draw.
+//void node::layout()
+
 void node::draw_text(Canvas& canvas, rectd& rect) {
     props::drawing &text = data->drawings[operation::text];
     canvas.save();
@@ -870,20 +873,9 @@ void node::draw(Canvas& canvas) {
     /// if there is text (its not alpha 0, and there is text)
     if (data->content && ((data->content.type() == typeof(char)) ||
                           (data->content.type() == typeof(str)))) {
-        //rectd rect = text.area ? text.area.rect(bounds) : data->fill_bounds;
-        //draw_text(canvas, rect); /// 
-        //text.shape = rect;
-
-        rectd text_rect = text.area ? text.area.rect(bounds) : data->fill_bounds;
-        canvas.save();
-        canvas.color(text.color);
-        canvas.opacity(effective_opacity());
-        canvas.font(data->font);
-        canvas.text(
-            data->content, text_rect, /// useful to have control over text area but having a fill placement alone should make that the text area as well, unless specified as text-area
-            text.align, {0.0, 0.0}, true); // align is undefined here
-        canvas.restore();
-        text.shape = text_rect;
+        rectd rect = text.area ? text.area.rect(bounds) : data->fill_bounds;
+        draw_text(canvas, rect);
+        text.shape = rect;
     }
 
     /// if there is an effective border to draw
