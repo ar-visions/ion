@@ -370,22 +370,6 @@ float SkPathStroker2::squaredLineLength(const PathSegment& lineSeg) {
     return diff.dot(diff);
 }
 
-
-
-SkFont &font_handle(ion::font &font) {
-    if (!font->sk_font) {
-        /// dpi scaling is supported at the SkTypeface level, just add the scale x/y
-        path p = font.get_path();
-        auto t = SkTypeface::MakeFromFile((symbol)p.cs());
-        font->sk_font = new SkFont(t);
-    }
-    return *(SkFont*)font->sk_font;
-}
-
-
-
-
-
 inline SkColor sk_color(rgbad c) {
     rgba8 i = { math::round(c.r * 255), math::round(c.g * 255), math::round(c.b * 255), math::round(c.a * 255) };
     auto sk = SkColor(uint32_t(i.b)        | (uint32_t(i.g) << 8) |
@@ -571,7 +555,7 @@ struct ICanvas {
         auto color_space = SkColorSpace::MakeSRGB();
         auto rt = GrBackendRenderTarget { sz.x, sz.y, imi };
         sk_surf = SkSurfaces::WrapBackendRenderTarget(ctx, rt,
-                    kBottomLeft_GrSurfaceOrigin, kRGBA_8888_SkColorType,
+                    kTopLeft_GrSurfaceOrigin, kRGBA_8888_SkColorType,
                     color_space, null);
         sk_canvas = sk_surf->getCanvas();
         dpi_scale = e->vk_gpu->dpi_scale;
@@ -814,7 +798,7 @@ struct ICanvas {
             tm     = measure(*ptext);
         auto    tb = SkTextBlob::MakeFromText(ptext->cs(), ptext->len(), (const SkFont &)f, SkTextEncoding::kUTF8);
         pos.x = mix(rect.x, rect.w - tm.w, align.x);
-        pos.y = mix(rect.y, rect.h - tm.h, align.y) - ((-tm.descent + tm.ascent) / 1.66);
+        pos.y = mix(rect.y, rect.h - tm.h, align.y) - ((-tm.descent + tm.ascent) / 1.33);
         sk_canvas->drawTextBlob(
             tb, SkScalar(pos.x + offset.x),
                 SkScalar(pos.y + offset.y), ps);
@@ -930,6 +914,17 @@ struct ICanvas {
         sk_sp<SkImageFilter> filter = SkImageFilters::Blur(sz.x, sz.y, nullptr, crect);
         top->blur = sz;
         top->ps.setImageFilter(std::move(filter));
+    }
+
+    SkFont &font_handle(ion::font &font) {
+        if (!font->sk_font) {
+            /// dpi scaling is supported at the SkTypeface level, just add the scale x/y
+            path p = font.get_path();
+            auto t = SkTypeface::MakeFromFile((symbol)p.cs());
+            font->sk_font = new SkFont(t);
+            ((SkFont*)font->sk_font)->setSize(font->sz);
+        }
+        return *(SkFont*)font->sk_font;
     }
     type_register(ICanvas);
 };

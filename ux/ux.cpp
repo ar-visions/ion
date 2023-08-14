@@ -796,7 +796,40 @@ bool style::impl::applicable(node *n, prop *member, array<style::entry*> &result
     return ret;
 }
 
+void node::draw_text(Canvas& canvas, rectd& rect) {
+    props::drawing &text = data->drawings[operation::text];
+    canvas.save();
+    canvas.color(text.color);
+    canvas.opacity(effective_opacity());
+    canvas.font(data->font);
+    text_metrics tm = canvas.measure("W"); /// unit data for line
+    const double line_height_basis = 2.0;
+    double       lh = tm.line_height * (node::data->text_spacing.y * line_height_basis);
+
+    /// this allows for some quick caching when the memory on content changes
+    /// by rule we never mute the content. that way we dont have to split() with our heads in the mud
+    str s_content = data->content;
+    bool is_cache = data->lines_content.mem == s_content.mem;
+    array<str> lines = is_cache ? data->lines : s_content.split("\n");
+    if (!is_cache) data->lines_content = data->content; /// update cache
+    
+    /// iterate through lines
+    int i = 0;
+    int n = lines.len();
+    /// if in center, the first line is going to be offset by half the height of all the lines n * (lh / 2)
+    /// if bottom, the first is going to be offset by total height of lines n * lh
+    double offset_y = text.align.y * math::max(0.0, (double(n - 1) * lh));
+    for (str &line:lines) {
+        rectd r { 0, rect.y - offset_y + i * lh, rect.w, rect.h };
+        canvas.text(line, r, text.align, {0.0, 0.0}, true);
+        i++;
+    }
+
+    canvas.restore();
+}
+
 void node::draw(Canvas& canvas) {
+    type_t type = mem->type;
     Element::edata *edata    = ((Element*)this)->data;
     rect<r64>       bounds   = edata->parent ? data->bounds : rect<r64> { 0, 0, r64(canvas.get_virtual_width()), r64(canvas.get_virtual_height()) };
     props::drawing &fill     = data->drawings[operation::fill];
@@ -837,6 +870,10 @@ void node::draw(Canvas& canvas) {
     /// if there is text (its not alpha 0, and there is text)
     if (data->content && ((data->content.type() == typeof(char)) ||
                           (data->content.type() == typeof(str)))) {
+        //rectd rect = text.area ? text.area.rect(bounds) : data->fill_bounds;
+        //draw_text(canvas, rect); /// 
+        //text.shape = rect;
+
         rectd text_rect = text.area ? text.area.rect(bounds) : data->fill_bounds;
         canvas.save();
         canvas.color(text.color);

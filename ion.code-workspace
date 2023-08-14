@@ -163,7 +163,8 @@
 			"vkg.hpp": "c",
 			"stdint.h": "c",
 			"csetjmp": "cpp",
-			"sparseqr": "cpp"
+			"sparseqr": "cpp",
+			"strstream": "cpp"
 		}
 	}
 }

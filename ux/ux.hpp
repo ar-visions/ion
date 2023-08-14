@@ -663,12 +663,13 @@ enums(mode, regular,
 
 struct font:mx {
     struct fdata {
-        real sz = 14;
-        str  name = "Avenir-Bold";
+        real sz = 22;
+        str  name = "Sofia-Sans-Condensed";
         bool loaded = false;
         void *sk_font = null;
         type_register(fdata);
     };
+
 
     mx_object(font, mx, fdata);
 
@@ -991,6 +992,8 @@ enums(operation, fill,
     "fill, image, outline, text, child",
      fill, image, outline, text, child);
 
+template <typename> struct simple_content : true_type { };
+
 struct Canvas;
 struct node:Element {
 
@@ -1052,11 +1055,19 @@ struct node:Element {
         vec2d               cursor;     /// set relative to the area origin
         vec2d               scroll = {0,0};
         std::queue<fn_t>    queue;      /// this is an animation queue
+        vec2d               text_spacing = { 1.0, 1.0 }; /// kerning & line-height scales here
         mx                  content;
         double              opacity = 1.0;
         rectd               bounds;     /// local coordinates of this control, so x and y are 0 based
         rectd               fill_bounds;
         ion::font           font;
+
+        mx                  lines_content; /// cache of content when lines are made
+        array<str>          lines;
+
+        bool                editable   = false;
+        bool                selectable = true;
+        bool                multiline  = false;
 
         doubly<prop> meta() const {
             return {
@@ -1070,9 +1081,13 @@ struct node:Element {
                 prop { "on-blur",        ev.blur   },
                 prop { "on-cursor",      ev.cursor },
                 prop { "on-hover",       ev.hover  },
-                prop { "content",        content   },
+
                 prop { "opacity",        opacity   },
-                prop { "font",           font      },
+
+                prop { "content",        content    },
+                prop { "font",           font       },
+
+                prop { "text-spacing",   text_spacing },
 
                 prop { "image-src",      drawings[operation::image]  .img     },
 
@@ -1092,18 +1107,18 @@ struct node:Element {
                 prop { "outline-opacity",drawings[operation::outline].opacity },
                 prop { "text-opacity",   drawings[operation::text]   .opacity },
 
-                prop { "fill-radius",    drawings[operation::fill]   .radius },
-                prop { "image-radius",   drawings[operation::image]  .radius },
-                prop { "outline-radius", drawings[operation::outline].radius },
+                prop { "fill-radius",    drawings[operation::fill]   .radius  },
+                prop { "image-radius",   drawings[operation::image]  .radius  },
+                prop { "outline-radius", drawings[operation::outline].radius  },
 
-                prop { "fill-border",    drawings[operation::fill]   .border },
-                prop { "image-border",   drawings[operation::image]  .border },
-                prop { "outline-border", drawings[operation::outline].border },
-                prop { "text-border",    drawings[operation::text]   .border },
+                prop { "fill-border",    drawings[operation::fill]   .border  },
+                prop { "image-border",   drawings[operation::image]  .border  },
+                prop { "outline-border", drawings[operation::outline].border  },
+                prop { "text-border",    drawings[operation::text]   .border  },
 
-                prop { "image-align",    drawings[operation::image]  .align },
-                prop { "child-align",    drawings[operation::child]  .align },
-                prop { "text-align",     drawings[operation::text]   .align },
+                prop { "image-align",    drawings[operation::image]  .align   },
+                prop { "child-align",    drawings[operation::child]  .align   },
+                prop { "text-align",     drawings[operation::text]   .align   },
             };
         }
         type_register(props);
@@ -1151,6 +1166,7 @@ struct node:Element {
         return o;
     }
 
+    virtual void draw_text(Canvas& canvas, rectd& rect);
     virtual void draw(Canvas& canvas);
 
     vec2d offset() {
@@ -1338,6 +1354,29 @@ struct Button:node {
     Element update() {
         return node::update();
     }
+};
+
+/// make a good edit box, then focus on rendering a good selection effect!
+/// it must be Rich in nature.  makes no sense to split the two.  best primitives
+/// placement is an ideal idea to get right here so we dont have to have multiple edits
+/// so we have char color and placement on column (default = advance)
+/// edit should be a node with some defaults set, something that has a name and can be styled
+/// tag names should be the last thing you style.  we want to style props and not tags that go along with them
+struct Edit:node {
+    ///
+    struct props {
+        callback on_key;
+
+        type_register(props);
+
+        doubly<prop> meta() {
+            return {
+                prop { "on-key", on_key }
+            };
+        }
+    };
+
+    component(Edit, node, props);
 };
 
 #if 0
