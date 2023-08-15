@@ -15,12 +15,15 @@ fi
 # run the command to sync dependencies
 $PYTHON3 tools/git-sync-deps
 
+# this file needs a .h defined, and the user of it is a .cpp in externals (which are pulled after we do a overlay)
+cp ./vk_mem_alloc.h ./third_party/externals/vulkanmemoryallocator/
+
 # configure with these (im sure this is only 12% of skia configurables) NOT debug
 # trivial abi is what gets me.. who wouldnt want a trivial abi.. who rationalizes having an option for that
 # everything is good but your abi looks too trivial for us
 $GN gen out/Vulkan --args='
-is_official_build=false skia_use_vulkan=true skia_use_vma=true skia_enable_gpu=true 
-skia_enable_tools=false skia_use_gl=true skia_use_expat=true 
+is_official_build=false cxx="clang++" cc="clang" skia_use_vulkan=true skia_use_vma=true skia_enable_gpu=true 
+skia_enable_tools=false skia_use_gl=false skia_use_expat=true 
 skia_enable_fontmgr_empty=false skia_enable_svg=false skia_use_icu=true is_debug=false 
 is_component_build=false is_trivial_abi=false werror=true skia_use_fonthost_mac=false 
 skia_use_angle=false skia_use_dng_sdk=false skia_use_dawn=false skia_use_webgl=false 

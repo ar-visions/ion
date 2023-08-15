@@ -1696,7 +1696,7 @@ bool SkScalerContext_DW::generatePngMetrics(const SkGlyph& glyph, SkIRect* iboun
         return false;
     }
 
-    DWRITE_GLYPH_IMAGE_FORMATS imageFormats
+    DWRITE_GLYPH_IMAGE_FORMATS imageFormats;
     
 #if defined(__MINGW32__)
     HRBM(fontFace4->GetGlyphImageFormats_(glyph.getGlyphID(), 0, UINT32_MAX, &imageFormats),

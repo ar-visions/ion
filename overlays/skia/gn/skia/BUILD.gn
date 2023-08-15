@@ -466,6 +466,13 @@ config("warnings") {
     ]
   }
 
+  if (is_mingw) {
+    cflags += [
+      "-Wno-used-but-marked-unused",
+      "-Wno-unknown-pragmas"
+    ]
+  }
+
   if (is_clang) {
     cflags += [
       "-fcolor-diagnostics",

@@ -83,6 +83,7 @@ def git_repository_sync_is_disabled(git, directory):
 
 
 def is_git_toplevel(git, directory):
+  return True
   """Return true iff the directory is the top level of a Git repository.
 
   Args:
