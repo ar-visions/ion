@@ -122,16 +122,16 @@ namespace graphics {
         shape::sdata *handle() { return data; }
     };
 
-    struct border_data {
+    struct border {
         real size, tl, tr, bl, br;
         rgbad color;
-        inline bool operator==(const border_data &b) const { return b.tl == tl && b.tr == tr && b.bl == bl && b.br == br; }
-        inline bool operator!=(const border_data &b) const { return !operator==(b); }
+        inline bool operator==(const border &b) const { return b.tl == tl && b.tr == tr && b.bl == bl && b.br == br; }
+        inline bool operator!=(const border &b) const { return !operator==(b); }
 
         /// members are always null from the memory::allocation
-        border_data() { }
+        border() { }
         ///
-        border_data(str raw) : border_data() {
+        border(str raw) : border() {
             str        trimmed = raw.trim();
             size_t     tlen    = trimmed.len();
             array<str> values  = raw.split();
@@ -150,10 +150,8 @@ namespace graphics {
                     console.fault("border requires 1 (size) or 2 (size, roundness) or 5 (size, tl tr br bl) values");
             }
         }
-        type_register(border_data);
+        type_register(border);
     };
-    /// graphics::border is an indication that this has information on color
-    using border = sp<border_data>;
 };
 
 enums(nil, none, "none", none);
@@ -440,20 +438,24 @@ struct Element:mx {
         map<node*>              mounts;   /// store instances of nodes in element data, so the cache management can go here where element turns to node
         node*                   parent;
         style*                  root_style; /// applied at root for multiple style trees across multiple apps
+        node*                   focused;
 
         bool                    captured;
-        bool                    focused;
         bool                    hover;
         bool                    active;
+        bool                    focus;
+        int                     tab_index;
         vec2d                   cursor;
 
         doubly<prop> meta() {
             return {
-                prop { "captured", captured },
-                prop { "focused",  focused  },
-                prop { "hover",    hover    },
-                prop { "active",   active   },
-                prop { "children", children }
+                prop { "captured",  captured  },
+                prop { "focuse",    focus     },
+                prop { "hover",     hover     },
+                prop { "active",    active    },
+                prop { "focus",     focus     },
+                prop { "tab-index", tab_index },
+                prop { "children",  children  }
             };
         }
 
@@ -1103,6 +1105,8 @@ struct node:Element {
                 prop { "outline-color",  drawings[operation::outline].color   },
                 prop { "text-color",     drawings[operation::text]   .color   },
 
+                prop { "outline-sz",     drawings[operation::outline].border.size },
+
                 prop { "fill-opacity",   drawings[operation::fill]   .opacity },
                 prop { "image-opacity",  drawings[operation::image]  .opacity },
                 prop { "outline-opacity",drawings[operation::outline].opacity },
@@ -1167,6 +1171,8 @@ struct node:Element {
         return o;
     }
 
+    virtual void focused();
+    virtual void unfocused();
     virtual void draw_text(Canvas& canvas, rectd& rect);
     virtual void draw(Canvas& canvas);
 

@@ -37,16 +37,21 @@ struct View:node {
     void mounting() {
         console.log("mounting");
     }
-
+ 
     Element update() {
-        return Button {
-            { "content", fmt {"hello world: {0}\nhello world: {0}", { state->sample }} },
-            { "on-click",
-                callback([&](event e) {
-                    console.log("on-click...");
-                    if (state->clicked)
-                        state->clicked(e);
-                })
+        return array<Element> {
+            Button {
+                { "content", fmt {"hello world: {0}\nhello world: {0}", { state->sample }} },
+                { "on-click",
+                    callback([&](event e) {
+                        console.log("on-click...");
+                        if (state->clicked)
+                            state->clicked(e);
+                    })
+                }
+            },
+            Edit {
+                { "content", "this is editable text" }
             }
         };
     }

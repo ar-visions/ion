@@ -1,11 +1,10 @@
 Button {
-    fill-area:    l32 t32 r-32 b-32, 200ms quad;
-    fill-radius:  32 32 32 0;
-    fill-color:   #24fa;
+    fill-area:    l32 t32 r-32 b-256, 200ms quad;
+    fill-radius:  32;
+    fill-color:   #a4fa;
     image-src:    "menu.png";
     image-region:  l5 t5 r-5 b-5;
     image-align:  left top;
-    text-area:    l96 t0 r-96 b0;
     text-color:   #fff;
     text-align:   middle middle, 200ms back out;
     opacity:      0.8;
@@ -24,4 +23,18 @@ Button:active {
     opacity:      1.0;
     fill-color:   #84ff;
     text-color:   #fffa;
+}
+
+Edit {
+    fill-color:    #24fa, 200ms quad;
+    fill-radius:     16;
+    text-color:    #fff;
+    fill-area:       l32 b-128 r-32 b-64, 200ms quad;
+    editable:        true;
+    multiline:       true;
+    tab-index:       0;
+}
+
+Edit:focus {
+    fill-color: #48ff, 200ms quad;
 }

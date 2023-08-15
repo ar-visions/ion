@@ -107,6 +107,7 @@ static void scroll_callback(GLFWwindow* window, double x, double y) {
 static void mouse_button_callback(GLFWwindow* window, int but, int state, int mods) {
     App* app = app_data(window);
     app->data->buttons[but] = bool(state);
+    node* root = app->composer::data->root_instance;
 
     for (node* n: app->data->active)
         n->Element::data->active = false;
@@ -116,8 +117,22 @@ static void mouse_button_callback(GLFWwindow* window, int but, int state, int mo
     else
         app->data->active = {};
 
-    for (node* n: app->data->active)
+    node* last = null;
+    for (node* n: app->data->active) {
         n->Element::data->active = true;
+        if (root && root->Element::data->focused) {
+            root->Element::data->focused->Element::data->focus = false;
+            root->Element::data->focused->unfocused();
+            root->Element::data->focused = null;
+        }
+        if (n->Element::data->tab_index >= 0)
+            last = n;
+    }
+    if (last) {
+        last->Element::data->focus = true;
+        root->Element::data->focused = last;
+        last->focused();
+    }
 }
 
 /// id's can be dynamic so we cant enforce symbols, and it would be a bit lame to make the caller symbolize
@@ -799,6 +814,9 @@ bool style::impl::applicable(node *n, prop *member, array<style::entry*> &result
 /// place text before drawing? or, place text as we draw.
 //void node::layout()
 
+void node::focused()   { }
+void node::unfocused() { }
+
 void node::draw_text(Canvas& canvas, rectd& rect) {
     props::drawing &text = data->drawings[operation::text];
     canvas.save();
@@ -879,7 +897,7 @@ void node::draw(Canvas& canvas) {
     }
 
     /// if there is an effective border to draw
-    if (outline.color && outline.border->size > 0.0) {
+    if (outline.color && outline.border.size > 0.0) {
         rectd outline_rect = outline.area ? outline.area.rect(bounds) : data->fill_bounds;
         if (outline.radius) {
             vec4d r = outline.radius;
@@ -889,9 +907,9 @@ void node::draw(Canvas& canvas) {
             vec2d bl { r.z, r.z };
             outline_rect.set_rounded(tl, tr, br, bl);
         }
-        canvas.color(outline.border->color);
+        canvas.color(outline.border.color);
         canvas.opacity(effective_opacity());
-        canvas.outline_sz(outline.border->size);
+        canvas.outline_sz(outline.border.size);
         canvas.outline(outline_rect); /// this needs to work with vshape, or border
         outline.shape = outline_rect; /// updating for interactive logic
     }
