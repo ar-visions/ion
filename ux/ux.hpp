@@ -1066,6 +1066,10 @@ struct node:Element {
         mx                  lines_content; /// cache of content when lines are made
         array<str>          lines;
 
+        array<double>        font_advances; /// for the selected font, this is the advances for each character value (we need to handle unicode and also look this up in the skia)
+        array<array<double>> line_advances;
+        double               line_h;
+
         bool                editable   = false;
         bool                selectable = true;
         bool                multiline  = false;

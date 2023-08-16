@@ -24,6 +24,7 @@ struct Canvas:mx {
     void opacity(double o);
     vec2i size();
     text_metrics measure(str text);
+    double measure_advance(char *text, size_t len);
     str ellipsis(str text, rectd rect, text_metrics &tm);
     void image(image img, rectd rect, alignment align, vec2d offset);
     void text(str text, rectd rect, alignment align, vec2d offset, bool ellip);

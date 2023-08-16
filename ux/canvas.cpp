@@ -715,6 +715,12 @@ struct ICanvas {
         };
     }
 
+    double measure_advance(char *text, size_t len) {
+        SkFont     &font = font_handle(top->font);
+        auto         adv = font.measureText(text, len, SkTextEncoding::kUTF8);
+        return (double)adv;
+    }
+
     /// the text out has a rect, controls line height, scrolling offset and all of that nonsense we need to handle
     /// as a generic its good to have the rect and alignment enums given.  there simply isnt a user that doesnt benefit
     /// it effectively knocks out several redundancies to allow some components to be consolidated with style difference alone
@@ -990,6 +996,10 @@ vec2i   Canvas::size() {
 
 text_metrics Canvas::measure(str text) {
     return data->measure(text);
+}
+
+double Canvas::measure_advance(char *text, size_t len) {
+    return data->measure_advance(text, len);
 }
 
 str     Canvas::ellipsis(str text, rectd rect, text_metrics &tm) {

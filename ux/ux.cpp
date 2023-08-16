@@ -817,6 +817,20 @@ bool style::impl::applicable(node *n, prop *member, array<style::entry*> &result
 void node::focused()   { }
 void node::unfocused() { }
 
+void node::mouse_click(vec2d cursor) {
+    array<str> lines = data->lines;
+    if (!lines)
+        return;
+    int i = 0;
+    int n = lines.len();
+    double offset_y = text.align.y * math::max(0.0, (double(n - 1) * data->line_h));
+    for (str &line:lines) {
+        rectd r { 0, rect.y - offset_y + i * data->line_h, rect.w, rect.h };
+        canvas.text(line, r, text.align, {0.0, 0.0}, true);
+        i++;
+    }
+}
+
 void node::draw_text(Canvas& canvas, rectd& rect) {
     props::drawing &text = data->drawings[operation::text];
     canvas.save();
@@ -827,20 +841,47 @@ void node::draw_text(Canvas& canvas, rectd& rect) {
     const double line_height_basis = 2.0;
     double       lh = tm.line_height * (node::data->text_spacing.y * line_height_basis);
 
+    data->line_h = lh;
+
     /// this allows for some quick caching when the memory on content changes
     /// by rule we never mute the content. that way we dont have to split() with our heads in the mud
     str s_content = data->content;
     bool is_cache = data->lines_content.mem == s_content.mem;
     array<str> lines = is_cache ? data->lines : s_content.split("\n");
-    if (!is_cache) data->lines_content = data->content; /// update cache
-    
+    if (!is_cache) {
+        data->lines_content = data->content; /// update cache
+        ///
+        if (!data->font_advances) {
+            data->font_advances = array<double>(255, 255, 0);
+            for (int char_code = 0; char_code < data->advances.len(); char_code++) {
+                char ch[2];
+                ch[0] = char_code;
+                ch[1] = 0;
+                data->font_advances[char_code] = canvas.measure_advance(ch, 1);
+            }
+        }
+        /// line_advances used in selection management
+        size_t len = data->lines_content.len();
+        data->line_advances = array<double>(len, len);
+        for (int i = 0; i < len; i++) {
+            str &line = data->lines_content[i];
+            array<double> advances = data->line_advances[i];
+            for (int ii = 0; ii < line.len(); i++) {
+                int char_code = line.data[i]; /// needs to support unicode (skia has these directly if we use their text run data, i believe)
+                double    adv = data->font_advances[char_code];
+                advances[ii]  = adv;
+            }
+        }
+    }
     /// iterate through lines
     int i = 0;
     int n = lines.len();
+
     /// if in center, the first line is going to be offset by half the height of all the lines n * (lh / 2)
     /// if bottom, the first is going to be offset by total height of lines n * lh
     double offset_y = text.align.y * math::max(0.0, (double(n - 1) * lh));
     for (str &line:lines) {
+        /// implement interactive state to detect mouse clicks and set the cursor position
         rectd r { 0, rect.y - offset_y + i * lh, rect.w, rect.h };
         canvas.text(line, r, text.align, {0.0, 0.0}, true);
         i++;
