@@ -996,6 +996,12 @@ enums(operation, fill,
 
 template <typename> struct simple_content : true_type { };
 
+struct LineInfo {
+    str             data;
+    array<double>   adv;
+    rectd           rect; /// this should be (effective) line-height based
+};
+
 struct Canvas;
 struct node:Element {
 
@@ -1063,13 +1069,9 @@ struct node:Element {
         rectd               bounds;     /// local coordinates of this control, so x and y are 0 based
         rectd               fill_bounds;
         ion::font           font;
-        mx                  lines_content; /// cache of content when lines are made
-        array<str>          lines;
-
-        array<double>        font_advances; /// for the selected font, this is the advances for each character value (we need to handle unicode and also look this up in the skia)
-        array<array<double>> line_advances;
-        double               line_h;
-
+        mx                  cache_source;   /// cache of content when lines are made
+        array<str>          cache_split;    
+        array<LineInfo>     lines;          /// in sync with cache
         bool                editable   = false;
         bool                selectable = true;
         bool                multiline  = false;
@@ -1174,6 +1176,8 @@ struct node:Element {
         }
         return o;
     }
+
+    array<LineInfo> &get_lines();
 
     virtual void focused();
     virtual void unfocused();

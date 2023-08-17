@@ -8,7 +8,8 @@
             "name":     "gsl",
             "version":  "2.7",
             "url":      "https://github.com/ampl/gsl",
-            "commit":   "47862078af4a204c4220f028656a19ddd3922144"
+            "commit":   "47862078af4a204c4220f028656a19ddd3922144",
+            "mingw":    true
         },
         {
             "name":     "opus",
@@ -44,7 +45,7 @@
             "version":  "0.18.5",
             "url":      "https://github.com/paullouisageneau/libdatachannel",
             "commit":   "0522acd",
-            "mingw64":  true,
+            "mingw":    true,
             "cmake": {
                 "args": ["-DUSE_GNUTLS=1"]
             }
