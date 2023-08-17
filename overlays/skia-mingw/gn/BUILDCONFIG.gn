@@ -71,7 +71,9 @@ is_mac = current_os == "mac"
 is_wasm = current_os == "wasm"
 is_win = current_os == "win"
 
-is_mingw = exec_script("//gn/is_mingw.py", [cc], "value")
+# disabling this port for now, as other libs used in nvidia sdk are only compilable on msvc
+# its down to newer windows functions not available in headers.  not sure how to use windows sdk through mingw (probably not possible?)
+is_mingw = false # exec_script("//gn/is_mingw.py", [cc], "value")
 
 # This is just to make the Dawn build files happy. Skia itself uses target_os = "linux"
 # for ChromeOS, so this variable will not affect Skia proper.

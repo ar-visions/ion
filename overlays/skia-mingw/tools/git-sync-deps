@@ -265,14 +265,12 @@ def main(argv):
     return 1
 
   git_sync_deps(deps_file_path, argv, verbose)
-  # this is what MINGW package does, and its a good idea in general
-  # fetching gn is what gn actually does already.
-  #subprocess.check_call(
-  #    [sys.executable,
-  #     os.path.join(os.path.dirname(deps_file_path), 'bin', 'fetch-gn')])
-  #subprocess.check_call(
-  #    [sys.executable,
-  #     os.path.join(os.path.dirname(deps_file_path), 'bin', 'activate-emsdk')])
+  subprocess.check_call(
+      [sys.executable,
+       os.path.join(os.path.dirname(deps_file_path), 'bin', 'fetch-gn')])
+  subprocess.check_call(
+      [sys.executable,
+       os.path.join(os.path.dirname(deps_file_path), 'bin', 'activate-emsdk')])
   return 0
 
 

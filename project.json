@@ -34,10 +34,20 @@
             "branch":   "remotes/origin/chrome/m116"
         },
         {
+            "name":     "mbedtls",
+            "version":  "3.4.0",
+            "commit":   "1873d3b",
+            "url":      "https://github.com/Mbed-TLS/mbedtls"
+        },
+        {
             "name":     "datachannel",
             "version":  "0.18.5",
             "url":      "https://github.com/paullouisageneau/libdatachannel",
-            "commit":   "0522acd"
+            "commit":   "0522acd",
+            "mingw64":  true,
+            "cmake": {
+                "args": ["-DUSE_GNUTLS=1"]
+            }
         },
         {
             "name":     "ogg",
@@ -85,12 +95,6 @@
             "cmake":    {
                 "args": ["-DENABLE_STATIC_LIB=Yes"]
             }
-        },
-        {
-            "name":     "mbedtls",
-            "version":  "3.4.0",
-            "commit":   "1873d3b",
-            "url":      "https://github.com/Mbed-TLS/mbedtls"
         }
     ]
 }
