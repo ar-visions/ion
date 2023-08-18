@@ -9,7 +9,7 @@
             "version":  "2.7",
             "url":      "https://github.com/ampl/gsl",
             "commit":   "47862078af4a204c4220f028656a19ddd3922144",
-            "mingw":    true
+            "platforms": ["lin", "mac"]
         },
         {
             "name":     "opus",
@@ -45,9 +45,13 @@
             "version":  "0.18.5",
             "url":      "https://github.com/paullouisageneau/libdatachannel",
             "commit":   "0522acd",
-            "mingw":    true,
             "cmake": {
-                "args": ["-DUSE_GNUTLS=1"]
+                "gen-win": "gen.bat",
+                "args": [
+                    "-G", "\"NMake", "Makefiles\"", "-DUSE_GNUTLS=1", "-DGNUTLS_LIBRARY=gnutls",
+                    "-DGNUTLS_INCLUDE_DIR=%PREFIX%/include/gnutls",
+                    "-DNettle_INCLUDE_DIR=%PREFIX%/include/nettle",
+                    "-DNettle_LIBRARY=libnettle"]
             }
         },
         {
@@ -70,13 +74,15 @@
             "name":     "shine",
             "version":  "3.1.1",
             "url":      "https://github.com/toots/shine",
-            "commit":   "97f188e"
+            "commit":   "97f188e",
+            "platforms": ["lin", "mac"]
         },
         {
             "name":     "speexdsp",
             "version":  "1.2.1",
             "url":      "https://github.com/xiph/speexdsp",
-            "commit":   "1b28a0f"
+            "commit":   "1b28a0f",
+            "platforms": ["lin", "mac"]
         },
         {
             "name":     "opusenc",
