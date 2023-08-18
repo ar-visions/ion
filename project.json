@@ -41,18 +41,34 @@
             "url":      "https://github.com/Mbed-TLS/mbedtls"
         },
         {
-            "name":     "datachannel",
-            "version":  "0.18.5",
-            "url":      "https://github.com/paullouisageneau/libdatachannel",
-            "commit":   "0522acd",
-            "cmake": {
-                "gen-win": "gen.bat",
-                "args": [
-                    "-G", "\"NMake", "Makefiles\"", "-DUSE_GNUTLS=1", "-DGNUTLS_LIBRARY=gnutls",
-                    "-DGNUTLS_INCLUDE_DIR=%PREFIX%/include/gnutls",
-                    "-DNettle_INCLUDE_DIR=%PREFIX%/include/nettle",
-                    "-DNettle_LIBRARY=libnettle"]
-            }
+            "name":     "gnutls",
+            "version":  "3.8.1",
+            "commit":   "513570a",
+            "url":      "https://github.com/gnutls/gnutls"
+        },
+        {
+            "name":     "juice",
+            "version":  "1.2.3",
+            "url":      "https://github.com/paullouisageneau/libjuice",
+            "commit":   "8c23cc8"
+        },
+        {
+            "name":     "srtp",
+            "version":  "2.5.0",
+            "url":      "https://github.com/cisco/libsrtp",
+            "commit":   "a566a9c"
+        },
+        {
+            "name":     "plog",
+            "version":  "1.1.9",
+            "url":      "https://github.com/SergiusTheBest/plog",
+            "commit":   "f471494"
+        },
+        {
+            "name":     "usrsctp",
+            "version":  "0.9.5.0",
+            "url":      "https://github.com/sctplab/usrsctp",
+            "commit":   "07f871b"
         },
         {
             "name":     "ogg",
