@@ -1,0 +1,39 @@
+diff --git a/src/lib/l3mdct.c b/src/lib/l3mdct.c
+index 7553a54..d6a97fd 100644
+--- a/src/lib/l3mdct.c
++++ b/src/lib/l3mdct.c
+@@ -93,7 +93,9 @@ void shine_mdct_sub(shine_global_config *config, int stride)
+         for(k=18; k--; )
+         {
+           int32_t vm;
+-          uint32_t vm_lo __attribute__((unused));
++
++          uint32_t vm_lo;
++          (void)   vm_lo; /// we say its ok, we know its unused. proceed mr governor
+ 
+           mul0(vm, vm_lo, mdct_in[35], config->mdct.cos_l[k][35]);
+           for(j=35; j; j-=7) {
+diff --git a/src/lib/l3subband.c b/src/lib/l3subband.c
+index 58abf5f..06b1522 100644
+--- a/src/lib/l3subband.c
++++ b/src/lib/l3subband.c
+@@ -62,7 +62,8 @@ void shine_window_filter_subband(int16_t **buffer, int32_t s[SBLIMIT], int ch, s
+ 
+   for (i=64; i--; ) {
+     int32_t s_value;
+-    uint32_t s_value_lo __attribute__((unused));
++    uint32_t s_value_lo;
++    (void)   s_value_lo;
+ 
+     mul0  (s_value, s_value_lo, config->subband.x[ch][(config->subband.off[ch] + i + (0<<6)) & (HAN_SIZE-1)], shine_enwindow[i + (0<<6)]);
+     muladd(s_value, s_value_lo, config->subband.x[ch][(config->subband.off[ch] + i + (1<<6)) & (HAN_SIZE-1)], shine_enwindow[i + (1<<6)]);
+@@ -80,7 +81,8 @@ void shine_window_filter_subband(int16_t **buffer, int32_t s[SBLIMIT], int ch, s
+ 
+   for (i=SBLIMIT; i--; ) {
+     int32_t s_value;
+-    uint32_t s_value_lo __attribute__((unused));
++    uint32_t s_value_lo;
++    (void)   s_value_lo;
+ 
+     mul0(s_value, s_value_lo, config->subband.fl[i][63], y[63]);
+     for (j=63; j; j-=7) {

@@ -84,8 +84,7 @@
             "name":     "shine",
             "version":  "3.1.1",
             "url":      "https://github.com/toots/shine",
-            "commit":   "97f188e",
-            "platforms": ["lin", "mac"]
+            "commit":   "97f188e"
         },
         {
             "name":     "speexdsp",
