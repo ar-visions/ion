@@ -6,7 +6,6 @@ include_directories(include)
 add_library(
     speexdsp STATIC
     libspeexdsp/buffer.c
-	libspeexdsp/fftwrap.c
 	libspeexdsp/filterbank.c
 	libspeexdsp/jitter.c
 	libspeexdsp/kiss_fft.c
@@ -17,8 +16,12 @@ add_library(
     libspeexdsp/scal.c
     libspeexdsp/smallft.c)
 
-target_compile_definitions(speexdsp PRIVATE FIXED_POINT=1)
-                         
+target_compile_definitions(speexdsp PUBLIC FLOATING_POINT=1)
+         
+if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64") 
+    target_compile_definitions(speexdsp PUBLIC USE_SSE=1)
+endif()
+
 install(
     TARGETS speexdsp
     LIBRARY DESTINATION lib  # for shared libs

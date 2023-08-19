@@ -166,7 +166,8 @@
 			"sparseqr": "cpp",
 			"strstream": "cpp",
 			"*.gen": "cpp",
-			"xiosbase": "cpp"
+			"xiosbase": "cpp",
+			"speex_buffer.h": "c"
 		}
 	}
 }
