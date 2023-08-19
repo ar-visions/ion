@@ -98,7 +98,7 @@ namespace graphics {
             bool use_rect = std::isnan(rx) || rx == 0 || ry == 0;
             data->type   = use_rect ? typeof(Rectd) : typeof(Rounded);
             data->bounds = use_rect ? Rectd(r4) : 
-                                        Rectd(Rounded(r4, rx, std::isnan(ry) ? rx : ry)); /// type forwards
+                                      Rectd(Rounded(r4, rx, std::isnan(ry) ? rx : ry)); /// type forwards
         }
 
         bool is_rect () { return data->bounds.type() == typeof(rectd)          && !data->ops; }
@@ -414,7 +414,7 @@ struct event:mx {
     inline bool is_default()        { return !data->prevent_default; }
     inline bool should_propagate()  { return !data->stop_propagation; }
     inline bool stop_propagation()  { return  data->stop_propagation = true; }
-    inline vec2d cursor_pos()        { return data->cursor; }
+    inline vec2d cursor_pos()       { return  data->cursor; }
     inline bool mouse_down(mouse m) { return  data->buttons[m]; }
     inline bool mouse_up  (mouse m) { return !data->buttons[m]; }
     inline num  unicode   ()        { return  data->key->unicode; }
@@ -430,26 +430,26 @@ struct style;
 
 struct Element:mx {
     struct edata {
-        type_t                  type;     /// type given
-        memory*                 id;       /// identifier 
-        ax                      args;     /// arguments
-        array<Element>          children; /// children elements (if provided in children { } pair<mx,mx> inherited data struct; sets key='children')
-        node*                   instance; /// node instance is 1:1
-        map<node*>              mounts;   /// store instances of nodes in element data, so the cache management can go here where element turns to node
+        type_t                  type;       /// type given
+        memory*                 id;         /// identifier 
+        ax                      args;       /// arguments
+        array<Element>          children;   /// children elements (if provided in children { } pair<mx,mx> inherited data struct; sets key='children')
+        node*                   instance;   /// node instance is 1:1
+        map<node*>              mounts;     /// store instances of nodes in element data, so the cache management can go here where element turns to node
         node*                   parent;
         style*                  root_style; /// applied at root for multiple style trees across multiple apps
         node*                   focused;
-
-        bool                    captured;
+        node*                   capt;
+        bool                    capture;
         bool                    hover;
         bool                    active;
         bool                    focus;
         int                     tab_index;
         vec2d                   cursor;
-
+        ///
         doubly<prop> meta() {
             return {
-                prop { "captured",  captured  },
+                prop { "capture",   capture   },
                 prop { "focuse",    focus     },
                 prop { "hover",     hover     },
                 prop { "active",    active    },
@@ -458,11 +458,11 @@ struct Element:mx {
                 prop { "children",  children  }
             };
         }
-
+        ///
         operator bool() {
             return (type || children.len() > 0);
         }
-
+        ///
         type_register(edata);
     };
 
@@ -663,15 +663,17 @@ enums(mode, regular,
      "regular, headless",
       regular, headless);
 
+struct Canvas;
+
 struct font:mx {
     struct fdata {
         real sz = 22;
         str  name = "Sofia-Sans-Condensed";
         bool loaded = false;
         void *sk_font = null;
+        array<double> advances;
         type_register(fdata);
     };
-
 
     mx_object(font, mx, fdata);
 
@@ -692,6 +694,8 @@ struct font:mx {
     font update_sz(real sz) {
         return fdata { sz, data->name };
     }
+
+    array<double> &advances(Canvas& canvas);
 
             operator bool()    { return  data->sz; }
     bool    operator!()        { return !data->sz; }
@@ -997,14 +1001,32 @@ enums(operation, fill,
 template <typename> struct simple_content : true_type { };
 
 struct LineInfo {
-    str             data;
-    array<double>   adv;
-    rectd           rect; /// this should be (effective) line-height based
+    str            data;
+    num            len;
+    array<double>  adv;
+    rectd          bounds;     /// bounds of area of the text line
+    rectd          placement;  /// effective bounds of the aligned text, with y and h same as bounds
+};
+
+struct TextSel:mx {
+    struct Data {
+        num     column;
+        num     row;
+        ///
+        bool operator<= (const Data &b) { return column <= b.column || row <= b.row; }
+        bool operator>  (const Data &b) { return column >  b.column || row >  b.row; }
+
+        type_register(Data);
+    };
+    ///
+    mx_object(TextSel, mx, Data);
+    ///
+    bool operator<= (const TextSel &b) { return *data <= *b.data; }
+    bool operator>  (const TextSel &b) { return *data >  *b.data; }
 };
 
 struct Canvas;
 struct node:Element {
-
     struct selection {
         prop         *member;
         raw_t         from, to; /// these we must call new() and del()
@@ -1068,6 +1090,7 @@ struct node:Element {
         double              opacity = 1.0;
         rectd               bounds;     /// local coordinates of this control, so x and y are 0 based
         rectd               fill_bounds;
+        rectd               text_bounds;
         ion::font           font;
         mx                  cache_source;   /// cache of content when lines are made
         array<str>          cache_split;    
@@ -1075,6 +1098,7 @@ struct node:Element {
         bool                editable   = false;
         bool                selectable = true;
         bool                multiline  = false;
+        TextSel             sel_start, sel_end, sel_prev;
 
         doubly<prop> meta() const {
             return {
@@ -1089,15 +1113,12 @@ struct node:Element {
                 prop { "on-cursor",      ev.cursor },
                 prop { "on-hover",       ev.hover  },
 
-                prop { "editable",       editable },
-
+                prop { "editable",       editable  },
                 prop { "opacity",        opacity   },
-
-                prop { "content",        content    },
-                prop { "font",           font       },
+                prop { "content",        content   },
+                prop { "font",           font      },
 
                 prop { "text-spacing",   text_spacing },
-
                 prop { "image-src",      drawings[operation::image]  .img     },
 
                 prop { "fill-area",      drawings[operation::fill]   .area    },
@@ -1153,6 +1174,53 @@ struct node:Element {
             n = n->Element::data->parent;
         }
         return null;
+    }
+
+    TextSel get_selection(vec2d pos, bool is_down) {
+        rectd r = data->bounds;
+        node *n = this;
+        /// localize mouse pos input to this control (should be done by the caller; why would we repeat this differently)
+        while (n) {
+            pos.x -= n->data->bounds.x + n->data->scroll.x;
+            pos.y -= n->data->bounds.y + n->data->scroll.y;
+            n      = n->Element::data->parent;
+        }
+        ///
+        TextSel res;
+        real    y = data->text_bounds.y;
+        num     row = 0;
+        ///
+        for (LineInfo &line: data->lines) {
+            if (pos.y >= y && pos.y <= (y + line.bounds.h)) {
+                res->row = row;
+                if (pos.x < line.placement.x)
+                    res->column = 0;
+                else if (pos.x > line.placement.x + line.placement.w)
+                    res->column = line.len;
+                else {
+                    real w = 0;
+                    bool col_set = false;
+                    ///
+                    for (num i = 0; i < line.len; i++) {
+                        real a = line.adv[i] / 2.0;
+                        w += a;
+                        if ((pos.x - line.placement.x) <= w) {
+                            res->column = i; /// this will break on 0 if its less-than half character
+                            col_set = true;
+                            break;
+                        }
+                        w += a;
+                    }
+                    /// set end-of-last character
+                    if (!col_set) {
+                        res->column = line.len;
+                    }
+                }
+            }
+            y += line.bounds.h;
+            row++;
+        }
+        return res;
     }
 
     rgba8 color_with_opacity(rgba8 &input) {

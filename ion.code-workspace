@@ -164,7 +164,8 @@
 			"stdint.h": "c",
 			"csetjmp": "cpp",
 			"sparseqr": "cpp",
-			"strstream": "cpp"
+			"strstream": "cpp",
+			"*.gen": "cpp"
 		}
 	}
 }

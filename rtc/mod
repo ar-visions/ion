@@ -1,2 +1,3 @@
-dep(gnutls:gnutls juice:juice srtp:srtp plog:plog usrsctp:usrsctp)
+# net already has mbed: tls, crypto and x509 libs
+dep(ion:net juice:juice srtp:srtp plog:plog usrsctp:usrsctp)
 defines(RTC_ENABLE_WEBSOCKET RTC_ENABLE_MEDIA)

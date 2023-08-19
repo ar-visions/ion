@@ -787,7 +787,7 @@ struct ICanvas {
     /// would be reasonable to have a rich() method
 
     /// the lines are most definitely just text() calls, it should be up to the user to perform multiline.
-    void text(str &text, rectd &rect, alignment &align, vec2d &offset, bool ellip) {
+    void text(str &text, rectd &rect, alignment &align, vec2d &offset, bool ellip, rectd *placement) {
         SkPaint ps = SkPaint(top->ps);
         ps.setColor(sk_color(top->color));
         if (top->opacity != 1.0f)
@@ -803,11 +803,19 @@ struct ICanvas {
         } else
             tm     = measure(*ptext);
         auto    tb = SkTextBlob::MakeFromText(ptext->cs(), ptext->len(), (const SkFont &)f, SkTextEncoding::kUTF8);
-        pos.x = mix(rect.x, rect.w - tm.w, align.x);
-        pos.y = mix(rect.y, rect.h - tm.h, align.y) - ((-tm.descent + tm.ascent) / 1.33);
+        pos.x = mix(rect.x, rect.x + rect.w - tm.w, align.x);
+        pos.y = mix(rect.y, rect.y + rect.h - tm.h, align.y);
+        double skia_y_offset = (tm.descent + -tm.ascent) / 1.5;
+        /// set placement rect if given (last paint is what was rendered)
+        if (placement) {
+            placement->x = pos.x + offset.x;
+            placement->y = pos.y + offset.y;
+            placement->w = tm.w;
+            placement->h = tm.h;
+        }
         sk_canvas->drawTextBlob(
             tb, SkScalar(pos.x + offset.x),
-                SkScalar(pos.y + offset.y), ps);
+                SkScalar(pos.y + offset.y + skia_y_offset), ps);
     }
 
     void clip(rectd &path) {
@@ -1010,8 +1018,8 @@ void    Canvas::image(ion::image img, rectd rect, alignment align, vec2d offset)
     return data->image(img, rect, align, offset);
 }
 
-void    Canvas::text(str text, rectd rect, alignment align, vec2d offset, bool ellip) {
-    return data->text(text, rect, align, offset, ellip);
+void    Canvas::text(str text, rectd rect, alignment align, vec2d offset, bool ellip, rectd *placement) {
+    return data->text(text, rect, align, offset, ellip, placement);
 }
 
 void    Canvas::clip(rectd path) {

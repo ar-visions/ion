@@ -41,12 +41,6 @@
             "url":      "https://github.com/Mbed-TLS/mbedtls"
         },
         {
-            "name":     "gnutls",
-            "version":  "3.8.1",
-            "commit":   "513570a",
-            "url":      "https://github.com/gnutls/gnutls"
-        },
-        {
             "name":     "juice",
             "version":  "1.2.3",
             "url":      "https://github.com/paullouisageneau/libjuice",

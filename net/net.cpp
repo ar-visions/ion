@@ -72,6 +72,33 @@ str dns(str hostname) {
     return result;
 }
 
+struct Certificate {
+    mbedtls_x509_crt          cert_chain;
+    mbedtls_pk_context        pkey;
+
+    Certificate() {
+        mbedtls_x509_crt_init(&cert_chain);
+    }
+
+    ~Certificate() {
+        mbedtls_x509_crt_free(&cert_chain);
+    }
+
+    void open(path pub, path priv, str pass = null) {
+        assert(!pass);
+        /// replace "root_cert.pem" and "intermediate_cert.pem" with your actual file paths
+        if (mbedtls_x509_crt_parse_file(&cert_chain, pub) != 0)
+            console.fault("failed to parse public cert");
+        /// private key
+        if (mbedtls_pk_parse_keyfile(&pkey, priv, null, null, null) != 0)
+            console.fault("failed to parse private key");
+    }
+
+    Certificate(path pub, path priv):Certificate() {
+        open(pub, priv);
+    }
+};
+
 
 /// isolated isock containing state info for socket
 struct isock {
@@ -84,8 +111,7 @@ struct isock {
     mbedtls_ctr_drbg_context  ctr_drbg;
     mbedtls_ssl_context       ssl;
     mbedtls_ssl_config        conf;
-    mbedtls_x509_crt          cert_chain;
-    mbedtls_pk_context        pkey;
+    Certificate*              crt;
     
     /// methods
     void ssl_reinit() {
@@ -94,7 +120,9 @@ struct isock {
         mbedtls_entropy_init(&entropy);
         mbedtls_ctr_drbg_init(&ctr_drbg);
         mbedtls_ssl_config_init(&conf);
-        mbedtls_x509_crt_init(&cert_chain);
+        if (crt)
+            delete crt;
+        crt = new Certificate;
     }
     
     void ssl_cleanup() {
@@ -103,7 +131,10 @@ struct isock {
         mbedtls_ssl_config_free(&conf);
         mbedtls_ctr_drbg_free(&ctr_drbg);
         mbedtls_entropy_free(&entropy);
-        mbedtls_x509_crt_free(&cert_chain);
+        if (crt) {
+            delete crt;
+            crt = null;
+        }
     }
     
     isock() {
@@ -324,19 +355,13 @@ void sock::load_certs(str host) {
         (const unsigned char *)pers, strlen(pers));
     
     mbedtls_ssl_conf_authmode(&data->conf, MBEDTLS_SSL_VERIFY_REQUIRED);
-    mbedtls_ssl_conf_ca_chain(&data->conf, &data->cert_chain, NULL);
+    mbedtls_ssl_conf_ca_chain(&data->conf, &data->crt->cert_chain, NULL);
     mbedtls_ssl_conf_rng(&data->conf, mbedtls_ctr_drbg_random, &data->ctr_drbg);
     mbedtls_ssl_conf_min_version(&data->conf, MBEDTLS_SSL_MAJOR_VERSION_3, MBEDTLS_SSL_MINOR_VERSION_3);  // TLS 1.2
     
     /// load cert and key based on role
     if (data->role == role::server) {
-        /// replace "root_cert.pem" and "intermediate_cert.pem" with your actual file paths
-        if (mbedtls_x509_crt_parse_file(&data->cert_chain, "ssl/public.pem") != 0)
-            console.fault("failed to parse public cert");
-        /// private key
-        if (mbedtls_pk_parse_keyfile(&data->pkey, "ssl/private.pem", null, null, null) != 0)
-            console.fault("failed to parse private key");
-
+        data->crt->open("ssl/public.pem", "ssl/private.pem");
     } else {
         /// host just has a sequence starting with root, intermediate, etc, so 0 = CA Root, 1 = Signed from CA Root, 2 = Signed by 1
         for (size_t ii = 0; ii < 16; ii++) {
@@ -347,7 +372,7 @@ void sock::load_certs(str host) {
                 break;
             }
             symbol file = symbol(p.cs());
-            if (mbedtls_x509_crt_parse_file(&data->cert_chain, file) != 0)
+            if (mbedtls_x509_crt_parse_file(&data->crt->cert_chain, file) != 0)
                 console.fault("failed to parse trust: {0}", { file });
         }
     }

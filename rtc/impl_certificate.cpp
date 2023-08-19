@@ -20,20 +20,6 @@ namespace rtc::impl {
 
 #if USE_GNUTLS
 
-Certificate Certificate::FromString(string crt_pem, string key_pem) {
-	PLOG_DEBUG << "Importing certificate from PEM string (GnuTLS)";
-
-	shared_ptr<gnutls_certificate_credentials_t> creds(gnutls::new_credentials(),
-	                                                   gnutls::free_credentials);
-	gnutls_datum_t crt_datum = gnutls::make_datum(crt_pem.data(), crt_pem.size());
-	gnutls_datum_t key_datum = gnutls::make_datum(key_pem.data(), key_pem.size());
-	gnutls::check(
-	    gnutls_certificate_set_x509_key_mem(*creds, &crt_datum, &key_datum, GNUTLS_X509_FMT_PEM),
-	    "Unable to import PEM certificate and key");
-
-	return Certificate(std::move(creds));
-}
-
 Certificate Certificate::FromFile(const string &crt_pem_file, const string &key_pem_file,
                                   const string &pass) {
 	PLOG_DEBUG << "Importing certificate from PEM file (GnuTLS): " << crt_pem_file;

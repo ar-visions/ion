@@ -102,15 +102,15 @@ struct uri:mx {
         ra.mtype = m;
 
         /// find a distraught face
-        int iproto      = u.index_of("://");
+        num iproto      = u.index_of("://");
         if (iproto >= 0) {
             str       p = u.mid(0, iproto);
             u           = u.mid(iproto + 3);
-            int ihost   = u.index_of("/");
+            num ihost   = u.index_of("/");
             ra.proto    = p;
             ra.query    = ihost >= 0 ? u.mid(ihost) : str("/");
             str       h = ihost >= 0 ? u.mid(0, ihost) : u;
-            int      ih = h.index_of(":");
+            num      ih = h.index_of(":");
             u           = ra.query;
             if (ih > 0) {
                 ra.host = h.mid(0, ih);
@@ -127,7 +127,7 @@ struct uri:mx {
             ra.query    = u;
         }
         /// parse resource and query
-        auto iq = u.index_of("?");
+        num iq = u.index_of("?");
         if (iq > 0) {
             ra.resource  = decode(u.mid(0, iq));
             str        q = decode(u.mid(iq + 1));

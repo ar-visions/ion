@@ -28,8 +28,9 @@ Button:active {
 Edit {
     fill-color:    #24fa, 200ms quad;
     fill-radius:     16;
-    text-color:    #fff;
-    fill-area:       l32 b-128 r-32 b-64, 200ms quad;
+    text-align:      0.5 0.5;
+    text-color:    #a3a;
+    fill-area:       l0 t128 r-0 b-128, 200ms quad;
     editable:        true;
     multiline:       true;
     tab-index:       0;

@@ -27,7 +27,7 @@ struct Canvas:mx {
     double measure_advance(char *text, size_t len);
     str ellipsis(str text, rectd rect, text_metrics &tm);
     void image(image img, rectd rect, alignment align, vec2d offset);
-    void text(str text, rectd rect, alignment align, vec2d offset, bool ellip);
+    void text(str text, rectd rect, alignment align, vec2d offset, bool ellip, rectd *placement = null);
     void clip(rectd path);
     void outline(rectd rect);
     void outline_sz(double sz);

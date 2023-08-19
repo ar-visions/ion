@@ -13,7 +13,7 @@
 #include "plog/Log.h"
 #include "plog/Logger.h"
 //
-#include "global.hpp"
+#include <rtc/global.hpp>
 
 #include <rtc/impl_init.hpp>
 

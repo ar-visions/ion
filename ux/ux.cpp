@@ -89,24 +89,29 @@ static void char_callback (GLFWwindow* window, uint32_t c) {
 
 static void mouse_move_callback(GLFWwindow* window, double x, double y) {
     App *app            = app_data(window);
-    app->data->cursor   = vec2d { x, y };
+    app->data->cursor   = vec2d { x, y };// / app->data->e->vk_gpu->dpi_scale;
 
     for (node* n: app->data->hover)
         n->Element::data->hover = false;
     
-    app->data->hover    = app->select_at(app->data->cursor, app->data->buttons[0]);
+    app->data->hover = app->select_at(app->data->cursor, app->data->buttons[0]);
 
-    for (node* n: app->data->hover)
+    node *last = null;
+    for (node* n: app->data->hover) {
         n->Element::data->hover = true;
+        last = n;
+    }
 }
 
 static void scroll_callback(GLFWwindow* window, double x, double y) {
     App* app = app_data(window);
 }
 
-static void mouse_button_callback(GLFWwindow* window, int but, int state, int mods) {
-    App* app = app_data(window);
-    app->data->buttons[but] = bool(state);
+static void mouse_button_callback(GLFWwindow* window, int button, int state, int mods) {
+    App* app   = app_data(window);
+    bool shift = mods & GLFW_MOD_SHIFT;
+
+    app->data->buttons[button] = bool(state);
     node* root = app->composer::data->root_instance;
 
     for (node* n: app->data->active)
@@ -120,18 +125,49 @@ static void mouse_button_callback(GLFWwindow* window, int but, int state, int mo
     node* last = null;
     for (node* n: app->data->active) {
         n->Element::data->active = true;
-        if (root && root->Element::data->focused) {
-            root->Element::data->focused->Element::data->focus = false;
-            root->Element::data->focused->unfocused();
-            root->Element::data->focused = null;
-        }
         if (n->Element::data->tab_index >= 0)
             last = n;
     }
-    if (last) {
+    node *prev = root->Element::data->focused;
+    if (last && prev != last) {
+        if (prev) {
+            prev->Element::data->focus = false;
+            prev->unfocused();
+        }
         last->Element::data->focus = true;
         root->Element::data->focused = last;
         last->focused();
+    }
+    /// set mouse cursel on editable nodes
+    if (last) {
+        if (last->data->selectable || last->data->editable) {
+            /// compute sel start on mouse click down
+            bool    is_down = app->data->active[0];
+            TextSel s = last->get_selection(app->data->cursor, is_down);
+
+            /// we are either setting the sel_start, or sel_end (with a swap potential for out of sync selection)
+            if (is_down) {
+                /// if shift key, you alter between swapping start and end based on if its before or after
+                if (shift) {
+                    if (last->data->sel_prev == last->data->sel_end)
+                        last->data->sel_end = last->data->sel_start;
+                }
+                last->data->sel_start = s;
+                if (!shift)
+                    last->data->sel_end = TextSel(s.copy());
+                last->data->sel_prev  = last->data->sel_start;
+
+            } else {
+                if (shift) {
+                    if (last->data->sel_prev == last->data->sel_start)
+                        last->data->sel_start = last->data->sel_end;
+                }
+                last->data->sel_end   = s;
+                if (!shift)
+                    last->data->sel_start = TextSel(s.copy());
+                last->data->sel_prev  = last->data->sel_end;
+            }
+        }
     }
 }
 
@@ -299,6 +335,7 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
 
                     assert(prop_type->functions->mix);
                     raw_t temp = prop_type->functions->mix(sel.from, sel.to, curve);
+                    //mixes++;
                     ///
                     if (prop_type->traits & traits::mx_obj) {
                         prop_type->functions->set_memory(prop_dst, ((mx*)temp)->mem);
@@ -531,8 +568,8 @@ doubly<style::qualifier*> parse_qualifiers(style::block &bl, cstr *p) {
         style::qualifier *v = new style::qualifier();
         result->push(v);
 
-        int idot = q.index_of(".");
-        int icol = q.index_of(":");
+        num idot = q.index_of(".");
+        num icol = q.index_of(":");
         str tail;
         ///
         if (idot >= 0) {
@@ -733,7 +770,7 @@ void style::impl::load(str code) {
                         cb_value  = str::parse_quoted(&cs, cb_value.len());
                     }
 
-                    int         i = cb_value.index_of(",");
+                    num         i = cb_value.index_of(",");
                     str     param = i >= 0 ? cb_value.mid(i + 1).trim() : "";
                     str     value = i >= 0 ? cb_value.mid(0, i).trim()  : cb_value;
                     style::transition trans = param ? style::transition(param) : null;
@@ -817,56 +854,49 @@ bool style::impl::applicable(node *n, prop *member, array<style::entry*> &result
 void node::focused()   { }
 void node::unfocused() { }
 
-void node::mouse_click(vec2d cursor) {
-    array<str> lines = data->lines;
-    if (!lines)
-        return;
-    int i = 0;
-    int n = lines.len();
-    double offset_y = text.align.y * math::max(0.0, (double(n - 1) * data->line_h));
-    for (str &line:lines) {
-        rectd r { 0, rect.y - offset_y + i * data->line_h, rect.w, rect.h };
-        // text.align
-        i++;
-    }
-}
-
 array<LineInfo> &node::get_lines() {
+    bool  is_cache = data->cache_source.mem == data->content.mem;
+    ///
     if (!is_cache) {
-        array<LineInfo> line_strs = s_content.split("\n");
-        size_t         sz = l.len();
-        str     s_content = data->content;
-        bool     is_cache = data->cache_source.mem == s_content.mem;
+        str        s_content = data->content;
+        array<str> line_strs = s_content.split("\n");
+        size_t    line_count = line_strs.len();
         ///
-        data->cache_lines = array<LineInfo>(sz, sz);
+        data->lines = array<LineInfo>(line_count, line_count);
         ///
         size_t i = 0;
-        for (LineInfo &l: data->cache_lines) {
-            l.rect   = rect;
-            l.origin = data->cache_lines[i++];
+        for (LineInfo &l: data->lines) {
+            l.bounds = {}; /// falsey rects have not been computed yet
             l.data   = line_strs[i];
-            l.sz     = l.data.len();
-            l.adv    = array<double>(l.sz, l.sz);
+            l.len    = l.data.len();
+            l.adv    = array<double>(l.len, l.len);
             int a    = 0;
-            for (auto &l) {
-                l data->font_advances adv[a++] 
+            double total_w = 0;
+            for (real &l: l.adv) {
+                l = data->font->advances[a++];
+                total_w += l;
             }
+            l.bounds.w = total_w;
         }
     }
+    return data->lines;
 }
 
-array<double> &node::get_advances(Canvas& canvas) {
-    if (!data->font_advances) {
-        data->font_advances = array<double>(255, 255, 0);
+
+array<double> &font::advances(Canvas& canvas) {
+    if (!data->advances) {
+        data->advances = array<double>(255, 255);
         for (int char_code = 0; char_code < data->advances.len(); char_code++) {
             char ch[2];
             ch[0] = char_code;
             ch[1] = 0;
-            data->font_advances[char_code] = canvas.measure_advance(ch, 1);
+            data->advances[char_code] = canvas.measure_advance(ch, 1);
         }
     }
+    return data->advances;
 }
 
+/// we draw the text and plot its placement; the text() function gives us back effectively aligned text
 void node::draw_text(Canvas& canvas, rectd& rect) {
     props::drawing &text = data->drawings[operation::text];
     canvas.save();
@@ -875,36 +905,82 @@ void node::draw_text(Canvas& canvas, rectd& rect) {
     canvas.font(data->font);
     text_metrics tm = canvas.measure("W"); /// unit data for line
     const double line_height_basis = 2.0;
-    double       lh = tm.line_height * (node::data->text_spacing.y * line_height_basis);
-    data->line_h    = lh;
+    double       lh = tm.line_height * (node::data->text_spacing.y * line_height_basis); /// this stuff can all transition, best to live update the bounds
     ///
-    array<double>   &text_adv = get_advances(canvas);
+    array<double>   &text_adv = data->font.advances(canvas);
     array<LineInfo> &lines    = get_lines();
 
-    if (!is_cache) {
-        data->lines_content = data->content;
-        /// line_advances used in selection management
-        size_t len = lines.len();
-        for (LineInfo &line: lines) {
-            line.advances = array<double>(line.sz, line.sz);
-            for (int ii = 0; ii < line.sz; i++)
-                line.advances[ii] = text_adv[(int)(char)line.data[i]];
-        }
-    }
     /// iterate through lines
     int i = 0;
     int n = lines.len();
 
     /// if in center, the first line is going to be offset by half the height of all the lines n * (lh / 2)
     /// if bottom, the first is going to be offset by total height of lines n * lh
-    double offset_y = text.align.y * math::max(0.0, (double(n - 1) * lh));
-    for (LineInfo &line:lines) {
-        /// implement interactive state to detect mouse clicks and set the cursor position
-        line_rects[i] = rectdi { 0, rect.y - offset_y + i * lh, rect.w, rect.h };
-        canvas.text(line.data, r, text.align, {0.0, 0.0}, true);
-        i++;
+
+    /// for center y
+    double total_h = lh * n;
+    data->text_bounds.x = rect.x; /// each line is independently aligned
+    data->text_bounds.y = rect.y + ((rect.h * text.align.y) - (total_h * text.align.y));
+    data->text_bounds.w = rect.w;
+    data->text_bounds.h = total_h;
+
+    TextSel sel_start = data->sel_start;
+    TextSel sel_end   = data->sel_end;
+
+    if (sel_start > sel_end) {
+        TextSel t = sel_start;
+        sel_start = sel_end;
+        sel_end   = t;
     }
 
+    bool in_sel = false;
+    for (LineInfo &line:lines) {
+        /// implement interactive state to detect mouse clicks and set the cursor position
+        line.bounds.x = data->text_bounds.x;
+        line.bounds.y = data->text_bounds.y + i * lh;
+        line.bounds.w = data->text_bounds.w; /// these are set prior
+        line.bounds.h = lh;
+
+        if (!in_sel && sel_start->row == i)
+            in_sel = true;
+
+        /// get more accurate placement rectangle
+        canvas.color(text.color);
+        canvas.text(line.data, line.bounds, text.align, {0.0, 0.0}, true, &line.placement);
+
+        if (in_sel) {
+            rectd sel_rect = line.bounds;
+            str sel;
+            num start = 0;
+            
+            if (sel_start->row == i)
+                for (num ii = 0; ii < sel_start->column; ii++) {
+                    sel_rect.x += line.adv[ii];
+                    start++;
+                }
+
+            if (sel_end->row == i) {
+                for (num ii = 0; ii < sel_end->column; ii++)
+                    sel_rect.w += line.adv[ii];
+                sel = line.data.mid(start, sel_end->column - start);
+            } else {
+                sel_rect.w = line.bounds.w - sel_rect.x;
+                sel = line.data;
+            }
+            canvas.fill(sel_rect);
+            canvas.color("#fff"); /// needs a selection fill and color
+            alignment tl { 0, 0 };
+            canvas.text(sel, sel_rect, tl, {0.0, 0.0}, true);
+        }
+
+        if (in_sel && sel_end->row == i)
+            in_sel = false;
+
+        /// correct these for line-height selectability
+        line.placement.y = line.bounds.y;
+        line.placement.h = lh;
+        i++;
+    }
     canvas.restore();
 }
 

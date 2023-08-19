@@ -28,41 +28,42 @@ bool check(int ret, const string &message) {
 	return true;
 }
 
-gnutls_certificate_credentials_t *new_credentials() {
-	auto creds = new gnutls_certificate_credentials_t;
-	gnutls::check(gnutls_certificate_allocate_credentials(creds));
-	return creds;
-}
+//gnutls_certificate_credentials_t *new_credentials() {
+//	auto creds = new gnutls_certificate_credentials_t;
+//	gnutls::check(gnutls_certificate_allocate_credentials(creds));
+//	return creds;
+//}
 
-void free_credentials(gnutls_certificate_credentials_t *creds) {
-	gnutls_certificate_free_credentials(*creds);
-	delete creds;
-}
+//void free_credentials(gnutls_certificate_credentials_t *creds) {
+//	gnutls_certificate_free_credentials(*creds);
+//	delete creds;
+//}
 
-gnutls_x509_crt_t *new_crt() {
-	auto crt = new gnutls_x509_crt_t;
-	gnutls::check(gnutls_x509_crt_init(crt));
+mbedtls_x509_crt_t *new_crt() {
+	auto crt = new mbedtls_x509_crt_t;
+	mbedtls_x509_crt_init(crt);
 	return crt;
 }
 
-void free_crt(gnutls_x509_crt_t *crt) {
-	gnutls_x509_crt_deinit(*crt);
+void free_crt(mbedtls_x509_crt_t *crt) {
+	mbedtls_x509_crt_free(crt);
 	delete crt;
 }
 
-gnutls_x509_privkey_t *new_privkey() {
-	auto privkey = new gnutls_x509_privkey_t;
-	gnutls::check(gnutls_x509_privkey_init(privkey));
+mbedtls_pk_context *new_privkey() {
+	auto privkey = new mbedtls_pk_context;
+	mbedtls_pk_init(privkey);
 	return privkey;
 }
 
-void free_privkey(gnutls_x509_privkey_t *privkey) {
-	gnutls_x509_privkey_deinit(*privkey);
+void free_privkey(mbedtls_pk_context *privkey) {
+	mbedtls_pk_free(privkey);
 	delete privkey;
 }
 
-gnutls_datum_t make_datum(char *data, size_t size) {
-	gnutls_datum_t datum;
+
+datum_t make_datum(char *data, size_t size) {
+	datum_t datum;
 	datum.data = reinterpret_cast<unsigned char *>(data);
 	datum.size = size;
 	return datum;

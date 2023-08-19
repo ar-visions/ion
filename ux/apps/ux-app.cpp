@@ -1,3 +1,7 @@
+struct abc1 { int abc; };
+
+static abc1 *abc = new abc1 { };
+
 #include <mx/mx.hpp>
 #include <async/async.hpp>
 #include <net/net.hpp>
@@ -40,16 +44,6 @@ struct View:node {
  
     Element update() {
         return array<Element> {
-            Button {
-                { "content", fmt {"hello world: {0}\nhello world: {0}", { state->sample }} },
-                { "on-click",
-                    callback([&](event e) {
-                        console.log("on-click...");
-                        if (state->clicked)
-                            state->clicked(e);
-                    })
-                }
-            },
             Edit {
                 { "content", "this is editable text" }
             }

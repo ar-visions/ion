@@ -12,14 +12,27 @@
 #include <rtc/common.hpp>
 
 #if USE_GNUTLS
-
 #include <gnutls/gnutls.h>
-
 #include <gnutls/crypto.h>
 #include <gnutls/dtls.h>
 #include <gnutls/x509.h>
+#endif
+
+#include <mbedtls/net_sockets.h>
+#include <mbedtls/ssl.h>
+#include <mbedtls/dtls.h>
+#include <mbedtls/x509.h>
+#include <mbedtls/entropy.h>
+#include <mbedtls/ctr_drbg.h>
+#include <mbedtls/error.h>
+#include <mbedtls/debug.h>
 
 namespace rtc::gnutls {
+
+struct datum_t {
+    unsigned char* data;
+    size_t size;
+};
 
 bool check(int ret, const string &message = "GnuTLS error");
 
