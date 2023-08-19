@@ -36,13 +36,12 @@ mx inflate(mx input) {
     array<char> out(sz * 4);
     
     // setup zlib inflate stream
-    z_stream stream {
-        .next_in  = Z_NULL,
-        .avail_in = 0,
-        .zalloc   = Z_NULL,
-        .zfree    = Z_NULL,
-        .opaque   = Z_NULL
-    };
+    z_stream stream { };
+    stream.next_in  = Z_NULL;
+    stream.avail_in = 0;
+    stream.zalloc   = Z_NULL;
+    stream.zfree    = Z_NULL;
+    stream.opaque   = Z_NULL;
 
     if (::inflateInit2(&stream, 16 + MAX_WBITS) != Z_OK) {
         console.fault("inflate failure: init");
@@ -76,16 +75,6 @@ mx inflate(mx input) {
     return out;
 }
 
-struct iaudio {
-    i32    sample_rate; /// hz
-    i16   *samples;
-    i8     channels;
-    i64    total_samples;
-    str    artist;
-    str    title;
-    ~iaudio() { delete[] samples; }
-};
-
 image audio::fft_image(ion::size sz) {
     return image();
 }
@@ -104,8 +93,8 @@ static bool mp3_set_id3(path p, str artist, str title) {
     size_t  title_sz = title.len()  + 1;
 
     // create the artist and song metadata frames
-    u8 artistFrame[10 + artist_sz];  // Frame ID (4 bytes) + Frame Size (4 bytes) + Flags (2 bytes) + Artist field value
-    u8 titleFrame [10 +  title_sz]; // Frame ID (4 bytes) + Frame Size (4 bytes) + Flags (2 bytes) + Song field value
+    u8 *artistFrame = new u8[10 + artist_sz];  // Frame ID (4 bytes) + Frame Size (4 bytes) + Flags (2 bytes) + Artist field value
+    u8 *titleFrame  = new u8[10 +  title_sz]; // Frame ID (4 bytes) + Frame Size (4 bytes) + Flags (2 bytes) + Song field value
 
     memcpy(artistFrame, "TPE1", 4);  // Frame ID: TPE1 (artist)
     memcpy(titleFrame,  "TIT2", 4);    // Frame ID: TIT2 (song)
@@ -152,11 +141,22 @@ static bool mp3_set_id3(path p, str artist, str title) {
     }
     
     fclose(mp3f);
+    delete[] artistFrame;
+    delete[] titleFrame;
     return true;
 }
 
 /// use this to hide away the data and isolate its dependency
 mx_implement(audio, mx);
+
+
+
+
+
+
+
+
+
 
 void audio::convert_mono() {
     if (data->channels == 1)
@@ -241,13 +241,13 @@ bool audio::save(path dest, i64 bitrate) {
     } else if (ext == ".wav") {
         /// hiii everybody!
         /// hiii dr wav!
-        drwav_data_format format {
-            .container      = drwav_container_riff,
-            .format         = DR_WAVE_FORMAT_PCM,
-            .channels       = u32(data->channels),
-            .sampleRate     = u32(data->sample_rate),
-            .bitsPerSample  = 16
-        };
+        drwav_data_format format { };
+        format.container      = drwav_container_riff;
+        format.format         = DR_WAVE_FORMAT_PCM;
+        format.channels       = u32(data->channels);
+        format.sampleRate     = u32(data->sample_rate);
+        format.bitsPerSample  = 16;
+        
         drwav wav;
         if (!drwav_init_file_write(&wav, s_path, &format, null))
             console.fault("failed to open output wav file for writing.");

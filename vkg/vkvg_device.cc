@@ -118,13 +118,11 @@ VkvgDevice vkvg_device_create (VkEngine e, VkSampleCountFlags samples, bool defe
 		e->vk_gpu->indices.presentFamily.value());
 	//mtx_init (&dev->gQMutex, mtx_plain);
 
-#ifdef VKH_USE_VMA
 	VmaAllocatorCreateInfo allocatorInfo = {
 		.physicalDevice = phy,
 		.device = vkdev
 	};
 	vmaCreateAllocator(&allocatorInfo, (VmaAllocator*)&dev->allocator);
-#endif
 
 	dev->cmdPool= vkh_cmd_pool_create		((VkhDevice)dev, dev->gQueue->familyIndex, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
 	dev->cmd	= vkh_cmd_buff_create		((VkhDevice)dev, dev->cmdPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY);

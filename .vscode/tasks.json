@@ -4,7 +4,8 @@
         {
             "label": "build-ux-app",
             "type": "shell",
-            "command": "make ux-app -j1",
+            "command": "msbuild ion.sln /t:ux-app",
+            //"command": "make ux-app -j4",
 			"options": {
                 "cwd": "${workspaceFolder}/../ion/build"
             },

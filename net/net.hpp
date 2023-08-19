@@ -8,6 +8,10 @@ struct WOLFSSL;
 struct WOLFSSL_METHOD;
 struct sockaddr_in;
 
+#if defined(WIN32)
+using ssize_t = ion::i64;
+#endif
+
 namespace ion {
 
 enums(method, undefined, 

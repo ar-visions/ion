@@ -371,7 +371,9 @@ float SkPathStroker2::squaredLineLength(const PathSegment& lineSeg) {
 }
 
 inline SkColor sk_color(rgbad c) {
-    rgba8 i = { math::round(c.r * 255), math::round(c.g * 255), math::round(c.b * 255), math::round(c.a * 255) };
+    rgba8 i = {
+        u8(math::round(c.r * 255)), u8(math::round(c.g * 255)),
+        u8(math::round(c.b * 255)), u8(math::round(c.a * 255)) };
     auto sk = SkColor(uint32_t(i.b)        | (uint32_t(i.g) << 8) |
                      (uint32_t(i.r) << 16) | (uint32_t(i.a) << 24));
     return sk;
@@ -584,7 +586,7 @@ struct ICanvas {
             if (shape.type == typeof(rectd)) {
                 rectd &m = sh->bounds;
                 SkRect r = SkRect {
-                    m.x, m.y, m.x + m.w, m.y + m.h
+                    float(m.x), float(m.y), float(m.x + m.w), float(m.y + m.h)
                 };
                 p.Rect(r);
             } else if (shape.type == typeof(Rounded<double>)) {
@@ -705,13 +707,14 @@ struct ICanvas {
         SkFont     &font = font_handle(top->font);
         auto         adv = font.measureText(text.cs(), text.len(), SkTextEncoding::kUTF8);
         auto          lh = font.getMetrics(&mx);
+
         return text_metrics {
-            .w           = adv,
-            .h           = abs(mx.fAscent) + abs(mx.fDescent),
-            .ascent      = mx.fAscent,
-            .descent     = mx.fDescent,
-            .line_height = lh,
-            .cap_height  = mx.fCapHeight
+            adv,
+            abs(mx.fAscent) + abs(mx.fDescent),
+            mx.fAscent,
+            mx.fDescent,
+            lh,
+            mx.fCapHeight
         };
     }
 

@@ -187,6 +187,7 @@ double duration_millis(duration dur) {
         case duration::ms: return 1.0;
         case duration::s:  return 1000.0;
     }
+    return 0.0;
 }
 
 void composer::update(composer::cdata *composer, node *parent, node *&instance, Element &e) {
@@ -232,7 +233,7 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
         }
 
         /// arg set cache
-        bool pset[args_len];
+        bool *pset = new bool[args_len];
         memset(pset, 0, args_len * sizeof(bool));
 
         vec4d *p_radius = &instance->data->drawings[operation::fill].radius;
@@ -414,6 +415,8 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
                 }
             }
         }
+
+        delete[] pset;
 
         Element render = instance->update(); /// needs a 'changed' arg
         if (render) {

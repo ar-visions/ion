@@ -7,6 +7,7 @@
 #include <vk/vk.hpp>
 #include <vkh/vkh.h>
 #include <camera/camera.hpp>
+#include <math.h>
 
 struct GLFWwindow;
 

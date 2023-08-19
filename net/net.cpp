@@ -472,9 +472,9 @@ bool message::read_content(sock &sc) {
     int            iter = 0;
     array<uint8_t> v_data;
     ///
-    assert(!(clen >= 0 and chunked));
+    assert(!(clen >= 0 && chunked));
     ///
-    if (!(!chunked and clen == 0)) {
+    if (!(!chunked && clen == 0)) {
         do {
             if (chunked) {
                 if (iter++ > 0) {
@@ -514,7 +514,7 @@ bool message::read_content(sock &sc) {
                     break;
                 }
             }
-        } while (!error and chunked and content_len != 0);
+        } while (!error && chunked && content_len != 0);
     }
     ///
     mx    rcv = error ? mx() : mx(v_data);

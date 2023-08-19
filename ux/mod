@@ -1,13 +1,18 @@
-dep(mx:async ion:net ion:media ion:camera vulkan:vkh skia:skia bzip2:bz2_static)
 
 if(APPLE)
     dep(IOSurface QuartzCore Metal AppKit CoreGraphics CoreFoundation Cocoa IOKit)
-else()
+elseif(LINUX)
     dep(X11)
+endif()
+
+dep(mx:async ion:net ion:media ion:camera vulkan:vkh skia:skia bzip2:bz2_static)
+
+if(MSVC)
+    # msvc is broken with publics
+    file(TO_CMAKE_PATH "$ENV{VULKAN_SDK}/Include" VULKAN_INCLUDE)
+    includes(${VULKAN_INCLUDE})
 endif()
 
 includes(${INSTALL_PREFIX}/../extern/skia-m116)
 includes(${INSTALL_PREFIX}/include/skia)
-
-cpp(17)
 

@@ -6,10 +6,20 @@ namespace ion {
 
 mx inflate(mx);
 
+struct iaudio {
+    ion::i32    sample_rate; /// hz
+    ion::i16   *samples;
+    ion::i8     channels;
+    ion::i64    total_samples;
+    ion::str    artist;
+    ion::str    title;
+    ~iaudio() { delete[] samples; }
+};
+
 /// isolating the types and then designing from there brings the isolated types together
 /// i dont want these constructors implied, its a bit too much and a reduction effort should be of value
 struct audio:mx {
-    mx_declare(audio, mx, struct iaudio);
+    mx_declare(audio, mx, iaudio);
     ///
     audio(path res, bool force_mono = false);
     void      convert_mono();

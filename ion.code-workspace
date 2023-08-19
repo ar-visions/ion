@@ -165,7 +165,8 @@
 			"csetjmp": "cpp",
 			"sparseqr": "cpp",
 			"strstream": "cpp",
-			"*.gen": "cpp"
+			"*.gen": "cpp",
+			"xiosbase": "cpp"
 		}
 	}
 }
