@@ -11,6 +11,7 @@
 
 #include "common.hpp"
 #include "dtlstransport.hpp"
+#include "impl/tls.hpp"
 
 #if RTC_ENABLE_MEDIA
 

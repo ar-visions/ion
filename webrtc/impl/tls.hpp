@@ -40,6 +40,9 @@ gnutls_datum_t make_datum(char *data, size_t size);
 
 #elif USE_MBEDTLS
 
+/// make sure we are using this define (and others based on requirements of datachannel)
+#define DMBEDTLS_SSL_DTLS_SRTP
+
 #include "mbedtls/ctr_drbg.h"
 #include "mbedtls/ecdsa.h"
 #include "mbedtls/entropy.h"

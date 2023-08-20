@@ -38,7 +38,10 @@
             "name":     "mbedtls",
             "version":  "3.4.0",
             "commit":   "1873d3b",
-            "url":      "https://github.com/Mbed-TLS/mbedtls"
+            "url":      "https://github.com/Mbed-TLS/mbedtls",
+            "cmake": {
+                "args": ["-DMBEDTLS_SSL_DTLS_SRTP=On"]
+            }
         },
         {
             "name":     "juice",
@@ -63,18 +66,6 @@
             "version":  "0.9.5.0",
             "url":      "https://github.com/sctplab/usrsctp",
             "commit":   "07f871b"
-        },
-        {
-            "name":     "nettle",
-            "version":  "3.8.1",
-            "url":      "https://github.com/gnutls/nettle",
-            "commit":   "990abad"
-        },
-        {
-            "name":     "gnutls",
-            "version":  "3.8.1",
-            "url":      "https://github.com/gnutls/gnutls",
-            "commit":   "513570a"
         },
         {
             "name":     "ogg",

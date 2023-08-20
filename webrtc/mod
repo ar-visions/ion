@@ -1,13 +1,22 @@
 # net already has mbed: tls, crypto and x509 libs
 # convert net to use gnutls, as its too much a chore to swap it out before i get it going
 # it must be compiled as-is, same file structure and same defines
-dep(ion:net juice:juice nettle:nettle srtp:srtp2 plog:plog usrsctp:usrsctp)
+dep(ion:net juice:juice srtp:srtp2 usrsctp:usrsctp)
 
+# wide-linking interns (the order must prefer impl first)
 includes(${p})
+includes(${p}/src)
 includes(${p}/rtc)
-#includes(${p}/impl)
+includes(${p}/impl)
 
-defines(USE_MBEDTLS RTC_ENABLE_WEBSOCKET RTC_ENABLE_MEDIA WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS)
+
+defines(
+    USE_MBEDTLS
+    RTC_SYSTEM_JUICE
+    RTC_SYSTEM_SRTP
+    RTC_ENABLE_WEBSOCKET
+    RTC_ENABLE_MEDIA
+    WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS)
 
 src(src/av1packetizationhandler.cpp
     src/av1rtppacketizer.cpp
