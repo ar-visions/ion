@@ -4,8 +4,6 @@
         {
             "label": "build-ux-app",
             "type": "shell",
-            "command": "msbuild ion.sln /t:ux-app",
-            //"command": "make ux-app -j4",
 			"options": {
                 "cwd": "${workspaceFolder}/../ion/build"
             },
@@ -20,27 +18,14 @@
                 "clear": true
             },
 			"isBackground": false,
-			"problemMatcher": ["$gcc"]
-        },
-        {
-            "label": "build-circles",
-            "type": "shell",
-            "command": "make circles -j1",
-			"options": {
-                "cwd": "${workspaceFolder}/../ion/build"
+			"problemMatcher": ["$gcc"],
+            "windows": {
+                "command": "msbuild ion.sln /t:ux-app"
             },
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            },
-            "presentation": {
-                "reveal": "always",
-                "panel": "shared",
-                "group": "build0",
-                "clear": true
-            },
-			"isBackground": false,
-			"problemMatcher": ["$gcc"]
+            "osx": {
+                "command": "make ux-app -j4"
+            }
         }
+   
 	]
 }

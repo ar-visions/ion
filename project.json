@@ -65,6 +65,18 @@
             "commit":   "07f871b"
         },
         {
+            "name":     "nettle",
+            "version":  "3.8.1",
+            "url":      "https://github.com/gnutls/nettle",
+            "commit":   "990abad"
+        },
+        {
+            "name":     "gnutls",
+            "version":  "3.8.1",
+            "url":      "https://github.com/gnutls/gnutls",
+            "commit":   "513570a"
+        },
+        {
             "name":     "ogg",
             "version":  "1.3.5",
             "url":      "https://github.com/xiph/ogg",

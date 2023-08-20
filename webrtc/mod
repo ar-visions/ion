@@ -1,0 +1,69 @@
+# net already has mbed: tls, crypto and x509 libs
+# convert net to use gnutls, as its too much a chore to swap it out before i get it going
+# it must be compiled as-is, same file structure and same defines
+dep(ion:net juice:juice nettle:nettle srtp:srtp2 plog:plog usrsctp:usrsctp)
+
+includes(${p})
+includes(${p}/rtc)
+#includes(${p}/impl)
+
+defines(USE_MBEDTLS RTC_ENABLE_WEBSOCKET RTC_ENABLE_MEDIA WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS)
+
+src(src/av1packetizationhandler.cpp
+    src/av1rtppacketizer.cpp
+    src/candidate.cpp
+    src/capi.cpp
+    src/channel.cpp
+    src/configuration.cpp
+    src/datachannel.cpp
+    src/description.cpp
+    src/global.cpp
+    src/h264packetizationhandler.cpp
+    src/h264rtppacketizer.cpp
+    src/mediachainablehandler.cpp
+    src/mediahandlerelement.cpp
+    src/mediahandlerrootelement.cpp
+    src/message.cpp
+    src/nalunit.cpp
+    src/opuspacketizationhandler.cpp
+    src/opusrtppacketizer.cpp
+    src/peerconnection.cpp
+    src/rtcpnackresponder.cpp
+    src/rtcpreceivingsession.cpp
+    src/rtcpsrreporter.cpp
+    src/rtp.cpp
+    src/rtppacketizationconfig.cpp
+    src/rtppacketizer.cpp
+    src/track.cpp
+    src/websocket.cpp
+    src/websocketserver.cpp)
+
+src(impl/wstransport.cpp
+    impl/certificate.cpp
+    impl/channel.cpp
+    impl/datachannel.cpp
+    impl/dtlssrtptransport.cpp
+    impl/dtlstransport.cpp
+    impl/http.cpp
+    impl/httpproxytransport.cpp
+    impl/icetransport.cpp
+    impl/init.cpp
+    impl/logcounter.cpp
+    impl/peerconnection.cpp
+    impl/pollinterrupter.cpp
+    impl/pollservice.cpp
+    impl/processor.cpp
+    impl/sctptransport.cpp
+    impl/sha.cpp
+    impl/tcpserver.cpp
+    impl/tcptransport.cpp
+    impl/threadpool.cpp
+    impl/tls.cpp
+    impl/tlstransport.cpp
+    impl/track.cpp
+    impl/transport.cpp
+    impl/utils.cpp
+    impl/verifiedtlstransport.cpp
+    impl/websocket.cpp
+    impl/websocketserver.cpp
+    impl/wshandshake.cpp)

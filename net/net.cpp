@@ -24,6 +24,22 @@
 
 #include <cstring>
 
+struct ICredentials {
+    mbedtls_x509_crt          cert_chain;
+    mbedtls_pk_context        pkey;
+    mbedtls_ssl_config        conf;
+
+    ICredentials() {
+        mbedtls_x509_crt_init(&cert_chain);
+        mbedtls_ssl_config_init(&conf);
+    }
+
+    ~ICredentials() {
+        mbedtls_x509_crt_free(&cert_chain);
+        mbedtls_ssl_config_free(&conf);
+    }
+};
+
 namespace ion {
 
 void mbedtls_debug(void *ctx, int level, const char *file, int line, const char *str) {
@@ -72,32 +88,21 @@ str dns(str hostname) {
     return result;
 }
 
-struct Certificate {
-    mbedtls_x509_crt          cert_chain;
-    mbedtls_pk_context        pkey;
+mx_implement(Credentials, mx);
 
-    Certificate() {
-        mbedtls_x509_crt_init(&cert_chain);
-    }
+Credentials::Credentials(path pub, path priv):Credentials() {
+    open(pub, priv);
+}
 
-    ~Certificate() {
-        mbedtls_x509_crt_free(&cert_chain);
-    }
-
-    void open(path pub, path priv, str pass = null) {
-        assert(!pass);
-        /// replace "root_cert.pem" and "intermediate_cert.pem" with your actual file paths
-        if (mbedtls_x509_crt_parse_file(&cert_chain, pub) != 0)
-            console.fault("failed to parse public cert");
-        /// private key
-        if (mbedtls_pk_parse_keyfile(&pkey, priv, null, null, null) != 0)
-            console.fault("failed to parse private key");
-    }
-
-    Certificate(path pub, path priv):Certificate() {
-        open(pub, priv);
-    }
-};
+void Credentials::open(path pub, path priv, str pass) {
+    assert(!pass);
+    /// replace "root_cert.pem" and "intermediate_cert.pem" with your actual file paths
+    if (mbedtls_x509_crt_parse_file(&data->cert_chain, pub) != 0)
+        console.fault("failed to parse public cert");
+    /// private key
+    if (mbedtls_pk_parse_keyfile(&data->pkey, priv, null, null, null) != 0)
+        console.fault("failed to parse private key");
+}
 
 
 /// isolated isock containing state info for socket
@@ -110,8 +115,7 @@ struct isock {
     mbedtls_entropy_context   entropy;
     mbedtls_ctr_drbg_context  ctr_drbg;
     mbedtls_ssl_context       ssl;
-    mbedtls_ssl_config        conf;
-    Certificate*              crt;
+    Credentials*              crt;
     
     /// methods
     void ssl_reinit() {
@@ -119,16 +123,14 @@ struct isock {
         mbedtls_ssl_init(&ssl);
         mbedtls_entropy_init(&entropy);
         mbedtls_ctr_drbg_init(&ctr_drbg);
-        mbedtls_ssl_config_init(&conf);
         if (crt)
             delete crt;
-        crt = new Certificate;
+        crt = new Credentials;
     }
     
     void ssl_cleanup() {
         mbedtls_net_free(&ctx);
         mbedtls_ssl_free(&ssl);
-        mbedtls_ssl_config_free(&conf);
         mbedtls_ctr_drbg_free(&ctr_drbg);
         mbedtls_entropy_free(&entropy);
         if (crt) {
@@ -138,8 +140,8 @@ struct isock {
     }
     
     isock() {
-        static bool wolf;
-        if (!wolf) {
+        static bool init;
+        if (!init) {
     #ifdef _WIN32
             static WSADATA wsa_data;
             static int wsa = WSAStartup(MAKEWORD(2,2), &wsa_data);
@@ -148,7 +150,7 @@ struct isock {
                 return;
             }
     #endif
-            wolf = true; /// wolves should always be true
+            init = true;
         }
         ssl_reinit();
     }
@@ -268,7 +270,7 @@ sock sock::connect(uri url) {
     sock   res { sock::role::client, url };
     isock *isc  = res.data;
     /// this operation runs first and its cache is used by mbed
-    int ret = mbedtls_ssl_setup(&isc->ssl, &isc->conf);
+    int ret = mbedtls_ssl_setup(&isc->ssl, &isc->crt->data->conf);
     if (ret != 0) {
         std::cerr << "mbedtls_ssl_setup failed: " << ret << std::endl;
         return {};
@@ -340,11 +342,12 @@ ssize_t sock::send(mx &v) {
 }
 
 void sock::load_certs(str host) {
-    mbedtls_ssl_conf_dbg(&data->conf, mbedtls_debug, stdout);
+    mbedtls_ssl_config *conf = &data->crt->data->conf;
+    mbedtls_ssl_conf_dbg(conf, mbedtls_debug, stdout);
     mbedtls_debug_set_threshold(4);
     
     int ret = mbedtls_ssl_config_defaults(
-        &data->conf,
+        conf,
         MBEDTLS_SSL_IS_CLIENT,
         MBEDTLS_SSL_TRANSPORT_STREAM,
         MBEDTLS_SSL_PRESET_DEFAULT);
@@ -354,10 +357,11 @@ void sock::load_certs(str host) {
     ret = mbedtls_ctr_drbg_seed(&data->ctr_drbg, mbedtls_entropy_func, &data->entropy,
         (const unsigned char *)pers, strlen(pers));
     
-    mbedtls_ssl_conf_authmode(&data->conf, MBEDTLS_SSL_VERIFY_REQUIRED);
-    mbedtls_ssl_conf_ca_chain(&data->conf, &data->crt->cert_chain, NULL);
-    mbedtls_ssl_conf_rng(&data->conf, mbedtls_ctr_drbg_random, &data->ctr_drbg);
-    mbedtls_ssl_conf_min_version(&data->conf, MBEDTLS_SSL_MAJOR_VERSION_3, MBEDTLS_SSL_MINOR_VERSION_3);  // TLS 1.2
+    
+    mbedtls_ssl_conf_authmode   (conf, MBEDTLS_SSL_VERIFY_REQUIRED);
+    mbedtls_ssl_conf_ca_chain   (conf, &data->crt->data->cert_chain, NULL);
+    mbedtls_ssl_conf_rng        (conf, mbedtls_ctr_drbg_random, &data->ctr_drbg);
+    mbedtls_ssl_conf_min_version(conf, MBEDTLS_SSL_MAJOR_VERSION_3, MBEDTLS_SSL_MINOR_VERSION_3);  // TLS 1.2
     
     /// load cert and key based on role
     if (data->role == role::server) {
@@ -372,7 +376,7 @@ void sock::load_certs(str host) {
                 break;
             }
             symbol file = symbol(p.cs());
-            if (mbedtls_x509_crt_parse_file(&data->crt->cert_chain, file) != 0)
+            if (mbedtls_x509_crt_parse_file(&data->crt->data->cert_chain, file) != 0)
                 console.fault("failed to parse trust: {0}", { file });
         }
     }

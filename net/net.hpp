@@ -12,7 +12,15 @@ struct sockaddr_in;
 using ssize_t = ion::i64;
 #endif
 
+struct ICredentials;
+
 namespace ion {
+
+struct Credentials:mx {
+    mx_declare(Credentials, mx, ICredentials);
+    void open(path pub, path priv, str pass = null);
+    Credentials(path pub, path priv);
+};
 
 enums(method, undefined, 
    "undefined, response, get, post, put, delete",
