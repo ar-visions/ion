@@ -1,14 +1,13 @@
 # net already has mbed: tls, crypto and x509 libs
 # convert net to use gnutls, as its too much a chore to swap it out before i get it going
 # it must be compiled as-is, same file structure and same defines
-dep(ion:net juice:juice srtp:srtp2 usrsctp:usrsctp)
+dep(mx:mx ion:net juice:juice srtp:srtp2 usrsctp:usrsctp)
 
 # wide-linking interns (the order must prefer impl first)
 includes(${p})
 includes(${p}/src)
 includes(${p}/rtc)
 includes(${p}/impl)
-
 
 defines(
     USE_MBEDTLS

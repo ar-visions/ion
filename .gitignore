@@ -6,4 +6,5 @@ build*
 Thumbs.db
 ssl
 rtc/res/*
+webrtc/streamer/samples/*
 

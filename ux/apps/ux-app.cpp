@@ -12,6 +12,12 @@ static abc1 *abc = new abc1 { };
 
 using namespace ion;
 
+/// Get RTC Stream going (compile all into singular module app in webrtc/apps)
+
+/// that will stream views such as these that are registered components for web
+/// better to declare them in code as such with the type registration
+/// lookup parents and add to its children classes
+
 struct View:node {
     struct props {
         int         sample;
@@ -45,7 +51,7 @@ struct View:node {
     Element update() {
         return array<Element> {
             Edit {
-                { "content", "this is editable text" }
+                { "content", "VAVAVAVAVAVAVAVAVAVAVAVAVAVA" }
             }
         };
     }
