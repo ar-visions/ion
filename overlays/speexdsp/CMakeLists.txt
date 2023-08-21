@@ -28,6 +28,6 @@ install(
     ARCHIVE DESTINATION lib) # for static libs
 
 install(
-    DIRECTORY       include
+    DIRECTORY       include/
     DESTINATION     include
     FILES_MATCHING  PATTERN "*.h")

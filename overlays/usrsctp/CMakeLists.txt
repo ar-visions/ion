@@ -43,6 +43,8 @@ include(CheckIncludeFile)
 include(CheckIncludeFiles)
 include(CheckCCompilerFlag)
 
+add_compile_definitions(-D_CRT_SECURE_NO_WARNINGS)
+
 #################################################
 # CHECK OPTIONS
 #################################################
