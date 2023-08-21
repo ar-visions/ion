@@ -17,9 +17,10 @@
 #define DR_WAV_IMPLEMENTATION
 #include <media/dr_wav.h>
 
-#include <gsl/gsl_fft_complex.h>
-#include <gsl/gsl_errno.h>
-#include <gsl/gsl_fft_real.h>
+//#include <gsl/gsl_fft_complex.h>
+//#include <gsl/gsl_errno.h>
+//#include <gsl/gsl_fft_real.h>
+
 #include <ogg/ogg.h>
 #include <opus/opus.h>
 #include <opusenc/opusenc.h>

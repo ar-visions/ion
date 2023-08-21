@@ -8,6 +8,13 @@ string(REPLACE "." ";" PROJECT_VERSION_LIST ${PROJECT_VERSION})
 list(GET PROJECT_VERSION_LIST 0 PROJECT_VERSION_MAJOR)
 list(GET PROJECT_VERSION_LIST 1 PROJECT_VERSION_MINOR)
 
+if(WIN32)
+  add_compile_options(
+    $<$<CONFIG:>:/MT>
+    $<$<CONFIG:Debug>:/MT>
+    $<$<CONFIG:Release>:/MT>)
+endif()
+
 project(OpusFile
   VERSION ${PROJECT_VERSION}
   LANGUAGES C

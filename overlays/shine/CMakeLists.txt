@@ -20,6 +20,10 @@ install(
     ARCHIVE DESTINATION lib) # for static libs
 
 install(
-    DIRECTORY       libshine/include/
-    DESTINATION     include
+    DIRECTORY       src/lib/
+    DESTINATION     include/shine
     FILES_MATCHING  PATTERN "*.h")
+
+if (MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
