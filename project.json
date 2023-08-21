@@ -17,7 +17,7 @@
             "url":      "https://github.com/xiph/opus",
             "commit":   "82ac57d",
             "cmake": {
-                "args": ["-DOPUS_DISABLE_INTRINSICS=Yes"],
+                "args": ["-DOPUS_DISABLE_INTRINSICS=1", "-DOPUS_BUILD_SHARED_LIBRARY=1"],
                 "path": "."
             }
         },
@@ -93,8 +93,7 @@
             "name":     "speexdsp",
             "version":  "1.2.1",
             "url":      "https://github.com/xiph/speexdsp",
-            "commit":   "1b28a0f",
-            "platforms": ["lin", "mac"]
+            "commit":   "1b28a0f"
         },
         {
             "name":     "opusenc",

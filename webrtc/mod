@@ -12,6 +12,8 @@ includes(${p}/impl)
 
 defines(
     USE_MBEDTLS
+    MBEDTLS_SSL_DTLS_SRTP
+    RTC_EXPORTS
     RTC_SYSTEM_JUICE
     RTC_SYSTEM_SRTP
     RTC_ENABLE_WEBSOCKET
