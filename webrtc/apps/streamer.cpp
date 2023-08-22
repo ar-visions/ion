@@ -13,6 +13,8 @@
 #include <fstream>
 
 #include <mx/mx.hpp>
+#include <async/async.hpp>
+#include <net/net.hpp>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -573,10 +575,10 @@ string ip_address = defaultIPAddress;
 uint16_t port = defaultPort;
 
 /// Incomming message handler for websocket
-/// @param message Incommint message
+/// @param message Incoming message
 /// @param config Configuration
 /// @param ws Websocket
-void wsOnMessage(json message, Configuration config, shared_ptr<WebSocket> ws) {
+void wsOnMessage(var message, Configuration config, shared_ptr<WebSocket> ws) {
     mx *it = message.get("id");
     if (!it) return;
     str id = it->grab();
@@ -598,12 +600,27 @@ void wsOnMessage(json message, Configuration config, shared_ptr<WebSocket> ws) {
 }
 
 int main(int argc, char **argv) try {
+    sock sc;
+    
     ion::map<mx> defs {
         {"audio",   str("opus")},
         {"video",   str("h264")},
         {"ip",      str("127.0.0.1")},
         {"port",    int(8000)}
     };
+
+    service("https://localhost:10443", [](message &msg) -> message {
+        console.log("message = {0}: {1}", { msg->code, msg->query });
+        ///
+        path p = msg->query;
+        if (p.exists()) {
+            console.log("sending resource: {0}", { p.cs() });
+            return message(p, p.mime_type());
+        }
+        ///
+        return message(404);
+    });
+
     ion::map<mx> parser = args(argc, argv, defs);
     if (!parser)
         return defaults(defs);
@@ -629,7 +646,7 @@ int main(int argc, char **argv) try {
             return;
 
         string s = get<string>(data);
-        json message = json::parse((cstr)s.c_str());
+        var message = var::parse((cstr)s.c_str());
         MainThread.dispatch([message, config, ws]() {
             wsOnMessage(message, config, ws);
         });
@@ -645,6 +662,11 @@ int main(int argc, char **argv) try {
             return 1;
         this_thread::sleep_for(100ms);
     }
+
+    ion::async server = service("https://localhost:10022/", [](message msg) -> message {
+        message m;
+        return m;
+    });
 
     while (true) {
         string id;
@@ -736,15 +758,16 @@ shared_ptr<Client> createPeerConnection(const Configuration &config,
         if (state == PeerConnection::GatheringState::Complete) {
             if(auto pc = wpc.lock()) {
                 auto description = pc->localDescription();
-                json message {
-                    {"id", id},
+                var message = ion::map<mx> {
+                    {"id",   id},
                     {"type", description->typeString()},
-                    {"sdp", string(description.value())}
+                    {"sdp",  str(description.value())}
                 };
                 // Gathering complete, send answer
                 if (auto ws = wws.lock()) {
-                    str s = message.to_string();
-                    ws->send(s);
+                    str s = message.stringify();
+                    std::string st = s;
+                    ws->send(st);
                 }
             }
         }

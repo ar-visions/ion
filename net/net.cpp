@@ -15,6 +15,8 @@
 #include <ws2tcpip.h>
 #endif
 
+#include <mbedtls/mbedtls_config.h> /// always must include first!
+
 #include <mbedtls/net_sockets.h>
 #include <mbedtls/ssl.h>
 #include <mbedtls/entropy.h>
@@ -23,22 +25,6 @@
 #include <mbedtls/debug.h>
 
 #include <cstring>
-
-struct ICredentials {
-    mbedtls_x509_crt          cert_chain;
-    mbedtls_pk_context        pkey;
-    mbedtls_ssl_config        conf;
-
-    ICredentials() {
-        mbedtls_x509_crt_init(&cert_chain);
-        mbedtls_ssl_config_init(&conf);
-    }
-
-    ~ICredentials() {
-        mbedtls_x509_crt_free(&cert_chain);
-        mbedtls_ssl_config_free(&conf);
-    }
-};
 
 namespace ion {
 
@@ -88,44 +74,42 @@ str dns(str hostname) {
     return result;
 }
 
-mx_implement(Credentials, mx);
-
-Credentials::Credentials(path pub, path priv):Credentials() {
-    open(pub, priv);
-}
-
-void Credentials::open(path pub, path priv, str pass) {
-    assert(!pass);
-    /// replace "root_cert.pem" and "intermediate_cert.pem" with your actual file paths
-    if (mbedtls_x509_crt_parse_file(&data->cert_chain, pub) != 0)
-        console.fault("failed to parse public cert");
-    /// private key
-    if (mbedtls_pk_parse_keyfile(&data->pkey, priv, null, null, null) != 0)
-        console.fault("failed to parse private key");
-}
-
-
 /// isolated isock containing state info for socket
 struct isock {
-    sock::role                role; // nice to have. disambiguate the thing
+    sock::role                role;
     uri                       query;
     i64                       timeout_ms;
     bool                      connected;
+
     mbedtls_net_context       ctx;
     mbedtls_entropy_context   entropy;
     mbedtls_ctr_drbg_context  ctr_drbg;
     mbedtls_ssl_context       ssl;
-    Credentials*              crt;
-    
+    mbedtls_x509_crt          cert_chain;
+    mbedtls_pk_context        pkey;
+    mbedtls_ssl_config        conf;
+        
+    void load_keypair(path pub, path priv, str pass = null) {
+        assert(!pass);
+        /// replace "root_cert.pem" and "intermediate_cert.pem" with your actual file paths
+        if (mbedtls_x509_crt_parse_file(&cert_chain, pub) != 0)
+            console.fault("failed to parse public cert");
+        /// private key
+        if (mbedtls_pk_parse_keyfile(&pkey, priv, null, null, null) != 0)
+            console.fault("failed to parse private key");
+    }
+
+    type_register(isock);
+
     /// methods
     void ssl_reinit() {
+
         mbedtls_net_init(&ctx);
         mbedtls_ssl_init(&ssl);
         mbedtls_entropy_init(&entropy);
         mbedtls_ctr_drbg_init(&ctr_drbg);
-        if (crt)
-            delete crt;
-        crt = new Credentials;
+        mbedtls_x509_crt_init(&cert_chain);
+        mbedtls_ssl_config_init(&conf);
     }
     
     void ssl_cleanup() {
@@ -133,10 +117,8 @@ struct isock {
         mbedtls_ssl_free(&ssl);
         mbedtls_ctr_drbg_free(&ctr_drbg);
         mbedtls_entropy_free(&entropy);
-        if (crt) {
-            delete crt;
-            crt = null;
-        }
+        mbedtls_x509_crt_free(&cert_chain);
+        mbedtls_ssl_config_free(&conf);
     }
     
     isock() {
@@ -182,6 +164,8 @@ sock sock::accept() {
     /// establish could be rewritten with connect
     return sc.establish();
 }
+
+
 
 /// listen on https using mbedtls
 /// ---------------------------------
@@ -270,7 +254,7 @@ sock sock::connect(uri url) {
     sock   res { sock::role::client, url };
     isock *isc  = res.data;
     /// this operation runs first and its cache is used by mbed
-    int ret = mbedtls_ssl_setup(&isc->ssl, &isc->crt->data->conf);
+    int ret = mbedtls_ssl_setup(&isc->ssl, &isc->conf);
     if (ret != 0) {
         std::cerr << "mbedtls_ssl_setup failed: " << ret << std::endl;
         return {};
@@ -342,7 +326,7 @@ ssize_t sock::send(mx &v) {
 }
 
 void sock::load_certs(str host) {
-    mbedtls_ssl_config *conf = &data->crt->data->conf;
+    mbedtls_ssl_config *conf = &data->conf;
     mbedtls_ssl_conf_dbg(conf, mbedtls_debug, stdout);
     mbedtls_debug_set_threshold(4);
     
@@ -359,13 +343,13 @@ void sock::load_certs(str host) {
     
     
     mbedtls_ssl_conf_authmode   (conf, MBEDTLS_SSL_VERIFY_REQUIRED);
-    mbedtls_ssl_conf_ca_chain   (conf, &data->crt->data->cert_chain, NULL);
+    mbedtls_ssl_conf_ca_chain   (conf, &data->cert_chain, NULL);
     mbedtls_ssl_conf_rng        (conf, mbedtls_ctr_drbg_random, &data->ctr_drbg);
     mbedtls_ssl_conf_min_version(conf, MBEDTLS_SSL_MAJOR_VERSION_3, MBEDTLS_SSL_MINOR_VERSION_3);  // TLS 1.2
     
     /// load cert and key based on role
     if (data->role == role::server) {
-        data->crt->open("ssl/public.pem", "ssl/private.pem");
+        data->load_keypair("ssl/public.crt", "ssl/priv.key");
     } else {
         /// host just has a sequence starting with root, intermediate, etc, so 0 = CA Root, 1 = Signed from CA Root, 2 = Signed by 1
         for (size_t ii = 0; ii < 16; ii++) {
@@ -376,7 +360,7 @@ void sock::load_certs(str host) {
                 break;
             }
             symbol file = symbol(p.cs());
-            if (mbedtls_x509_crt_parse_file(&data->crt->data->cert_chain, file) != 0)
+            if (mbedtls_x509_crt_parse_file(&data->cert_chain, file) != 0)
                 console.fault("failed to parse trust: {0}", { file });
         }
     }

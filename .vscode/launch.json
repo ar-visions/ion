@@ -2,61 +2,97 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name":             "ux-app",
-            "type":             "cppdbg",
-            "request":          "launch",
-            "program":          "${workspaceFolder}/../ion/build/ux-app",
-            "args":             [],
-            "stopAtEntry":      false,
-            "cwd":              "${workspaceFolder}/../ion/build",
-            "environment":      [],
-            "externalConsole":  false,
-            "MIMode":           "gdb",
-            "preLaunchTask":    "build-ux-app",
-            "presentation": {
-                "hidden": false,
-                "group": "",
-                "order": 1,
-            },
-            "osx": { "MIMode":  "lldb" }
+            "name": "signaling server (python)",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/webrtc/",
+            "cwd":"${workspaceFolder}/build",
+            "console": "integratedTerminal",
+            "justMyCode": true
         },
         {
-            "name":             "streamer",
-            "type":             "cppdbg",
-            "request":          "launch",
-            "program":          "${workspaceFolder}/../ion/build/streamer",
-            "args":             [],
-            "stopAtEntry":      false,
-            "cwd":              "${workspaceFolder}/../ion/build",
-            "environment":      [],
-            "externalConsole":  false,
-            "MIMode":           "gdb",
-            "preLaunchTask":    "build-streamer",
+            "name": "ux-app",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/../ion/build/ux-app",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/../ion/build",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "preLaunchTask": "build-ux-app",
             "presentation": {
                 "hidden": false,
                 "group": "",
                 "order": 1,
             },
-            "osx": { "MIMode":  "lldb" }
+            "osx": {
+                "MIMode": "lldb"
+            }
         },
         {
-            "name":             "circles",
-            "type":             "cppdbg",
-            "request":          "launch",
-            "program":          "${workspaceFolder}/../ion/build/circles",
-            "args":             [],
-            "stopAtEntry":      false,
-            "cwd":              "${workspaceFolder}/../ion/build",
-            "environment":      [],
-            "externalConsole":  false,
-            "MIMode":           "gdb",
-            "preLaunchTask":    "build-circles",
+            "name": "signal",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/../ion/build/signal",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/../ion/build",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "preLaunchTask": "build-signal",
             "presentation": {
                 "hidden": false,
                 "group": "",
                 "order": 1,
             },
-            "osx": { "MIMode":  "lldb" }
+            "osx": {
+                "MIMode": "lldb"
+            }
+        },
+        {
+            "name": "streamer",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/../ion/build/streamer",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/../ion/build",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "preLaunchTask": "build-streamer",
+            "presentation": {
+                "hidden": false,
+                "group": "",
+                "order": 1,
+            },
+            "osx": {
+                "MIMode": "lldb"
+            }
+        },
+        {
+            "name": "circles",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/../ion/build/circles",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/../ion/build",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "preLaunchTask": "build-circles",
+            "presentation": {
+                "hidden": false,
+                "group": "",
+                "order": 1,
+            },
+            "osx": {
+                "MIMode": "lldb"
+            }
         }
     ]
 }
