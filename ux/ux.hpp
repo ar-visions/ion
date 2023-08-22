@@ -672,7 +672,6 @@ struct font:mx {
         str  name = "Sofia-Sans-Condensed";
         bool loaded = false;
         void *sk_font = null;
-        array<double> advances;
         type_register(fdata);
     };
 
@@ -696,7 +695,8 @@ struct font:mx {
         return fdata { sz, data->name };
     }
 
-    array<double> &advances(Canvas& canvas);
+    array<double> advances(Canvas& canvas);
+    array<double> advances(Canvas& canvas, str line);
 
             operator bool()    { return  data->sz; }
     bool    operator!()        { return !data->sz; }
@@ -1058,6 +1058,7 @@ struct node:Element {
         /// not sure if overflow should be used for all of these.  that might be much to deal with
         struct drawing {
             rgbad               color;
+            rgbad               secondary;
             real                opacity;
             alignment           align;
             image               img;
@@ -1082,6 +1083,8 @@ struct node:Element {
         ///
         str                 id;         ///
         drawing             drawings[operation::count];
+        rgbad               sel_color;
+        rgbad               sel_background;
         int                 tab_index;  /// if 0, this is default; its all relative numbers we dont play absolutes.
         vec2d               cursor;     /// set relative to the area origin
         vec2d               scroll = {0,0};
@@ -1132,6 +1135,9 @@ struct node:Element {
                 prop { "image-color",    drawings[operation::image]  .color   },
                 prop { "outline-color",  drawings[operation::outline].color   },
                 prop { "text-color",     drawings[operation::text]   .color   },
+
+                prop { "sel-color",      sel_color },
+                prop { "sel-background", sel_background },
 
                 prop { "outline-sz",     drawings[operation::outline].border.size },
 
@@ -1190,6 +1196,7 @@ struct node:Element {
         TextSel res;
         real    y = data->text_bounds.y;
         num     row = 0;
+
         ///
         for (LineInfo &line: data->lines) {
             if (pos.y >= y && pos.y <= (y + line.bounds.h)) {
@@ -1199,23 +1206,20 @@ struct node:Element {
                 else if (pos.x > line.placement.x + line.placement.w)
                     res->column = line.len;
                 else {
-                    real w = 0;
                     bool col_set = false;
-                    ///
-                    for (num i = 0; i < line.len; i++) {
-                        real a = line.adv[i] / 2.0;
-                        w += a;
-                        if ((pos.x - line.placement.x) <= w) {
-                            res->column = i; /// this will break on 0 if its less-than half character
+                    for (num i = 1; i <= line.len; i++) {
+                        real adv0 = line.adv[i - 1];
+                        real adv1 = line.adv[i];
+                        real med  = (adv0 + adv1) / 2.0;
+                        if ((pos.x - line.placement.x) < med) {
+                            res->column = i - 1;
                             col_set = true;
                             break;
                         }
-                        w += a;
                     }
                     /// set end-of-last character
-                    if (!col_set) {
+                    if (!col_set)
                         res->column = line.len;
-                    }
                 }
             }
             y += line.bounds.h;
@@ -1246,7 +1250,7 @@ struct node:Element {
         return o;
     }
 
-    array<LineInfo> &get_lines();
+    array<LineInfo> &get_lines(Canvas*);
 
     virtual void focused();
     virtual void unfocused();

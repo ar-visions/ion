@@ -34,6 +34,8 @@ Edit {
     editable:        true;
     multiline:       true;
     tab-index:       0;
+    sel-color:       #428;
+    sel-background:  #fff;
 }
 
 Edit:focus {

@@ -21,6 +21,25 @@
             "osx": { "MIMode":  "lldb" }
         },
         {
+            "name":             "streamer",
+            "type":             "cppdbg",
+            "request":          "launch",
+            "program":          "${workspaceFolder}/../ion/build/streamer",
+            "args":             [],
+            "stopAtEntry":      false,
+            "cwd":              "${workspaceFolder}/../ion/build",
+            "environment":      [],
+            "externalConsole":  false,
+            "MIMode":           "gdb",
+            "preLaunchTask":    "build-streamer",
+            "presentation": {
+                "hidden": false,
+                "group": "",
+                "order": 1,
+            },
+            "osx": { "MIMode":  "lldb" }
+        },
+        {
             "name":             "circles",
             "type":             "cppdbg",
             "request":          "launch",

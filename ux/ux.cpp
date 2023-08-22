@@ -857,7 +857,7 @@ bool style::impl::applicable(node *n, prop *member, array<style::entry*> &result
 void node::focused()   { }
 void node::unfocused() { }
 
-array<LineInfo> &node::get_lines() {
+array<LineInfo> &node::get_lines(Canvas *p_canvas) {
     bool  is_cache = data->cache_source.mem == data->content.mem;
     ///
     if (!is_cache) {
@@ -872,31 +872,25 @@ array<LineInfo> &node::get_lines() {
             l.bounds = {}; /// falsey rects have not been computed yet
             l.data   = line_strs[i];
             l.len    = l.data.len();
-            l.adv    = array<double>(l.len, l.len);
-            int a    = 0;
-            double total_w = 0;
-            for (real &l: l.adv) {
-                l = data->font->advances[a++];
-                total_w += l;
-            }
-            l.bounds.w = total_w;
+            l.adv    = data->font.advances(*p_canvas, l.data);
+            l.bounds.w = l.adv[l.len - 1];
         }
     }
     return data->lines;
 }
 
-
-array<double> &font::advances(Canvas& canvas) {
-    if (!data->advances) {
-        data->advances = array<double>(255, 255);
-        for (int char_code = 0; char_code < data->advances.len(); char_code++) {
-            char ch[2];
-            ch[0] = char_code;
-            ch[1] = 0;
-            data->advances[char_code] = canvas.measure_advance(ch, 1);
-        }
+array<double> font::advances(Canvas& canvas, str text) {
+    num l = text.len();
+    array<double> res(l+1, l+1);
+    ///
+    printf("measuring: %s\n", text.cs());
+    for (num i = 0; i <= l; i++) {
+        str    s   = text.mid(0, i);
+        double adv = canvas.measure_advance(s.data, i);
+        res[i]     = adv;
+        //printf("adv[%i]: %.2f = %s\n", i - 1, adv, s.data);
     }
-    return data->advances;
+    return res;
 }
 
 /// we draw the text and plot its placement; the text() function gives us back effectively aligned text
@@ -910,8 +904,7 @@ void node::draw_text(Canvas& canvas, rectd& rect) {
     const double line_height_basis = 2.0;
     double       lh = tm.line_height * (node::data->text_spacing.y * line_height_basis); /// this stuff can all transition, best to live update the bounds
     ///
-    array<double>   &text_adv = data->font.advances(canvas);
-    array<LineInfo> &lines    = get_lines();
+    array<LineInfo> &lines = get_lines(&canvas);
 
     /// iterate through lines
     int i = 0;
@@ -955,25 +948,43 @@ void node::draw_text(Canvas& canvas, rectd& rect) {
             rectd sel_rect = line.bounds;
             str sel;
             num start = 0;
-            
-            if (sel_start->row == i)
-                for (num ii = 0; ii < sel_start->column; ii++) {
-                    sel_rect.x += line.adv[ii];
-                    start++;
-                }
+
+            sel_rect.w = 0;
+            if (sel_start->row == i) {
+                start      = sel_start->column;
+                sel_rect.x = line.placement.x + line.adv[sel_start->column];
+            } else {
+                sel_rect.x = line.bounds.x;
+            }
 
             if (sel_end->row == i) {
-                for (num ii = 0; ii < sel_end->column; ii++)
-                    sel_rect.w += line.adv[ii];
+                num st = sel_start->row == i ? sel_start->column : 0;
+                if (sel_start->row == i) {
+                    sel_rect.x = line.placement.x + line.adv[sel_start->column];
+                    if (sel_end->column == line.len)
+                        sel_rect.w = (line.bounds.x + line.bounds.w) - sel_rect.x;
+                } else {
+                    if (sel_end->column == line.len)
+                        sel_rect.w = (line.bounds.x + line.bounds.w) - sel_rect.x;
+                    else
+                        sel_rect.w = line.adv[sel_end->column];
+                }
                 sel = line.data.mid(start, sel_end->column - start);
             } else {
                 sel_rect.w = line.bounds.w - sel_rect.x;
                 sel = line.data;
             }
-            canvas.fill(sel_rect);
-            canvas.color("#fff"); /// needs a selection fill and color
-            alignment tl { 0, 0 };
-            canvas.text(sel, sel_rect, tl, {0.0, 0.0}, true);
+            if (sel_rect.w) {
+                canvas.color(data->sel_background);
+                canvas.fill(sel_rect);
+                canvas.color(data->sel_color);
+                canvas.text(sel, sel_rect, alignment { 0, 0 }, { 0.0, text.align.y }, true);
+            } else {
+                sel_rect.x -= 1;
+                sel_rect.w  = 2;
+                canvas.color(data->sel_background);
+                canvas.fill(sel_rect);
+            }
         }
 
         if (in_sel && sel_end->row == i)
@@ -990,7 +1001,8 @@ void node::draw_text(Canvas& canvas, rectd& rect) {
 void node::draw(Canvas& canvas) {
     type_t type = mem->type;
     Element::edata *edata    = ((Element*)this)->data;
-    rect<r64>       bounds   = edata->parent ? data->bounds : rect<r64> { 0, 0, r64(canvas.get_virtual_width()), r64(canvas.get_virtual_height()) };
+    rect<r64>       bounds   = edata->parent ? data->bounds : rect<r64> { 
+        0, 0, r64(canvas.get_virtual_width()), r64(canvas.get_virtual_height()) };
     props::drawing &fill     = data->drawings[operation::fill];
     props::drawing &image    = data->drawings[operation::image];
     props::drawing &text     = data->drawings[operation::text];
