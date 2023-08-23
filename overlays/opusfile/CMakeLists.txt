@@ -310,3 +310,9 @@ install(
 #
 file(GLOB_RECURSE INC_FILES "${CMAKE_SOURCE_DIR}/include/*.h")
 install(FILES ${INC_FILES} DESTINATION ${CMAKE_INSTALL_PREFIX}/include/opusfile)
+
+if (MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
+add_compile_options(/MT)

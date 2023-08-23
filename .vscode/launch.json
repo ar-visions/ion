@@ -13,15 +13,17 @@
         {
             "name": "ux-app",
             "type": "cppdbg",
+            "windows": {
+                "type": "cppvsdbg"
+            },
             "request": "launch",
-            "program": "${workspaceFolder}/../ion/build/ux-app",
+            "program": "${workspaceFolder}/../ion/build/Debug/ux-app",
             "args": [],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/../ion/build",
+            "cwd": "${workspaceFolder}/../ion/build/Debug",
             "environment": [],
             "externalConsole": false,
             "MIMode": "gdb",
-            "preLaunchTask": "build-ux-app",
             "presentation": {
                 "hidden": false,
                 "group": "",

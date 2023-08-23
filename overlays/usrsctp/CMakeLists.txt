@@ -272,3 +272,9 @@ endif ()
 if (sctp_build_fuzzer)
 	add_subdirectory(fuzzer)
 endif ()
+
+if (MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
+add_compile_options(/MT)

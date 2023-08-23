@@ -17,7 +17,7 @@
             "url":      "https://github.com/xiph/opus",
             "commit":   "82ac57d",
             "cmake": {
-                "args": ["-DOPUS_DISABLE_INTRINSICS=1", "-DOPUS_BUILD_SHARED_LIBRARY=1"],
+                "args": ["-DOPUS_DISABLE_INTRINSICS=1", "-DOPUS_BUILD_SHARED_LIBRARY=0"],
                 "path": "."
             }
         },
