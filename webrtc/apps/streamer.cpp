@@ -74,6 +74,8 @@ using namespace std;
 using namespace rtc;
 using namespace ion;
 
+static ion::map<mx> args;
+
 class StreamSource {
 protected:
 public:
@@ -564,16 +566,6 @@ DispatchQueue MainThread("Main");
 /// Audio and video stream
 optional<shared_ptr<Stream>> avStream = nullopt;
 
-const string defaultRootDirectory = "../../../examples/streamer/samples/";
-const string defaultH264SamplesDirectory = defaultRootDirectory + "h264/";
-string h264SamplesDirectory = defaultH264SamplesDirectory;
-const string defaultOpusSamplesDirectory = defaultRootDirectory + "opus/";
-string opusSamplesDirectory = defaultOpusSamplesDirectory;
-const string defaultIPAddress = "127.0.0.1";
-const uint16_t defaultPort = 8000;
-string ip_address = defaultIPAddress;
-uint16_t port = defaultPort;
-
 /// Incomming message handler for websocket
 /// @param message Incoming message
 /// @param config Configuration
@@ -621,9 +613,9 @@ int main(int argc, char **argv) try {
         return message(404);
     });
 
-    ion::map<mx> parser = args(argc, argv, defs);
-    if (!parser)
-        return defaults(defs);
+    ::args = args::parse(argc, argv, defs);
+    if (!::args)
+        return args::defaults(defs);
 
     InitLogger(LogLevel::Debug);
 
@@ -652,9 +644,13 @@ int main(int argc, char **argv) try {
         });
     });
 
-    const string url = "ws://" + ip_address + ":" + to_string(port) + "/" + localId;
-    cout << "URL is " << url << endl;
-    ws->open(url);
+    str ip_address = ::args["ip"];
+    int port = int(::args["port"]);
+
+    const str url = fmt { "ws://{0}:{1}/{2}", { ip_address, port, localId }};
+    console.log("URL is {0}", { url });
+    std::string s_url = url.cs();
+    ws->open(s_url);
 
     cout << "Waiting for signaling to be connected..." << endl;
     while (!ws->isOpen()) {
@@ -887,7 +883,7 @@ void startStream() {
             return;
         }
     } else {
-        stream = createStream(h264SamplesDirectory, 30, opusSamplesDirectory);
+        stream = createStream(::args["h264"], 30, ::args["opus"]);
         avStream = stream;
     }
     stream->start();

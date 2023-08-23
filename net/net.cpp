@@ -174,7 +174,8 @@ async sock::listen(uri url, lambda<bool(sock&)> fn) {
         uri bind = url.methodize(method::get);
         
         /// proceed if https; that is our protocol and we know nothing else
-        assert(bind.proto() == "https");
+        protocol &pr = bind.proto();
+        assert(pr == "https");
         
         int      port = bind.port();
         str host_name = bind.host();

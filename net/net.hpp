@@ -14,6 +14,10 @@ using ssize_t = ion::i64;
 
 namespace ion {
 
+enums(protocol, undefined,
+    "undefined, http, https, ws",
+     undefined, http, https, ws);
+
 enums(method, undefined, 
    "undefined, response, get, post, put, delete",
     undefined, response, get, post, put, del);
@@ -21,7 +25,7 @@ enums(method, undefined,
 struct uri:mx {
     struct components {
         method  mtype; /// good to know where the uri comes from, in what context 
-        str     proto; /// (what method, this is part of uri because method is 
+        protocol proto; /// (what method, this is part of uri because method is 
         str     host;  /// Something that makes it uniquely bindable; losing that
         int     port;  /// makes you store it somewhere else and who knows where that might be)
         str     query;
@@ -36,7 +40,7 @@ struct uri:mx {
     ///
     method & mtype() { return data->mtype;    }
     str &     host() { return data->host;     }
-    str &    proto() { return data->proto;    }
+    protocol&proto() { return data->proto;    }
     int &     port() { return data->port;     }
     str &   string() { return data->query;    }
     str & resource() { return data->resource; }
@@ -70,8 +74,8 @@ struct uri:mx {
     ///
     operator str () {
         struct def {
-            symbol proto;
-            int        port;
+            protocol proto;
+            int      port;
         };
         
         array<def>   defs = {{ "https", 443 }, { "http", 80 }};
