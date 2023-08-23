@@ -238,7 +238,7 @@ array<char> sock::read_until(str s, int max_len) {
 }
 
 sock::operator bool() {
-    return data->connected;
+    return data && data->connected;
 }
 
 bool sock::bind(str adapter, int port) {
