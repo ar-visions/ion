@@ -87,7 +87,7 @@ source_group("Fuzzer Files" FILES "${FUZZER_SOURCES}")
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
-add_library(juice SHARED ${LIBJUICE_SOURCES})
+add_library(juice STATIC ${LIBJUICE_SOURCES})
 set_target_properties(juice PROPERTIES VERSION ${PROJECT_VERSION})
 target_include_directories(juice PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
