@@ -92,6 +92,7 @@ set_target_properties(juice PROPERTIES VERSION ${PROJECT_VERSION})
 target_include_directories(juice PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
+target_compile_definitions(juice PUBLIC JUICE_STATIC)
 target_include_directories(juice PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include/juice)
 target_include_directories(juice PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_definitions(juice PRIVATE $<$<CONFIG:Release>:RELEASE=1>)
@@ -145,7 +146,7 @@ add_library(LibJuice::LibJuice ALIAS juice)
 set_target_properties(juice-static PROPERTIES EXPORT_NAME LibJuiceStatic)
 add_library(LibJuice::LibJuiceStatic ALIAS juice-static)
 
-install(TARGETS juice-static EXPORT LibJuiceTargets
+install(TARGETS juice EXPORT LibJuiceTargets
 	RUNTIME DESTINATION bin
 	LIBRARY DESTINATION lib
 	ARCHIVE DESTINATION lib
@@ -194,6 +195,9 @@ endif()
 if(NOT MSVC)
 	target_compile_options(juice PRIVATE -Wall -Wextra)
 	target_compile_options(juice-static PRIVATE -Wall -Wextra)
+else()
+    target_compile_options(juice PRIVATE /MT)
+    target_compile_options(juice-static PRIVATE /MT)
 endif()
 
 if(WARNINGS_AS_ERRORS)

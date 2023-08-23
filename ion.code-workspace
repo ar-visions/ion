@@ -167,7 +167,28 @@
 			"strstream": "cpp",
 			"*.gen": "cpp",
 			"xiosbase": "cpp",
-			"speex_buffer.h": "c"
+			"speex_buffer.h": "c",
+			"xutility": "cpp",
+			"cfenv": "cpp",
+			"codecvt": "cpp",
+			"coroutine": "cpp",
+			"ranges": "cpp",
+			"stop_token": "cpp",
+			"utility": "cpp",
+			"xfacet": "cpp",
+			"xhash": "cpp",
+			"xlocale": "cpp",
+			"xlocbuf": "cpp",
+			"xlocinfo": "cpp",
+			"xlocmes": "cpp",
+			"xlocmon": "cpp",
+			"xlocnum": "cpp",
+			"xloctime": "cpp",
+			"xmemory": "cpp",
+			"xstring": "cpp",
+			"xtr1common": "cpp",
+			"xtree": "cpp",
+			"__std_stream": "cpp"
 		}
 	}
 }
