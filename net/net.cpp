@@ -692,31 +692,8 @@ mx &message::operator[](symbol key) {
     return data->headers[key];
 }
 
-mx &message::header(mx key) { return data->headers[key]; }
-
-async service(uri bind, lambda<message(message)> fn_process) {
-    return sock::listen(bind, [fn_process](sock &sc) -> bool {
-        bool close = false;
-        for (close = false; !close;) {
-            close  = true;
-            array<char> msg = sc.read_until("\r\n", 4092); // this read 0 bytes, and issue ensued
-            str param;
-            ///
-            if (!msg) break;
-            
-            /// its 2 chars off because read_until stops at the phrase
-            uri req_uri = uri::parse(str(msg.data, int(msg.len() - 2)));
-            ///
-            if (req_uri) {
-                console.log("request: {0}", { req_uri.resource() });
-                message  req { req_uri };
-                message  res = fn_process(req);
-                close        = req.header("Connection") == "close";
-                res.write(sc);
-            }
-        }
-        return close;
-    });
+mx &message::header(mx key) {
+    return data->headers[key];
 }
 
 /// utility function for web requests

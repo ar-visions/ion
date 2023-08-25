@@ -5,7 +5,7 @@
             "name": "signaling server (python)",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/webrtc/",
+            "program": "${workspaceFolder}/webrtc/res/data/signaling-server.py",
             "cwd":"${workspaceFolder}/build",
             "console": "integratedTerminal",
             "justMyCode": true

@@ -235,8 +235,8 @@ public:
           "none, client, server",
            none, client, server);
 
-    static async listen(uri url, lambda<bool(sock&)> fn);
-    static sock connect(uri url);
+    static async listen(ion::uri url, lambda<bool(sock&)> fn);
+    static sock connect(ion::uri url);
 
      sock(role r, uri bind);
     ~sock();
