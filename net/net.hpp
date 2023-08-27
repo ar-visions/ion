@@ -1,6 +1,7 @@
 #pragma once
 
 #include <mx/mx.hpp>
+#include <composer/composer.hpp>
 #include <async/async.hpp>
 
 struct WOLFSSL_CTX;
@@ -318,4 +319,27 @@ async service(uri bind, lambda<message(message)> fn_process);
 future request(uri url, map<mx> args);
 
 future json(uri addr, map<mx> args, map<mx> headers);
+
+struct Services:composer {
+    struct sdata {
+        bool                       running;
+        lambda<node(Services&)> service_fn;
+        type_register(sdata);
+    };
+    mx_object(Services, composer, sdata);
+
+    Services(lambda<node(Services&)> service_fn) : Services() {
+        data->service_fn = service_fn;
+    }
+
+    /// wait for all services to return
+    operator int() {
+        return run();
+    }
+
+    int run();
+};
+
 }
+
+

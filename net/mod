@@ -1,1 +1,1 @@
-dep(mx:mx mx:async ion:media mbedtls:mbedtls mbedtls:mbedx509 mbedtls:mbedcrypto)
+dep(mx:mx mx:async ion:composer ion:media mbedtls:mbedtls mbedtls:mbedx509 mbedtls:mbedcrypto)

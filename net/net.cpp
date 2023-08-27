@@ -767,4 +767,14 @@ future json(uri addr, map<mx> args, map<mx> headers) {
     return future(c);
 }
 
+/// can update in real time 1/hz or through polling, but not needed at the moment
+int Services::run() {
+    node e = data->service_fn(*this);
+    update_all(e);
+    for (;;) {
+        usleep(10000);
+    }
+    return 0;
+}
+
 }

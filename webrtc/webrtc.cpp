@@ -1,5 +1,7 @@
 #include <webrtc/webrtc.hpp>
 
+using namespace ion;
+
 #ifdef _WIN32
 void usleep(__int64 usec) {
     HANDLE timer;
@@ -39,3 +41,8 @@ int gettimeofday(struct timeval *tv, struct timezone *tz) {
 	return 0;
 }
 #endif
+
+
+void Service::mounted() {
+	state->service = webrtc::service(state->url, state->msg); /// webrtc::service includes web sockets, https
+}

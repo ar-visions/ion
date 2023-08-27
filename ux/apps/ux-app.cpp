@@ -48,8 +48,8 @@ struct View:node {
         console.log("mounting");
     }
  
-    Element update() {
-        return array<Element> {
+    node update() {
+        return array<node> {
             Edit {
                 { "content", "VAVAVAVAVAVAVAVAVAVAVAVAVAVA" }
             }
@@ -58,7 +58,7 @@ struct View:node {
 };
 
 int main() {
-    return App([](App &ctx) -> Element {
+    return App([](App &ctx) -> node {
         return View {
             { "id",      "main" },
             { "sample",  int(2) },
