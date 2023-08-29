@@ -34,6 +34,30 @@
             }
         },
         {
+            "name": "https-server",
+            "type": "cppdbg",
+            "windows": {
+                "type": "cppvsdbg"
+            },
+            "request": "launch",
+            "program": "${workspaceFolder}/../ion/build/https-server",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/../ion/build",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "presentation": {
+                "hidden": false,
+                "group": "",
+                "order": 1,
+            },
+            "osx": {
+                "MIMode": "lldb"
+            },
+            "preLaunchTask": "build-https-server"
+        },
+        {
             "name": "signal",
             "type": "cppdbg",
             "request": "launch",

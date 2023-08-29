@@ -358,8 +358,8 @@ struct node:mx {
         type_t                  type;       /// type given
         str                     id;         /// identifier 
         ax                      args;       /// arguments
-        array<node>             children;   /// children elements (if provided in children { } pair<mx,mx> inherited data struct; sets key='children')
-        node*                   instance;   /// node instance is 1:1
+        array<node*>            children;   /// children elements (if provided in children { } pair<mx,mx> inherited data struct; sets key='children')
+        node*                   instance;   /// node instance is 1:1 (allocated, then context is copied in place)
         map<node*>              mounts;     /// store instances of nodes in element data, so the cache management can go here where element turns to node
         node*                   parent;
         style::style_map        style_avail; /// properties outside of meta are effectively internal state only; it can be labelled as such
@@ -381,6 +381,14 @@ struct node:mx {
         ///
         type_register(edata);
     };
+
+    bool operator!() {
+        return !data || !bool(*data);
+    }
+
+    operator bool() {
+        return data && *data;
+    }
 
     /// test this path in composer
     virtual node update() {
@@ -409,8 +417,15 @@ struct node:mx {
         return memory::symbol(symbol(type->name));
     }
 
+    node(array<node*> ch) : node() {
+        data->children = ch; /// data must be set here
+    }
+
     node(array<node> ch) : node() {
-        data->children = ch;
+        data->children = array<node*>(size(ch.len()), size(0)); /// data must be set here
+        for (auto &child:ch) {
+            data->children += new node(child);
+        }
     }
 
     node(type_t type, initial<arg> args) : node(
@@ -427,7 +442,7 @@ struct node:mx {
         node res(typeof(array<node>), a.length());
         for (auto &v:a) {
             node ve = fn(v);
-            if (ve) res.data->children += ve;
+            //if (ve) res.data->children += ve;
         }
         return res;
     }
@@ -438,14 +453,14 @@ struct node:mx {
         if (res.data->children)
         for (auto &[v,k]:m) {
             node r = fn(k, v);
-            if (r) res.data->children += r;
+            //if (r) res.data->children += r;
         }
         return res;
     }
 
     inline size_t count(memory *symbol) {
-        for (node &c: node::data->children)
-            if (c.data->id == symbol)
+        for (node *c: node::data->children)
+            if (c->data->id == symbol)
                 return 1;
         ///
         return 0;
@@ -502,7 +517,7 @@ using FnFactory = node*(*)();
 struct composer:mx {
     ///
     struct cdata {
-        node         *root_instance;
+        node* root_instance;
         struct vk_interface *vk;
         //fn_render     render;
         lambda<node()> render;

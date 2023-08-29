@@ -17,26 +17,31 @@ int main(int argc, char **argv) try {
     ///
     const str localId   = "server";
     const uri ws_signal = fmt { "ws://{0}:{1}/{2}", { config["ip"], config["port"], localId }};
-    const uri https_res = "https://localhost:10022";
+    const uri https_res = "https://localhost:4433"; /// certs based on this binding name unless configured
 
     /// App services composition layer (do we call this services?)
     return Services([&](Services &app) {
         return array<node> {
-            
-            ion::Service {
-                    { "url",     ws_signal},
-                    { "message", lambda<message(message&)>([](message &ws_message) -> message {
+
+            /// ws-signal connector
+            Service {
+                    { "id", "ws-signal" },
+                    { "url", ws_signal },
+                    { "on-message", lambda<message(message&)>([](message &ws_message) -> message {
                 ///
                 return message {}; /// this should not respond
                 ///
             })}},
 
-            Service {{ "url", "https://localhost:10022" },
-                     { "message", lambda<message(message&)>([](message &msg) -> message {
+            /// https resource server
+            Service {{ "id", "https" },
+                     { "url", https_res },
+                     { "root", "www" },
+                     { "on-message", lambda<message(message&)>([](message &msg) -> message {
                 ///
                 console.log("message = {0}: {1}", { msg->code, msg->query });
                 ///
-                path p = msg->query;
+                path p = fmt { "www/{0}", { msg->query } };
                 if (p.exists()) {
                     console.log("sending resource: {0}", { p.cs() });
                     return message(p, p.mime_type());

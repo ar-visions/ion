@@ -9,4 +9,5 @@ rtc/res/*
 webrtc/res/samples/*
 webrtc/streamer/samples/*
 webrtc/res/data
-
+*.crt
+*.key

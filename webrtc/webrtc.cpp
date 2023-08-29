@@ -44,5 +44,6 @@ int gettimeofday(struct timeval *tv, struct timezone *tz) {
 
 
 void Service::mounted() {
-	state->service = webrtc::service(state->url, state->msg); /// webrtc::service includes web sockets, https
+	state->service = webrtc::service(state->url, state->on_message);
+	/// webrtc::service includes web sockets, https
 }

@@ -79,7 +79,7 @@ struct uri:mx {
             int      port;
         };
         
-        array<def>   defs = {{ "https", 443 }, { "http", 80 }};
+        array<def>   defs = {{ protocol::https, 443 }};
         bool       is_def = defs.select_first<bool>([&](def& d) -> bool {
             return data->port == d.port && data->proto == d.proto;
         });
@@ -220,6 +220,9 @@ struct uri:mx {
 
 struct isock;
 
+struct tls;
+struct tls_session;
+
 struct sock:mx {
 private:
     inline static symbol pers = "ion:net";
@@ -239,9 +242,8 @@ public:
     static async listen(ion::uri url, lambda<bool(sock&)> fn);
     static sock connect(ion::uri url);
 
-     sock(role r, uri bind);
-    ~sock();
-    
+    sock(role r, uri bind, tls_session* session);
+
     operator bool();
     
     void set_timeout(i64 t);
@@ -262,6 +264,7 @@ struct message:mx {
         mx      code = int(0);
         map<mx> headers;
         mx      content; /// best to store as mx, so we can convert directly in lambda arg, functionally its nice to have delim access in var.
+        type_register(members);
     };
 
     method method_type() {

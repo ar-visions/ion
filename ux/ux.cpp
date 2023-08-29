@@ -202,14 +202,15 @@ int App::run() {
         
         node e = data->app_fn(*this);
         update_all(e);
-        if (composer::data->root_instance) {
+        Element *eroot = composer::data->root_instance;
+        if (eroot) {
             /// update rect
-            ((Element*)composer::data->root_instance)->data->bounds = rectd {
+            eroot->data->bounds = rectd {
                 0, 0,
                 (real)data->canvas->get_virtual_width(),
                 (real)data->canvas->get_virtual_height()
             };
-            ((Element*)composer::data->root_instance)->draw(*data->canvas);
+            eroot->draw(*data->canvas);
         }
 
         canvas.flush();

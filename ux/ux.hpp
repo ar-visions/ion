@@ -1079,7 +1079,6 @@ struct list_view:node {
         members::drawing &text    = std.drawings[operation::text];
         members::drawing &outline = std.drawings[operation::outline]; /// outline is more AR than border.  and border is a bad idea, badly defined and badly understood. outline is on the 0 pt.  just offset it if you want.
         
-
         /// standard bind (mx) is just a context lookup, key to value in app controller; filters applied during render
         mx data = context(node::std.bind);
         if (!data) return; /// use any smooth bool operator
@@ -1183,30 +1182,31 @@ struct App:composer {
 
     ///
     array<node *> select_at(vec2d cur, bool active = true) {
-        if (!composer::data->root_instance)
-            return {};
 
-        array<node*> inside = ((Element*)composer::data->root_instance)->select([&](Element *n) {
-            real           x = cur.x, y = cur.y;
-            vec2d          o = n->offset();
-            vec2d        rel = cur + o;
-            Element::props *edata = n->data;
-            rectd &bounds = n->data->fill_bounds ? n->data->fill_bounds : n->data->bounds;
-            bool in = bounds.contains(rel);
-            (*n)->cursor = in ? vec2d(x, y) : vec2d(-1, -1);
-            return (in && (!active || !edata->active)) ? n : null;
-        });
+        array<node*> result = array<node*>();
 
-        array<node*> actives = ((Element*)composer::data->root_instance)->select([&](node *n) -> node* {
-            return (active && ((Element*)n)->data->active) ? n : null;
-        });
+        for (node *n: composer::data->instances) {
+            Element *e = (Element*)n;
+            array<node*> inside = e->select([&](Element *ee) {
+                real           x = cur.x, y = cur.y;
+                vec2d          o = ee->offset();
+                vec2d        rel = cur + o;
+                Element::props *edata = e->data;
+                rectd &bounds = n->data->fill_bounds ? ee->data->fill_bounds : ee->data->bounds;
+                bool in = bounds.contains(rel);
+                (*n)->cursor = in ? vec2d(x, y) : vec2d(-1, -1);
+                return (in && (!active || !edata->active)) ? n : null;
+            });
 
-        array<node*> result = array<node *>(size_t(inside.length()) + size_t(actives.length()));
+            array<node*> actives = e->select([&](Element *ee) -> node* {
+                return (active && (ee->data->active) ? n : null;
+            });
 
-        for (node *i: inside)
-            result += i;
-        for (node *i: actives)
-            result += i;
+            for (node *i: inside)
+                result += i;
+            for (node *i: actives)
+                result += i;
+        }
         
         return result;
     }

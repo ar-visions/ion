@@ -355,6 +355,8 @@ ion::async service(uri url, lambda<message(message)> fn_process) {
     /// web socket protocol is a connector protocol unless a method of listen is explicitly called elsewhere
     if (url->proto == protocol::ws) {
         return ion::async {1, [url, fn_process](runtime *rt, int i) -> mx {
+            console.log("async test");
+
             /// create web socket for connection to relay service
             /// (should define this in administrative/accounting with data bindings)
             auto ws = make_shared<WebSocket>();
@@ -388,16 +390,22 @@ ion::async service(uri url, lambda<message(message)> fn_process) {
                 });
             });
 
-            console.log("websocket is {0}", { url });
-            std::string s_wsurl = str(url).cs();
+            str s_url = (uri&)url;
+            std::string s_wsurl = s_url.cs();
+            console.log("websocket is {0}", {s_wsurl.c_str() });
             ws->open(s_wsurl);
 
             console.log("ws connecting to signaling server: {0}", { url });
 
             while (!ws->isOpen()) {
                 if (ws->isClosed())
-                    return 1;
+                    return false;
                 this_thread::sleep_for(100ms);
+            }
+
+            /// wait in loop here, needs ability to cancel
+            while (ws->isOpen()) {
+                 this_thread::sleep_for(100ms);
             }
             return true;
         }};

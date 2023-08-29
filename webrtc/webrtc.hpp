@@ -35,15 +35,24 @@ int gettimeofday(struct timeval *tv, struct timezone *tz);
 #endif
 
 
-/// we need access to webrtc to have access to 'services' generic; for that we would call it to start and stop the service
+/// we need webrtc to have access to 'services' generic; for that we would call it to start and stop the service
 /// async needs a signaling method for the stop case.
 
 namespace ion {
 struct Service: node {
 	struct props {
-		ion::async service; /// if this is not here we are mounting
-		uri url;
-		lambda<message(message&)> msg;
+		ion::async 				  service; /// not exposed in meta; private state var
+		uri 					  url;
+		lambda<message(message&)> on_message;
+		///
+		type_register(props);
+		///
+		doubly<prop> meta() {
+			return {
+				prop { "url", url },
+				prop { "on-message", on_message }
+			};
+		}
 	};
 
     void mounted();

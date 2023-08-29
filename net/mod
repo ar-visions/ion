@@ -1,1 +1,2 @@
 dep(mx:mx mx:async ion:composer ion:media mbedtls:mbedtls mbedtls:mbedx509 mbedtls:mbedcrypto)
+includes(${INSTALL_PREFIX}/../extern/mbedtls-3.4.0/tests/include)

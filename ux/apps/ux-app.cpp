@@ -63,6 +63,9 @@ int main() {
             { "id",      "main" },
             { "sample",  int(2) },
             { "sample2", "10"   },
+            { "on-hover", callback([](event e) {
+                console.log("hi");
+            }},
             { "clicked", callback([](event e) {
                 printf("test!\n");
             }) }

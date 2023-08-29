@@ -27,10 +27,18 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
     size_t args_len = e->args.len();
     i64         now = millis();
 
-    if (e.type() == typeof(node)) {
-        for (node &cn: e->children) {
-            update(composer, parent, instance, cn);
-        }
+    if (e.type() == typeof(node) && e->children) {
+        size_t clen = e->children.len();
+        size_t i    = 0;
+        array<node*> a_instances = instance ? instance->data->children : array<node*>(clen, clen);
+
+        /// set instances node array, then we specify the item pointer for each
+        if (!instance)
+            instance = new node(a_instances);
+        
+        for (node *cn: e->children)
+            update(composer, parent, a_instances[i++], *cn);
+        
         return;
     }
 
@@ -262,9 +270,9 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
             node &n = *(node*)instance;
             if (render->children) {
                 /// each child is mounted
-                for (node &e: render->children) {
-                    str id = node_id(e);
-                    update(composer, instance, n->mounts[id], e);
+                for (node *e: render->children) {
+                    str id = node_id(*e);
+                    update(composer, instance, n->mounts[id], *e);
                 }
             } else {
                 str id = node_id(render);
