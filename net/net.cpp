@@ -60,12 +60,389 @@ namespace ion {
         console.fault("returned {0}", {ret});\
     }\
 
+#define HTTP_RESPONSE \
+    "HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n" \
+    "<h2>mbed TLS Test Server</h2>\r\n" \
+    "<p>Successful connection using: %s</p>\r\n"
+
+#define DEBUG_LEVEL 0
+
 void mbedtls_debug(void *ctx, int level, const char *file, int line, const char *str) {
     ((void) level);
 
     fprintf((FILE *) ctx, "mbedtls: %s:%04d: %s", file, line, str);
     fflush((FILE *) ctx);
 }
+
+static const char *pers = "ion:net";
+
+struct iTLS {
+    mbedtls_net_context fd;
+    mbedtls_entropy_context entropy;
+    mbedtls_ctr_drbg_context ctr_drbg;
+    //mbedtls_ssl_context ssl;
+    mbedtls_ssl_config conf;
+    mbedtls_x509_crt srvcert;
+    mbedtls_pk_context pkey;
+#if defined(MBEDTLS_SSL_CACHE_C)
+    mbedtls_ssl_cache_context cache;
+    uri url;
+#endif
+
+    iTLS() { }
+    iTLS(uri url) : url(url) {
+        static bool init;
+        if (!init) {
+    #ifdef _WIN32
+            static WSADATA wsa_data;
+            static int wsa = WSAStartup(MAKEWORD(2,2), &wsa_data);
+            if (wsa != 0) {
+                printf("(sock) WSAStartup failed: %d\n", wsa);
+                return;
+            }
+    #endif
+            init = true;
+        }
+        int ret, len;
+        mbedtls_net_init(&fd);
+
+        //mbedtls_ssl_init(&ssl);
+        mbedtls_ssl_config_init(&conf);
+    #if defined(MBEDTLS_SSL_CACHE_C)
+        mbedtls_ssl_cache_init(&cache);
+    #endif
+        mbedtls_x509_crt_init(&srvcert);
+        mbedtls_pk_init(&pkey);
+        mbedtls_entropy_init(&entropy);
+        mbedtls_ctr_drbg_init(&ctr_drbg);
+
+    #if defined(MBEDTLS_USE_PSA_CRYPTO)
+        psa_status_t status = psa_crypto_init();
+        if (status != PSA_SUCCESS) {
+            mbedtls_fprintf(stderr, "Failed to initialize PSA Crypto implementation: %d\n",
+                            (int) status);
+            ret = MBEDTLS_ERR_SSL_HW_ACCEL_FAILED;
+            goto exit;
+        }
+    #endif /* MBEDTLS_USE_PSA_CRYPTO */
+
+    #if defined(MBEDTLS_DEBUG_C)
+        mbedtls_debug_set_threshold(DEBUG_LEVEL);
+    #endif
+
+        mbedtls_printf("  . Seeding the random number generator...");
+        fflush(stdout);
+
+        if ((ret = mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy,
+                                        (const unsigned char *) pers,
+                                        strlen(pers))) != 0) {
+            mbedtls_printf(" failed\n  ! mbedtls_ctr_drbg_seed returned %d\n", ret);
+            return;
+        }
+
+        mbedtls_printf(" ok\n");
+        mbedtls_printf("\n  . Loading the server cert. and key...");
+        fflush(stdout);
+
+        ret = mbedtls_x509_crt_parse_file(&srvcert, "ssl/localhost.crt");
+        if (ret != 0) {
+            mbedtls_printf(" failed\n  !  mbedtls_x509_crt_parse returned %d\n\n", ret);
+            return;
+        }
+        ret = mbedtls_pk_parse_keyfile(&pkey, "ssl/localhost.key", 0, mbedtls_ctr_drbg_random, &ctr_drbg);
+        if (ret != 0) {
+            mbedtls_printf(" failed\n  !  mbedtls_pk_parse_key returned %d\n\n", ret);
+            return;
+        }
+
+        str port = str::from_integer(url.port());
+        if ((ret = mbedtls_net_bind(&fd, NULL, port.cs(), MBEDTLS_NET_PROTO_TCP)) != 0) {
+            mbedtls_printf(" failed\n  ! mbedtls_net_bind returned %d\n\n", ret);
+            return;
+        }
+
+        if ((ret = mbedtls_ssl_config_defaults(&conf,
+                                            MBEDTLS_SSL_IS_SERVER,
+                                            MBEDTLS_SSL_TRANSPORT_STREAM,
+                                            MBEDTLS_SSL_PRESET_DEFAULT)) != 0) {
+            mbedtls_printf(" failed\n  ! mbedtls_ssl_config_defaults returned %d\n\n", ret);
+            return;
+        }
+
+        mbedtls_ssl_conf_rng(&conf, mbedtls_ctr_drbg_random, &ctr_drbg);
+        mbedtls_ssl_conf_dbg(&conf, mbedtls_debug, stdout);
+
+    #if defined(MBEDTLS_SSL_CACHE_C)
+        mbedtls_ssl_conf_session_cache(&conf, &cache,
+                                    mbedtls_ssl_cache_get,
+                                    mbedtls_ssl_cache_set);
+    #endif
+
+        mbedtls_ssl_conf_ca_chain(&conf, srvcert.next, NULL);
+        if ((ret = mbedtls_ssl_conf_own_cert(&conf, &srvcert, &pkey)) != 0) {
+            mbedtls_printf(" failed\n  ! mbedtls_ssl_conf_own_cert returned %d\n\n", ret);
+            return;
+        }
+    }
+
+    ~iTLS() {
+        mbedtls_net_free(&fd);
+        mbedtls_x509_crt_free(&srvcert);
+        mbedtls_pk_free(&pkey);
+        //mbedtls_ssl_free(&ssl);
+        mbedtls_ssl_config_free(&conf);
+    #if defined(MBEDTLS_SSL_CACHE_C)
+        mbedtls_ssl_cache_free(&cache);
+    #endif
+        mbedtls_ctr_drbg_free(&ctr_drbg);
+        mbedtls_entropy_free(&entropy);
+    #if defined(MBEDTLS_USE_PSA_CRYPTO)
+        mbedtls_psa_crypto_free();
+    #endif /* MBEDTLS_USE_PSA_CRYPTO */
+    }
+    
+    type_register(iTLS);
+};
+
+mx_implement(TLS, mx);
+
+TLS::TLS(uri url) : TLS(new iTLS(url)) { }
+
+struct Session {
+    TLS                 tls;
+    mbedtls_net_context fd = {};
+    mbedtls_ssl_context ssl = {};
+    bool                connected = false;
+    num                 timeout_ms = 0;
+
+    Session() { }
+
+    ///
+    Session(TLS tls) : tls(tls) {
+        mbedtls_ssl_init(&ssl);
+        mbedtls_net_init(&fd);
+        mbedtls_ssl_setup(&ssl, &tls->conf);
+        mbedtls_ssl_session_reset(&ssl);
+    }
+
+    Session(uri addr) : Session(new iTLS(addr)) { }
+
+    ~Session() {
+        mbedtls_ssl_free(&ssl);
+        mbedtls_net_free(&fd);
+    }
+
+    bool bind(uri addr) {
+        str s_port = str::from_integer(addr.port());
+        int res = mbedtls_net_bind(&fd, addr.host().cs(), (symbol)s_port.cs(), MBEDTLS_NET_PROTO_TCP);
+        if (res != 0) {
+            printf("mbedtls_net_bind: fails with %d\n", res);
+            return false;
+        }
+        return true;
+    }
+
+    bool connect() {
+        str    host = tls->url.host();
+        int    port = tls->url.port();
+
+        /// this operation runs first and its cache is used by mbed
+        int ret = mbedtls_ssl_setup(&ssl, &tls->conf);
+        if (ret != 0) {
+            std::cerr << "mbedtls_ssl_setup failed: " << ret << std::endl;
+            return {};
+        }
+        
+        str  str_port = str::from_integer(port);
+        ion::symbol s_hostname = ion::symbol(host.cs());
+        ion::symbol s_port = ion::symbol(str_port.cs());
+        ret = mbedtls_ssl_set_hostname(&ssl, s_hostname);
+
+        if (ret != 0) {
+            std::cerr << "mbedtls_ssl_set_hostname failed: " << ret << std::endl;
+            return {};
+        }
+        
+        ret = mbedtls_net_connect(&fd, s_hostname, s_port, MBEDTLS_NET_PROTO_TCP);
+        if (ret != 0) {
+            std::cerr << "mbedtls_net_connect failed: " << ret << std::endl;
+            return {};
+        }
+        
+        mbedtls_ssl_set_bio(&ssl, &fd, mbedtls_net_send, mbedtls_net_recv, NULL);
+        
+        while ((ret = mbedtls_ssl_handshake(&ssl)) != 0) {
+            if (ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE) {
+                std::cerr << "mbedtls_ssl_handshake failed: " << ret << std::endl;
+                return false;
+            }
+        }
+        connected = true;
+        return true;
+    }
+
+
+    bool close() {
+        int ret;
+        while ((ret = mbedtls_ssl_close_notify(&ssl)) < 0) {
+            if (ret != MBEDTLS_ERR_SSL_WANT_READ &&
+                ret != MBEDTLS_ERR_SSL_WANT_WRITE) {
+                mbedtls_printf(" failed\n  ! mbedtls_ssl_close_notify returned %d\n\n", ret);
+                return false;
+            }
+        }
+        return true;
+    }
+
+    void set_timeout(i64 t) {
+        timeout_ms = t;
+    }
+
+    bool read_sz(char *v, size_t sz) {
+        int st = 0;
+        ///
+        for (int len = int(sz); len > 0;) {
+            int rcv = mbedtls_ssl_read(&ssl, (u8*)&v[st], len);
+            if (rcv <= 0)
+                return false;
+            len -= rcv;
+            st  += rcv;
+        }
+        return true;
+    }
+
+    ssize_t recv(char* buf, size_t len) {
+        ssize_t sz;
+        do {
+            sz = mbedtls_ssl_read(&ssl, (u8*)buf, len);
+            if (sz == MBEDTLS_ERR_SSL_WANT_READ || sz == MBEDTLS_ERR_SSL_WANT_WRITE)
+                continue;
+            if (sz <= 0) break;
+        } while(1);
+        return sz;
+    }
+
+    ssize_t send(const char* buf, size_t len) {
+        ssize_t ret;
+        while ((ret = mbedtls_ssl_write(&ssl, (const u8*)buf, len)) <= 0) {
+            if (ret == MBEDTLS_ERR_NET_CONN_RESET)
+                return 0;
+            if (ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE)
+                break;
+        }
+        return ret;
+    }
+
+    ssize_t send(str templ, array<mx> args) {
+        str val = str::format(templ.cs(), args);
+        return send(val.cs(), val.len());
+    }
+
+    /// for already string-like memory; this could do something with the type on mx
+    ssize_t send(mx &v) {
+        return send((const char*)v.mem->origin, v.count() * v.mem->type->size()); /// total_size if it has a schema, base_sz otherwise
+    }
+
+    array<char> read_until(str s, int max_len) {
+        auto rbytes = array<char>(size_t(max_len));
+        size_t slen = s.len();
+        ///
+        for (;;) {
+            rbytes   += '\0';
+            size_t sz = rbytes.len();
+            if (!recv(&rbytes[sz - 1], size_t(1)))
+                return array<char> { };
+            printf("recv: %s\n", rbytes.data);
+            if (sz >= slen && memcmp(&rbytes[sz - slen], s.cs(), slen) == 0)
+                break;
+            if (sz == max_len)
+                return array<char> { };
+        }
+        return rbytes;
+    }
+
+    /// integrate connect here, also send and recv from sock
+    static Session *accept(TLS &tls) {
+        Session *client = new Session(tls);
+        /// only accept client that passes a handshake
+        for (;;) {
+            mbedtls_net_init(&client->fd);
+            mbedtls_ssl_session_reset(&client->ssl);
+            mbedtls_ssl_setup(&client->ssl, &client->tls->conf);
+
+            int ret;
+            /// accept into client_fd from tls server
+            if ((ret = mbedtls_net_accept(&tls->fd, &client->fd, null, 0, null)) != 0) {
+                delete client;
+                return null;
+            }
+            
+            bool retry = false;
+            mbedtls_ssl_set_bio(&client->ssl, &client->fd, mbedtls_net_send, mbedtls_net_recv, NULL);
+            while ((ret = mbedtls_ssl_handshake(&client->ssl)) != 0) {
+                if (ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE) {
+                    console.log("mbedtls_ssl_handshake: {0}", {ret});
+                    retry = true;
+                    break;
+                }
+            }
+            if (!retry)
+                break;
+        }
+        client->connected = true;
+        return client;
+    }
+
+    type_register(Session);
+};
+
+mx_implement(sock, mx);
+
+/// how do avoid a default allocation?
+/// what argument/type performs an allocation? construct with type_t
+sock::sock(TLS tls)  : sock() { data->tls = tls; }
+sock::sock(uri addr) : sock(TLS(addr)) { }
+
+bool        sock::bind(uri addr)                    { return data->bind(addr); }
+bool        sock::connect()                         { return data->connect(); }
+bool        sock::close()                           { return data->close(); }
+void        sock::set_timeout(i64 t)                { data->set_timeout(t); }
+bool        sock::read_sz(char *v, size_t sz)       { return data->read_sz(v, sz); }
+ssize_t     sock::recv(char* buf, size_t len)       { return data->recv(buf, len); }
+ssize_t     sock::send(const char* buf, size_t len) { return data->send(buf, len); }
+ssize_t     sock::send(str templ, array<mx> args)   { return data->send(templ, args); }
+ssize_t     sock::send(mx &v)                       { return data->send(v); }
+array<char> sock::read_until(str s, int max_len)    { return data->read_until(s, max_len); }
+sock        sock::accept(TLS tls)                   { return Session::accept(tls); }
+            sock::operator bool()                   { return data->connected; }
+
+async sock::listen(uri url, lambda<bool(sock&)> fn) {
+    TLS tls = TLS(url);
+
+    return async(1, [tls, url, fn](runtime *rt, int i) -> mx {
+        int ret, len;
+        char buf[1024]; /// split this into the fn caller
+
+        sock client;
+        for (;;) {
+            client = sock::accept(tls);
+            if (!client) /// needs a bool here
+                break;
+            
+            ssize_t recv_len = client->recv(buf, sizeof(buf) - 1);
+            if (!recv_len)
+                break;
+            
+            ssize_t send_len = snprintf((char*) buf, recv_len, HTTP_RESPONSE,
+                        mbedtls_ssl_get_ciphersuite(&client->ssl));
+            if (!client->send(buf, send_len))
+                break;
+            client->close();
+        }
+        return true;
+    });
+}
+
 
 str dns(str hostname) {
     struct addrinfo hints, *res, *p;
@@ -104,711 +481,6 @@ str dns(str hostname) {
     /// free memory
     freeaddrinfo(res);
     return result;
-}
-
-/// tls security structure
-struct tls {
-    mbedtls_x509_crt          cert_chain;
-    mbedtls_pk_context        pkey;
-    mbedtls_ssl_config        conf;
-    mbedtls_ctr_drbg_context  ctr_drbg;
-    mbedtls_entropy_context   entropy;
-
-    void load_certs(sock::role r, str host);
-
-    void load_keypair(path pub, path priv, str pass = null) {
-        assert(!pass);
-        /// replace "root_cert.pem" and "intermediate_cert.pem" with your actual file paths
-        if (mbedtls_x509_crt_parse_file(&cert_chain, pub) != 0)
-            console.fault("failed to parse public cert");
-        
-        /// private key -- init once, then parse into (not sure if we needed the init but it was a difference)
-        mbedtls_pk_init(&pkey);
-        if (mbedtls_pk_parse_keyfile(&pkey, priv, null, null, null) != 0)
-            console.fault("failed to parse private key");
-
-        mbedtls_ssl_conf_ca_chain(&conf, cert_chain.next, null);
-        int ret = mbedtls_ssl_conf_own_cert(&conf, &cert_chain, &pkey);
-        if (ret != 0) {
-            console.fault("mbedtls_ssl_conf_own_cert returned {0}", {ret});
-        }
-    }
-
-    tls(str hostname) {
-        char *pers = "ssl_server";
-
-        mbedtls_ssl_config_init(&conf);
-        mbedtls_x509_crt_init(&cert_chain);
-        mbedtls_pk_init(&pkey);
-        mbedtls_entropy_init(&entropy);
-        mbedtls_ctr_drbg_init(&ctr_drbg);
-        mbedtls_debug_set_threshold(0);
-
-        int ret;
-        if ((ret = mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy,
-                                        (const unsigned char *) pers,
-                                        strlen(pers))) != 0) {
-            console.fault("mbedtls_ctr_drbg_seed returned {0}\n", {ret});
-        }
-
-        str crt = fmt { "ssl/localhost.crt", { hostname } };
-        str key = fmt { "ssl/localhost.key", { hostname } };
-
-        mbed_guard(mbedtls_x509_crt_parse_file(&cert_chain, crt.cs()));
-        mbed_guard(mbedtls_pk_parse_keyfile(&pkey, key.cs(), 0, mbedtls_ctr_drbg_random, &ctr_drbg));
-    }
-};
-
-struct tls_session {
-    tls*                security;
-    mbedtls_net_context fd;
-    mbedtls_ssl_context ssl;
-    ///
-    tls_session(tls* security) : security(security) {
-        mbedtls_ssl_init(&ssl);
-        mbedtls_net_init(&fd);
-        //mbedtls_ssl_session_reset(&ssl);
-    }
-};
-
-/// isolated isock containing state info for socket
-struct isock {
-    sock::role                role;
-    uri                       query;
-    i64                       timeout_ms;
-    bool                      connected;
-    tls_session*              session;
-
-    type_register(isock);
-    
-    isock() {
-        static bool init;
-        if (!init) {
-    #ifdef _WIN32
-            static WSADATA wsa_data;
-            static int wsa = WSAStartup(MAKEWORD(2,2), &wsa_data);
-            if (wsa != 0) {
-                printf("(sock) WSAStartup failed: %d\n", wsa);
-                return;
-            }
-    #endif
-            init = true;
-        }
-    }
-
-    void close() {
-        if (connected) {
-            mbedtls_ssl_close_notify(&session->ssl);
-            connected = false;
-        }
-    }
-    
-    ~isock() {
-        close();
-    }
-};
-
-mx_implement(sock, mx);
-
-///
-void sock::set_timeout(i64 t) {
-    data->timeout_ms = t;
-}
-
-sock sock::accept() {
-    return {};
-}
-
-
-
-
-#define HTTP_RESPONSE \
-    "HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n" \
-    "<h2>mbed TLS Test Server</h2>\r\n" \
-    "<p>Successful connection using: %s</p>\r\n"
-
-#define DEBUG_LEVEL 0
-
-static void my_debug(void *ctx, int level,
-                     const char *file, int line,
-                     const char *str)
-{
-    ((void) level);
-
-    mbedtls_fprintf((FILE *) ctx, "%s:%04d: %s", file, line, str);
-    fflush((FILE *) ctx);
-}
-
-struct TLS {
-    mbedtls_net_context fd;
-    mbedtls_entropy_context entropy;
-    mbedtls_ctr_drbg_context ctr_drbg;
-    mbedtls_ssl_context ssl;
-    mbedtls_ssl_config conf;
-    mbedtls_x509_crt srvcert;
-    mbedtls_pk_context pkey;
-#if defined(MBEDTLS_SSL_CACHE_C)
-    mbedtls_ssl_cache_context cache;
-#endif
-
-    TLS(char *pers, uri url) {
-        int ret, len;
-        //mbedtls_net_init(&listen_fd);
-        //mbedtls_net_init(&client_fd);
-
-        mbedtls_ssl_init(&ssl);
-        mbedtls_ssl_config_init(&conf);
-    #if defined(MBEDTLS_SSL_CACHE_C)
-        mbedtls_ssl_cache_init(&cache);
-    #endif
-        mbedtls_x509_crt_init(&srvcert);
-        mbedtls_pk_init(&pkey);
-        mbedtls_entropy_init(&entropy);
-        mbedtls_ctr_drbg_init(&ctr_drbg);
-
-    #if defined(MBEDTLS_USE_PSA_CRYPTO)
-        psa_status_t status = psa_crypto_init();
-        if (status != PSA_SUCCESS) {
-            mbedtls_fprintf(stderr, "Failed to initialize PSA Crypto implementation: %d\n",
-                            (int) status);
-            ret = MBEDTLS_ERR_SSL_HW_ACCEL_FAILED;
-            goto exit;
-        }
-    #endif /* MBEDTLS_USE_PSA_CRYPTO */
-
-    #if defined(MBEDTLS_DEBUG_C)
-        mbedtls_debug_set_threshold(DEBUG_LEVEL);
-    #endif
-
-        /*
-        * 1. Seed the RNG
-        */
-        mbedtls_printf("  . Seeding the random number generator...");
-        fflush(stdout);
-
-        if ((ret = mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy,
-                                        (const unsigned char *) pers,
-                                        strlen(pers))) != 0) {
-            mbedtls_printf(" failed\n  ! mbedtls_ctr_drbg_seed returned %d\n", ret);
-            return;
-        }
-
-        mbedtls_printf(" ok\n");
-
-        /*
-        * 2. Load the certificates and private RSA key
-        */
-        mbedtls_printf("\n  . Loading the server cert. and key...");
-        fflush(stdout);
-
-        /*
-        * This demonstration program uses embedded test certificates.
-        * Instead, you may want to use mbedtls_x509_crt_parse_file() to read the
-        * server and CA certificates, as well as mbedtls_pk_parse_keyfile().
-        */
-        // ret = mbedtls_x509_crt_parse(&srvcert, (const unsigned char *) mbedtls_test_srv_crt,
-        //                              mbedtls_test_srv_crt_len);
-        // if (ret != 0) {
-        //     mbedtls_printf(" failed\n  !  mbedtls_x509_crt_parse returned %d\n\n", ret);
-        //     goto exit;
-        // }
-
-        //ret = mbedtls_x509_crt_parse(&srvcert, (const unsigned char *) mbedtls_test_cas_pem,
-        //                             mbedtls_test_cas_pem_len);
-        //if (ret != 0) {
-        //    mbedtls_printf(" failed\n  !  mbedtls_x509_crt_parse returned %d\n\n", ret);
-        //    goto exit;
-        //}
-
-        ret = mbedtls_x509_crt_parse_file(&srvcert, "ssl/localhost.crt");
-        if (ret != 0) {
-            mbedtls_printf(" failed\n  !  mbedtls_x509_crt_parse returned %d\n\n", ret);
-            return;
-        }
-        ret = mbedtls_pk_parse_keyfile(&pkey, "ssl/localhost.key", 0, mbedtls_ctr_drbg_random, &ctr_drbg);
-                                        
-        //ret =  mbedtls_pk_parse_key(&pkey, (const unsigned char *) mbedtls_test_srv_key,
-        //                            mbedtls_test_srv_key_len, NULL, 0,
-        //                            mbedtls_ctr_drbg_random, &ctr_drbg);
-
-        if (ret != 0) {
-            mbedtls_printf(" failed\n  !  mbedtls_pk_parse_key returned %d\n\n", ret);
-            return;
-        }
-
-        mbedtls_printf(" ok\n");
-
-        /*
-        * 3. Setup the listening TCP socket
-        */
-        mbedtls_printf("  . Bind on https://localhost:4433/ ...");
-        fflush(stdout);
-
-        str port = str::from_integer(url.port());
-
-        if ((ret = mbedtls_net_bind(&fd, NULL, port.cs(), MBEDTLS_NET_PROTO_TCP)) != 0) {
-            mbedtls_printf(" failed\n  ! mbedtls_net_bind returned %d\n\n", ret);
-            return;
-        }
-
-        mbedtls_printf(" ok\n");
-
-        /*
-        * 4. Setup stuff
-        */
-        mbedtls_printf("  . Setting up the SSL data....");
-        fflush(stdout);
-
-        if ((ret = mbedtls_ssl_config_defaults(&conf,
-                                            MBEDTLS_SSL_IS_SERVER,
-                                            MBEDTLS_SSL_TRANSPORT_STREAM,
-                                            MBEDTLS_SSL_PRESET_DEFAULT)) != 0) {
-            mbedtls_printf(" failed\n  ! mbedtls_ssl_config_defaults returned %d\n\n", ret);
-            return;
-        }
-
-        mbedtls_ssl_conf_rng(&conf, mbedtls_ctr_drbg_random, &ctr_drbg);
-        mbedtls_ssl_conf_dbg(&conf, my_debug, stdout);
-
-    #if defined(MBEDTLS_SSL_CACHE_C)
-        mbedtls_ssl_conf_session_cache(&conf, &cache,
-                                    mbedtls_ssl_cache_get,
-                                    mbedtls_ssl_cache_set);
-    #endif
-
-        mbedtls_ssl_conf_ca_chain(&conf, srvcert.next, NULL);
-        if ((ret = mbedtls_ssl_conf_own_cert(&conf, &srvcert, &pkey)) != 0) {
-            mbedtls_printf(" failed\n  ! mbedtls_ssl_conf_own_cert returned %d\n\n", ret);
-            return;
-        }
-
-        if ((ret = mbedtls_ssl_setup(&ssl, &conf)) != 0) {
-            mbedtls_printf(" failed\n  ! mbedtls_ssl_setup returned %d\n\n", ret);
-            return;
-        }
-
-        mbedtls_printf(" ok\n");
-    }
-
-    ~TLS() {
-        mbedtls_net_free(&fd);
-        mbedtls_x509_crt_free(&srvcert);
-        mbedtls_pk_free(&pkey);
-        mbedtls_ssl_free(&ssl);
-        mbedtls_ssl_config_free(&conf);
-    #if defined(MBEDTLS_SSL_CACHE_C)
-        mbedtls_ssl_cache_free(&cache);
-    #endif
-        mbedtls_ctr_drbg_free(&ctr_drbg);
-        mbedtls_entropy_free(&entropy);
-    #if defined(MBEDTLS_USE_PSA_CRYPTO)
-        mbedtls_psa_crypto_free();
-    #endif /* MBEDTLS_USE_PSA_CRYPTO */
-    }
-};
-
-async sock::listen(uri url, lambda<bool(sock&)> fn) {
-    int ret, len;
-    mbedtls_net_context client_fd;
-    unsigned char buf[1024];
-    TLS *tls = new TLS("ssl_server", url);
-
-reset:
-#ifdef MBEDTLS_ERROR_C
-    if (ret != 0) {
-        char error_buf[100];
-        mbedtls_strerror(ret, error_buf, 100);
-        mbedtls_printf("Last error was: %d - %s\n\n", ret, error_buf);
-    }
-#endif
-
-    mbedtls_net_free(&client_fd);
-
-    mbedtls_ssl_session_reset(&tls->ssl);
-
-    /*
-     * 3. Wait until a client connects
-     */
-    mbedtls_printf("  . Waiting for a remote connection ...");
-    fflush(stdout);
-
-    if ((ret = mbedtls_net_accept(&tls->fd, &client_fd,
-                                  NULL, 0, NULL)) != 0) {
-        mbedtls_printf(" failed\n  ! mbedtls_net_accept returned %d\n\n", ret);
-        goto exit;
-    }
-
-    mbedtls_ssl_set_bio(&tls->ssl, &client_fd, mbedtls_net_send, mbedtls_net_recv, NULL);
-
-    mbedtls_printf(" ok\n");
-
-    /*
-     * 5. Handshake
-     */
-    mbedtls_printf("  . Performing the SSL/TLS handshake...");
-    fflush(stdout);
-
-    while ((ret = mbedtls_ssl_handshake(&tls->ssl)) != 0) {
-        if (ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE) {
-            mbedtls_printf(" failed\n  ! mbedtls_ssl_handshake returned %d\n\n", ret);
-            goto reset;
-        }
-    }
-
-    mbedtls_printf(" ok\n");
-
-    /*
-     * 6. Read the HTTP Request
-     */
-    mbedtls_printf("  < Read from client:");
-    fflush(stdout);
-
-    do {
-        len = sizeof(buf) - 1;
-        memset(buf, 0, sizeof(buf));
-        ret = mbedtls_ssl_read(&tls->ssl, buf, len);
-
-        if (ret == MBEDTLS_ERR_SSL_WANT_READ || ret == MBEDTLS_ERR_SSL_WANT_WRITE) {
-            continue;
-        }
-
-        if (ret <= 0) {
-            switch (ret) {
-                case MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY:
-                    mbedtls_printf(" connection was closed gracefully\n");
-                    break;
-
-                case MBEDTLS_ERR_NET_CONN_RESET:
-                    mbedtls_printf(" connection was reset by peer\n");
-                    break;
-
-                default:
-                    mbedtls_printf(" mbedtls_ssl_read returned -0x%x\n", (unsigned int) -ret);
-                    break;
-            }
-
-            break;
-        }
-
-        len = ret;
-        mbedtls_printf(" %d bytes read\n\n%s", len, (char *) buf);
-
-        if (ret > 0) {
-            break;
-        }
-    } while (1);
-
-    /*
-     * 7. Write the 200 Response
-     */
-    mbedtls_printf("  > Write to client:");
-    fflush(stdout);
-
-    len = snprintf((char *) buf, sizeof(buf), HTTP_RESPONSE,
-                  mbedtls_ssl_get_ciphersuite(&tls->ssl));
-
-    while ((ret = mbedtls_ssl_write(&tls->ssl, buf, len)) <= 0) {
-        if (ret == MBEDTLS_ERR_NET_CONN_RESET) {
-            mbedtls_printf(" failed\n  ! peer closed the connection\n\n");
-            goto reset;
-        }
-
-        if (ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE) {
-            mbedtls_printf(" failed\n  ! mbedtls_ssl_write returned %d\n\n", ret);
-            goto exit;
-        }
-    }
-
-    len = ret;
-    mbedtls_printf(" %d bytes written\n\n%s\n", len, (char *) buf);
-
-    mbedtls_printf("  . Closing the connection...");
-
-    while ((ret = mbedtls_ssl_close_notify(&tls->ssl)) < 0) {
-        if (ret != MBEDTLS_ERR_SSL_WANT_READ &&
-            ret != MBEDTLS_ERR_SSL_WANT_WRITE) {
-            mbedtls_printf(" failed\n  ! mbedtls_ssl_close_notify returned %d\n\n", ret);
-            goto reset;
-        }
-    }
-
-    mbedtls_printf(" ok\n");
-
-    ret = 0;
-    goto reset;
-
-exit:
-
-#ifdef MBEDTLS_ERROR_C
-    if (ret != 0) {
-        char error_buf[100];
-        mbedtls_strerror(ret, error_buf, 100);
-        mbedtls_printf("Last error was: %d - %s\n\n", ret, error_buf);
-    }
-#endif
-
-    mbedtls_net_free(&client_fd);
-
-    mbedtls_exit(ret);
-
-}
-
-
-/// listen on https using mbedtls
-/// ---------------------------------
-/*
-async sock::listen(uri url, lambda<bool(sock&)> fn) {
-    return async(1, [&, url, fn](runtime *rt, int i) -> mx {
-        uri bind = url.methodize(method::get);
-        
-        /// proceed if https; that is our protocol and we know nothing else
-        protocol &pr = bind.proto();
-        assert(pr == "https");
-        
-        int      port = bind.port();
-        str host_name = bind.host();
-        str    s_port = str::from_integer(port);
-
-        console.log("(net) listen on: {0}:{1}", { host_name, port });
-        tls security { host_name };
-        tls_session *session = new tls_session { &security }; /// if hostname given, this would be a client connecting to server
-
-        int ret, len;
-        unsigned char buf[1024];
-
-        mbed_guard(mbedtls_net_bind(&session->fd, NULL, s_port.cs(), MBEDTLS_NET_PROTO_TCP));
-
-        /// this should be done prior, i think; makes no sense to listen before you bind everything.
-        /// it can also be put in tls construction
-        mbed_guard(mbedtls_ssl_config_defaults(&security.conf,
-                MBEDTLS_SSL_IS_SERVER,
-                MBEDTLS_SSL_TRANSPORT_STREAM,
-                MBEDTLS_SSL_PRESET_DEFAULT));
-
-        mbedtls_ssl_conf_rng(&security.conf, mbedtls_ctr_drbg_random, &security.ctr_drbg);
-        mbedtls_ssl_conf_dbg(&security.conf, mbedtls_debug, stdout);
-        mbedtls_ssl_conf_ca_chain(&security.conf, security.cert_chain.next, NULL);
-        mbed_guard(mbedtls_ssl_conf_own_cert(&security.conf, &security.cert_chain, &security.pkey));
-        mbed_guard(mbedtls_ssl_setup(&session->ssl, &security.conf));
-
-        /// ssl will need instancing on each new client
-        while (1) {
-            tls_session *client_session = new tls_session { &security };
-            //mbedtls_ssl_session_reset(&session->ssl);
-
-            mbed_guard(mbedtls_net_accept(&session->fd, &client_session->fd, null, 0, null));
-            mbedtls_ssl_set_bio(&session->ssl, &client_session->fd, mbedtls_net_send, mbedtls_net_recv, NULL);
-            while ((ret = mbedtls_ssl_handshake(&session->ssl)) != 0) {
-                if (ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE) {
-                    console.log("mbedtls_ssl_handshake returned {0}", {ret});
-                    break;
-                }
-            }
-
-            /// read from client (lets do this in the same thread for now, then get working in separate)
-            do {
-                len = sizeof(buf) - 1;
-                memset(buf, 0, sizeof(buf));
-                ret = mbedtls_ssl_read(&session->ssl, buf, len);
-
-                if (ret == MBEDTLS_ERR_SSL_WANT_READ || ret == MBEDTLS_ERR_SSL_WANT_WRITE) {
-                    continue;
-                }
-
-                if (ret <= 0) {
-                    switch (ret) {
-                        case MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY:
-                            console.log("connection was closed gracefully");
-                            break;
-
-                        case MBEDTLS_ERR_NET_CONN_RESET:
-                            console.log("connection was reset by peer");
-                            break;
-
-                        default:
-                            printf("mbedtls_ssl_read returned -0x%x\n", (unsigned int) -ret);
-                            break;
-                    }
-
-                    break;
-                }
-
-                len = ret;
-                printf(" %d bytes read\n\n%s", len, (char *) buf);
-
-                if (ret > 0) {
-                    break;
-                }
-            } while (1);
-
-#define HTTP_RESPONSE \
-    "HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n" \
-    "<h2>mbed TLS Test Server</h2>\r\n" \
-    "<p>Successful connection using: %s</p>\r\n"
-
-            int len_res = snprintf((char *) buf, sizeof(buf), HTTP_RESPONSE,
-                        mbedtls_ssl_get_ciphersuite(&session->ssl));
-            
-            for (;;) {
-                usleep(10000);
-            }
-        }
-        return true;
-    });
-}
-*/
-
-void sock::close() {
-    data->close();
-}
-
-bool sock::read_sz(u8 *v, size_t sz) {
-    int st = 0;
-    ///
-    for (int len = int(sz); len > 0;) {
-        int rcv = mbedtls_ssl_read(&data->session->ssl, &v[st], len);
-        if (rcv <= 0)
-            return false;
-        len -= rcv;
-        st  += rcv;
-    }
-    return true;
-}
-
-array<char> sock::read_until(str s, int max_len) {
-    auto rbytes = array<char>(size_t(max_len));
-    size_t slen = s.len();
-    ///
-    for (;;) {
-        rbytes   += '\0';
-        size_t sz = rbytes.len();
-        if (!recv((unsigned char*)&rbytes[sz - 1], size_t(1)))
-            return array<char> { };
-        printf("recv: %s\n", rbytes.data);
-        if (sz >= slen && memcmp(&rbytes[sz - slen], s.cs(), slen) == 0)
-            break;
-        if (sz == max_len)
-            return array<char> { };
-    }
-    return rbytes;
-}
-
-sock::operator bool() {
-    return data && data->connected;
-}
-
-bool sock::bind(str adapter, int port) {
-    str    str_port = str::from_integer(port);
-    symbol sym_port = symbol(str_port);
-    int res = mbedtls_net_bind(&data->session->fd, adapter ? adapter.cs() : "0.0.0.0",
-                     sym_port, MBEDTLS_NET_PROTO_TCP);
-    if (res != 0) {
-        printf("mbedtls_net_bind: fails with %d\n", res);
-    }
-    return res != 0;
-}
-
-sock sock::connect(uri url) {
-    str    host = url.host();
-    int    port = url.port();
-    tls*   security = new tls { host };
-    tls_session* session = new tls_session { security };
-
-    sock   res { sock::role::client, url, session };
-    isock *isc  = res.data;
-
-    /// this operation runs first and its cache is used by mbed
-    int ret = mbedtls_ssl_setup(&isc->session->ssl, &isc->session->security->conf);
-    if (ret != 0) {
-        std::cerr << "mbedtls_ssl_setup failed: " << ret << std::endl;
-        return {};
-    }
-    
-    str  str_port = str::from_integer(port);
-    ion::symbol s_hostname = ion::symbol(host.cs());
-    ion::symbol s_port = ion::symbol(str_port.cs());
-    ret = mbedtls_ssl_set_hostname(&isc->session->ssl, s_hostname);
-
-    if (ret != 0) {
-        std::cerr << "mbedtls_ssl_set_hostname failed: " << ret << std::endl;
-        return {};
-    }
-    
-    ret = mbedtls_net_connect(&isc->session->fd, s_hostname, s_port, MBEDTLS_NET_PROTO_TCP);
-    if (ret != 0) {
-        std::cerr << "mbedtls_net_connect failed: " << ret << std::endl;
-        return {};
-    }
-    
-    mbedtls_ssl_set_bio(&isc->session->ssl, &isc->session->fd, mbedtls_net_send, mbedtls_net_recv, NULL);
-    
-    while ((ret = mbedtls_ssl_handshake(&isc->session->ssl)) != 0) {
-        if (ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE) {
-            std::cerr << "mbedtls_ssl_handshake failed: " << ret << std::endl;
-            mbedtls_net_free(&isc->session->fd);
-            return {};
-        }
-    }
-    isc->connected = true;
-    return res;
-}
-
-
-sock::sock(role r, uri addr, tls_session *session) : sock() {
-    data->role  = r;
-    data->query = addr;
-    data->session = session;
-    ///
-    assert(addr.proto() == "https");
-    ///
-    str s_address = addr.host();
-    int i_port = addr.port();
-    if (r == role::server)
-        session->security->load_certs(r, s_address); /// needs to be a 'session'
-    
-    if (data->role == role::server)
-        bind(s_address, i_port);
-}
-
-ssize_t sock::recv(unsigned char* buf, size_t len) {
-    return mbedtls_ssl_read(&data->session->ssl, buf, len);
-}
-
-ssize_t sock::send(const unsigned char* buf, size_t len) {
-    return mbedtls_ssl_write(&data->session->ssl, buf, len);
-}
-
-ssize_t sock::send(str templ, array<mx> args) {
-    str val = str::format(templ.cs(), args);
-    return mbedtls_ssl_write(&data->session->ssl, (const unsigned char*)val.cs(), val.len());
-}
-
-/// for already string-like memory; this could do something with the type on mx
-ssize_t sock::send(mx &v) {
-    return send((u8*)v.mem->origin, v.count() * v.mem->type->size()); /// total_size if it has a schema, base_sz otherwise
-}
-
-void tls::load_certs(sock::role r, str host) {
-    str crt = fmt { "ssl/{0}.crt", { host } };
-    str key = fmt { "ssl/{0}.key", { host } };
-
-    /// load cert and key based on role
-    if (r == sock::role::server) {
-        load_keypair(crt.cs(), key.cs());
-    } else {
-        /// host just has a sequence starting with root, intermediate, etc, so 0 = CA Root, 1 = Signed from CA Root, 2 = Signed by 1
-        for (size_t ii = 0; ii < 16; ii++) {
-            path p = fmt { "trust/{0}.{1}.pem", { host, int(ii) }};
-            bool exists = p.exists();
-            if (!exists) {
-                if (ii == 0) console.fault("no trust for this host..."); /// all hosts should have something
-                break;
-            }
-            symbol file = symbol(p.cs());
-            if (mbedtls_x509_crt_parse_file(&cert_chain, file) != 0)
-                console.fault("failed to parse trust: {0}", { file });
-        }
-    }
 }
 
 message::message(int server_code) : message() {
@@ -903,7 +575,7 @@ bool message::read_content(sock &sc) {
     const num     r_max = 1024;
     bool          error = false;
     int            iter = 0;
-    array<uint8_t> v_data;
+    array<char> v_data;
     ///
     assert(!(clen >= 0 && chunked));
     ///
@@ -911,7 +583,7 @@ bool message::read_content(sock &sc) {
         do {
             if (chunked) {
                 if (iter++ > 0) {
-                    u8 crlf[2];
+                    char crlf[2];
                     if (!sc.read_sz(crlf, 2) || memcmp(crlf, "\r\n", 2) != 0) {
                         error = true;
                         break;
@@ -932,7 +604,7 @@ bool message::read_content(sock &sc) {
             bool sff = content_len == -1;
             for (num rcv = 0; sff || rcv < content_len; rcv += rlen) {
                 num   rx = math::min(1, 1);
-                uint8_t  buf[r_max];
+                char  buf[r_max];
                 rlen = sc.recv(buf, rx);
                 if (rlen > 0)
                     v_data.push(buf, rlen);
@@ -1052,10 +724,10 @@ bool message::write_headers(sock &sc) {
         if (!sc.send("{0}: {1}", { k, v }))
             return false;
         ///
-        if (!sc.send("\r\n"))
+        if (!sc.send("\r\n", 2))
             return false;
     }
-    if (!sc.send("\r\n"))
+    if (!sc.send("\r\n", 2))
         return false;
     ///
     return true;
@@ -1154,9 +826,9 @@ future request(uri url, map<mx> args) {
         
         ///
         assert(query != method::undefined);
+        sock client { query };
         console.log("(net) request: {0}", { url });
-        sock client = sock::connect(query);
-        if (!client) return {};
+        if (!client.connect()) return {};
         
         /// start request (this time get the casing right)
         client.send("{0} {1} HTTP/1.1\r\n", { query.mtype().name().ucase(), query.string() });

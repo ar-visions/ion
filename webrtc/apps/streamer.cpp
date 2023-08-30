@@ -17,7 +17,7 @@ int main(int argc, char **argv) try {
     ///
     const str localId   = "server";
     const uri ws_signal = fmt { "ws://{0}:{1}/{2}", { config["ip"], config["port"], localId }};
-    const uri https_res = "https://localhost:4433"; /// certs based on this binding name unless configured
+    const uri https_res = "https://localhost:10022"; /// certs based on this binding name unless configured
 
     /// App services composition layer (do we call this services?)
     return Services([&](Services &app) {

@@ -220,42 +220,36 @@ struct uri:mx {
 
 struct isock;
 
-struct tls;
-struct tls_session;
+struct Session;
+struct iTLS;
+
+struct TLS:mx {
+    mx_declare(TLS, mx, iTLS);
+    TLS(uri);
+};
 
 struct sock:mx {
-private:
-    inline static symbol pers = "ion:net";
-    //bool connect(str host, int port);
-    bool bind(str adapter, int port);
-    sock &establish();
-    sock accept();
-    void load_certs(str host);
-    
-public:
-    mx_declare(sock, mx, isock);
-    
-    enums(role, none,
-          "none, client, server",
-           none, client, server);
+    mx_declare(sock, mx, Session); /// default allocation needs to have nothing allocated (for these decls)
 
-    static async listen(ion::uri url, lambda<bool(sock&)> fn);
-    static sock connect(ion::uri url);
+    ///
+    sock(TLS tls);
+    sock(uri addr);
 
-    sock(role r, uri bind, tls_session* session);
-
-    operator bool();
-    
+    bool bind(uri addr);
+    bool connect();
+    bool close();
     void set_timeout(i64 t);
-    
-    void close();
-    bool read_sz(u8 *v, size_t sz);
+    bool read_sz(char *v, size_t sz);
+    ssize_t recv(char* buf, size_t len);
+    ssize_t send(const char* buf, size_t len);
+    ssize_t send(str templ, array<mx> args);
+    ssize_t send(mx &v);
     array<char> read_until(str s, int max_len);
     
-    ssize_t recv(unsigned char* buf, size_t len);
-    ssize_t send(const unsigned char* buf, size_t len);
-    ssize_t send(str templ, array<mx> args = { });
-    ssize_t send(mx &v);
+    static async listen(uri url, lambda<bool(sock&)> fn);
+    static sock accept(TLS tls);
+
+    operator bool();
 };
 
 struct message:mx {
