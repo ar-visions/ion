@@ -45,6 +45,18 @@
             }
         },
         {
+            "name":     "wolfssl",
+            "version":  "5.6.3",
+            "commit":   "3b3c175",
+            "url":      "https://github.com/wolfSSL/wolfssl",
+            "cmake": {
+                "args": ["-DNO_WOLFSSL_SERVER=0","-DWOLFSSL_DTLS=1","-DWOLFSSL_TLS13=1","-DWOLFSSL_DTLS_CID=1",
+                         "-DWOLFSSL_OPENSSLALL=1", "-DBUILD_SHARED_LIBS=0",
+                         "-DWOLFSSL_CRYPT_TESTS_LIBS=1","-DWOLFSSL_CRYPT_TESTS=1",
+                         "-DWOLFSSL_DEBUG=1"]
+            }
+        },
+        {
             "name":     "juice",
             "version":  "1.2.3",
             "url":      "https://github.com/paullouisageneau/libjuice",

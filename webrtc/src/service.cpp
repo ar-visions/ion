@@ -350,6 +350,7 @@ static shared_ptr<Stream> avStream = null;
 
 namespace webrtc {
 
+/// general service function to facilitate https or web sockets messages
 ion::async service(uri url, lambda<message(message)> fn_process) {
 
     /// web socket protocol is a connector protocol unless a method of listen is explicitly called elsewhere
@@ -417,21 +418,12 @@ ion::async service(uri url, lambda<message(message)> fn_process) {
             bool close = false;
             for (close = false; !close;) {
                 close  = true;
-                ion::array<char> msg = sc.read_until("\r\n", 4092); // this read 0 bytes, and issue ensued
-                str param;
-                ///
-                if (!msg) break;
-                
-                /// its 2 chars off because read_until stops at the phrase
-                uri req_uri = uri::parse(str(msg.data, int(msg.len() - 2)));
-                ///
-                if (req_uri) {
-                    console.log("request: {0}", { req_uri.resource() });
-                    message  req { req_uri };
-                    message  res = fn_process(req);
-                    close        = req.header("Connection") == "close";
-                    res.write(sc);
-                }
+                message request(sc);
+                if (!request)
+                    break;
+                message response(fn_process(request));
+                response.write(sc);
+                close = request.header("Connection") == "close";
             }
             return close;
         });

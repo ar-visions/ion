@@ -52,6 +52,31 @@
             }
         },
         {
+            "label": "build-wolf-server",
+            "type": "shell",
+			"options": {
+                "cwd": "${workspaceFolder}/../ion/build"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "group": "build0",
+                "clear": true
+            },
+			"isBackground": false,
+			"problemMatcher": ["$gcc"],
+            "windows": {
+                "command": "msbuild ion.sln /t:wolf-server"
+            },
+            "osx": {
+                "command": "make wolf-server -j4"
+            }
+        },
+        {
             "label": "build-signal",
             "type": "shell",
 			"options": {

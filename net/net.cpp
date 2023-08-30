@@ -126,9 +126,9 @@ struct iTLS {
         }
     #endif /* MBEDTLS_USE_PSA_CRYPTO */
 
-    #if defined(MBEDTLS_DEBUG_C)
-        mbedtls_debug_set_threshold(DEBUG_LEVEL);
-    #endif
+    //#if defined(MBEDTLS_DEBUG_C)
+        mbedtls_debug_set_threshold(4);
+    //#endif
 
         mbedtls_printf("  . Seeding the random number generator...");
         fflush(stdout);
@@ -206,7 +206,10 @@ struct iTLS {
 
 mx_implement(TLS, mx);
 
-TLS::TLS(uri url) : TLS(new iTLS(url)) { }
+TLS::TLS(uri url) : TLS(new iTLS(url)) {
+    int test = 0;
+    test++;
+}
 
 struct Session {
     TLS                 tls;
@@ -215,7 +218,10 @@ struct Session {
     bool                connected = false;
     num                 timeout_ms = 0;
 
-    Session() { }
+    Session() {
+        mbedtls_ssl_init(&ssl);
+        mbedtls_net_init(&fd);
+    }
 
     ///
     Session(TLS tls) : tls(tls) {
@@ -317,7 +323,7 @@ struct Session {
             sz = mbedtls_ssl_read(&ssl, (u8*)buf, len);
             if (sz == MBEDTLS_ERR_SSL_WANT_READ || sz == MBEDTLS_ERR_SSL_WANT_WRITE)
                 continue;
-            if (sz <= 0) break;
+            break;
         } while(1);
         return sz;
     }
@@ -364,6 +370,7 @@ struct Session {
     /// integrate connect here, also send and recv from sock
     static Session *accept(TLS &tls) {
         Session *client = new Session(tls);
+        
         /// only accept client that passes a handshake
         for (;;) {
             mbedtls_net_init(&client->fd);
@@ -390,6 +397,7 @@ struct Session {
                 break;
         }
         client->connected = true;
+        
         return client;
     }
 
@@ -420,24 +428,18 @@ async sock::listen(uri url, lambda<bool(sock&)> fn) {
     TLS tls = TLS(url);
 
     return async(1, [tls, url, fn](runtime *rt, int i) -> mx {
-        int ret, len;
-        char buf[1024]; /// split this into the fn caller
-
-        sock client;
+        /*
+         ssize_t send_len = snprintf((char*) buf, recv_len, HTTP_RESPONSE,
+                     mbedtls_ssl_get_ciphersuite(&client->ssl));
+         if (!client->send(buf, send_len))
+             break;
+         client->close();
+         */
         for (;;) {
-            client = sock::accept(tls);
-            if (!client) /// needs a bool here
+            sock client { sock::accept(tls) };
+            if (!client)
                 break;
-            
-            ssize_t recv_len = client->recv(buf, sizeof(buf) - 1);
-            if (!recv_len)
-                break;
-            
-            ssize_t send_len = snprintf((char*) buf, recv_len, HTTP_RESPONSE,
-                        mbedtls_ssl_get_ciphersuite(&client->ssl));
-            if (!client->send(buf, send_len))
-                break;
-            client->close();
+            fn(client);
         }
         return true;
     });
@@ -578,6 +580,11 @@ bool message::read_content(sock &sc) {
     array<char> v_data;
     ///
     assert(!(clen >= 0 && chunked));
+
+    if (!chunked && clen <= 0) {
+        data->content = {};
+        return true;
+    }
     ///
     if (!(!chunked && clen == 0)) {
         do {

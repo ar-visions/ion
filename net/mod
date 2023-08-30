@@ -1,2 +1,5 @@
-dep(mx:mx mx:async ion:composer ion:media mbedtls:mbedtls mbedtls:mbedx509 mbedtls:mbedcrypto)
+dep(mx:mx mx:async ion:composer ion:media mbedtls:mbedtls mbedtls:mbedx509 mbedtls:mbedcrypto wolfssl:wolfssl)
+if(mac)
+    dep(CoreFoundation Security)
+endif()
 includes(${INSTALL_PREFIX}/../extern/mbedtls-3.4.0/tests/include)
