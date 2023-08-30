@@ -41,6 +41,7 @@ int main(void)
 #include <string.h>
 
 #if defined(_WIN32)
+#include <winsock2.h>
 #include <windows.h>
 #endif
 

@@ -77,12 +77,12 @@ struct style:mx {
 
         transition(null_t n = null) { }
 
-        static inline const real PI = M_PI;
+        static inline const real PI = 3.1415926535897932384; // M_PI;
         static inline const real c1 = 1.70158;
         static inline const real c2 = c1 * 1.525;
         static inline const real c3 = c1 + 1;
-        static inline const real c4 = (2 * M_PI) / 3;
-        static inline const real c5 = (2 * M_PI) / 4.5;
+        static inline const real c4 = (2 * PI) / 3;
+        static inline const real c5 = (2 * PI) / 4.5;
 
         static real ease_linear        (real x) { return x; }
         static real ease_in_quad       (real x) { return x * x; }

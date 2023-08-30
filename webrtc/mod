@@ -3,6 +3,10 @@
 # it must be compiled as-is, same file structure and same defines
 dep(mx:mx ion:net juice:juice srtp:srtp2 usrsctp:usrsctp)
 
+if(WIN32)
+    dep(bcrypt msvcrt)
+endif()
+
 # wide-linking interns (the order must prefer impl first)
 includes(${p})
 includes(${p}/src)

@@ -1,4 +1,4 @@
-dep(mx:mx mx:async ion:composer ion:media mbedtls:mbedtls mbedtls:mbedx509 mbedtls:mbedcrypto wolfssl:wolfssl)
+dep(mx:mx mx:async ion:composer ion:media mbedtls:mbedtls mbedtls:mbedx509 mbedtls:mbedcrypto)
 if(mac)
     dep(CoreFoundation Security)
 endif()

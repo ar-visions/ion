@@ -3,16 +3,6 @@
 using namespace ion;
 
 #ifdef _WIN32
-void usleep(__int64 usec) {
-    HANDLE timer;
-    LARGE_INTEGER ft;
-    ft.QuadPart = -(10*usec);
-    timer = CreateWaitableTimer(NULL, TRUE, NULL);
-    SetWaitableTimer(timer, &ft, 0, NULL, NULL, 0);
-    WaitForSingleObject(timer, INFINITE);
-    CloseHandle(timer);
-}
-
 int gettimeofday(struct timeval *tv, struct timezone *tz) {
 	if (tv) {
 		FILETIME filetime; /* 64bit: 100-nanosecond intervals since January 1, 1601 00:00 UTC */

@@ -268,8 +268,9 @@ void DispatchQueue::dispatchThreadHandler(void) {
     std::unique_lock<std::mutex> lock(lockMutex);
     do {
         //Wait until we have data or a quit signal
-        condition.wait(lock, [this]{
-            return (queue.size() || quit);
+        auto *a = this;
+        condition.wait(lock, [a]() -> bool {
+            return (a->queue.size() || a->quit);
         });
 
         //after wait, we own the lock
