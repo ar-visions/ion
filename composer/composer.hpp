@@ -517,7 +517,9 @@ using FnFactory = node*(*)();
 struct composer:mx {
     ///
     struct cdata {
-        node* root_instance;
+        //node* root_instance;
+        node* instances;
+
         struct vk_interface *vk;
         //fn_render     render;
         lambda<node()> render;

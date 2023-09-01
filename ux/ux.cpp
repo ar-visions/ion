@@ -112,7 +112,7 @@ static void mouse_button_callback(GLFWwindow* window, int button, int state, int
     bool shift = mods & GLFW_MOD_SHIFT;
 
     app->data->buttons[button] = bool(state);
-    Element* root = (Element*)app->composer::data->root_instance;
+    Element* root = (Element*)app->composer::data->instances; /// for ux this is always single
 
     for (Element* n: app->data->active)
         n->Element::data->active = false;
@@ -202,7 +202,7 @@ int App::run() {
         
         node e = data->app_fn(*this);
         update_all(e);
-        Element *eroot = composer::data->root_instance;
+        Element *eroot = (Element*)composer::data->instances;
         if (eroot) {
             /// update rect
             eroot->data->bounds = rectd {

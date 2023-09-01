@@ -1185,21 +1185,21 @@ struct App:composer {
 
         array<node*> result = array<node*>();
 
-        for (node *n: composer::data->instances) {
+        for (node *n: composer::data->instances->data->children) {
             Element *e = (Element*)n;
             array<node*> inside = e->select([&](Element *ee) {
                 real           x = cur.x, y = cur.y;
                 vec2d          o = ee->offset();
                 vec2d        rel = cur + o;
                 Element::props *edata = e->data;
-                rectd &bounds = n->data->fill_bounds ? ee->data->fill_bounds : ee->data->bounds;
+                rectd &bounds = ee->data->fill_bounds ? ee->data->fill_bounds : ee->data->bounds;
                 bool in = bounds.contains(rel);
-                (*n)->cursor = in ? vec2d(x, y) : vec2d(-1, -1);
+                e->data->cursor = in ? vec2d(x, y) : vec2d(-1, -1);
                 return (in && (!active || !edata->active)) ? n : null;
             });
 
             array<node*> actives = e->select([&](Element *ee) -> node* {
-                return (active && (ee->data->active) ? n : null;
+                return (active && ee->data->active) ? n : null;
             });
 
             for (node *i: inside)

@@ -288,10 +288,10 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
 }
 
 void composer::update_all(node e) {
-    if (!data->root_instance)
+    if (!data->instances)
         data->style = style::init();
     
-    update(data, null, data->root_instance, e);
+    update(data, null, data->instances, e);
 }
 
 

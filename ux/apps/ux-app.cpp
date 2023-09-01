@@ -51,7 +51,7 @@ struct View:node {
     node update() {
         return array<node> {
             Edit {
-                { "content", "VAVAVAVAVAVAVAVAVAVAVAVAVAVA" }
+                { "content", "Multiline edit test\nAnother line" }
             }
         };
     }
@@ -65,7 +65,7 @@ int main() {
             { "sample2", "10"   },
             { "on-hover", callback([](event e) {
                 console.log("hi");
-            }},
+            }) },
             { "clicked", callback([](event e) {
                 printf("test!\n");
             }) }

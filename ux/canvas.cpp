@@ -547,7 +547,7 @@ struct ICanvas {
         imi.fImageTiling        = VK_IMAGE_TILING_OPTIMAL;
         imi.fImageLayout        = VK_IMAGE_LAYOUT_UNDEFINED;
         imi.fFormat             = VK_FORMAT_R8G8B8A8_UNORM;
-    ///imi.fImageUsageFlags    = VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT|VK_IMAGE_USAGE_SAMPLED_BIT;//VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // i dont think so.
+        imi.fImageUsageFlags    = VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT|VK_IMAGE_USAGE_SAMPLED_BIT;//VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // i dont think so.
         imi.fSampleCount        = 1;
         imi.fLevelCount         = 1;
         imi.fCurrentQueueFamily = e->vk_gpu->indices.graphicsFamily.value();
