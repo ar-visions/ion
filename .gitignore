@@ -11,3 +11,6 @@ webrtc/streamer/samples/*
 webrtc/res/data
 *.crt
 *.key
+webrtc/res/_video_stream.h264
+webrtc/res/_audio_stream.ogg
+webrtc/res/ridge_racer.mp4

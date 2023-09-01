@@ -2,11 +2,31 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "generate-h264.py",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/webrtc/res/generate-h264.py",
+            "console": "integratedTerminal",
+            "args": ["-i", "candle.mov"],
+            "cwd": "${workspaceFolder}/../ion/webrtc/res",
+            "justMyCode": true
+        },
+        {
+            "name": "generate-opus.py",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/webrtc/res/generate-opus.py",
+            "console": "integratedTerminal",
+            "args": ["-i", "dwsample1-ogg.ogg"],
+            "cwd": "${workspaceFolder}/../ion/webrtc/res",
+            "justMyCode": true
+        },
+        {
             "name": "signaling server (python)",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/webrtc/res/data/signaling-server.py",
-            "cwd":"${workspaceFolder}/build",
+            "program": "${workspaceFolder}/webrtc/res/signaling-server.py",
+            "cwd": "${workspaceFolder}/build",
             "console": "integratedTerminal",
             "justMyCode": true
         },
@@ -97,6 +117,10 @@
             },
             "osx": {
                 "MIMode": "lldb"
+            },
+            "windows": {
+                "type": "cppvsdbg",
+                "program": "${workspaceFolder}/../ion/build/Debug/streamer",
             }
         },
         {
