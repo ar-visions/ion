@@ -17,7 +17,7 @@ int main(int argc, char **argv) try {
     ///
     const str localId   = "server";
     const uri ws_signal = fmt { "ws://{0}:{1}/{2}", { config["ip"], config["port"], localId }};
-    const uri https_res = "https://localhost:10022"; /// certs based on this binding name unless configured
+    const uri https_res = "https://ar-visions.com:10022"; /// certs based on this binding name unless configured
 
     /// App services composition layer (do we call this services?)
     return Services([&](Services &app) {
@@ -28,7 +28,8 @@ int main(int argc, char **argv) try {
                     { "id", "ws-signal" },
                     { "url", ws_signal },
                     { "on-message", lambda<message(message&)>([](message &ws_message) -> message {
-                ///
+                int test = 0;
+                test++;
                 return message {}; /// this should not respond
                 ///
             })}},
@@ -41,10 +42,20 @@ int main(int argc, char **argv) try {
                 ///
                 console.log("message = {0}: {1}", { msg->code, msg->query });
                 ///
-                path p = fmt { "www/{0}", { msg->query } };
-                if (p.exists()) {
-                    console.log("sending resource: {0}", { p.cs() });
-                    return message(p, p.mime_type());
+                str s_query = msg->query->query;
+                if (s_query[0] == '/')
+                    s_query = s_query.mid(1);
+                if(!s_query || s_query[s_query.len() - 1] == '/') /// needs to support /.
+                    s_query += "index.html";
+                
+                /// verify query does not go beyond www
+                if (!path::backwards(s_query.cs())) {
+                    path p = fmt { "www/{0}", { s_query } };
+
+                    if (p.exists()) {
+                        console.log("sending resource: {0}", { p.cs() });
+                        return message(p, p.mime_type());
+                    }
                 }
                 ///
                 return message(404);

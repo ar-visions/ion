@@ -131,7 +131,7 @@ struct uri:mx {
             }
         } else {
             /// return default
-            ra.proto    = ctx ? ctx->data->proto : "";
+            ra.proto    = ctx ? ctx->data->proto : protocol(protocol::undefined);
             ra.host     = ctx ? ctx->data->host  : "";
             ra.port     = ctx ? ctx->data->port  : 0;
             ra.query    = u;

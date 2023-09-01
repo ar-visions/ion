@@ -385,8 +385,14 @@ ion::async service(uri url, lambda<message(message)> fn_process) {
             ws->onMessage([&](variant<binary, string> data) {
                 if (!holds_alternative<string>(data))
                     return;
-                string s = get<string>(data);
-                var message = var::parse((cstr)s.c_str());
+                string sdata = get<string>(data);
+                
+                console.log("onMessage: {0}", { sdata });
+                ///
+                var message = var::parse((cstr)sdata.c_str());
+                console.log("id: {0}, type: {1}", { message["id"], message["type"] });
+
+                /// lets do without these if possible; async can call on main thread without issue
                 MainThread.dispatch([message, config, ws]() {
                     wsOnMessage(message, config, ws);
                 });
@@ -419,12 +425,22 @@ ion::async service(uri url, lambda<message(message)> fn_process) {
             bool close = false;
             for (close = false; !close;) {
                 close  = true;
+                ///
                 message request(sc);
                 if (!request)
                     break;
-                message response(fn_process(request));
+                
+                console.log("(https) {0} -> {1}", { request->query->mtype, request->query->query });
+
+                message response(
+                    fn_process(request)
+                );
                 response.write(sc);
-                close = request.header("Connection") == "close";
+
+                /// default is keep-alive on HTTP/1.1
+                const char *F = "Connection";
+                close = (request[F] == "close" && !response[F]) ||
+                       (response[F] == "close");
             }
             return close;
         });

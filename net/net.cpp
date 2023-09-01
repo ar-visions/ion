@@ -128,7 +128,7 @@ struct iTLS {
     #endif /* MBEDTLS_USE_PSA_CRYPTO */
 
     //#if defined(MBEDTLS_DEBUG_C)
-        mbedtls_debug_set_threshold(4);
+        //mbedtls_debug_set_threshold(4);
     //#endif
 
         mbedtls_printf("  . Seeding the random number generator...");
@@ -145,12 +145,16 @@ struct iTLS {
         mbedtls_printf("\n  . Loading the server cert. and key...");
         fflush(stdout);
 
-        ret = mbedtls_x509_crt_parse_file(&srvcert, "ssl/localhost.crt");
+        /// load public and private keys
+        str host = url.host();
+        str pub  = fmt { "ssl/{0}.crt", { host } };
+        str prv  = fmt { "ssl/{0}.key", { host } };
+        ret = mbedtls_x509_crt_parse_file(&srvcert, pub.cs());
         if (ret != 0) {
             mbedtls_printf(" failed\n  !  mbedtls_x509_crt_parse returned %d\n\n", ret);
             return;
         }
-        ret = mbedtls_pk_parse_keyfile(&pkey, "ssl/localhost.key", 0, mbedtls_ctr_drbg_random, &ctr_drbg);
+        ret = mbedtls_pk_parse_keyfile(&pkey, prv.cs(), 0, mbedtls_ctr_drbg_random, &ctr_drbg);
         if (ret != 0) {
             mbedtls_printf(" failed\n  !  mbedtls_pk_parse_key returned %d\n\n", ret);
             return;
@@ -429,18 +433,15 @@ async sock::listen(uri url, lambda<bool(sock&)> fn) {
     TLS tls = TLS(url);
 
     return async(1, [tls, url, fn](runtime *rt, int i) -> mx {
-        /*
-         ssize_t send_len = snprintf((char*) buf, recv_len, HTTP_RESPONSE,
-                     mbedtls_ssl_get_ciphersuite(&client->ssl));
-         if (!client->send(buf, send_len))
-             break;
-         client->close();
-         */
         for (;;) {
             sock client { sock::accept(tls) };
             if (!client)
                 break;
-            fn(client);
+            /// run fn async from next accept
+            async(1, [fn, client](runtime *rt0, int i0) -> mx {
+                fn((sock&)client);
+                return true;
+            });
         }
         return true;
     });
@@ -501,9 +502,13 @@ message::message(str text) : message() {
 }
 
 message::message(path p, mx modified_since) : message() {
-    data->content = p.read<str>();
-    data->headers["Content-Type"] = p.mime_type();
-    data->code    = 200;
+    assert(p.exists());
+    str s_content = p.read<str>();
+    data->content = s_content;
+    str s_mime = p.mime_type();
+    data->headers["Content-Type"]   = s_mime;
+    //data->headers["Content-Length"] = int(s_content.len());
+    data->code                      = 200;
 }
 
 message::message(mx content, map<mx> headers, uri query) : message() {
@@ -524,7 +529,8 @@ message::message(sock &sc) : message() {
     //console.log("received headers:");
     //data->headers.print();
     read_content(sc);
-    data->code = data->headers["Status"];
+    str status = data->headers["Status"].grab();
+    data->code = int(status.integer_value());
 }
 
 uri message::query() { return data->query; }
@@ -545,11 +551,14 @@ bool message::read_headers(sock &sc) {
             str hello = str(rbytes.data, int(sz - 2));
             i32  code = 0;
             auto   sp = hello.split(" ");
-            if (hello.len() >= 12) {
-                if (sp.len() >= 2)
+            /// this needs to adjust for from-server or from-client (HTTP/1.1 200 OK) (GET uri type)
+            if (hello.len() >= 12) { // HTTP/1.1 200 OK is the smallest, 12 chars
+                if (sp.len() >= 3) { /// METHOD URI HTTP_VER <- minimum
+                    data->query = hello;
                     code = i32(sp[1].integer_value());
+                    data->headers["Status"] = str::from_integer(code);
+                }
             }
-            data->headers["Status"] = str::from_integer(code);
             ///
         } else {
             for (size_t i = 0; i < sz; i++) {
@@ -685,9 +694,10 @@ message message::response(uri query, mx code, mx content, map<mx> headers) {
 message::operator bool() {
     type_t ct = data->code.type();
     assert(ct == typeof(i32) || ct == typeof(str));
-    return (data->query.mtype() != method::undefined) &&
-    ((ct == typeof(i32) && int(data->code) >= 200 && int(data->code) < 300) ||
-     (ct == typeof(str) && data->code.byte_len()));
+    int ic = int(data->code);
+    return (data->query.mtype() != method::undefined || 
+        (ct == typeof(i32) && (ic == 0 && (data->content || data->headers)) || 
+        (ic >= 200 && ic < 300)));
 }
 
 bool message::operator!() { return !(operator bool()); }
@@ -742,6 +752,16 @@ bool message::write_headers(sock &sc) {
 }
 
 bool message::write(sock &sc) {
+    /// send http response code if this message has one
+    int ic = int(data->code);
+    if (ic > 0) {
+        symbol s = code_symbol(ic);
+        assert(s);
+        str header = fmt { "HTTP/1.1 {0} {1}\r\n", { ic, s } };
+        if (!sc.send(header))
+            return false;
+    }
+
     if (data->content) {
         type_t ct = data->content.type();
         /// map of mx must be json compatible, or be structured in that process
