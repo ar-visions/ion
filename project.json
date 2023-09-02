@@ -22,6 +22,22 @@
             }
         },
         {
+            "name":     "nvpro_core",
+            "version":  "1.3.204",
+            "url":      "https://github.com/nvpro-samples/nvpro_core",
+            "commit":   "775b17ef7c7e270731e61d82c5f6e08be9caa64e",
+            "resource": true
+        },
+        {
+            "name":     "vk_video_samples",
+            "version":  "1.3.204",
+            "url":      "https://github.com/nvpro-samples/vk_video_samples",
+            "commit":   "b36f79c1756456ee5e8316c084a41f44e3c244b4",
+            "cmake":    {
+                "path":"./vk_video_encoder"
+            }
+        },
+        {
             "name":     "depot_tools",
             "version":  "aug7-23",
             "url":      "https://chromium.googlesource.com/chromium/tools/depot_tools.git",
