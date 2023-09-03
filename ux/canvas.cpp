@@ -751,7 +751,7 @@ struct ICanvas {
     void image(ion::image &image, rectd &rect, alignment &align, vec2d &offset) {
         SkPaint ps = SkPaint(top->ps);
         vec2d  pos = { 0, 0 };
-        vec2i  isz = image.size();
+        vec2i  isz = image.sz();
         
         ps.setColor(sk_color(top->color));
         if (top->opacity != 1.0f)
