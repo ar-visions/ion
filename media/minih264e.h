@@ -8,6 +8,7 @@
 */
 
 #ifdef __cplusplus
+using namespace ion;
 extern "C" {
 #endif
 
@@ -1220,7 +1221,7 @@ static void h264e_bs_put_sgolomb_sse2(bs_t *bs, int val)
 
 static void h264e_bs_init_bits_sse2(bs_t *bs, void *data)
 {
-    bs->origin = data;
+    bs->origin = (bs_item_t*)data;
     bs->buf = bs->origin;
     bs->shift = BS_BITS;
     bs->cache = 0;
@@ -10979,9 +10980,6 @@ static void rc_mb_end(h264e_enc_t *enc)
 /*      Top-level API                                                   */
 /************************************************************************/
 
-#define ALIGN_128BIT(p) (void *)((uintptr_t)(((char*)(p)) + 15) & ~(uintptr_t)15)
-#define ALLOC(ptr, size) p = ALIGN_128BIT(p); if (enc) ptr = (void *)p; p += size;
-
 /**
 *   Internal allocator for persistent RAM
 */
@@ -10994,12 +10992,12 @@ static int enc_alloc(h264e_enc_t *enc, const H264E_create_param_t *par, unsigned
 #if H264E_ENABLE_DENOISE
     nref_frames += !!par->temporal_denoise_flag;
 #endif
-    ALLOC(enc->ref.yuv[0], ((nmbx + 2) * (nmby + 2) * 384) * nref_frames);
+    enc->ref.yuv[0] = (unsigned char*)calloc64(((nmbx + 2) * (nmby + 2) * 384) * nref_frames, 1);
     (void)inp_buf_flag;
 #if H264E_SVC_API
     if (inp_buf_flag)
     {
-        ALLOC(enc->inp.yuv[0], ((nmbx)*(nmby)*384)); /* input buffer for base laeyr */
+        enc->inp.yuv[0] = (unsigned char*)calloc64(((nmbx)*(nmby)*384), 1); /* input buffer for base laeyr */
     }
 #endif
     return (int)((p - p0) + 15) & ~15u;
@@ -11013,16 +11011,16 @@ static int enc_alloc_scratch(h264e_enc_t *enc, const H264E_create_param_t *par, 
     unsigned char *p0 = p;
     int nmbx = (par->width  + 15) >> 4;
     int nmby = (par->height + 15) >> 4;
-    ALLOC(enc->scratch, sizeof(scratch_t));
-    ALLOC(enc->out, nmbx * nmby * (384 + 2 + 10) * 3/2);
+    enc->scratch = (scratch_t *)calloc64(1, sizeof(scratch_t));
+    enc->out = (uint8_t*)calloc64((384 + 2 + 10) * 3/2, nmbx * nmby);
 
-    ALLOC(enc->nnz, nmbx*8 + 8);
-    ALLOC(enc->mv_pred, (nmbx*4 + 8)*sizeof(point_t));
-    ALLOC(enc->i4x4mode, nmbx*4 + 4);
-    ALLOC(enc->df.df_qp, nmbx);
-    ALLOC(enc->df.mb_type, nmbx);
-    ALLOC(enc->df.df_nzflag, nmbx);
-    ALLOC(enc->top_line, nmbx*32 + 32 + 16);
+    enc->nnz = (uint8_t*)calloc64(nmbx*8 + 8, 1);
+    enc->mv_pred = calloc64((nmbx*4 + 8)*sizeof(point_t), 1);
+    enc->i4x4mode = calloc64(nmbx*4 + 4, 1);
+    enc->df.df_qp = calloc64(nmbx, 1);
+    enc->df.mb_type = calloc64(nmbx, 1);
+    enc->df.df_nzflag = calloc64(nmbx, 1);
+    enc->top_line = calloc64(nmbx*32 + 32 + 16, 1);
     return (int)(p - p0);
 }
 
