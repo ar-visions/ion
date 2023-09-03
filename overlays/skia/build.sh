@@ -16,7 +16,7 @@ fi
 $PYTHON3 tools/git-sync-deps
 
 # this file needs a .h defined, and the user of it is a .cpp in externals (which are pulled after we do a overlay)
-cp ./vk_mem_alloc.h ./third_party/externals/vulkanmemoryallocator/
+#cp ./vk_mem_alloc.h ./third_party/externals/vulkanmemoryallocator/
 
 # configure with these (im sure this is only 12% of skia configurables) NOT debug
 # trivial abi is what gets me.. who wouldnt want a trivial abi.. who rationalizes having an option for that
@@ -33,7 +33,7 @@ skia_use_no_jpeg_encode=false skia_use_libpng_decode=true skia_use_libpng_encode
 skia_use_no_png_encode=false skia_use_libwebp_decode=false skia_use_libwebp_encode=false 
 skia_use_no_webp_encode=false  skia_use_lua=false skia_use_piex=false skia_use_system_freetype2=false 
 skia_use_system_libpng=false skia_use_system_zlib=false skia_use_wuffs=false 
-skia_use_zlib=false skia_enable_ganesh=true skia_enable_sksl=true skia_build_for_debugger=false 
+skia_use_zlib=false skia_enable_ganesh=true skia_build_for_debugger=false 
 skia_enable_sksl_tracing=false skia_enable_skshaper=false skia_enable_skparagraph=false skia_enable_pdf=false 
 skia_canvaskit_force_tracing=false skia_canvaskit_profile_build=false skia_canvaskit_enable_skp_serialization=false 
 skia_canvaskit_enable_effects_deserialization=false skia_canvaskit_enable_skottie=false 
