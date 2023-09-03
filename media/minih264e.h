@@ -7,10 +7,7 @@
     See <http://creativecommons.org/publicdomain/zero/1.0/>.
 */
 
-#ifdef __cplusplus
 using namespace ion;
-extern "C" {
-#endif
 
 #ifndef H264E_SVC_API
 #   define H264E_SVC_API 1
@@ -20,6 +17,20 @@ extern "C" {
 #   define H264E_MAX_THREADS 4
 #endif
 
+#define ALIGN_128BIT(p) (void *)((uintptr_t)(((char*)(p)) + 15) & ~(uintptr_t)15)
+#define ALLOC(ptr, size) p = ALIGN_128BIT(p); if (enc) ptr = (void *)p; p += size;
+
+/// make C++ version of this crazed maniac.. not sure if less crazed
+/// its not an alloc either..  this is central to needing an update i just think its oddly populated in abstract
+/// it would make it more ion-like to improve this readibility
+/// for now this is best i can do; the macro requires extra casting inside of it and i dare not add args
+template <typename T>
+void Alloc(u8* &p, T** ptr, size_t size) {
+    p = (u8*)ALIGN_128BIT(p);
+    if (ptr)
+        *ptr = (T*)p;
+    p += size;
+}
 /**
 *   API return error codes
 */
@@ -312,10 +323,6 @@ void H264E_set_vbv_state(
     int vbv_fullness_bytes              ///< New VBV fulness, -1 = no change
 );
 
-#ifdef __cplusplus
-}
-#endif
-
 #endif //MINIH264_H
 
 #if defined(MINIH264_IMPLEMENTATION) && !defined(MINIH264_IMPLEMENTATION_GUARD)
@@ -351,7 +358,7 @@ void H264E_set_vbv_state(
 #include <emmintrin.h>
 #endif
 #elif defined(__ARM_NEON) || defined(__aarch64__)
-#define H264E_ENABLE_NEON 1
+#define H264E_ENABLE_NEON 0
 #include <arm_neon.h>
 #else
 #ifdef MINIH264_ONLY_SIMD
@@ -5200,8 +5207,8 @@ static void h264e_copy_8x8_neon(pix_t *d, int d_stride, const pix_t *s)
 
 static void h264e_copy_16x16_neon(pix_t *d, int d_stride, const pix_t *s, int s_stride)
 {
-    assert(!((unsigned)d & 7));
-    assert(!((unsigned)s & 7));
+    assert(!((unsigned long)d & 7));
+    assert(!((unsigned long)s & 7));
     vst1q_u8(d, vld1q_u8(s)); s += s_stride; d += d_stride;
     vst1q_u8(d, vld1q_u8(s)); s += s_stride; d += d_stride;
     vst1q_u8(d, vld1q_u8(s)); s += s_stride; d += d_stride;
@@ -7316,7 +7323,7 @@ static void h264e_bs_put_sgolomb(bs_t *bs, int val)
 
 static void h264e_bs_init_bits(bs_t *bs, void *data)
 {
-    bs->origin = data;
+    bs->origin = (bs_item_t*)data;
     bs->buf = bs->origin;
     bs->shift = BS_BITS;
     bs->cache = 0;
@@ -10992,12 +10999,12 @@ static int enc_alloc(h264e_enc_t *enc, const H264E_create_param_t *par, unsigned
 #if H264E_ENABLE_DENOISE
     nref_frames += !!par->temporal_denoise_flag;
 #endif
-    enc->ref.yuv[0] = (unsigned char*)calloc64(((nmbx + 2) * (nmby + 2) * 384) * nref_frames, 1);
+    Alloc(p, enc ? &enc->ref.yuv[0] : null, ((nmbx + 2) * (nmby + 2) * 384) * nref_frames);
     (void)inp_buf_flag;
 #if H264E_SVC_API
     if (inp_buf_flag)
     {
-        enc->inp.yuv[0] = (unsigned char*)calloc64(((nmbx)*(nmby)*384), 1); /* input buffer for base laeyr */
+        Alloc(p, enc ? &enc->inp.yuv[0] : null, ((nmbx)*(nmby)*384)); /* input buffer for base laeyr */
     }
 #endif
     return (int)((p - p0) + 15) & ~15u;
@@ -11011,16 +11018,15 @@ static int enc_alloc_scratch(h264e_enc_t *enc, const H264E_create_param_t *par, 
     unsigned char *p0 = p;
     int nmbx = (par->width  + 15) >> 4;
     int nmby = (par->height + 15) >> 4;
-    enc->scratch = (scratch_t *)calloc64(1, sizeof(scratch_t));
-    enc->out = (uint8_t*)calloc64((384 + 2 + 10) * 3/2, nmbx * nmby);
-
-    enc->nnz = (uint8_t*)calloc64(nmbx*8 + 8, 1);
-    enc->mv_pred = calloc64((nmbx*4 + 8)*sizeof(point_t), 1);
-    enc->i4x4mode = calloc64(nmbx*4 + 4, 1);
-    enc->df.df_qp = calloc64(nmbx, 1);
-    enc->df.mb_type = calloc64(nmbx, 1);
-    enc->df.df_nzflag = calloc64(nmbx, 1);
-    enc->top_line = calloc64(nmbx*32 + 32 + 16, 1);
+    Alloc(p, enc ? &enc->scratch      : null, sizeof(scratch_t));
+    Alloc(p, enc ? &enc->out          : null, nmbx * nmby * (384 + 2 + 10) * 3/2);
+    Alloc(p, enc ? &enc->nnz          : null, nmbx*8 + 8);
+    Alloc(p, enc ? &enc->mv_pred      : null, (nmbx*4 + 8) * sizeof(point_t));
+    Alloc(p, enc ? &enc->i4x4mode     : null, (nmbx + 1)   * sizeof(int32_t));
+    Alloc(p, enc ? &enc->df.df_qp     : null, nmbx);
+    Alloc(p, enc ? &enc->df.mb_type   : null, nmbx);
+    Alloc(p, enc ? &enc->df.df_nzflag : null, nmbx);
+    Alloc(p, enc ? &enc->top_line     : null, nmbx*32 + 32 + 16);
     return (int)(p - p0);
 }
 
@@ -11092,11 +11098,11 @@ static int H264E_sizeof_one(const H264E_create_param_t *par, int *sizeof_persist
         return error;
     }
 
-    *sizeof_persist = enc_alloc(NULL, par, (void*)(uintptr_t)1, inp_buf_flag) + sizeof(h264e_enc_t);
+    *sizeof_persist = enc_alloc(NULL, par, (unsigned char*)(uintptr_t)1, inp_buf_flag) + sizeof(h264e_enc_t);
 #if H264E_MAX_THREADS > 1
-    *sizeof_scratch = enc_alloc_scratch(NULL, par, (void*)(uintptr_t)1) * (par->max_threads + 1);
+    *sizeof_scratch = enc_alloc_scratch(NULL, par, (unsigned char*)(uintptr_t)1) * (par->max_threads + 1);
 #else
-    *sizeof_scratch = enc_alloc_scratch(NULL, par, (void*)(uintptr_t)1);
+    *sizeof_scratch = enc_alloc_scratch(NULL, par, (unsigned char*)(uintptr_t)1);
 #endif
     return error;
 }
@@ -11121,7 +11127,7 @@ static int H264E_init_one(h264e_enc_t *enc, const H264E_create_param_t *opt, int
     enc->frame.cropping_flag = !!((opt->width | opt->height) & 15);
     enc->param = *opt;
 
-    enc_alloc(enc, opt, (void*)(enc + 1), inp_buf_flag);
+    enc_alloc(enc, opt, (u8*)(enc + 1), inp_buf_flag);
 
 #if H264E_SVC_API
     if (inp_buf_flag)
@@ -11191,7 +11197,8 @@ int H264E_init(h264e_enc_t *enc, const H264E_create_param_t *opt)
         opt_next.vbv_size_bytes <<= 2;
 
         H264E_sizeof_one(&enc_curr->param, &sizeof_persist, &sizeof_scratch, 1);
-        enc_curr = enc_curr->enc_next = (char *)enc_curr + sizeof_persist;
+        enc_curr->enc_next = (char *)enc_curr + sizeof_persist;
+        enc_curr = (h264e_enc_t*)(enc_curr->enc_next);
 
         ret = H264E_init_one(enc_curr, &opt_next, 1);
         if (ret)
@@ -11307,7 +11314,7 @@ static int H264E_encode_one(H264E_persist_t *enc, const H264E_run_param_t *opt,
         if (enc->param.max_threads > 1)
         {
             H264E_persist_t enc_thr[H264E_MAX_THREADS];
-            int sizeof_scratch = enc_alloc_scratch(NULL, &enc->param, (void*)(uintptr_t)1);
+            int sizeof_scratch = enc_alloc_scratch(NULL, &enc->param, (u8*)(uintptr_t)1);
             unsigned char *scratch_base = ((unsigned char*)enc->scratch) + sizeof_scratch;
             int mby = 0;
             int ithr;
@@ -11363,7 +11370,7 @@ static int H264E_encode_one(H264E_persist_t *enc, const H264E_run_param_t *opt,
             enc->frame.nmby = nmby;
             for (i = 0; i < 3; i++)
             {
-                enc->dec.yuv[i] = savep[i];
+                enc->dec.yuv[i] = (u8*)savep[i];
             }
         } else
 #endif
@@ -11468,11 +11475,11 @@ int H264E_encode(H264E_persist_t *enc, H264E_scratch_t *scratch, const H264E_run
     i = enc_alloc_scratch(enc, &enc->param, (unsigned char*)scratch);
 #if H264E_SVC_API
     {
-        H264E_persist_t *e = enc->enc_next;
+        H264E_persist_t *e = (H264E_persist_t *)enc->enc_next;
         while (e)
         {
             i += enc_alloc_scratch(e, &enc->param, ((unsigned char*)scratch) + i);
-            e = e->enc_next;
+            e = (H264E_persist_t *)e->enc_next;
         }
     }
 #endif
@@ -11575,7 +11582,7 @@ int H264E_encode(H264E_persist_t *enc, H264E_scratch_t *scratch, const H264E_run
 #if H264E_SVC_API
         if (enc->param.num_layers > 1)
         {
-            H264E_persist_t *enc_base = enc->enc_next;
+            H264E_persist_t *enc_base = (H264E_persist_t *)enc->enc_next;
             enc_base->sps.pic_init_qp = pic_init_qp;
             enc_base->next_idr_pic_id ^= 1;
             enc_base->frame.num = 0;
@@ -11611,7 +11618,7 @@ int H264E_encode(H264E_persist_t *enc, H264E_scratch_t *scratch, const H264E_run
 #if H264E_SVC_API
     if (enc->param.num_layers > 1)
     {
-        H264E_persist_t *enc_base = enc->enc_next;
+        H264E_persist_t *enc_base = (H264E_persist_t *)enc->enc_next;
         int sh = 0;
 
         enc_base->run_param = enc->run_param;
@@ -11678,11 +11685,11 @@ int H264E_sizeof(const H264E_create_param_t *par, int *sizeof_persist, int *size
         opt_next.width  += opt_next.width & 1;
         opt_next.height  = opt_next.height >> 1;
         opt_next.height += opt_next.height & 1;
-        *sizeof_persist += enc_alloc(NULL, par, (void*)(uintptr_t)1, 1) + sizeof(h264e_enc_t);
+        *sizeof_persist += enc_alloc(NULL, par, (u8*)(uintptr_t)1, 1) + sizeof(h264e_enc_t);
 #if H264E_MAX_THREADS > 1
-        *sizeof_scratch += enc_alloc_scratch(NULL, par, (void*)(uintptr_t)1) * (H264E_MAX_THREADS + 1);
+        *sizeof_scratch += enc_alloc_scratch(NULL, par, (u8*)(uintptr_t)1) * (H264E_MAX_THREADS + 1);
 #else
-        *sizeof_scratch += enc_alloc_scratch(NULL, par, (void*)(uintptr_t)1);
+        *sizeof_scratch += enc_alloc_scratch(NULL, par, (u8*)(uintptr_t)1);
 #endif
     }
 #endif

@@ -1,8 +1,24 @@
 #include <webrtc/webrtc.hpp>
+#include <media/media.hpp>
 
 using namespace ion;
 
 int main(int argc, char **argv) try {
+
+    int frames = 0;
+    image img { path("test_image.png") };
+    doubly<mx> cache;
+
+    h264e {
+        [&](i64 frame) -> yuv420 {
+            return frames++ == 512 ? null : img;
+        },
+        [&](mx  bytes) -> bool  {
+            cache += bytes;
+            return true;
+        }
+    }; 
+
     ion::map<mx> defs {
         {"audio",   str("opus")},
         {"video",   str("h264")},

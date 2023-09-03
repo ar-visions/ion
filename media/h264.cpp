@@ -7,7 +7,7 @@
 #include <math.h>
 ///
 #define MINIH264_IMPLEMENTATION
-#define MINIH264_ONLY_SIMD
+#define H264E_ENABLE_PLAIN_C    1
 #include <media/minih264e.h>
 
 #if H264E_MAX_THREADS
@@ -108,12 +108,14 @@ public:
     int speed;      /// 0 = best quality, 10 = fastest
     bool denoise;
 
-    lambda<image(i64)> input;
+    lambda<yuv420(i64)> input;
     lambda<bool(mx)>   output;
+
+    type_register(i264e);
 
     void run() {
         i64  iframe = 0;
-        image frame = input(iframe++); /// must be yuv420; this will not convert
+        yuv420 frame = input(iframe++); /// must be yuv420; this will not convert
 
         if (!frame) {
             printf("WARNING: first frame null; unknown dimensions and end of stream\n");
@@ -160,7 +162,7 @@ public:
         error = H264E_sizeof(&create_param, &sizeof_enc, &sizeof_scratch);
         if (error) {
             printf("H264E_init error = %d\n", error);
-            return 0;
+            return;
         }
 
         printf("sizeof_enc = %d sizeof_scratch = %d\n", sizeof_enc, sizeof_scratch);
@@ -171,8 +173,8 @@ public:
 
         for (;frame;) {
             /// verify frame is correct count of bytes, yuv 420
-            i8* buf_in = (i8*)frame->mem->origin;
-            assert(frame->mem->count * frame->mem->type->base_sz == frame_size);
+            u8* buf_in = (u8*)frame.mem->origin;
+            assert(frame.mem->count * frame.mem->type->base_sz == frame_size);
 
             yuv.yuv[0]    = buf_in; 
             yuv.yuv[1]    = buf_in + width*height; 
@@ -199,16 +201,17 @@ public:
 
             /// encode
             int encoded_len = 0;
-            assert(!H264E_encode(enc, scratch, &run_param, &yuv, (i8*)&encoded->mem->origin, &encoded_len));
-            encoded->mem->count   = size_t(encoded_len);
-            encoded->mem->reserve = encoded->mem->count;
+            assert(!H264E_encode(enc, scratch, &run_param, &yuv, (u8**)&encoded.mem->origin, &encoded_len));
+            encoded.mem->count   = size_t(encoded_len);
+            encoded.mem->reserve = encoded.mem->count;
 
             /// output encoded
             if (!output(encoded))
                 break;
 
             /// maintained by H264E (if we referenced this, we may update it in place)
-            encoded->mem->origin = null;
+            /// better to have context in the caching mechanism here, just make it ion oriented
+            encoded.mem->origin = null;
 
             /// get next frame
             frame = input(iframe++);
@@ -229,7 +232,7 @@ public:
 
 mx_implement(h264e, mx);
 
-h264e::h264e(lambda<image(i64)> input, lambda<void(mx)> output) : h264e() {
+h264e::h264e(lambda<yuv420(i64)> input, lambda<bool(mx)> output) : h264e() {
     data->input      = input;
     data->output     = output;
     data->gop        = 16;

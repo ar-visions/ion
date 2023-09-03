@@ -36,7 +36,7 @@ struct i264e;
 struct h264e:mx {
     mx_declare(h264e, mx, i264e);
     ///
-    h264e(lambda<image(i64)> fetch, lambda<void(mx)> data); /// the stream ends on null image
+    h264e(lambda<yuv420(i64)> fetch, lambda<bool(mx)> data); /// the stream ends on null image
 };
 
 }
