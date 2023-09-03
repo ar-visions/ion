@@ -150,15 +150,6 @@ static bool mp3_set_id3(path p, str artist, str title) {
 /// use this to hide away the data and isolate its dependency
 mx_implement(audio, mx);
 
-
-
-
-
-
-
-
-
-
 void audio::convert_mono() {
     if (data->channels == 1)
         return;

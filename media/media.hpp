@@ -31,4 +31,12 @@ struct audio:mx {
     size_t       mono_size();
 };
 
+/// interface for minih264e
+struct i264e;
+struct h264e:mx {
+    mx_declare(h264e, mx, i264e);
+    ///
+    h264e(lambda<image(i64)> fetch, lambda<void(mx)> data); /// the stream ends on null image
+};
+
 }
