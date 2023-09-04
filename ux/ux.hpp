@@ -44,8 +44,8 @@ namespace graphics {
         miter, round, bevel);
 
     struct shape:mx {
-        using Rect    = Rect   <r64>;
-        using Rounded = Rounded<r64>;
+        using Rect    = ion::Rect   <r64>;
+        using Rounded = ion::Rounded<r64>;
 
         ///
         struct sdata {
@@ -108,7 +108,8 @@ namespace graphics {
 
         /// following ops are easier this way than having a last position which has its exceptions for arc/line primitives
         inline void line    (vec2d  l) {
-            data->ops += ion::Line({ data->mv, l });
+            Line::ldata ld { data->mv, l };
+            data->ops += ion::Line(ld);
             data->mv = l;
         }
         inline void bezier  (Bezier b) { data->ops += b; }
@@ -476,7 +477,7 @@ struct OBJ:mx {
         auto v        = array<vec3d>(line_c); // need these
         auto vn       = array<vec3d>(line_c);
         auto vt       = array<vec2d>(line_c);
-        auto indices  = std::unordered_map<str, u32>(); ///
+        auto indices  = std::unordered_map<memory*, u32>(); /// symbol memory as key; you can instantiate str or other objects with this data
         size_t verts  = 0;
 
         ///
@@ -510,7 +511,7 @@ struct OBJ:mx {
             else if (w[0] == "f") {
                 assert(g.len());
                 for (size_t i = 1; i < 4; i++) {
-                    auto key = w[i];
+                    auto key = w[i].symbolize();
                     if (indices.count(key) == 0) {
                         indices[key] = u32(verts++);
                         auto      sp =  w[i].split("/");
@@ -546,7 +547,10 @@ struct font:mx {
 
     mx_object(font, mx, fdata);
 
-    font(real sz, str name) : font(fdata { sz, name }) { }
+    font(real sz, str name) : font() {
+        data->sz = sz;
+        data->name = name;
+    }
 
     font(str s):font() {
         array<str> sp = s.split();
@@ -561,7 +565,8 @@ struct font:mx {
     }
 
     font update_sz(real sz) {
-        return fdata { sz, data->name };
+        fdata fd { sz, data->name };
+        return font(fd);
     }
 
     array<double> advances(Canvas& canvas);
@@ -1181,10 +1186,11 @@ struct App:composer {
     operator int() { return run(); }
 
     ///
-    array<node *> select_at(vec2d cur, bool active = true) {
+    array<Element *> select_at(vec2d cur, bool active = true) {
 
-        array<node*> result = array<node*>();
+        array<Element*> result = array<Element*>();
 
+        if (composer::data->instances)
         for (node *n: composer::data->instances->data->children) {
             Element *e = (Element*)n;
             array<node*> inside = e->select([&](Element *ee) {
@@ -1203,9 +1209,9 @@ struct App:composer {
             });
 
             for (node *i: inside)
-                result += i;
+                result += (Element*)i;
             for (node *i: actives)
-                result += i;
+                result += (Element*)i;
         }
         
         return result;

@@ -24,6 +24,9 @@
             },
             "osx": {
                 "command": "make ux-app -j4"
+            },
+            "linux": {
+                "command": "make ux-app -j4"
             }
         },
         {
@@ -49,56 +52,9 @@
             },
             "osx": {
                 "command": "make https-server -j4"
-            }
-        },
-        {
-            "label": "build-wolf-server",
-            "type": "shell",
-			"options": {
-                "cwd": "${workspaceFolder}/../ion/build"
             },
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            },
-            "presentation": {
-                "reveal": "always",
-                "panel": "shared",
-                "group": "build0",
-                "clear": true
-            },
-			"isBackground": false,
-			"problemMatcher": ["$gcc"],
-            "windows": {
-                "command": "msbuild ion.sln /t:wolf-server"
-            },
-            "osx": {
-                "command": "make wolf-server -j4"
-            }
-        },
-        {
-            "label": "build-signal",
-            "type": "shell",
-			"options": {
-                "cwd": "${workspaceFolder}/../ion/build"
-            },
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            },
-            "presentation": {
-                "reveal": "always",
-                "panel": "shared",
-                "group": "build0",
-                "clear": true
-            },
-			"isBackground": false,
-			"problemMatcher": ["$gcc"],
-            "windows": {
-                "command": "msbuild ion.sln /t:signal"
-            },
-            "osx": {
-                "command": "make signal -j4"
+            "linux": {
+                "command": "make https-server -j4"
             }
         },
         {
@@ -123,6 +79,9 @@
                 "command": "msbuild ion.sln /t:streamer"
             },
             "osx": {
+                "command": "make streamer -j4"
+            },
+            "linux": {
                 "command": "make streamer -j4"
             }
         }

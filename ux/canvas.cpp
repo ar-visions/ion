@@ -547,7 +547,7 @@ struct ICanvas {
         imi.fImageTiling        = VK_IMAGE_TILING_OPTIMAL;
         imi.fImageLayout        = VK_IMAGE_LAYOUT_UNDEFINED;
         imi.fFormat             = VK_FORMAT_R8G8B8A8_UNORM;
-        imi.fImageUsageFlags    = VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT|VK_IMAGE_USAGE_SAMPLED_BIT;//VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // i dont think so.
+        imi.fImageUsageFlags    = VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT|VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;//VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // i dont think so.
         imi.fSampleCount        = 1;
         imi.fLevelCount         = 1;
         imi.fCurrentQueueFamily = e->vk_gpu->indices.graphicsFamily.value();
@@ -835,7 +835,7 @@ struct ICanvas {
         if (top->opacity != 1.0f)
             ps.setAlpha(float(ps.getAlpha()) * float(top->opacity));
         graphics::shape sh = rect;
-        SkRect r = { rect.x, rect.y, rect.x + rect.w, rect.y + rect.h };
+        SkRect r = { float(rect.x), float(rect.y), float(rect.x + rect.w), float(rect.y + rect.h) };
         sk_canvas->drawRect(r, ps);
     }
 
@@ -889,10 +889,10 @@ struct ICanvas {
         if (rect.rounded) {
             SkRRect rr;
             SkVector corners[4] = {
-                { rect.r_tl.x, rect.r_tl.y },
-                { rect.r_tr.x, rect.r_tr.y },
-                { rect.r_br.x, rect.r_br.y },
-                { rect.r_bl.x, rect.r_bl.y }
+                { float(rect.r_tl.x), float(rect.r_tl.y) },
+                { float(rect.r_tr.x), float(rect.r_tr.y) },
+                { float(rect.r_br.x), float(rect.r_br.y) },
+                { float(rect.r_bl.x), float(rect.r_bl.y) }
             };
             rr.setRectRadii(r, corners);
             sk_canvas->drawRRect(rr, ps);

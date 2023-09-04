@@ -428,14 +428,19 @@ struct node:mx {
         }
     }
 
-    node(type_t type, initial<arg> args) : node(
-        edata { type, args_id(type, args), args }
-    ) { }
+    node(type_t type, initial<arg> args) : node() {
+        data->type = type;
+        data->id   = args_id(type, args);
+        data->args = args;
+    }
 
     /// used below in each(); a simple allocation of Elements
-    node(type_t type, size_t sz) : node(
-        edata { type, null, null, array<node>(sz) }
-    ) { }
+    node(type_t type, size_t sz) : node() { 
+        data->type = type;
+        data->id   = null;
+        data->args = null;
+        data->children = array<node>(sz);
+    }
 
     template <typename T>
     static node each(array<T> a, lambda<node(T &v)> fn) {

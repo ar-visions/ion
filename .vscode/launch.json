@@ -33,14 +33,11 @@
         {
             "name": "ux-app",
             "type": "cppdbg",
-            "windows": {
-                "type": "cppvsdbg"
-            },
             "request": "launch",
-            "program": "${workspaceFolder}/../ion/build/Debug/ux-app",
+            "program": "${workspaceFolder}/../ion/build/ux-app",
             "args": [],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/../ion/build/Debug",
+            "cwd": "${workspaceFolder}/../ion/build",
             "environment": [],
             "externalConsole": false,
             "MIMode": "gdb",
@@ -48,6 +45,12 @@
                 "hidden": false,
                 "group": "",
                 "order": 1,
+            },
+            "preLaunchTask": "build-ux-app",
+            "windows":{
+                "type": "cppvsdbg",
+                "program": "${workspaceFolder}/../ion/build/Debug/ux-app",
+                "cwd": "${workspaceFolder}/../ion/build/Debug"
             },
             "osx": {
                 "MIMode": "lldb"
@@ -78,27 +81,6 @@
             "preLaunchTask": "build-https-server"
         },
         {
-            "name": "signal",
-            "type": "cppdbg",
-            "request": "launch",
-            "program": "${workspaceFolder}/../ion/build/signal",
-            "args": [],
-            "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/../ion/build",
-            "environment": [],
-            "externalConsole": false,
-            "MIMode": "gdb",
-            "preLaunchTask": "build-signal",
-            "presentation": {
-                "hidden": false,
-                "group": "",
-                "order": 1,
-            },
-            "osx": {
-                "MIMode": "lldb"
-            }
-        },
-        {
             "name": "streamer",
             "type": "cppdbg",
             "request": "launch",
@@ -121,48 +103,6 @@
             "windows": {
                 "type": "cppvsdbg",
                 "program": "${workspaceFolder}/../ion/build/Debug/streamer",
-            }
-        },
-        {
-            "name": "wolf-server",
-            "type": "cppdbg",
-            "request": "launch",
-            "program": "${workspaceFolder}/../ion/build/wolf-server",
-            "args": [],
-            "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/../ion/build",
-            "environment": [],
-            "externalConsole": false,
-            "MIMode": "gdb",
-            "preLaunchTask": "build-wolf-server",
-            "presentation": {
-                "hidden": false,
-                "group": "",
-                "order": 1,
-            },
-            "osx": {
-                "MIMode": "lldb"
-            }
-        },
-        {
-            "name": "circles",
-            "type": "cppdbg",
-            "request": "launch",
-            "program": "${workspaceFolder}/../ion/build/circles",
-            "args": [],
-            "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/../ion/build",
-            "environment": [],
-            "externalConsole": false,
-            "MIMode": "gdb",
-            "preLaunchTask": "build-circles",
-            "presentation": {
-                "hidden": false,
-                "group": "",
-                "order": 1,
-            },
-            "osx": {
-                "MIMode": "lldb"
             }
         }
     ]

@@ -27,6 +27,7 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
     size_t args_len = e->args.len();
     i64         now = millis();
 
+    /// recursion here
     if (e.type() == typeof(node) && e->children) {
         size_t clen = e->children.len();
         size_t i    = 0;
@@ -589,6 +590,7 @@ style style::init() {
     style st;
     if (!st->loaded) {
         path base_path = "style";
+        path p2 = base_path;
         /// there could be sub-dirs here with an argument
         base_path.resources({".css"}, {},
             [&](path css_file) -> void {

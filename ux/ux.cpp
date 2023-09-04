@@ -202,9 +202,10 @@ int App::run() {
         
         node e = data->app_fn(*this);
         update_all(e);
-        Element *eroot = (Element*)composer::data->instances;
+        Element *eroot = (Element*)(composer::data->instances->data->children ?
+                                    composer::data->instances->data->children[0] : null);
         if (eroot) {
-            /// update rect
+            /// update rect need to get eroot->children[0]
             eroot->data->bounds = rectd {
                 0, 0,
                 (real)data->canvas->get_virtual_width(),
@@ -242,7 +243,7 @@ array<LineInfo> &Element::get_lines(Canvas *p_canvas) {
     bool  is_cache = data->cache_source.mem == data->content.mem;
     ///
     if (!is_cache) {
-        str        s_content = data->content;
+        str        s_content = data->content.grab();
         array<str> line_strs = s_content.split("\n");
         size_t    line_count = line_strs.len();
         ///

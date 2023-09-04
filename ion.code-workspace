@@ -189,7 +189,9 @@
 			"xtr1common": "cpp",
 			"xtree": "cpp",
 			"__std_stream": "cpp",
-			"*.def": "cpp"
+			"*.def": "cpp",
+			"*.tcc": "cpp",
+			"numbers": "cpp"
 		}
 	}
 }
