@@ -343,6 +343,7 @@ struct style:mx {
 template <> struct is_singleton<style> : true_type { };
 
 
+struct composer;
 struct node:mx {
     /// style implemented at node data and in composer
     /// this is so one can style their services
@@ -364,6 +365,7 @@ struct node:mx {
         node*                   parent;
         style::style_map        style_avail; /// properties outside of meta are effectively internal state only; it can be labelled as such
         map<selection>          selections; /// style selected per member
+        composer*               composer;
 
         ///
         doubly<prop> meta() {
@@ -381,6 +383,10 @@ struct node:mx {
         ///
         type_register(edata);
     };
+
+    /// context works by looking at meta() on the context types polymorphically, and up the parent nodes to the root context (your app)
+    template <typename T>
+    T *context(str id);
 
     bool operator!() {
         return !data || !bool(*data);
@@ -540,7 +546,43 @@ struct composer:mx {
     void update_all(node e);
 
     /// called recursively from update_all -> update(), also called from node generic render (node will need a composer data member)
-    static void update(composer::cdata *composer, node *parent, node *&instance, node &e);
+    static void update(composer *composer, node *parent, node *&instance, node &e);
 };
+
+template <typename T>
+T *node::context(str id) {
+    node *n = (node*)this;
+    /// fetch context through self/parents in tree
+    while (n) {
+        for (type_t type = n->mem->type; type; type = type->parent) {
+            if (!type->meta)
+                continue;
+            prop* member = null;
+            u8*   addr   = get_member_address(type, n, id, member);
+            if (addr) {
+                assert(member->member_type == typeof(T));
+                return (T*)addr;
+            }
+        }
+        n = n->data->parent;
+    }
+    /// get context from app composer lastly (use-case: video sink service)
+    composer *app      = data->composer; assert(app);
+    type_t    app_type = app->mem->type;
+    u8       *app_data = (u8*)app->mem->origin;
+    ///
+    for (int i = 0; i < app_type->schema->bind_count; i++) {
+        context_bind *b = &app_type->schema->composition[i];
+        prop* member = null;
+        u8*   addr   = get_member_address(b->data, app_data, id, member);
+        if (addr) {
+            assert(member->member_type == typeof(T));
+            return (T*)addr;
+        }
+        app_data += b->data->base_sz;
+    }
+    
+    return null;
+}
 
 }

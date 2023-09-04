@@ -746,26 +746,6 @@ struct Element:node {
         type_register(props);
     };
 
-    /// context works by looking at meta() on the context types polymorphically, and up the parent nodes to the root context (your app)
-    template <typename T>
-    T *context(str id) {
-        node *n = (node*)this;
-        while (n) {
-            for (type_t type = n->mem->type; type; type = type->parent) {
-                if (!type->meta)
-                    continue;
-                prop* member = null;
-                u8*   addr   = get_member_address(n->mem->type, n, id, member);
-                if (addr) {
-                    assert(member->member_type == typeof(T));
-                    return (T*)addr;
-                }
-            }
-            n = n->node::data->parent;
-        }
-        return null;
-    }
-
     TextSel get_selection(vec2d pos, bool is_down) {
         rectd r = data->bounds;
         Element *n = this;

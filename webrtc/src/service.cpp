@@ -701,3 +701,18 @@ void addToStream(shared_ptr<Client> client, bool isAddingVideo) {
         startStream();
     }
 }
+
+/// can update in real time 1/hz or through polling, but not needed at the moment
+int Services::run() {
+    /// Services must be meta registered with a video_sink method
+    /// verify this is looked up with context lookup from components in service (VideoStreamer)
+    data->video_sink = [](mx nalu) {
+        console.log("nalu bytes: {0}", { int(nalu.count()) });
+    };
+    node e = data->service_fn(*this);
+    update_all(e);
+    for (;;) {
+        usleep(10000);
+    }
+    return 0;
+}

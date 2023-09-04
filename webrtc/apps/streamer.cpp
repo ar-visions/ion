@@ -4,21 +4,6 @@
 using namespace ion;
 
 int main(int argc, char **argv) try {
-
-    int frames = 0;
-    image img { path("test_image.png") };
-    doubly<mx> cache;
-
-    h264e {
-        [&](i64 frame) -> yuv420 {
-            return frames++ == 512 ? null : img;
-        },
-        [&](mx  bytes) -> bool  {
-            cache += bytes;
-            return true;
-        }
-    }; 
-
     ion::map<mx> defs {
         {"audio",   str("opus")},
         {"video",   str("h264")},
@@ -35,14 +20,21 @@ int main(int argc, char **argv) try {
     const uri ws_signal = fmt { "ws://{0}:{1}/{2}", { config["ip"], config["port"], localId }};
     const uri https_res = "https://ar-visions.com:10022"; /// certs based on this binding name unless configured
 
+    /// take in sample (image, images, or canvas with bitmask backend)
+
     /// App services composition layer (do we call this services?)
     return Services([&](Services &app) {
         return array<node> {
 
+            VideoStream { /// frames are given here, and the Services api should handle ideal fetching
+                { "id",             "streamer" },
+                { "source",         "" }
+            },
+
             /// ws-signal connector
             Service {
-                    { "id", "ws-signal" },
-                    { "url", ws_signal },
+                    { "id",         "ws-signal" },
+                    { "url",        ws_signal },
                     { "on-message", lambda<message(message&)>([](message &ws_message) -> message {
                 int test = 0;
                 test++;

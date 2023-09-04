@@ -21,7 +21,7 @@ double duration_millis(duration dur) {
     return 0.0;
 }
 
-void composer::update(composer::cdata *composer, node *parent, node *&instance, node &e) {
+void composer::update(composer *composer, node *parent, node *&instance, node &e) {
     bool       diff = !instance;
     bool     is_new = false;
     size_t args_len = e->args.len();
@@ -76,9 +76,9 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
             str   id = node_id(e); /// needed for style computation of available entries in the style blocks
             (*instance)->parent = parent;
             (*instance)->id     = id.grab();
-        
+            (*instance)->composer = composer; /// verify context is not lost on this object
+            (*instance)->style_avail = composer->data->style->compute(instance);
             /// compute available properties for this Element given its type, placement, and props styled 
-            (*instance)->style_avail = composer->style->compute(instance);
         }
 
         /// arg set cache
@@ -112,7 +112,7 @@ void composer::update(composer::cdata *composer, node *parent, node *&instance, 
                 field<array<style::entry*>> *entries = style_avail->lookup(name); // ctx name is Button, name == id, and it has a null entry for entries[0] == null with count > 
                 if (entries) {
                     /// get best style matching entry for this property
-                    style::entry *best = composer->style->best_match(instance, &p, *entries);
+                    style::entry *best = composer->data->style->best_match(instance, &p, *entries);
                     ///
                     type_t prop_type = p.member_type;
                     u8    *prop_dst  = &data_origin[p.offset];
@@ -292,7 +292,7 @@ void composer::update_all(node e) {
     if (!data->instances)
         data->style = style::init();
     
-    update(data, null, data->instances, e);
+    update(this, null, data->instances, e);
 }
 
 
