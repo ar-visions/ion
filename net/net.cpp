@@ -525,12 +525,13 @@ message::message(uri url, map<mx> headers) : message() {
 
 /// important to note we do not keep holding onto this socket
 message::message(sock &sc) : message() {
-    read_headers(sc);
-    //console.log("received headers:");
-    //data->headers.print();
-    read_content(sc);
-    str status = data->headers["Status"].grab();
-    data->code = int(status.integer_value());
+    if (read_headers(sc)) {
+        //console.log("received headers:");
+        //data->headers.print();
+        read_content(sc);
+        str status = data->headers["Status"].grab();
+        data->code = int(status.integer_value());
+    }
 }
 
 uri message::query() { return data->query; }
@@ -695,6 +696,7 @@ message::operator bool() {
     type_t ct = data->code.type();
     assert(ct == typeof(i32) || ct == typeof(str));
     int ic = int(data->code);
+    bool d_con = bool(data->content);
     return (data->query.mtype() != method::undefined || 
         (ct == typeof(i32) && (ic == 0 && (data->content || data->headers)) || 
         (ic >= 200 && ic < 300)));

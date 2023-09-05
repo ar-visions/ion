@@ -720,6 +720,8 @@ void VideoStream::mounted() {
 		string localId = "server";
 		cout << "The local ID is: " << localId << endl;
 
+        /// server doesnt connect to the session.
+
 		ws->onOpen   ([ ]() {
 			cout << "WebSocket connected, signaling ready" << endl;
 		});
@@ -763,25 +765,6 @@ void VideoStream::mounted() {
 				this_thread::sleep_for(100ms);
 		}
 		return true;
-
-
-
-		ion::image img { path("test_image.png") };
-		doubly<mx> cache;
-		int frames = 0;
-        /// startStream:
-		h264e {
-			/// one might imagine that when connected to a vulkan device you would just lock a mutex, grab a frame and place
-			/// we need to encode the audio in this function too; its complex to manage two streams separately
-			[&](i64 frame) -> yuv420 {
-				return frames++ == 512 ? null : img;
-			},
-			[&](mx nalu) -> bool {
-				(*video_sink)(nalu);
-				return true;
-			}
-		};
-		return frames;
 	}};
 }
 }

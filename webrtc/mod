@@ -51,8 +51,7 @@ src(src/av1packetizationhandler.cpp
     src/rtppacketizer.cpp
     src/track.cpp
     src/websocket.cpp
-    src/websocketserver.cpp
-    src/service.cpp)
+    src/websocketserver.cpp)
 
 src(impl/wstransport.cpp
     impl/certificate.cpp

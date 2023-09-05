@@ -38,6 +38,7 @@ int main(int argc, char **argv) try {
             },
 
             /// ws-signal connector
+            /*
             Service {
                     { "id",         "ws-signal" },
                     { "url",        ws_signal },
@@ -46,7 +47,7 @@ int main(int argc, char **argv) try {
                 test++;
                 return message {}; /// this should not respond
                 ///
-            })}},
+            })}},*/
 
             /// https resource server
             Service {{ "id", "https" },
