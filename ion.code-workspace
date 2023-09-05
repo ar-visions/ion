@@ -191,7 +191,8 @@
 			"__std_stream": "cpp",
 			"*.def": "cpp",
 			"*.tcc": "cpp",
-			"numbers": "cpp"
+			"numbers": "cpp",
+			"semaphore": "cpp"
 		}
 	}
 }

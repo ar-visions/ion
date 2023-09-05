@@ -32,6 +32,7 @@ int gettimeofday(struct timeval *tv, struct timezone *tz) {
 #endif
 
 #include <webrtc/streamer/stream.hpp>
+#include <webrtc/impl/peerconnection.hpp>
 #include <webrtc/streamer/fileparser.hpp>
 #include <webrtc/streamer/h264fileparser.hpp>
 #include <webrtc/streamer/opusfileparser.hpp>
@@ -398,255 +399,6 @@ ion::async service(uri url, lambda<message(message)> fn_process) {
     return {};
 };
 
-shared_ptr<ClientTrackData> addVideo(const shared_ptr<PeerConnection> pc, const uint8_t payloadType, const uint32_t ssrc, const string cname, const string msid, const function<void (void)> onOpen) {
-    auto video = Description::Video(cname);
-    video.addH264Codec(payloadType);
-    video.addSSRC(ssrc, cname, msid, cname);
-    auto track = pc->addTrack(video);
-    // create RTP configuration
-    auto rtpConfig = make_shared<RtpPacketizationConfig>(ssrc, cname, payloadType, H264RtpPacketizer::defaultClockRate);
-    // create packetizer
-    auto packetizer = make_shared<H264RtpPacketizer>(H264RtpPacketizer::Separator::Length, rtpConfig);
-    // create H264 handler
-    auto h264Handler = make_shared<H264PacketizationHandler>(packetizer);
-    // add RTCP SR handler
-    auto srReporter = make_shared<RtcpSrReporter>(rtpConfig);
-    h264Handler->addToChain(srReporter);
-    // add RTCP NACK handler
-    auto nackResponder = make_shared<RtcpNackResponder>();
-    h264Handler->addToChain(nackResponder);
-    // set handler
-    track->setMediaHandler(h264Handler);
-    track->onOpen(onOpen);
-    auto trackData = make_shared<ClientTrackData>(track, srReporter);
-    return trackData;
-}
-
-shared_ptr<ClientTrackData> addAudio(const shared_ptr<PeerConnection> pc, const uint8_t payloadType, const uint32_t ssrc, const string cname, const string msid, const function<void (void)> onOpen) {
-    auto audio = Description::Audio(cname);
-    audio.addOpusCodec(payloadType);
-    audio.addSSRC(ssrc, cname, msid, cname);
-    auto track = pc->addTrack(audio);
-    // create RTP configuration
-    auto rtpConfig = make_shared<RtpPacketizationConfig>(ssrc, cname, payloadType, OpusRtpPacketizer::defaultClockRate);
-    // create packetizer
-    auto packetizer = make_shared<OpusRtpPacketizer>(rtpConfig);
-    // create opus handler
-    auto opusHandler = make_shared<OpusPacketizationHandler>(packetizer);
-    // add RTCP SR handler
-    auto srReporter = make_shared<RtcpSrReporter>(rtpConfig);
-    opusHandler->addToChain(srReporter);
-    // add RTCP NACK handler
-    auto nackResponder = make_shared<RtcpNackResponder>();
-    opusHandler->addToChain(nackResponder);
-    // set handler
-    track->setMediaHandler(opusHandler);
-    track->onOpen(onOpen);
-    auto trackData = make_shared<ClientTrackData>(track, srReporter);
-    return trackData;
-}
-
-// Create and setup a PeerConnection
-shared_ptr<Client> createPeerConnection(const Configuration &config,
-                                                weak_ptr<WebSocket> wws,
-                                                string id) {
-    auto pc = make_shared<PeerConnection>(config);
-    auto client = make_shared<Client>(pc);
-
-    pc->onStateChange([id](PeerConnection::State state) {
-        cout << "State: " << state << endl;
-        if (state == PeerConnection::State::Disconnected ||
-            state == PeerConnection::State::Failed ||
-            state == PeerConnection::State::Closed) {
-            // remove disconnected client
-            MainThread.dispatch([id]() {
-                //clients.erase(id);
-            });
-        }
-    });
-
-    pc->onGatheringStateChange(
-        [wpc = make_weak_ptr(pc), id, wws](PeerConnection::GatheringState state) {
-        cout << "Gathering State: " << state << endl;
-        if (state == PeerConnection::GatheringState::Complete) {
-            if(auto pc = wpc.lock()) {
-                auto description = pc->localDescription();
-                var message = ion::map<mx> {
-                    {"id", id},
-                    {"type", description->typeString()},
-                    {"sdp", string(description.value())}
-                };
-                // Gathering complete, send answer
-                if (auto ws = wws.lock()) {
-                    str s_msg = message.stringify();
-                    ws->send(s_msg);
-                }
-            }
-        }
-    });
-
-    client->video = addVideo(pc, 102, 1, "video-stream", "stream1", [id, wc = make_weak_ptr(client)]() {
-        MainThread.dispatch([wc]() {
-            if (auto c = wc.lock()) {
-                addToStream(c, true);
-            }
-        });
-        cout << "Video from " << id << " opened" << endl;
-    });
-
-    client->audio = addAudio(pc, 111, 2, "audio-stream", "stream1", [id, wc = make_weak_ptr(client)]() {
-        MainThread.dispatch([wc]() {
-            if (auto c = wc.lock()) {
-                addToStream(c, false);
-            }
-        });
-        cout << "Audio from " << id << " opened" << endl;
-    });
-
-    auto dc = pc->createDataChannel("ping-pong");
-    dc->onOpen([id, wdc = make_weak_ptr(dc)]() {
-        if (auto dc = wdc.lock()) {
-            dc->send("Ping");
-        }
-    });
-
-    dc->onMessage(nullptr, [id, wdc = make_weak_ptr(dc)](string msg) {
-        cout << "Message from " << id << " received: " << msg << endl;
-        if (auto dc = wdc.lock()) {
-            dc->send("Ping");
-        }
-    });
-    client->dataChannel = dc;
-
-    pc->setLocalDescription();
-    return client;
-};
-
-/// Create stream
-shared_ptr<Stream> createStream(const string h264Samples, const unsigned fps, const string opusSamples) {
-    // video source
-    auto video = make_shared<H264FileParser>(h264Samples, fps, true);
-    // audio source
-    auto audio = make_shared<OPUSFileParser>(opusSamples, true);
-
-    auto stream = make_shared<Stream>(video, audio);
-    // set callback responsible for sample sending
-    stream->onSample([ws = make_weak_ptr(stream)](Stream::StreamSourceType type, uint64_t sampleTime, rtc::binary sample) {
-        vector<ClientTrack> tracks{};
-        string streamType = type == Stream::StreamSourceType::Video ? "video" : "audio";
-        // get track for given type
-        function<optional<shared_ptr<ClientTrackData>> (shared_ptr<Client>)> getTrackData = [type](shared_ptr<Client> client) {
-            return type == Stream::StreamSourceType::Video ? client->video : client->audio;
-        };
-        // get all clients with Ready state
-        for(auto id_client: clients) {
-            auto id = id_client.first;
-            auto client = id_client.second;
-            auto optTrackData = getTrackData(client);
-            if (client->getState() == Client::State::Ready && optTrackData.has_value()) {
-                auto trackData = optTrackData.value();
-                tracks.push_back(ClientTrack(id, trackData));
-            }
-        }
-        if (!tracks.empty()) {
-            for (auto clientTrack: tracks) {
-                auto client = clientTrack.id;
-                auto trackData = clientTrack.trackData;
-                auto rtpConfig = trackData->sender->rtpConfig;
-
-                // sample time is in us, we need to convert it to seconds
-                auto elapsedSeconds = double(sampleTime) / (1000 * 1000);
-                // get elapsed time in clock rate
-                uint32_t elapsedTimestamp = rtpConfig->secondsToTimestamp(elapsedSeconds);
-                // set new timestamp
-                rtpConfig->timestamp = rtpConfig->startTimestamp + elapsedTimestamp;
-
-                // get elapsed time in clock rate from last RTCP sender report
-                auto reportElapsedTimestamp = rtpConfig->timestamp - trackData->sender->lastReportedTimestamp();
-                // check if last report was at least 1 second ago
-                if (rtpConfig->timestampToSeconds(reportElapsedTimestamp) > 1) {
-                    trackData->sender->setNeedsToReport();
-                }
-
-                cout << "Sending " << streamType << " sample with size: " << to_string(sample.size()) << " to " << client << endl;
-                try {
-                    // send sample
-                    trackData->track->send(sample);
-                } catch (const std::exception &e) {
-                    cerr << "Unable to send "<< streamType << " packet: " << e.what() << endl;
-                }
-            }
-        }
-        MainThread.dispatch([ws]() {
-            if (clients.empty()) {
-                // we have no clients, stop the stream
-                if (auto stream = ws.lock()) {
-                    stream->stop();
-                }
-            }
-        });
-    });
-    return stream;
-}
-
-/// Start stream
-void startStream() {
-    shared_ptr<Stream> stream;
-    if (avStream) {
-        stream = avStream;
-        if (stream->isRunning) {
-            // stream is already running
-            return;
-        }
-    } else {
-        stream = createStream("h264", 30, "opus");
-        avStream = stream;
-    }
-    stream->start();
-}
-
-/// Send previous key frame so browser can show something to user
-/// @param stream Stream
-/// @param video Video track data
-void sendInitialNalus(shared_ptr<Stream> stream, shared_ptr<ClientTrackData> video) {
-    auto h264 = dynamic_cast<H264FileParser *>(stream->video.get());
-    auto initialNalus = h264->initialNALUS();
-
-    // send previous NALU key frame so users don't have to wait to see stream works
-    if (!initialNalus.empty()) {
-        const double frameDuration_s = double(h264->getSampleDuration_us()) / (1000 * 1000);
-        const uint32_t frameTimestampDuration = video->sender->rtpConfig->secondsToTimestamp(frameDuration_s);
-        video->sender->rtpConfig->timestamp = video->sender->rtpConfig->startTimestamp - frameTimestampDuration * 2;
-        video->track->send(initialNalus);
-        video->sender->rtpConfig->timestamp += frameTimestampDuration;
-        // Send initial NAL units again to start stream in firefox browser
-        video->track->send(initialNalus);
-    }
-}
-
-/// Add client to stream
-/// @param client Client
-/// @param adding_video True if adding video
-void addToStream(shared_ptr<Client> client, bool isAddingVideo) {
-    if (client->getState() == Client::State::Waiting) {
-        client->setState(isAddingVideo ? Client::State::WaitingForAudio : Client::State::WaitingForVideo);
-    } else if ((client->getState() == Client::State::WaitingForAudio && !isAddingVideo)
-               || (client->getState() == Client::State::WaitingForVideo && isAddingVideo)) {
-
-        // Audio and video tracks are collected now
-        assert(client->video.has_value() && client->audio.has_value());
-        auto video = client->video.value();
-
-        if (avStream) {
-            sendInitialNalus(avStream, video);
-        }
-
-        client->setState(Client::State::Ready);
-    }
-    if (client->getState() == Client::State::Ready) {
-        startStream();
-    }
-}
 }
 
 namespace ion {
@@ -678,7 +430,256 @@ void VideoStream::mounted() {
 
 	state->service = async {1, [this, video_sink](runtime *proc, int i) -> mx {
 
-		auto wsOnMessage = [&](var message, Configuration config, shared_ptr<WebSocket> ws) {
+        state->addVideo = [](shared_ptr<PeerConnection> pc, uint8_t payloadType, uint32_t ssrc, string cname, string msid, function<void (void)> onOpen) {
+            auto video = Description::Video(cname);
+            video.addH264Codec(payloadType);
+            video.addSSRC(ssrc, cname, msid, cname);
+            auto track = pc->addTrack(video);
+            // create RTP configuration
+            auto rtpConfig = make_shared<RtpPacketizationConfig>(ssrc, cname, payloadType, H264RtpPacketizer::defaultClockRate);
+            // create packetizer
+            auto packetizer = make_shared<H264RtpPacketizer>(H264RtpPacketizer::Separator::Length, rtpConfig);
+            // create H264 handler
+            auto h264Handler = make_shared<H264PacketizationHandler>(packetizer);
+            // add RTCP SR handler
+            auto srReporter = make_shared<RtcpSrReporter>(rtpConfig);
+            h264Handler->addToChain(srReporter);
+            // add RTCP NACK handler
+            auto nackResponder = make_shared<RtcpNackResponder>();
+            h264Handler->addToChain(nackResponder);
+            // set handler
+            track->setMediaHandler(h264Handler);
+            track->onOpen(onOpen);
+            auto trackData = make_shared<webrtc::ClientTrackData>(track, srReporter);
+            return trackData;
+        };
+
+        state->addAudio = [](shared_ptr<PeerConnection> pc, uint8_t payloadType, uint32_t ssrc, string cname, string msid, lambda<void (void)> onOpen) {
+            auto audio = Description::Audio(cname);
+            audio.addOpusCodec(payloadType);
+            audio.addSSRC(ssrc, cname, msid, cname);
+            auto track = pc->addTrack(audio);
+            // create RTP configuration
+            auto rtpConfig = make_shared<RtpPacketizationConfig>(ssrc, cname, payloadType, OpusRtpPacketizer::defaultClockRate);
+            // create packetizer
+            auto packetizer = make_shared<OpusRtpPacketizer>(rtpConfig);
+            // create opus handler
+            auto opusHandler = make_shared<OpusPacketizationHandler>(packetizer);
+            // add RTCP SR handler
+            auto srReporter = make_shared<RtcpSrReporter>(rtpConfig);
+            opusHandler->addToChain(srReporter);
+            // add RTCP NACK handler
+            auto nackResponder = make_shared<RtcpNackResponder>();
+            opusHandler->addToChain(nackResponder);
+            // set handler
+            track->setMediaHandler(opusHandler);
+            track->onOpen(onOpen);
+            auto trackData = make_shared<webrtc::ClientTrackData>(track, srReporter);
+            return trackData;
+        };
+
+        // Create and setup a PeerConnection
+        state->createPeerConnection = [](rtc::Configuration &config, weak_ptr<WebSocket> wws, string id) {
+            auto pc = make_shared<rtc::impl::PeerConnection>(config);
+            auto client = make_shared<webrtc::Client>(pc);
+
+            pc->onStateChange([id](rtc::impl::PeerConnection::State state) {
+                cout << "State: " << state << endl;
+                if (state == rtc::impl::PeerConnection::State::Disconnected ||
+                    state == rtc::impl::PeerConnection::State::Failed ||
+                    state == rtc::impl::PeerConnection::State::Closed) {
+                    // remove disconnected client
+                    MainThread.dispatch([id]() {
+                        //clients.erase(id);
+                    });
+                }
+            });
+
+            pc->onGatheringStateChange(
+                [wpc = make_weak_ptr(pc), id, wws](PeerConnection::GatheringState state) {
+                cout << "Gathering State: " << state << endl;
+                if (state == PeerConnection::GatheringState::Complete) {
+                    if(auto pc = wpc.lock()) {
+                        auto description = pc->localDescription();
+                        var message = ion::map<mx> {
+                            {"id", id},
+                            {"type", description->typeString()},
+                            {"sdp", string(description.value())}
+                        };
+                        // Gathering complete, send answer
+                        if (auto ws = wws.lock()) {
+                            str s_msg = message.stringify();
+                            ws->send(s_msg);
+                        }
+                    }
+                }
+            });
+
+            client->video = addVideo(pc, 102, 1, "video-stream", "stream1", [id, wc = make_weak_ptr(client)]() {
+                MainThread.dispatch([wc]() {
+                    if (auto c = wc.lock()) {
+                        addToStream(c, true);
+                    }
+                });
+                cout << "Video from " << id << " opened" << endl;
+            });
+
+            client->audio = addAudio(pc, 111, 2, "audio-stream", "stream1", [id, wc = make_weak_ptr(client)]() {
+                MainThread.dispatch([wc]() {
+                    if (auto c = wc.lock()) {
+                        addToStream(c, false);
+                    }
+                });
+                cout << "Audio from " << id << " opened" << endl;
+            });
+
+            auto dc = pc->createDataChannel("ping-pong");
+            dc->onOpen([id, wdc = make_weak_ptr(dc)]() {
+                if (auto dc = wdc.lock()) {
+                    dc->send("Ping");
+                }
+            });
+
+            dc->onMessage(nullptr, [id, wdc = make_weak_ptr(dc)](string msg) {
+                cout << "Message from " << id << " received: " << msg << endl;
+                if (auto dc = wdc.lock()) {
+                    dc->send("Ping");
+                }
+            });
+            client->dataChannel = dc;
+
+            pc->setLocalDescription();
+            return client;
+        };
+
+
+        /// Start stream
+        state->startStream = []() {
+            shared_ptr<Stream> stream;
+            if (avStream) {
+                stream = avStream;
+                if (stream->isRunning) {
+                    // stream is already running
+                    return;
+                }
+            } else {
+                stream = createStream("h264", 30, "opus");
+                avStream = stream;
+            }
+            stream->start();
+        }
+
+        /// Send previous key frame so browser can show something to user
+        /// @param stream Stream
+        /// @param video Video track data
+        state->sendInitialNalus = [](shared_ptr<Stream> stream, shared_ptr<ClientTrackData> video) {
+            auto h264 = dynamic_cast<H264FileParser *>(stream->video.get());
+            auto initialNalus = h264->initialNALUS();
+
+            // send previous NALU key frame so users don't have to wait to see stream works
+            if (!initialNalus.empty()) {
+                const double frameDuration_s = double(h264->getSampleDuration_us()) / (1000 * 1000);
+                const uint32_t frameTimestampDuration = video->sender->rtpConfig->secondsToTimestamp(frameDuration_s);
+                video->sender->rtpConfig->timestamp = video->sender->rtpConfig->startTimestamp - frameTimestampDuration * 2;
+                video->track->send(initialNalus);
+                video->sender->rtpConfig->timestamp += frameTimestampDuration;
+                // Send initial NAL units again to start stream in firefox browser
+                video->track->send(initialNalus);
+            }
+        }
+
+        /// Add client to stream
+        /// @param client Client
+        /// @param adding_video True if adding video
+        state->addToStream = [](shared_ptr<Client> client, bool isAddingVideo) {
+            if (client->getState() == Client::State::Waiting) {
+                client->setState(isAddingVideo ? Client::State::WaitingForAudio : Client::State::WaitingForVideo);
+            } else if ((client->getState() == Client::State::WaitingForAudio && !isAddingVideo)
+                    || (client->getState() == Client::State::WaitingForVideo && isAddingVideo)) {
+
+                // Audio and video tracks are collected now
+                assert(client->video.has_value() && client->audio.has_value());
+                auto video = client->video.value();
+
+                if (avStream) {
+                    sendInitialNalus(avStream, video);
+                }
+
+                client->setState(Client::State::Ready);
+            }
+            if (client->getState() == Client::State::Ready) {
+                startStream();
+            }
+        }
+
+        /// Create stream
+        state->createStream = [&](const string h264Samples, const unsigned fps, const string opusSamples) {
+            // video source
+            auto video = make_shared<H264FileParser>(h264Samples, fps, true);
+            // audio source
+            auto audio = make_shared<OPUSFileParser>(opusSamples, true);
+
+            auto stream = make_shared<Stream>(video, audio);
+            // set callback responsible for sample sending
+            stream->onSample([ws = make_weak_ptr(stream)](Stream::StreamSourceType type, uint64_t sampleTime, rtc::binary sample) {
+                vector<ClientTrack> tracks{};
+                string streamType = type == Stream::StreamSourceType::Video ? "video" : "audio";
+                // get track for given type
+                function<optional<shared_ptr<ClientTrackData>> (shared_ptr<Client>)> getTrackData = [type](shared_ptr<Client> client) {
+                    return type == Stream::StreamSourceType::Video ? client->video : client->audio;
+                };
+                // get all clients with Ready state
+                for(auto id_client: clients) {
+                    auto id = id_client.first;
+                    auto client = id_client.second;
+                    auto optTrackData = getTrackData(client);
+                    if (client->getState() == Client::State::Ready && optTrackData.has_value()) {
+                        auto trackData = optTrackData.value();
+                        tracks.push_back(ClientTrack(id, trackData));
+                    }
+                }
+                if (!tracks.empty()) {
+                    for (auto clientTrack: tracks) {
+                        auto client = clientTrack.id;
+                        auto trackData = clientTrack.trackData;
+                        auto rtpConfig = trackData->sender->rtpConfig;
+
+                        // sample time is in us, we need to convert it to seconds
+                        auto elapsedSeconds = double(sampleTime) / (1000 * 1000);
+                        // get elapsed time in clock rate
+                        uint32_t elapsedTimestamp = rtpConfig->secondsToTimestamp(elapsedSeconds);
+                        // set new timestamp
+                        rtpConfig->timestamp = rtpConfig->startTimestamp + elapsedTimestamp;
+
+                        // get elapsed time in clock rate from last RTCP sender report
+                        auto reportElapsedTimestamp = rtpConfig->timestamp - trackData->sender->lastReportedTimestamp();
+                        // check if last report was at least 1 second ago
+                        if (rtpConfig->timestampToSeconds(reportElapsedTimestamp) > 1) {
+                            trackData->sender->setNeedsToReport();
+                        }
+
+                        cout << "Sending " << streamType << " sample with size: " << to_string(sample.size()) << " to " << client << endl;
+                        try {
+                            // send sample
+                            trackData->track->send(sample);
+                        } catch (const std::exception &e) {
+                            cerr << "Unable to send "<< streamType << " packet: " << e.what() << endl;
+                        }
+                    }
+                }
+                MainThread.dispatch([ws]() {
+                    if (clients.empty()) {
+                        // we have no clients, stop the stream
+                        if (auto stream = ws.lock()) {
+                            stream->stop();
+                        }
+                    }
+                });
+            });
+            return stream;
+        }
+
+		state->wsOnMessage = [&](var message, Configuration config, shared_ptr<WebSocket> ws) {
 			mx *it = message.get("id");
 			if (!it) return;
 			str id = it->grab();
@@ -739,7 +740,7 @@ void VideoStream::mounted() {
 			/// lets do without these if possible; async can call on main thread without issue
 			MainThread.dispatch([state, message, config, ws, wsOnMessage]() {
 				//wsOnMessage(message, config, ws);
-				state->on_message(message, config, ws);
+				state->wsOnMessage(message, config, ws);
 			});
 		});
 

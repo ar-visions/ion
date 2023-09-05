@@ -94,8 +94,32 @@ struct Services:composer {
 /// this should look for a video sink
 struct VideoStream: node {
 	struct props {
+		/// arg|css bound states
 		uri   source;  /// url could be a vulkan device?
+		
+		/// internal states
 		async service; /// if props are changed, the service must be restarted
+
+        lambda<std::shared_ptr<webrtc::ClientTrackData>(
+            std::shared_ptr<rtc::impl::PeerConnection> pc, const uint8_t payloadType,
+            uint32_t ssrc, std::string cname, std::string msid,
+            lambda<void(void)>)> addVideo;
+
+        lambda<std::shared_ptr<webrtc::ClientTrackData>(
+            shared_ptr<rtc::impl::PeerConnection>, uint8_t, uint32_t, std::string, std::string, lambda<void (void)>
+        )> addAudio;
+
+        lambda<std::shared_ptr<webrtc::Client>
+            (rtc::Configuration&, weak_ptr<rtc::WebSocket>, std::string)>
+                createPeerConnection;
+
+        lambda<void(void)> startStream;
+
+        lambda<void(var, rtc::Configuration, std::shared_ptr<rtc::WebSocket>)> wsOnMessage;
+
+		//state->stream = createStream(const string h264Samples, const unsigned fps, const string opusSamples)
+		lambda<std::shared_ptr<webrtc::Stream>(std::string, unsigned, std::string)> createStream;
+
 		doubly<prop> meta() {
 			return {
 				prop { "source", source }
