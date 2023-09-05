@@ -34,12 +34,7 @@ int main(int argc, char **argv) try {
 
             VideoStream {
                 { "id",             "streamer" },
-                { "source",         "" },
-                { "on-client",      [&](str name, sock conn, media_server m) {
-
-                    m.tune(typeof(FrameSequence), conn);
-                    
-                }}
+                { "source",         "" }
             },
 
             /// ws-signal connector

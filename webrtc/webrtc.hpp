@@ -1,7 +1,98 @@
 #pragma once
 #include <net/net.hpp>
 #include <rtc/rtc.hpp>
-#include <webrtc/streamer/stream.hpp> // has client data
+#include <webrtc/streamer/dispatchqueue.hpp>
+
+namespace webrtc {
+struct ClientTrackData {
+    std::shared_ptr<rtc::Track> track;
+    std::shared_ptr<rtc::RtcpSrReporter> sender;
+
+    ClientTrackData(std::shared_ptr<rtc::Track> track, std::shared_ptr<rtc::RtcpSrReporter> sender);
+};
+
+struct Client {
+    enum class State {
+        Waiting,
+        WaitingForVideo,
+        WaitingForAudio,
+        Ready
+    };
+    const std::shared_ptr<rtc::PeerConnection> & peerConnection = _peerConnection;
+    Client(std::shared_ptr<rtc::PeerConnection> pc) {
+        _peerConnection = pc;
+    }
+    std::optional<std::shared_ptr<ClientTrackData>> video;
+    std::optional<std::shared_ptr<ClientTrackData>> audio;
+    std::optional<std::shared_ptr<rtc::DataChannel>> dataChannel;
+
+    void setState(State state);
+    State getState();
+
+    uint32_t rtpStartTimestamp = 0;
+
+private:
+    std::shared_mutex _mutex;
+    State state = State::Waiting;
+    std::string id;
+    std::shared_ptr<rtc::PeerConnection> _peerConnection;
+};
+
+struct ClientTrack {
+    std::string id;
+    std::shared_ptr<ClientTrackData> trackData;
+    ClientTrack(std::string id, std::shared_ptr<ClientTrackData> trackData);
+};
+
+uint64_t currentTimeInMicroSeconds();
+
+class StreamSource {
+protected:
+
+public:
+    virtual void start() = 0;
+    virtual void stop() = 0;
+    virtual void loadNextSample() = 0;
+
+    virtual uint64_t getSampleTime_us() = 0;
+    virtual uint64_t getSampleDuration_us() = 0;
+	virtual rtc::binary getSample() = 0;
+};
+
+class Stream: std::enable_shared_from_this<Stream> {
+    uint64_t startTime = 0;
+    std::mutex mutex;
+    DispatchQueue dispatchQueue = DispatchQueue("StreamQueue");
+    std::string h264_dir = "opus";
+    std::string opus_dir = "h264"; /// this needs to be a function
+    //ion::lambda<mx()> read; /// use this instead of the file parsing, by letting file parser become user of this
+    bool _isRunning = false;
+public:
+    const std::shared_ptr<StreamSource> audio;
+    const std::shared_ptr<StreamSource> video;
+
+    Stream(std::shared_ptr<StreamSource> video, std::shared_ptr<StreamSource> audio);
+    ~Stream();
+
+    enum class StreamSourceType {
+        Audio,
+        Video
+    };
+
+private:
+    rtc::synchronized_callback<StreamSourceType, uint64_t, rtc::binary> sampleHandler;
+
+    std::pair<std::shared_ptr<StreamSource>, StreamSourceType> unsafePrepareForSample();
+
+    void sendSample();
+
+public:
+    void onSample(std::function<void (StreamSourceType, uint64_t, rtc::binary)> handler);
+    void start();
+    void stop();
+    const bool & isRunning = _isRunning;
+};
+}
 
 #include <composer/composer.hpp>
 
@@ -91,22 +182,31 @@ struct Services:composer {
     int run();
 };
 
+/// webrtc, rtc, rtc::impl -> rtc (the impl's are laid out in modules in ways i wouldnt design)
+/// to better understand the protocols i will organize them in simpler ways
+
 /// this should look for a video sink
 struct VideoStream: node {
 	struct props {
 		/// arg|css bound states
 		uri   source;  /// url could be a vulkan device?
 		
+		/// will need to explain this thing
+		std::unordered_map<std::string, shared_ptr<webrtc::Client>> clients;
+
 		/// internal states
 		async service; /// if props are changed, the service must be restarted
 
+		/// ideally we want to express this in node tree!
+		/// this is a foothold into a graple on this
+
         lambda<std::shared_ptr<webrtc::ClientTrackData>(
-            std::shared_ptr<rtc::impl::PeerConnection> pc, const uint8_t payloadType,
+            std::shared_ptr<rtc::PeerConnection> pc, const uint8_t payloadType,
             uint32_t ssrc, std::string cname, std::string msid,
             lambda<void(void)>)> addVideo;
 
         lambda<std::shared_ptr<webrtc::ClientTrackData>(
-            shared_ptr<rtc::impl::PeerConnection>, uint8_t, uint32_t, std::string, std::string, lambda<void (void)>
+            shared_ptr<rtc::PeerConnection>, uint8_t, uint32_t, std::string, std::string, lambda<void (void)>
         )> addAudio;
 
         lambda<std::shared_ptr<webrtc::Client>
@@ -119,6 +219,14 @@ struct VideoStream: node {
 
 		//state->stream = createStream(const string h264Samples, const unsigned fps, const string opusSamples)
 		lambda<std::shared_ptr<webrtc::Stream>(std::string, unsigned, std::string)> createStream;
+
+		lambda<void(shared_ptr<webrtc::Stream>, std::shared_ptr<webrtc::ClientTrackData> video)> sendInitialNalus;
+
+		lambda<void(shared_ptr<webrtc::Client>, bool)> addToStream;
+
+		shared_ptr<webrtc::Stream> avStream = null;
+
+		webrtc::DispatchQueue *MainThread;
 
 		doubly<prop> meta() {
 			return {
@@ -142,7 +250,6 @@ struct Streamer: node {
 
 		// yes i want it set here and that is better to express pipeline such as this, and others
 		//doubly<Client> clients;
-		std::unordered_map<std::string, shared_ptr<webrtc::Client>> clients;
 
         struct events {
 			// (var message, Configuration config, shared_ptr<WebSocket> ws)
