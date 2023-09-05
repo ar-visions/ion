@@ -203,7 +203,8 @@ int App::run() {
         node e = data->app_fn(*this);
         update_all(e);
         Element *eroot = (Element*)(composer::data->instances->data->children ?
-                                    composer::data->instances->data->children[0] : null);
+                                    composer::data->instances->data->children[0] : 
+                                    composer::data->instances);
         if (eroot) {
             /// update rect need to get eroot->children[0]
             eroot->data->bounds = rectd {
@@ -216,6 +217,9 @@ int App::run() {
 
         canvas.flush();
 
+        /// blt this to VkImage, bound to a canvas that we can perform subsequent drawing ops on
+        /// canvas needs to draw other canvas too (Sk has this)
+        ///
         //if (data->cameras[0].image)
         //    vkh_presenter_build_blit_cmd(data->e->renderer,
         //        data->cameras[0].image->image,
