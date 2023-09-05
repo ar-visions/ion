@@ -416,7 +416,20 @@ size_t style::block::score(node *pn, bool score_state) {
         bool   id_reject  = qd.id    && !id_match;
         bool  type_match  = qd.type  &&  strcmp((symbol)qd.type.cs(), (symbol)n.mem->type->name) == 0; /// class names are actual type names
         bool type_reject  = qd.type  && !type_match;
-        bool state_match  = score_state && qd.state && get_bool(typeof(node::edata), edata, qd.state); /// a useful thing for string const input would be to flag that its already symbolized.  that way you dont look it up when you operate it back
+        bool state_match  = score_state && qd.state;
+
+        /// now we are looking at all enumerable meta data in property_find
+        /// this was just a base meta check until node became the basic object
+        /// Element data contains things like capture, focus, etc (second level)
+        if (state_match) {
+            prop* member = null;
+            u8*   addr   = property_find(pn->mem, qd.id, member);
+            if (addr) {
+                state_match = member->member_type->functions->boolean(null, addr);
+                break;
+            }
+        }
+
         bool state_reject = score_state && qd.state && !state_match;
 
         ///

@@ -269,12 +269,10 @@ array<double> font::advances(Canvas& canvas, str text) {
     num l = text.len();
     array<double> res(l+1, l+1);
     ///
-    printf("measuring: %s\n", text.cs());
     for (num i = 0; i <= l; i++) {
         str    s   = text.mid(0, i);
         double adv = canvas.measure_advance(s.data, i);
         res[i]     = adv;
-        //printf("adv[%i]: %.2f = %s\n", i - 1, adv, s.data);
     }
     return res;
 }

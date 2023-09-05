@@ -658,17 +658,13 @@ struct composer:mx {
 template <typename T>
 T *node::context(str id) {
     node *n = (node*)this;
+    prop* member = null;
     /// fetch context through self/parents in tree
     while (n) {
-        for (type_t type = n->mem->type; type; type = type->parent) {
-            if (!type->meta)
-                continue;
-            prop* member = null;
-            u8*   addr   = get_member_address(type, n, id, member);
-            if (addr) {
-                assert(member->member_type == typeof(T));
-                return (T*)addr;
-            }
+        u8*   addr   = property_find(n->mem, id, member);
+        if (addr) {
+            assert(member->member_type == typeof(T));
+            return (T*)addr;
         }
         n = n->data->parent;
     }
@@ -676,18 +672,14 @@ T *node::context(str id) {
     composer *app      = data->composer; assert(app);
     type_t    app_type = app->mem->type;
     u8       *app_data = (u8*)app->mem->origin;
+
+    u8 *addr = property_find(app->mem, id, member);
     ///
-    for (int i = 0; i < app_type->schema->bind_count; i++) {
-        context_bind *b = &app_type->schema->composition[i];
-        prop* member = null;
-        u8*   addr   = get_member_address(b->data, app_data, id, member);
-        if (addr) {
-            assert(member->member_type == typeof(T));
-            return (T*)addr;
-        }
-        app_data += b->data->base_sz;
+    if (addr) {
+        assert(member->member_type == typeof(T));
+        return (T*)addr;
     }
-    
+
     return null;
 }
 

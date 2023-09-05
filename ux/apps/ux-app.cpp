@@ -18,7 +18,7 @@ using namespace ion;
 /// better to declare them in code as such with the type registration
 /// lookup parents and add to its children classes
 
-struct View:node {
+struct View:Element {
     struct props {
         int         sample;
         int         sample2;
@@ -42,7 +42,7 @@ struct View:node {
         };
     }
 
-    component(View, node, props);
+    component(View, Element, props);
 
     void mounting() {
         console.log("mounting");

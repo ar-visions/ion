@@ -516,15 +516,16 @@ struct Element:node {
         int                     tab_index;
         vec2d                   cursor;
 
+        /// if we consider events handled contextually and by many users, it makes sense to have dispatch
         struct events {
-            dispatch            hover;
-            dispatch            out;
-            dispatch            down;
-            dispatch            up;
-            dispatch            key;
-            dispatch            focus;
-            dispatch            blur;
-            dispatch            cursor;
+            callback            hover;
+            callback            out;
+            callback            down;
+            callback            up;
+            callback            key;
+            callback            focus;
+            callback            blur;
+            callback            cursor;
         } ev;
 
         /// padding does not seem needed with this set of members and enumerable drawing types
@@ -776,7 +777,7 @@ using AssetUtil    = array<Asset>;
 //void push_pipeline(Device *dev, Pipeline &pipe);
 
 template <typename V>
-struct object:node {
+struct object:Element {
     /// our members
     struct members {
       //construction    plumbing;
@@ -804,7 +805,7 @@ struct object:node {
     };
 
     /// make a node_constructors
-    mx_object(object, node, members)
+    mx_object(object, Element, members)
     
     /// change management, we probably have to give prev values in a map.
     void changed(doubly<prop> list) {
@@ -817,12 +818,12 @@ struct object:node {
         //if (data->plumbing)
         //    for (auto &[pipe, name]: data->plumbing.map())
         //        push_pipeline(dev(), pipe);
-        return node::update();
+        return Element::update();
     }
 };
 
 ///
-struct Button:node {
+struct Button:Element {
     enums(Behavior, push,
         "push, label, toggle, radio",
          push, label, toggle, radio);
@@ -831,7 +832,7 @@ struct Button:node {
         Button::Behavior behavior;
         type_register(props);
     };
-    component(Button, node, props);
+    component(Button, Element, props);
 
     node update() {
         return node::update();
@@ -844,7 +845,7 @@ struct Button:node {
 /// so we have char color and placement on column (default = advance)
 /// edit should be a node with some defaults set, something that has a name and can be styled
 /// tag names should be the last thing you style.  we want to style props and not tags that go along with them
-struct Edit:node {
+struct Edit:Element {
     ///
     struct props {
         callback on_key;
@@ -858,7 +859,7 @@ struct Edit:node {
         }
     };
 
-    component(Edit, node, props);
+    component(Edit, Element, props);
 };
 
 #if 0
@@ -1045,6 +1046,7 @@ struct App:composer {
         array<Element*> hover;
         VkEngine     e;
         lambda<node(App&)> app_fn;
+        ///
         type_register(adata);
     };
 
