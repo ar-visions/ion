@@ -328,65 +328,6 @@ struct region {
     type_register(region);
 };
 
-enums(keyboard, none,
-    "none, caps_lock, shift, ctrl, alt, meta",
-     none, caps_lock, shift, ctrl, alt, meta);
-
-enums(mouse, none,
-    "none, left, right, middle, inactive",
-     none, left, right, middle, inactive);
-
-namespace user {
-    using chr = num;
-
-    struct key:mx {
-        struct kdata {
-            num                 unicode;
-            num                 scan_code;
-            states<keyboard>    modifiers;
-            bool                repeat;
-            bool                up;
-            type_register(kdata);
-        };
-        mx_object(key, mx, kdata);
-    };
-};
-
-struct event:mx {
-    ///
-    struct edata {
-        user::chr               unicode;
-        user::key               key;
-        vec2d                   wheel_delta;
-        vec2d                   cursor;
-        states<mouse>           buttons;
-        states<keyboard>        modifiers;
-        size                    resize;
-        mouse::etype            button_id;
-        bool                    prevent_default;
-        bool                    stop_propagation;
-        type_register(edata);
-    };
-
-    mx_object(event, mx, edata);
-    
-    event(const mx &a) = delete;
-    ///
-    inline void prevent_default()   {         data->prevent_default = true; }
-    inline bool is_default()        { return !data->prevent_default; }
-    inline bool should_propagate()  { return !data->stop_propagation; }
-    inline bool stop_propagation()  { return  data->stop_propagation = true; }
-    inline vec2d cursor_pos()       { return  data->cursor; }
-    inline bool mouse_down(mouse m) { return  data->buttons[m]; }
-    inline bool mouse_up  (mouse m) { return !data->buttons[m]; }
-    inline num  unicode   ()        { return  data->key->unicode; }
-    inline num  scan_code ()        { return  data->key->scan_code; }
-    inline bool key_down  (num u)   { return  data->key->unicode   == u && !data->key->up; }
-    inline bool key_up    (num u)   { return  data->key->unicode   == u &&  data->key->up; }
-    inline bool scan_down (num s)   { return  data->key->scan_code == s && !data->key->up; }
-    inline bool scan_up   (num s)   { return  data->key->scan_code == s &&  data->key->up; }
-};
-
 struct Element;
 
 struct ch:pair<mx,mx> {
@@ -394,53 +335,6 @@ struct ch:pair<mx,mx> {
         key   = "children";
         value = a;
     }
-};
-
-using fn_render = lambda<node()>;
-using fn_stub   = lambda<void()>;
-using callback  = lambda<void(event)>;
-
-struct dispatch;
-
-struct listener:mx {
-    struct ldata {
-        dispatch *src;
-        callback  cb;
-        fn_stub   detatch;
-        bool      detached;
-        ///
-        ~ldata() { printf("listener, ...destroyed\n"); }
-        type_register(ldata);
-    };
-    
-    ///
-    mx_object(listener, mx, ldata);
-
-    void cancel() {
-        data->detatch();
-        data->detached = true;
-    }
-
-    ///
-    ~listener() {
-        if (!data->detached && mem->refs == 1) /// only reference is the binding reference, detect and make that ref:0, ~data() should be fired when its successfully removed from the list
-            cancel();
-    }
-};
-
-/// keep it simple for sending events, with a dispatch.  listen to them with listen()
-/// need to implement an assign with a singular callback.  these can support more than one, though.  in a component tree you can use multiple with use of context
-struct dispatch:mx {
-    struct ddata {
-        doubly<listener> listeners;
-        type_register(ddata);
-    };
-    ///
-    mx_object(dispatch, mx, ddata);
-    ///
-    void operator()(event e);
-    ///
-    listener &listen(callback cb);
 };
 
 /// simple wavefront obj

@@ -14,6 +14,7 @@
 #include <vector>
 #include "stream.hpp"
 
+namespace webrtc {
 class FileParser: public StreamSource {
     std::string directory;
     std::string extension;
@@ -35,5 +36,6 @@ public:
     uint64_t getSampleTime_us() override;
     uint64_t getSampleDuration_us() override;
 };
+}
 
 #endif /* fileparser_hpp */

@@ -13,6 +13,7 @@
 #include "dispatchqueue.hpp"
 #include "rtc/rtc.hpp"
 
+namespace webrtc {
 struct ClientTrackData {
     std::shared_ptr<rtc::Track> track;
     std::shared_ptr<rtc::RtcpSrReporter> sender;
@@ -102,4 +103,5 @@ public:
     const bool & isRunning = _isRunning;
 };
 
+}
 #endif /* stream_hpp */

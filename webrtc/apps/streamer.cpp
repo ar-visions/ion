@@ -3,6 +3,12 @@
 
 using namespace ion;
 
+struct FrameSequence {
+    FrameSequence() {
+
+    }
+};
+
 int main(int argc, char **argv) try {
     ion::map<mx> defs {
         {"audio",   str("opus")},
@@ -26,9 +32,14 @@ int main(int argc, char **argv) try {
     return Services([&](Services &app) {
         return array<node> {
 
-            VideoStream { /// frames are given here, and the Services api should handle ideal fetching
+            VideoStream {
                 { "id",             "streamer" },
-                { "source",         "" }
+                { "source",         "" },
+                { "on-client",      [&](str name, sock conn, media_server m) {
+
+                    m.tune(typeof(FrameSequence), conn);
+                    
+                }}
             },
 
             /// ws-signal connector

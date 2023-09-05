@@ -1,6 +1,8 @@
 #pragma once
 #include <net/net.hpp>
 #include <rtc/rtc.hpp>
+#include <webrtc/streamer/stream.hpp> // has client data
+
 #include <composer/composer.hpp>
 
 //using namespace std::chrono_literals;
@@ -8,10 +10,6 @@ using std::shared_ptr;
 using std::weak_ptr;
 template <class T> weak_ptr<T> make_weak_ptr(shared_ptr<T> ptr) { return ptr; }
 
-namespace webrtc {
-/// webrtc -> service
-ion::async service(ion::uri uri, ion::lambda<ion::message(ion::message)> fn_process);
-};
 
 /// pre-compiled headers are good place to put in shimmable utility declaration and implementation
 #ifdef _WIN32
@@ -31,10 +29,11 @@ int gettimeofday(struct timeval *tv, struct timezone *tz);
 #include <arpa/inet.h>
 #endif
 
-/// we need webrtc to have access to 'services' generic; for that we would call it to start and stop the service
-/// async needs a signaling method for the stop case.
 
-/// these are read by introspection via prop/type lookup (important to have both)
+namespace webrtc {
+/// webrtc -> service
+ion::async service(ion::uri uri, ion::lambda<ion::message(ion::message)> fn_process);
+}
 
 namespace ion {
 
@@ -104,8 +103,45 @@ struct VideoStream: node {
 		}
 		type_register(props);
 	};
+
 	component(VideoStream, node, props);
+	
 	void mounted();
+};
+
+/// a node-controlled service that we express with for-each
+/// do this!
+struct Streamer: node {
+	struct props {
+		uri   source; /// can a uri be a type and properties, or instance of one?
+		async service;
+
+		// yes i want it set here and that is better to express pipeline such as this, and others
+		//doubly<Client> clients;
+		std::unordered_map<std::string, shared_ptr<webrtc::Client>> clients;
+
+        struct events {
+			// (var message, Configuration config, shared_ptr<WebSocket> ws)
+
+            dispatch on_enter;
+			dispatch on_leave;
+			dispatch on_stats; /// from here the user can request context
+        } ev;
+
+		doubly<prop> meta() {
+			return {
+				prop { "on-enter", ev.on_enter },
+				prop { "on-leave", ev.on_leave },
+				prop { "on-stats", ev.on_stats }
+			};
+		}
+
+		type_register(props);
+	};
+
+	void mounted() {
+		console.log("abc");
+	}
 };
 
 }

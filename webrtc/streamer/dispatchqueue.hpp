@@ -17,6 +17,7 @@
 #include <functional>
 #include <string>
 
+namespace webrtc {
 class DispatchQueue {
     typedef std::function<void(void)> fp_t;
 
@@ -47,5 +48,6 @@ private:
 
     void dispatchThreadHandler(void);
 };
+}
 
 #endif /* dispatchqueue_hpp */
