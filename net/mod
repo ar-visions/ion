@@ -2,5 +2,9 @@ dep(mx:mx mx:async ion:composer ion:media mbedtls:mbedtls mbedtls:mbedx509 mbedt
 if(mac)
     dep(CoreFoundation Security)
 endif()
+##
 includes(${INSTALL_PREFIX}/../extern/mbedtls/tests/include)
-cflags(+-Wno-write-strings)
+##
+if(NOT WIN32)
+    cflags(+-Wno-write-strings)
+endif()

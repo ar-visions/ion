@@ -490,7 +490,7 @@ void VideoStream::mounted() {
             auto client = make_shared<Client>(pc);
 
             pc->onStateChange([state, id](PeerConnection::State peer) {
-                cout << "State: " << state << endl;
+                cout << "State: " << int(peer) << endl;
                 if (peer == PeerConnection::State::Disconnected ||
                     peer == PeerConnection::State::Failed ||
                     peer == PeerConnection::State::Closed) {
@@ -502,9 +502,9 @@ void VideoStream::mounted() {
             });
 
             pc->onGatheringStateChange(
-                [wpc = make_weak_ptr(pc), id, wws](PeerConnection::GatheringState state) {
-                cout << "Gathering State: " << state << endl;
-                if (state == PeerConnection::GatheringState::Complete) {
+                [wpc = make_weak_ptr(pc), id, wws](PeerConnection::GatheringState peer) {
+                std::cout << "Gathering State: " << int(peer) << endl;
+                if (peer == PeerConnection::GatheringState::Complete) {
                     if(auto pc = wpc.lock()) {
                         auto description = pc->localDescription();
                         var message = ion::map<mx> {
@@ -621,6 +621,8 @@ void VideoStream::mounted() {
 
         /// Create stream
         state->createStream = [&](const string h264Samples, const unsigned fps, const string opusSamples) {
+            /*
+
             // video source
             auto video = make_shared<webrtc::H264FileParser>(h264Samples, fps, true);
             // audio source
@@ -683,6 +685,13 @@ void VideoStream::mounted() {
                     }
                 });
             });
+            */
+            auto video = make_shared<webrtc::H264FileParser>(h264Samples, fps, true);
+            // audio source
+            auto audio = make_shared<webrtc::OPUSFileParser>(opusSamples, true);
+
+            auto stream = make_shared<Stream>(video, audio);
+            
             return stream;
         };
 
