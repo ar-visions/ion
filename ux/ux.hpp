@@ -1034,7 +1034,6 @@ struct list_view:node {
 };
 #endif
 
-
 struct App:composer {
     struct adata {
         array<Camera> cameras;
@@ -1063,13 +1062,9 @@ struct App:composer {
 
     ///
     array<Element *> select_at(vec2d cur, bool active = true) {
-
         array<Element*> result = array<Element*>();
-
-        if (composer::data->instances)
-        for (node *n: composer::data->instances->data->children) {
-            Element *e = (Element*)n;
-            array<node*> inside = e->select([&](Element *ee) {
+        auto proc = [&](Element *e) {
+            array<Element*> inside = e->select([&](Element *ee) {
                 real           x = cur.x, y = cur.y;
                 vec2d          o = ee->offset();
                 vec2d        rel = cur + o;
@@ -1077,24 +1072,27 @@ struct App:composer {
                 rectd &bounds = ee->data->fill_bounds ? ee->data->fill_bounds : ee->data->bounds;
                 bool in = bounds.contains(rel);
                 e->data->cursor = in ? vec2d(x, y) : vec2d(-1, -1);
-                return (in && (!active || !edata->active)) ? n : null;
+                return (in && (!active || !edata->active)) ? e : null;
             });
-
-            array<node*> actives = e->select([&](Element *ee) -> node* {
-                return (active && ee->data->active) ? n : null;
+            array<Element*> actives = e->select([&](Element *ee) -> Element* {
+                return (active && ee->data->active) ? ee : null;
             });
+            for (Element *i: inside)
+                result += (Element*)i;
+            for (Element *i: actives)
+                result += (Element*)i;
+        };
 
-            for (node *i: inside)
-                result += (Element*)i;
-            for (node *i: actives)
-                result += (Element*)i;
-        }
+        if (composer::data->instances && composer::data->instances->data->children) {
+            for (node *e: composer::data->instances->data->children)
+                proc((Element*)e);
+        } else if (composer::data->instances)
+            proc((Element*)composer::data->instances);
         
         return result;
     }
     ///
 };
-
 
 using AppFn = lambda<node(App&)>;
 }

@@ -98,7 +98,8 @@ static void mouse_move_callback(GLFWwindow* window, double x, double y) {
 
     Element *last = null;
     for (Element* n: app->data->hover) {
-        n->Element::data->hover = true;
+        n->Element::data->hover  = true;
+        //n->Element::data->cursor = app->data->cursor; /// this type could be bool true when the point is in bounds
         last = n;
     }
 }
