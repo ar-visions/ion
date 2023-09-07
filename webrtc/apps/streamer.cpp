@@ -24,14 +24,11 @@ int main(int argc, char **argv) try {
     ///
     const str localId   = "server";
     const uri ws_signal = fmt { "ws://{0}:{1}/{2}", { config["ip"], config["port"], localId }};
-    const uri https_res = "https://ar-visions.com:10022"; /// certs based on this binding name unless configured
-
-    /// take in sample (image, images, or canvas with bitmask backend)
+    const uri https_res = "https://ar-visions.com:10022";
 
     /// App services composition layer (do we call this services?)
     return Services([&](Services &app) {
         return array<node> {
-
             VideoStream {
                 { "id",             "streamer" },
                 { "source",         "" }
@@ -48,7 +45,7 @@ int main(int argc, char **argv) try {
                 str s_query = msg->query->query;
                 if (s_query[0] == '/')
                     s_query = s_query.mid(1);
-                if(!s_query || s_query[s_query.len() - 1] == '/') /// needs to support /.
+                if(!s_query || s_query[s_query.len() - 1] == '/')
                     s_query += "index.html";
                 
                 /// verify query does not go beyond www
