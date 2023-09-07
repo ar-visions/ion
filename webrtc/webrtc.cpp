@@ -620,9 +620,7 @@ void VideoStream::mounted() {
         };
 
         /// Create stream
-        state->createStream = [&](const string h264Samples, const unsigned fps, const string opusSamples) {
-            /*
-
+        state->createStream = [state](const string h264Samples, const unsigned fps, const string opusSamples) {
             // video source
             auto video = make_shared<webrtc::H264FileParser>(h264Samples, fps, true);
             // audio source
@@ -630,7 +628,8 @@ void VideoStream::mounted() {
 
             auto stream = make_shared<Stream>(video, audio);
             // set callback responsible for sample sending
-            stream->onSample([state, ws = make_weak_ptr(stream)](Stream::StreamSourceType type, uint64_t sampleTime, rtc::binary sample) {
+            stream->onSample(
+                    [state, ws = make_weak_ptr(stream)](Stream::StreamSourceType type, uint64_t sampleTime, rtc::binary sample) {
                 vector<ClientTrack> tracks{};
                 string streamType = type == Stream::StreamSourceType::Video ? "video" : "audio";
                 // get track for given type
@@ -685,13 +684,6 @@ void VideoStream::mounted() {
                     }
                 });
             });
-            */
-            auto video = make_shared<webrtc::H264FileParser>(h264Samples, fps, true);
-            // audio source
-            auto audio = make_shared<webrtc::OPUSFileParser>(opusSamples, true);
-
-            auto stream = make_shared<Stream>(video, audio);
-            
             return stream;
         };
 

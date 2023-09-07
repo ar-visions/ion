@@ -37,18 +37,6 @@ int main(int argc, char **argv) try {
                 { "source",         "" }
             },
 
-            /// ws-signal connector
-            /*
-            Service {
-                    { "id",         "ws-signal" },
-                    { "url",        ws_signal },
-                    { "on-message", lambda<message(message&)>([](message &ws_message) -> message {
-                int test = 0;
-                test++;
-                return message {}; /// this should not respond
-                ///
-            })}},*/
-
             /// https resource server
             Service {{ "id", "https" },
                      { "url", https_res },
@@ -66,7 +54,6 @@ int main(int argc, char **argv) try {
                 /// verify query does not go beyond www
                 if (!path::backwards(s_query.cs())) {
                     path p = fmt { "www/{0}", { s_query } };
-
                     if (p.exists()) {
                         console.log("sending resource: {0}", { p.cs() });
                         return message(p, p.mime_type());

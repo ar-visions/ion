@@ -161,7 +161,7 @@ struct iTLS {
         }
 
         str port = str::from_integer(url.port());
-        if ((ret = mbedtls_net_bind(&fd, NULL, port.cs(), MBEDTLS_NET_PROTO_TCP)) != 0) {
+        if ((ret = mbedtls_net_bind(&fd, host.cs(), port.cs(), MBEDTLS_NET_PROTO_TCP)) != 0) {
             mbedtls_printf(" failed\n  ! mbedtls_net_bind returned %d\n\n", ret);
             return;
         }
@@ -363,7 +363,6 @@ struct Session {
             size_t sz = rbytes.len();
             if (!recv(&rbytes[sz - 1], size_t(1)))
                 return array<char> { };
-            printf("recv: %s\n", rbytes.data);
             if (sz >= slen && memcmp(&rbytes[sz - slen], s.cs(), slen) == 0)
                 break;
             if (sz == max_len)

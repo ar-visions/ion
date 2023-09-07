@@ -39,7 +39,6 @@
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/../ion/build",
             "environment": [],
-            "externalConsole": false,
             "MIMode": "gdb",
             "presentation": {
                 "hidden": false,
@@ -68,7 +67,6 @@
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/../ion/build",
             "environment": [],
-            "externalConsole": false,
             "MIMode": "gdb",
             "presentation": {
                 "hidden": false,
@@ -89,7 +87,6 @@
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/../ion/build",
             "environment": [],
-            "externalConsole": false,
             "MIMode": "gdb",
             "preLaunchTask": "build-streamer",
             "presentation": {
