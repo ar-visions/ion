@@ -1,13 +1,14 @@
 #include <webrtc/webrtc.hpp>
 #include <media/media.hpp>
 
+/// 
+#include <webrtc/streamer/fileparser.hpp>
+#include <webrtc/streamer/h264fileparser.hpp>
+#include <webrtc/streamer/opusfileparser.hpp>
+
+using namespace std;
 using namespace ion;
-
-struct FrameSequence {
-    FrameSequence() {
-
-    }
-};
+using namespace webrtc;
 
 int main(int argc, char **argv) try {
     ion::map<mx> defs {
@@ -18,20 +19,25 @@ int main(int argc, char **argv) try {
     };
 
     /// parse args with mx parser in map type
-    map<mx> config =       args::parse(argc, argv, defs);
-    if    (!config) return args::defaults(defs);
+    ion::map<mx> config = args::parse(argc, argv, defs);
+    if (!config) return args::defaults(defs);
 
     ///
     const str localId   = "server";
     const uri ws_signal = fmt { "ws://{0}:{1}/{2}", { config["ip"], config["port"], localId }};
     const uri https_res = "https://ar-visions.com:10022";
 
-    /// App services composition layer (do we call this services?)
     return Services([&](Services &app) {
-        return array<node> {
+        return ion::array<node> {
             VideoStream {
                 { "id",             "streamer" },
-                { "source",         "" }
+                { "source",         "" },
+                { "stream-select",  StreamSelect([](shared_ptr<Client> client) -> shared_ptr<Stream> {
+                    auto video  = make_shared<H264FileParser>("h264", 30, true);
+                    auto audio  = make_shared<OPUSFileParser>("opus", true);
+                    auto stream = make_shared<Stream>(video, audio);
+                    return stream;
+                })}
             },
 
             /// https resource server

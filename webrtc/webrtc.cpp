@@ -3,9 +3,6 @@
 
 #include <webrtc/streamer/stream.hpp>
 #include <webrtc/rtc/peerconnection.hpp>
-#include <webrtc/streamer/fileparser.hpp>
-#include <webrtc/streamer/h264fileparser.hpp>
-#include <webrtc/streamer/opusfileparser.hpp>
 
 #include <thread>
 #include <mutex>
@@ -19,6 +16,11 @@
 #include <fstream>
 #include <ctime>
 #include <shared_mutex>
+
+/// 
+#include <webrtc/streamer/fileparser.hpp>
+#include <webrtc/streamer/h264fileparser.hpp>
+#include <webrtc/streamer/opusfileparser.hpp>
 
 #ifdef _WIN32
 int gettimeofday(struct timeval *tv, struct timezone *tz) {
@@ -423,6 +425,7 @@ void VideoStream::mounted() {
 
     VideoStream::props *state = this->state;
 
+    /// all props are set prior to mount call (args & style)
 	state->service = async {1, [state, video_sink](runtime *proc, int i) -> mx {
 
         using PeerConnection = rtc::PeerConnection;
@@ -561,75 +564,18 @@ void VideoStream::mounted() {
 
         /// Start stream (single instance, needs to be improved upon lol)
         /// take the Client and any negotiated uri channel into account
-        state->startStream = [state]() {
-            shared_ptr<webrtc::Stream> stream;
-            if (state->avStream) {
-                stream = state->avStream;
-                if (stream->isRunning) {
-                    // stream is already running
-                    return;
-                }
-            } else {
-                stream = state->createStream("h264", 30, "opus");
-                state->avStream = stream;
+        state->startStream = [state](shared_ptr<webrtc::Client> client) {
+            shared_ptr<webrtc::Stream> stream = state->stream_select(client);//state->createStream("h264", 30, "opus");
+            
+            if (!stream) {
+                return;
             }
-            stream->start();
-        };
 
-        /// Send previous key frame so browser can show something to user
-        /// @param stream Stream
-        /// @param video Video track data
-        state->sendInitialNalus = [](shared_ptr<Stream> stream, shared_ptr<ClientTrackData> video) {
-            auto h264 = dynamic_cast<webrtc::H264FileParser *>(stream->video.get());
-            auto initialNalus = h264->initialNALUS();
+            // below should be a generic, no user needs to define onSample
 
-            // send previous NALU key frame so users don't have to wait to see stream works
-            if (!initialNalus.empty()) {
-                const double frameDuration_s = double(h264->getSampleDuration_us()) / (1000 * 1000);
-                const uint32_t frameTimestampDuration = video->sender->rtpConfig->secondsToTimestamp(frameDuration_s);
-                video->sender->rtpConfig->timestamp = video->sender->rtpConfig->startTimestamp - frameTimestampDuration * 2;
-                video->track->send(initialNalus);
-                video->sender->rtpConfig->timestamp += frameTimestampDuration;
-                // Send initial NAL units again to start stream in firefox browser
-                video->track->send(initialNalus);
-            }
-        };
-
-        /// Add client to stream
-        /// @param client Client
-        /// @param adding_video True if adding video
-        state->addToStream = [state](shared_ptr<Client> client, bool isAddingVideo) {
-            if (client->getState() == Client::State::Waiting) {
-                client->setState(isAddingVideo ? Client::State::WaitingForAudio : Client::State::WaitingForVideo);
-            } else if ((client->getState() == Client::State::WaitingForAudio && !isAddingVideo)
-                    || (client->getState() == Client::State::WaitingForVideo && isAddingVideo)) {
-
-                // Audio and video tracks are collected now
-                assert(client->video.has_value() && client->audio.has_value());
-                auto video = client->video.value();
-
-                if (state->avStream) {
-                    state->sendInitialNalus(state->avStream, video);
-                }
-
-                client->setState(Client::State::Ready);
-            }
-            if (client->getState() == Client::State::Ready) {
-                state->startStream();
-            }
-        };
-
-        /// Create stream
-        state->createStream = [state](const string h264Samples, const unsigned fps, const string opusSamples) {
-            // video source
-            auto video = make_shared<webrtc::H264FileParser>(h264Samples, fps, true);
-            // audio source
-            auto audio = make_shared<webrtc::OPUSFileParser>(opusSamples, true);
-
-            auto stream = make_shared<Stream>(video, audio);
             // set callback responsible for sample sending
             stream->onSample(
-                    [state, ws = make_weak_ptr(stream)](Stream::StreamSourceType type, uint64_t sampleTime, rtc::binary sample) {
+                    [state, wstream = make_weak_ptr(stream)](Stream::StreamSourceType type, uint64_t sampleTime, rtc::binary sample) {
                 vector<ClientTrack> tracks{};
                 string streamType = type == Stream::StreamSourceType::Video ? "video" : "audio";
                 // get track for given type
@@ -637,6 +583,8 @@ void VideoStream::mounted() {
                     return type == Stream::StreamSourceType::Video ? client->video : client->audio;
                 };
                 // get all clients with Ready state
+                // this needs to go only to the clients with this stream attached
+                // makes sense to go have stream -> clients
                 for(auto id_client: state->clients) {
                     auto id = id_client.first;
                     auto client = id_client.second;
@@ -675,16 +623,85 @@ void VideoStream::mounted() {
                         }
                     }
                 }
-                state->MainThread->dispatch([state, ws]() {
-                    if (state->clients.empty()) {
-                        // we have no clients, stop the stream
-                        if (auto stream = ws.lock()) {
+
+                /// should be able to count them more direct by means of client->stream
+                state->MainThread->dispatch([state, wstream]() {
+                    if (auto stream = wstream.lock()) {
+                        if (state->client_count(stream) == 0)
                             stream->stop();
-                        }
                     }
                 });
             });
-            return stream;
+
+
+            bool found = false;
+            for (auto &s: state->avStreams) {
+                if (stream == s) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+                state->avStreams->push(stream); /// we need to deal with this single instance
+            if (!stream->isRunning)
+                stream->start();
+        };
+
+        /// need to know how required this is; it seems to only happen after the 2nd client of course because the stream 'starts' afterwards
+        /// Send previous key frame so browser can show something to user
+        /// @param stream Stream
+        /// @param video Video track data
+        state->sendInitialNalus = [](shared_ptr<Stream> stream, shared_ptr<ClientTrackData> video) {
+            auto h264 = dynamic_cast<webrtc::H264FileParser *>(stream->video.get());
+            auto initialNalus = h264->initialNALUS();
+
+            // send previous NALU key frame so users don't have to wait to see stream works
+            if (!initialNalus.empty()) {
+                const double frameDuration_s = double(h264->getSampleDuration_us()) / (1000 * 1000);
+                const uint32_t frameTimestampDuration = video->sender->rtpConfig->secondsToTimestamp(frameDuration_s);
+                video->sender->rtpConfig->timestamp = video->sender->rtpConfig->startTimestamp - frameTimestampDuration * 2;
+                video->track->send(initialNalus);
+                video->sender->rtpConfig->timestamp += frameTimestampDuration;
+                // Send initial NAL units again to start stream in firefox browser
+                video->track->send(initialNalus);
+            }
+        };
+
+        /// Add client to stream
+        /// @param client Client
+        /// @param adding_video True if adding video
+        state->addToStream = [state](shared_ptr<Client> client, bool isAddingVideo) {
+            if (client->getState() == Client::State::Waiting) {
+                client->setState(isAddingVideo ? Client::State::WaitingForAudio : Client::State::WaitingForVideo);
+            } else if ((client->getState() == Client::State::WaitingForAudio && !isAddingVideo)
+                    || (client->getState() == Client::State::WaitingForVideo && isAddingVideo)) {
+
+                // Audio and video tracks are collected now
+                assert(client->video.has_value() && client->audio.has_value());
+
+                //auto video = client->video.value();
+                /// this is Optional and not advised here because we havent called the stream_select
+                //if (state->avStream) {
+                //    state->sendInitialNalus(state->avStream, video);
+                //}
+
+                client->setState(Client::State::Ready);
+            }
+            
+            if (client->getState() == Client::State::Ready) {
+                state->startStream(client);
+            }
+        };
+
+        state->client_count = [state](shared_ptr<Stream> stream) -> int {
+            int r = 0;
+            Stream *st = stream.get();
+            for (auto &field: state->clients) {
+                shared_ptr<Client> &c = field.second;
+                if (c->stream == st)
+                    r++;
+            }
+            return r;
         };
 
 		state->wsOnMessage = [state](var message, Configuration config, shared_ptr<WebSocket> ws) {

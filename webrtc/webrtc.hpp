@@ -11,6 +11,8 @@ struct ClientTrackData {
     ClientTrackData(std::shared_ptr<rtc::Track> track, std::shared_ptr<rtc::RtcpSrReporter> sender);
 };
 
+struct Stream;
+
 struct Client {
     enum class State {
         Waiting,
@@ -30,11 +32,10 @@ struct Client {
     State getState();
 
     uint32_t rtpStartTimestamp = 0;
-
-private:
-    std::shared_mutex _mutex;
+    Stream* stream;
     State state = State::Waiting;
     std::string id;
+    std::shared_mutex _mutex;
     std::shared_ptr<rtc::PeerConnection> _peerConnection;
 };
 
@@ -63,8 +64,7 @@ class Stream: std::enable_shared_from_this<Stream> {
     uint64_t startTime = 0;
     std::mutex mutex;
     DispatchQueue dispatchQueue = DispatchQueue("StreamQueue");
-    std::string h264_dir = "opus";
-    std::string opus_dir = "h264"; /// this needs to be a function
+
     //ion::lambda<mx()> read; /// use this instead of the file parsing, by letting file parser become user of this
     bool _isRunning = false;
 public:
@@ -185,6 +185,10 @@ struct Services:composer {
 /// webrtc, rtc, rtc::impl -> rtc (the impl's are laid out in modules in ways i wouldnt design)
 /// to better understand the protocols i will organize them in simpler ways
 
+using StreamPtr = shared_ptr<webrtc::Stream>;
+
+using StreamSelect = lambda<shared_ptr<webrtc::Stream>(shared_ptr<webrtc::Client>)>;
+
 /// this should look for a video sink
 struct VideoStream: node {
 	struct props {
@@ -193,6 +197,8 @@ struct VideoStream: node {
 		
 		/// will need to explain this thing
 		std::unordered_map<std::string, shared_ptr<webrtc::Client>> clients;
+
+        doubly<shared_ptr<webrtc::Stream>> avStreams;
 
 		/// internal states
 		async service; /// if props are changed, the service must be restarted
@@ -213,7 +219,7 @@ struct VideoStream: node {
             (rtc::Configuration&, weak_ptr<rtc::WebSocket>, std::string)>
                 createPeerConnection;
 
-        lambda<void(void)> startStream;
+        lambda<void(shared_ptr<webrtc::Client>)> startStream;
 
         lambda<void(var, rtc::Configuration, std::shared_ptr<rtc::WebSocket>)> wsOnMessage;
 
@@ -224,13 +230,19 @@ struct VideoStream: node {
 
 		lambda<void(shared_ptr<webrtc::Client>, bool)> addToStream;
 
+        /// make mx objects out of webrtc client and stream
+        StreamSelect stream_select; 
+
+        lambda<int(shared_ptr<webrtc::Stream>)> client_count;
+
 		shared_ptr<webrtc::Stream> avStream = null;
 
 		webrtc::DispatchQueue *MainThread;
 
 		doubly<prop> meta() {
 			return {
-				prop { "source", source }
+				prop { "source", source },
+                prop { "stream-select", stream_select }
 			};
 		}
 		type_register(props);
@@ -239,40 +251,6 @@ struct VideoStream: node {
 	component(VideoStream, node, props);
 	
 	void mounted();
-};
-
-/// a node-controlled service that we express with for-each
-/// do this!
-struct Streamer: node {
-	struct props {
-		uri   source; /// can a uri be a type and properties, or instance of one?
-		async service;
-
-		// yes i want it set here and that is better to express pipeline such as this, and others
-		//doubly<Client> clients;
-
-        struct events {
-			// (var message, Configuration config, shared_ptr<WebSocket> ws)
-
-            dispatch on_enter;
-			dispatch on_leave;
-			dispatch on_stats; /// from here the user can request context
-        } ev;
-
-		doubly<prop> meta() {
-			return {
-				prop { "on-enter", ev.on_enter },
-				prop { "on-leave", ev.on_leave },
-				prop { "on-stats", ev.on_stats }
-			};
-		}
-
-		type_register(props);
-	};
-
-	void mounted() {
-		console.log("abc");
-	}
 };
 
 }
