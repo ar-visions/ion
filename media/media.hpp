@@ -23,7 +23,7 @@ struct audio:mx {
     void      convert_mono();
     array<short>  pcm_data();
     int           channels();
-    bool              save(path dest, i64 bitrate = 64000);
+    bool              save(ion::path dest, i64 bitrate = 64000);
     ion::image    fft_image(ion::size);
     operator          bool();
     bool         operator!();

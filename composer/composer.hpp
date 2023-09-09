@@ -471,7 +471,7 @@ struct node:mx {
         node*                   parent;
         style::style_map        style_avail; /// properties outside of meta are effectively internal state only; it can be labelled as such
         map<selection>          selections; /// style selected per member
-        composer*               composer;
+        ion::composer*          composer;
 
         ///
         doubly<prop> meta() {

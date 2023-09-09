@@ -27,16 +27,35 @@ int main(int argc, char **argv) try {
     const uri ws_signal = fmt { "ws://{0}:{1}/{2}", { config["ip"], config["port"], localId }};
     const uri https_res = "https://ar-visions.com:10022";
 
+    /// VideoStream's input types are:
+    /// -----------------------------
+    /// Element - runtime app
+    /// path    - remote executable app
+    /// uri     - remote stream (would be nice if we could pass-through)
+    /// str     - stream identifier
+    /// Stream  - stream instance
+
     return Services([&](Services &app) {
         return ion::array<node> {
             VideoStream {
                 { "id",             "streamer" },
                 { "source",         "" },
-                { "stream-select",  StreamSelect([](shared_ptr<Client> client) -> shared_ptr<Stream> {
-                    auto video  = make_shared<H264FileParser>("h264", 30, true);
-                    auto audio  = make_shared<OPUSFileParser>("opus", true);
-                    auto stream = make_shared<Stream>(video, audio);
+                { "stream-select",  StreamSelect([](Client client) -> Stream {
+                    auto video  = H264FileParser("h264", 30, true);
+
+                    uint64_t a = video.Source::data->getSampleTime_us();
+
+                    auto audio  = OPUSFileParser("opus", true);
+                    auto stream = Stream(video, audio);
+
+                    /// we must run an app here
                     return stream;
+                    /// --------------------------------
+                    /// if you return a path with executable, i wonder if it could run & stream (use winrt & dx11 on windows)
+                    /// apps can hold spawn/close multiple windows simultaneously so you would
+                    ///  need to actually be able to support that (by not right away)
+                    /// its just a data message to indicate new ones and streamable uri's from those idents
+                    /// --------------------------------
                 })}
             },
 

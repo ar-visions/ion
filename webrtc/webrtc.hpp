@@ -1,42 +1,48 @@
 #pragma once
 #include <net/net.hpp>
+#include <composer/composer.hpp>
 #include <rtc/rtc.hpp>
 #include <webrtc/streamer/dispatchqueue.hpp>
 
-namespace webrtc {
+namespace ion {
+
 struct ClientTrackData {
     std::shared_ptr<rtc::Track> track;
     std::shared_ptr<rtc::RtcpSrReporter> sender;
-
     ClientTrackData(std::shared_ptr<rtc::Track> track, std::shared_ptr<rtc::RtcpSrReporter> sender);
 };
 
 struct Stream;
 
-struct Client {
-    enum class State {
+struct Client:mx {
+    enum State {
         Waiting,
         WaitingForVideo,
         WaitingForAudio,
         Ready
     };
-    const std::shared_ptr<rtc::PeerConnection> & peerConnection = _peerConnection;
-    Client(std::shared_ptr<rtc::PeerConnection> pc) {
-        _peerConnection = pc;
+
+    struct iClient {
+        memory*     stream;
+        State       state = State::Waiting;
+        str         id;
+        uint32_t    rtpStartTimestamp = 0;
+
+        std::shared_mutex _mutex;
+        std::optional<std::shared_ptr<ClientTrackData>> video;
+        std::optional<std::shared_ptr<ClientTrackData>> audio;
+        std::optional<std::shared_ptr<rtc::DataChannel>> dataChannel;
+        std::shared_ptr<rtc::PeerConnection> peerConnection;
+
+        type_register(iClient);
+    };
+
+    mx_object(Client, mx, iClient);
+
+    Client(std::shared_ptr<rtc::PeerConnection> pc, str id) : Client() {
+        data->peerConnection = pc;
+        data->id = id;
     }
-    std::optional<std::shared_ptr<ClientTrackData>> video;
-    std::optional<std::shared_ptr<ClientTrackData>> audio;
-    std::optional<std::shared_ptr<rtc::DataChannel>> dataChannel;
-
-    void setState(State state);
-    State getState();
-
-    uint32_t rtpStartTimestamp = 0;
-    Stream* stream;
-    State state = State::Waiting;
-    std::string id;
-    std::shared_mutex _mutex;
-    std::shared_ptr<rtc::PeerConnection> _peerConnection;
 };
 
 struct ClientTrack {
@@ -47,86 +53,135 @@ struct ClientTrack {
 
 uint64_t currentTimeInMicroSeconds();
 
-class StreamSource {
-protected:
+enums(StreamType, Audio,
+        "Audio, Video",
+         Audio, Video);
 
-public:
-    virtual void start() = 0;
-    virtual void stop() = 0;
-    virtual void loadNextSample() = 0;
-
-    virtual uint64_t getSampleTime_us() = 0;
-    virtual uint64_t getSampleDuration_us() = 0;
-	virtual rtc::binary getSample() = 0;
-};
-
-class Stream: std::enable_shared_from_this<Stream> {
-    uint64_t startTime = 0;
-    std::mutex mutex;
-    DispatchQueue dispatchQueue = DispatchQueue("StreamQueue");
-
-    //ion::lambda<mx()> read; /// use this instead of the file parsing, by letting file parser become user of this
-    bool _isRunning = false;
-public:
-    const std::shared_ptr<StreamSource> audio;
-    const std::shared_ptr<StreamSource> video;
-
-    Stream(std::shared_ptr<StreamSource> video, std::shared_ptr<StreamSource> audio);
-    ~Stream();
-
-    enum class StreamSourceType {
-        Audio,
-        Video
+struct Source:mx {
+    
+    struct iSource {
+        StreamType              type;
+        lambda<uint64_t()>      getSampleTime_us;
+        lambda<uint64_t()>      getSampleDuration_us;
+        lambda<rtc::binary()>   getSample;
+        lambda<void()>          loadNextSample;
+        lambda<void()>          start;
+        lambda<void()>          stop;
+        type_register(iSource);
     };
 
-private:
-    rtc::synchronized_callback<StreamSourceType, uint64_t, rtc::binary> sampleHandler;
-
-    std::pair<std::shared_ptr<StreamSource>, StreamSourceType> unsafePrepareForSample();
-
-    void sendSample();
-
-public:
-    void onSample(std::function<void (StreamSourceType, uint64_t, rtc::binary)> handler);
-    void start();
-    void stop();
-    const bool & isRunning = _isRunning;
-};
-}
-
-#include <composer/composer.hpp>
-
-//using namespace std::chrono_literals;
-using std::shared_ptr;
-using std::weak_ptr;
-template <class T> weak_ptr<T> make_weak_ptr(shared_ptr<T> ptr) { return ptr; }
-
-
-/// pre-compiled headers are good place to put in shimmable utility declaration and implementation
-#ifdef _WIN32
-#include <winsock2.h> /// must do this if you include windows
-#include <windows.h>
-
-struct timezone {
-	int tz_minuteswest;
-	int tz_dsttime;
+    mx_object(Source, mx, iSource);
 };
 
-int gettimeofday(struct timeval *tv, struct timezone *tz);
+struct Stream:mx {
+    struct iStream {
+        uint64_t startTime = 0;
+        std::mutex mutex;
+        webrtc::DispatchQueue dispatchQueue = webrtc::DispatchQueue("StreamQueue");
+        //ion::lambda<mx()> read; /// use this instead of the file parsing, by letting file parser become user of this
+        bool    _isRunning = false;
+        bool    has_data;
+        Source  audio;
+        Source  video;
+        rtc::synchronized_callback<StreamType, uint64_t, rtc::binary> sampleHandler;
 
-#else
-#include <unistd.h>
-#include <sys/time.h>
-#include <arpa/inet.h>
-#endif
+        type_register(iStream);
+
+        void onSample(std::function<void (StreamType, uint64_t, rtc::binary)> handler) {
+            sampleHandler = handler;
+        }
+
+        void start() {
+            std::lock_guard lock(mutex);
+            if (_isRunning) {
+                return;
+            }
+            _isRunning = true;
+            startTime = currentTimeInMicroSeconds();
+            audio->start();
+            video->start();
+            dispatchQueue.dispatch([this]() {
+                this->sendSample();
+            });
+        }
+
+        void stop() {
+            std::lock_guard lock(mutex);
+            if (!_isRunning) {
+                return;
+            }
+            _isRunning = false;
+            dispatchQueue.removePending();
+            audio->stop();
+            video->stop();
+        }
+
+        ~iStream() {
+            stop();
+        }
+
+        std::pair<Source, StreamType> unsafePrepareForSample() {
+            Source ss;
+            StreamType sst;
+            uint64_t nextTime;
+
+            if (audio->getSampleTime_us() < video->getSampleTime_us()) {
+                ss = audio;
+                sst = StreamType::Audio;
+                nextTime = audio->getSampleTime_us();
+            } else {
+                ss = video;
+                sst = StreamType::Video;
+                nextTime = video->getSampleTime_us();
+            }
+
+            auto currentTime = currentTimeInMicroSeconds();
+
+            auto elapsed = currentTime - startTime;
+            if (nextTime > elapsed) {
+                auto waitTime = nextTime - elapsed;
+                mutex.unlock();
+                usleep(waitTime);
+                mutex.lock();
+            }
+            return {ss, sst};
+        }
+
+        void sendSample() {
+            std::lock_guard lock(mutex);
+            if (!_isRunning) {
+                return;
+            }
+            auto ssSST = unsafePrepareForSample();
+            auto ss = ssSST.first;
+            auto sst = ssSST.second;
+            auto sample = ss->getSample();
+            sampleHandler(sst, ss->getSampleTime_us(), sample);
+            ss->loadNextSample();
+            dispatchQueue.dispatch([this]() {
+                this->sendSample();
+            });
+        }
+    };
+
+    mx_object(Stream, mx, iStream);
+
+    Stream(Source video, Source audio) : Stream() {
+        data->video = video;
+        data->audio = audio;
+        data->has_data = true;
+    }
+
+    operator bool() {
+        return data->has_data;
+    }
+
+    bool operator!() {
+        return !(operator bool());
+    }
+};
 
 
-namespace webrtc {
-/// webrtc -> service
-ion::async service(ion::uri uri, ion::lambda<ion::message(ion::message)> fn_process);
-}
-
-namespace ion {
 
 using VideoSink = lambda<void(mx)>;
 
@@ -185,9 +240,7 @@ struct Services:composer {
 /// webrtc, rtc, rtc::impl -> rtc (the impl's are laid out in modules in ways i wouldnt design)
 /// to better understand the protocols i will organize them in simpler ways
 
-using StreamPtr = shared_ptr<webrtc::Stream>;
-
-using StreamSelect = lambda<shared_ptr<webrtc::Stream>(shared_ptr<webrtc::Client>)>;
+using StreamSelect = lambda<Stream(Client)>;
 
 /// this should look for a video sink
 struct VideoStream: node {
@@ -196,9 +249,9 @@ struct VideoStream: node {
 		uri   source;  /// url could be a vulkan device?
 		
 		/// will need to explain this thing
-		std::unordered_map<std::string, shared_ptr<webrtc::Client>> clients;
+		ion::map<Client> clients;
 
-        doubly<shared_ptr<webrtc::Stream>> avStreams;
+        doubly<Stream> avStreams;
 
 		/// internal states
 		async service; /// if props are changed, the service must be restarted
@@ -206,36 +259,36 @@ struct VideoStream: node {
 		/// ideally we want to express this in node tree!
 		/// this is a foothold into a graple on this
 
-        lambda<std::shared_ptr<webrtc::ClientTrackData>(
+        lambda<std::shared_ptr<ClientTrackData>(
             std::shared_ptr<rtc::PeerConnection> pc, const uint8_t payloadType,
             uint32_t ssrc, std::string cname, std::string msid,
             lambda<void(void)>)> addVideo;
 
-        lambda<std::shared_ptr<webrtc::ClientTrackData>(
-            shared_ptr<rtc::PeerConnection>, uint8_t, uint32_t, std::string, std::string, lambda<void (void)>
+        lambda<std::shared_ptr<ClientTrackData>(
+            std::shared_ptr<rtc::PeerConnection>, uint8_t, uint32_t, std::string, std::string, lambda<void (void)>
         )> addAudio;
 
-        lambda<std::shared_ptr<webrtc::Client>
-            (rtc::Configuration&, weak_ptr<rtc::WebSocket>, std::string)>
+        lambda<Client
+            (rtc::Configuration&, std::weak_ptr<rtc::WebSocket>, str)>
                 createPeerConnection;
 
-        lambda<void(shared_ptr<webrtc::Client>)> startStream;
+        lambda<void(Client)> startStream;
 
         lambda<void(var, rtc::Configuration, std::shared_ptr<rtc::WebSocket>)> wsOnMessage;
 
 		//state->stream = createStream(const string h264Samples, const unsigned fps, const string opusSamples)
-		lambda<std::shared_ptr<webrtc::Stream>(std::string, unsigned, std::string)> createStream;
+		lambda<Stream (std::string, unsigned, std::string)> createStream;
 
-		lambda<void(shared_ptr<webrtc::Stream>, std::shared_ptr<webrtc::ClientTrackData> video)> sendInitialNalus;
+		lambda<void(Stream , std::shared_ptr<ClientTrackData> video)> sendInitialNalus;
 
-		lambda<void(shared_ptr<webrtc::Client>, bool)> addToStream;
+		lambda<void(Client, bool)> addToStream;
 
         /// make mx objects out of webrtc client and stream
         StreamSelect stream_select; 
 
-        lambda<int(shared_ptr<webrtc::Stream>)> client_count;
+        lambda<int(Stream )> client_count;
 
-		shared_ptr<webrtc::Stream> avStream = null;
+		Stream avStream;
 
 		webrtc::DispatchQueue *MainThread;
 
@@ -253,4 +306,37 @@ struct VideoStream: node {
 	void mounted();
 };
 
+
 }
+
+
+
+//using namespace std::chrono_literals;
+using std::shared_ptr;
+using std::weak_ptr;
+template <class T> weak_ptr<T> make_weak_ptr(shared_ptr<T> ptr) { return ptr; }
+
+
+/// pre-compiled headers are good place to put in shimmable utility declaration and implementation
+#ifdef _WIN32
+#include <winsock2.h> /// must do this if you include windows
+#include <windows.h>
+
+struct timezone {
+	int tz_minuteswest;
+	int tz_dsttime;
+};
+
+int gettimeofday(struct timeval *tv, struct timezone *tz);
+
+#else
+#include <unistd.h>
+#include <sys/time.h>
+#include <arpa/inet.h>
+#endif
+
+
+namespace ion {
+ion::async service(ion::uri uri, ion::lambda<ion::message(ion::message)> fn_process);
+}
+

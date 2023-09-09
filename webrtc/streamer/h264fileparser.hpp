@@ -13,15 +13,16 @@
 #include "fileparser.hpp"
 #include <optional>
 
-namespace webrtc {
-class H264FileParser: public FileParser {
-    std::optional<std::vector<std::byte>> previousUnitType5 = std::nullopt;
-    std::optional<std::vector<std::byte>> previousUnitType7 = std::nullopt;
-    std::optional<std::vector<std::byte>> previousUnitType8 = std::nullopt;
-
-public:
+namespace ion {
+struct H264FileParser:FileParser {
+    struct h264data {
+        std::optional<std::vector<std::byte>> previousUnitType5 = std::nullopt;
+        std::optional<std::vector<std::byte>> previousUnitType7 = std::nullopt;
+        std::optional<std::vector<std::byte>> previousUnitType8 = std::nullopt;
+        type_register(h264data);
+    };
+    mx_object(H264FileParser, FileParser, h264data);
     H264FileParser(std::string directory, uint32_t fps, bool loop);
-    void loadNextSample() override;
     std::vector<std::byte> initialNALUS();
 };
 }

@@ -14,27 +14,25 @@
 #include <vector>
 #include "stream.hpp"
 
-namespace webrtc {
-class FileParser: public StreamSource {
-    std::string directory;
-    std::string extension;
-    uint64_t sampleDuration_us;
-    uint64_t sampleTime_us = 0;
-    uint32_t counter = -1;
-    bool loop;
-    uint64_t loopTimestampOffset = 0;
-protected:
-    rtc::binary sample = {};
-public:
-    FileParser(std::string directory, std::string extension, uint32_t samplesPerSecond, bool loop);
-    virtual ~FileParser();
-    virtual void start() override;
-    virtual void stop() override;
-    virtual void loadNextSample() override;
+namespace ion {
 
-    rtc::binary getSample() override;
-    uint64_t getSampleTime_us() override;
-    uint64_t getSampleDuration_us() override;
+struct FileParser: Source {
+    struct iFileParser {
+        std::string directory;
+        std::string extension;
+        uint64_t sampleDuration_us;
+        uint64_t sampleTime_us = 0;
+        uint32_t counter = -1;
+        bool loop;
+        uint64_t loopTimestampOffset = 0;
+        rtc::binary sample = {};
+        type_register(iFileParser);
+    };
+
+    mx_object(FileParser, Source, iFileParser);
+
+    void  init(std::string directory, std::string extension, uint32_t samplesPerSecond, bool loop);
+    FileParser(std::string directory, std::string extension, uint32_t samplesPerSecond, bool loop);
 };
 }
 

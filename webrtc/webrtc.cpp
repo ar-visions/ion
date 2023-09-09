@@ -57,188 +57,109 @@ using namespace std;
 using namespace rtc;
 
 /// service is a better name for it because its data as well as video.  its any stream
-namespace webrtc {
+namespace ion {
 
+void FileParser::init(string directory, string extension, uint32_t samplesPerSecond, bool loop) {
+    data->directory         = directory;
+    data->extension         = extension;
+    data->loop              = loop;
+    data->sampleDuration_us = 1000 * 1000 / samplesPerSecond;
 
+    Source::intern     *base = Source::data;
+    FileParser::intern *fp   = FileParser::data;
 
-/// args for this context
-static ion::map<mx> args;
-
-Stream::Stream(std::shared_ptr<StreamSource> video, std::shared_ptr<StreamSource> audio):
-	std::enable_shared_from_this<Stream>(), video(video), audio(audio) { }
-
-Stream::~Stream() {
-    stop();
-}
-
-std::pair<std::shared_ptr<StreamSource>, Stream::StreamSourceType> Stream::unsafePrepareForSample() {
-    std::shared_ptr<StreamSource> ss;
-    StreamSourceType sst;
-    uint64_t nextTime;
-    if (audio->getSampleTime_us() < video->getSampleTime_us()) {
-        ss = audio;
-        sst = StreamSourceType::Audio;
-        nextTime = audio->getSampleTime_us();
-    } else {
-        ss = video;
-        sst = StreamSourceType::Video;
-        nextTime = video->getSampleTime_us();
-    }
-
-    auto currentTime = currentTimeInMicroSeconds();
-
-    auto elapsed = currentTime - startTime;
-    if (nextTime > elapsed) {
-        auto waitTime = nextTime - elapsed;
-        mutex.unlock();
-        usleep(waitTime);
-        mutex.lock();
-    }
-    return {ss, sst};
-}
-
-void Stream::sendSample() {
-    std::lock_guard lock(mutex);
-    if (!isRunning) {
-        return;
-    }
-    auto ssSST = unsafePrepareForSample();
-    auto ss = ssSST.first;
-    auto sst = ssSST.second;
-    auto sample = ss->getSample();
-    sampleHandler(sst, ss->getSampleTime_us(), sample);
-    ss->loadNextSample();
-    dispatchQueue.dispatch([this]() {
-        this->sendSample();
-    });
-}
-
-void Stream::onSample(std::function<void (StreamSourceType, uint64_t, rtc::binary)> handler) {
-    sampleHandler = handler;
-}
-
-void Stream::start() {
-    std::lock_guard lock(mutex);
-    if (isRunning) {
-        return;
-    }
-    _isRunning = true;
-    startTime = currentTimeInMicroSeconds();
-    audio->start();
-    video->start();
-    dispatchQueue.dispatch([this]() {
-        this->sendSample();
-    });
-}
-
-void Stream::stop() {
-    std::lock_guard lock(mutex);
-    if (!isRunning) {
-        return;
-    }
-    _isRunning = false;
-    dispatchQueue.removePending();
-    audio->stop();
-    video->stop();
-};
-
-FileParser::FileParser(string directory, string extension, uint32_t samplesPerSecond, bool loop) {
-    this->directory = directory;
-    this->extension = extension;
-    this->loop = loop;
-    this->sampleDuration_us = 1000 * 1000 / samplesPerSecond;
-}
-
-FileParser::~FileParser() {
-	stop();
-}
-
-void FileParser::start() {
-    sampleTime_us = std::numeric_limits<uint64_t>::max() - sampleDuration_us + 1;
-    loadNextSample();
-}
-
-void FileParser::stop() {
-    sample = {};
-    sampleTime_us = 0;
-    counter = -1;
-}
-
-void FileParser::loadNextSample() {
-    string frame_id = to_string(++counter);
-
-    string url = directory + "/sample-" + frame_id + extension;
-    ifstream source(url, ios_base::binary);
-    if (!source) {
-        if (loop && counter > 0) {
-            loopTimestampOffset = sampleTime_us;
-            counter = -1;
-            loadNextSample();
+    base->getSampleTime_us = [fp]() {
+        return fp->sampleTime_us;
+    };
+    base->getSampleDuration_us = [fp]() {
+        return fp->sampleDuration_us;
+    };
+    base->start = [base, fp]() {
+        fp->sampleTime_us = std::numeric_limits<uint64_t>::max() - fp->sampleDuration_us + 1;
+        base->loadNextSample();
+    };
+    base->stop = [base, fp]() {
+        fp->sample = {};
+        fp->sampleTime_us = 0;
+        fp->counter = -1;
+    };
+    base->getSample = [fp]() {
+        return fp->sample;
+    };
+    base->loadNextSample = [base, fp]() {
+        string frame_id = std::to_string(++fp->counter);
+        string url = fp->directory + "/sample-" + frame_id + fp->extension;
+        ifstream source(url, ios_base::binary);
+        if (!source) {
+            if (fp->loop && fp->counter > 0) {
+                fp->loopTimestampOffset = fp->sampleTime_us;
+                fp->counter = -1;
+                base->loadNextSample();
+                return;
+            }
+            fp->sample = {};
             return;
         }
-        sample = {};
-        return;
-    }
-
-    vector<uint8_t> fileContents((std::istreambuf_iterator<char>(source)), std::istreambuf_iterator<char>());
-    sample = *reinterpret_cast<vector<byte> *>(&fileContents);
-    sampleTime_us += sampleDuration_us;
+        vector<uint8_t> fileContents((std::istreambuf_iterator<char>(source)), std::istreambuf_iterator<char>());
+        fp->sample = *reinterpret_cast<vector<byte> *>(&fileContents);
+        fp->sampleTime_us += fp->sampleDuration_us;
+    };
 }
 
-rtc::binary FileParser::getSample() {
-	return sample;
+FileParser::FileParser(string directory, string extension, uint32_t samplesPerSecond, bool loop) : FileParser() {
+    init(directory, extension, samplesPerSecond, loop);
 }
 
-uint64_t FileParser::getSampleTime_us() {
-	return sampleTime_us;
-}
 
-uint64_t FileParser::getSampleDuration_us() {
-	return sampleDuration_us;
-}
+H264FileParser::H264FileParser(string directory, uint32_t fps, bool loop): H264FileParser() {
+    FileParser::init(directory, ".h264", fps, loop);
+    auto base =         Source::data;
+    auto fp   =     FileParser::data;
+    auto h264 = H264FileParser::data;
 
-H264FileParser::H264FileParser(string directory, uint32_t fps, bool loop): FileParser(directory, ".h264", fps, loop) { }
+    lambda<void()> base_load = base->loadNextSample;
 
-void H264FileParser::loadNextSample() {
-    FileParser::loadNextSample();
-
-    size_t i = 0;
-    while (i < sample.size()) {
-        assert(i + 4 < sample.size());
-        auto lengthPtr = (uint32_t *) (sample.data() + i);
-        uint32_t length = ntohl(*lengthPtr);
-        auto naluStartIndex = i + 4;
-        auto naluEndIndex = naluStartIndex + length;
-        assert(naluEndIndex <= sample.size());
-        auto header = reinterpret_cast<rtc::NalUnitHeader *>(sample.data() + naluStartIndex);
-        auto type = header->unitType();
-        switch (type) {
-            case 7:
-                previousUnitType7 = {sample.begin() + i, sample.begin() + naluEndIndex};
-                break;
-            case 8:
-                previousUnitType8 = {sample.begin() + i, sample.begin() + naluEndIndex};;
-                break;
-            case 5:
-                previousUnitType5 = {sample.begin() + i, sample.begin() + naluEndIndex};;
-                break;
+    base->loadNextSample = [fp, base, h264, base_load]() { // overwrite lambda, and stack base method
+        base_load();
+        size_t i = 0;
+        while (i < fp->sample.size()) {
+            assert(i + 4 < fp->sample.size());
+            auto lengthPtr = (uint32_t *) (fp->sample.data() + i);
+            uint32_t length = ntohl(*lengthPtr);
+            auto naluStartIndex = i + 4;
+            auto naluEndIndex = naluStartIndex + length;
+            assert(naluEndIndex <= fp->sample.size());
+            auto header = reinterpret_cast<rtc::NalUnitHeader *>(fp->sample.data() + naluStartIndex);
+            auto type = header->unitType();
+            switch (type) {
+                case 7:
+                    h264->previousUnitType7 = {fp->sample.begin() + i, fp->sample.begin() + naluEndIndex};
+                    break;
+                case 8:
+                    h264->previousUnitType8 = {fp->sample.begin() + i, fp->sample.begin() + naluEndIndex};
+                    break;
+                case 5:
+                    h264->previousUnitType5 = {fp->sample.begin() + i, fp->sample.begin() + naluEndIndex};
+                    break;
+            }
+            i = naluEndIndex;
         }
-        i = naluEndIndex;
-    }
+    };
 }
+
 
 vector<byte> H264FileParser::initialNALUS() {
     vector<byte> units{};
-    if (previousUnitType7.has_value()) {
-        auto nalu = previousUnitType7.value();
+    if (data->previousUnitType7.has_value()) {
+        auto nalu = data->previousUnitType7.value();
         units.insert(units.end(), nalu.begin(), nalu.end());
     }
-    if (previousUnitType8.has_value()) {
-        auto nalu = previousUnitType8.value();
+    if (data->previousUnitType8.has_value()) {
+        auto nalu = data->previousUnitType8.value();
         units.insert(units.end(), nalu.begin(), nalu.end());
     }
-    if (previousUnitType5.has_value()) {
-        auto nalu = previousUnitType5.value();
+    if (data->previousUnitType5.has_value()) {
+        auto nalu = data->previousUnitType5.value();
         units.insert(units.end(), nalu.begin(), nalu.end());
     }
     return units;
@@ -246,11 +167,10 @@ vector<byte> H264FileParser::initialNALUS() {
 
 OPUSFileParser::OPUSFileParser(string directory, bool loop, uint32_t samplesPerSecond): FileParser(directory, ".opus", samplesPerSecond, loop) { }
 
-shared_ptr<Client> createPeerConnection(
-    const Configuration &config, weak_ptr<WebSocket> wws, string id);
+}
 
-void addToStream(shared_ptr<Client> client, bool isAddingVideo);
 
+namespace webrtc {
 DispatchQueue::DispatchQueue(std::string name, size_t threadCount) :
     name{std::move(name)}, threads(threadCount) {
     for(size_t i = 0; i < threads.size(); i++)
@@ -326,32 +246,9 @@ void DispatchQueue::dispatchThreadHandler(void) {
     } while (!quit);
 }
 
-
-ClientTrackData::ClientTrackData(shared_ptr<Track> track, shared_ptr<RtcpSrReporter> sender) {
-	this->track = track;
-	this->sender = sender;
 }
 
-void Client::setState(State state) {
-	std::unique_lock lock(_mutex);
-	this->state = state;
-}
-
-Client::State Client::getState() {
-	std::shared_lock lock(_mutex);
-	return state;
-}
-
-ClientTrack::ClientTrack(string id, shared_ptr<ClientTrackData> trackData) {
-	this->id = id;
-	this->trackData = trackData;
-}
-
-uint64_t currentTimeInMicroSeconds() {
-	struct timeval time;
-	gettimeofday(&time, NULL);
-	return uint64_t(time.tv_sec) * 1000 * 1000 + time.tv_usec;
-}
+namespace ion {
 
 /// general service function to facilitate https or web sockets messages
 ion::async service(uri url, lambda<message(message)> fn_process) {
@@ -394,17 +291,24 @@ ion::async service(uri url, lambda<message(message)> fn_process) {
     return {};
 };
 
+ClientTrackData::ClientTrackData(std::shared_ptr<rtc::Track> track, std::shared_ptr<rtc::RtcpSrReporter> sender) {
+	this->track = track;
+	this->sender = sender;
 }
 
-namespace ion {
+ClientTrack::ClientTrack(string id, shared_ptr<ClientTrackData> trackData) {
+	this->id = id;
+	this->trackData = trackData;
+}
+
+uint64_t currentTimeInMicroSeconds() {
+	struct timeval time;
+	gettimeofday(&time, NULL);
+	return uint64_t(time.tv_sec) * 1000 * 1000 + time.tv_usec;
+}
+
 /// can update in real time 1/hz or through polling, but not needed at the moment
 int Services::run() {
-
-    data->video_sink = [](mx nalu) {
-        console.log("nalu bytes: {0}", { int(nalu.count()) });
-        /// we hand off to clients that need their data here
-    };
-    
     node e = data->service_fn(*this);
     update_all(e);
     for (;;) {
@@ -414,7 +318,7 @@ int Services::run() {
 }
 
 void Service::mounted() {	
-	state->service = webrtc::service(state->url, state->on_message);
+	state->service = ion::service(state->url, state->on_message);
 }
 
 /// contextual class instances are safely allocated until the data is not;
@@ -429,10 +333,6 @@ void VideoStream::mounted() {
 	state->service = async {1, [state, video_sink](runtime *proc, int i) -> mx {
 
         using PeerConnection = rtc::PeerConnection;
-        using Client = webrtc::Client;
-        using Stream = webrtc::Stream;
-        using ClientTrack = webrtc::ClientTrack;
-        using ClientTrackData = webrtc::ClientTrackData;
         using Configuration = rtc::Configuration;
 
         /// Main dispatch queue (this is main for webrtc module, its own abstract)
@@ -488,9 +388,9 @@ void VideoStream::mounted() {
         };
 
         // Create and setup a PeerConnection
-        state->createPeerConnection = [state](Configuration &config, weak_ptr<WebSocket> wws, string id) {
+        state->createPeerConnection = [state](Configuration &config, weak_ptr<WebSocket> wws, str id) -> Client {
             auto pc = make_shared<PeerConnection>(config);
-            auto client = make_shared<Client>(pc);
+            auto client = Client(pc, id);
 
             pc->onStateChange([state, id](PeerConnection::State peer) {
                 cout << "State: " << int(peer) << endl;
@@ -499,7 +399,7 @@ void VideoStream::mounted() {
                     peer == PeerConnection::State::Closed) {
                     // remove disconnected client
                     state->MainThread->dispatch([state, id]() {
-                        state->clients.erase(id);
+                        state->clients->remove((mx&)id);
                     });
                 }
             });
@@ -524,20 +424,16 @@ void VideoStream::mounted() {
                 }
             });
 
-            client->video = state->addVideo(pc, 102, 1, "video-stream", "stream1", [state, id, wc = make_weak_ptr(client)]() {
-                state->MainThread->dispatch([state, wc]() {
-                    if (auto c = wc.lock()) {
-                        state->addToStream(c, true);
-                    }
+            client->video = state->addVideo(pc, 102, 1, "video-stream", "stream1", [state, id, client]() {
+                state->MainThread->dispatch([state, client]() {
+                    state->addToStream(client, true);
                 });
                 cout << "Video from " << id << " opened" << endl;
             });
 
-            client->audio = state->addAudio(pc, 111, 2, "audio-stream", "stream1", [state, id, wc = make_weak_ptr(client)]() {
-                state->MainThread->dispatch([state, wc]() {
-                    if (auto c = wc.lock()) {
-                        state->addToStream(c, false);
-                    }
+            client->audio = state->addAudio(pc, 111, 2, "audio-stream", "stream1", [state, id, client]() {
+                state->MainThread->dispatch([state, client]() {
+                    state->addToStream(client, false);
                 });
                 cout << "Audio from " << id << " opened" << endl;
             });
@@ -564,32 +460,31 @@ void VideoStream::mounted() {
 
         /// Start stream (single instance, needs to be improved upon lol)
         /// take the Client and any negotiated uri channel into account
-        state->startStream = [state](shared_ptr<webrtc::Client> client) {
-            shared_ptr<webrtc::Stream> stream = state->stream_select(client);//state->createStream("h264", 30, "opus");
+        state->startStream = [state](Client client) {
+            Stream stream = state->stream_select(client);//state->createStream("h264", 30, "opus");
             
-            if (!stream) {
-                return;
-            }
+            if (!stream)
+                return; /// could return an error to the client here
 
-            // below should be a generic, no user needs to define onSample
+            client->stream = stream.mem; // simply weak reference
 
             // set callback responsible for sample sending
             stream->onSample(
-                    [state, wstream = make_weak_ptr(stream)](Stream::StreamSourceType type, uint64_t sampleTime, rtc::binary sample) {
+                    [state, stream](StreamType type, uint64_t sampleTime, rtc::binary sample) {
                 vector<ClientTrack> tracks{};
-                string streamType = type == Stream::StreamSourceType::Video ? "video" : "audio";
+                string streamType = type == StreamType::Video ? "video" : "audio";
                 // get track for given type
-                function<optional<shared_ptr<ClientTrackData>> (shared_ptr<Client>)> getTrackData = [type](shared_ptr<Client> client) {
-                    return type == Stream::StreamSourceType::Video ? client->video : client->audio;
+                function<optional<shared_ptr<ClientTrackData>> (Client)> getTrackData = [type](Client client) {
+                    return type.value == StreamType::Video ? client->video : client->audio;
                 };
                 // get all clients with Ready state
                 // this needs to go only to the clients with this stream attached
                 // makes sense to go have stream -> clients
-                for(auto id_client: state->clients) {
-                    auto id = id_client.first;
-                    auto client = id_client.second;
+                for(field<Client> &id_client: state->clients) {
+                    str id         = id_client.key.grab();
+                    Client &client = id_client.value;
                     auto optTrackData = getTrackData(client);
-                    if (client->getState() == Client::State::Ready && optTrackData.has_value()) {
+                    if (client->state == Client::State::Ready && optTrackData.has_value()) {
                         auto trackData = optTrackData.value();
                         tracks.push_back(ClientTrack(id, trackData));
                     }
@@ -625,10 +520,9 @@ void VideoStream::mounted() {
                 }
 
                 /// should be able to count them more direct by means of client->stream
-                state->MainThread->dispatch([state, wstream]() {
-                    if (auto stream = wstream.lock()) {
-                        if (state->client_count(stream) == 0)
-                            stream->stop();
+                state->MainThread->dispatch([state, stream]() {
+                    if (state->client_count(stream) == 0) {
+                        ((Stream &)stream)->stop();
                     }
                 });
             });
@@ -636,28 +530,24 @@ void VideoStream::mounted() {
 
             bool found = false;
             for (auto &s: state->avStreams) {
-                if (stream == s) {
+                if (stream.mem == s.mem) {
                     found = true;
                     break;
                 }
             }
             if (!found)
                 state->avStreams->push(stream); /// we need to deal with this single instance
-            if (!stream->isRunning)
+            if (!stream->_isRunning)
                 stream->start();
         };
 
-        /// need to know how required this is; it seems to only happen after the 2nd client of course because the stream 'starts' afterwards
-        /// Send previous key frame so browser can show something to user
-        /// @param stream Stream
-        /// @param video Video track data
-        state->sendInitialNalus = [](shared_ptr<Stream> stream, shared_ptr<ClientTrackData> video) {
-            auto h264 = dynamic_cast<webrtc::H264FileParser *>(stream->video.get());
-            auto initialNalus = h264->initialNALUS();
+        state->sendInitialNalus = [](Stream stream, shared_ptr<ClientTrackData> video) {
+            auto h264 = H264FileParser(stream->video.grab());
+            auto initialNalus = h264.initialNALUS();
 
             // send previous NALU key frame so users don't have to wait to see stream works
             if (!initialNalus.empty()) {
-                const double frameDuration_s = double(h264->getSampleDuration_us()) / (1000 * 1000);
+                const double frameDuration_s = double(h264.Source::data->getSampleDuration_us()) / (1000 * 1000);
                 const uint32_t frameTimestampDuration = video->sender->rtpConfig->secondsToTimestamp(frameDuration_s);
                 video->sender->rtpConfig->timestamp = video->sender->rtpConfig->startTimestamp - frameTimestampDuration * 2;
                 video->track->send(initialNalus);
@@ -667,14 +557,11 @@ void VideoStream::mounted() {
             }
         };
 
-        /// Add client to stream
-        /// @param client Client
-        /// @param adding_video True if adding video
-        state->addToStream = [state](shared_ptr<Client> client, bool isAddingVideo) {
-            if (client->getState() == Client::State::Waiting) {
-                client->setState(isAddingVideo ? Client::State::WaitingForAudio : Client::State::WaitingForVideo);
-            } else if ((client->getState() == Client::State::WaitingForAudio && !isAddingVideo)
-                    || (client->getState() == Client::State::WaitingForVideo && isAddingVideo)) {
+        state->addToStream = [state](Client client, bool isAddingVideo) {
+            if (client->state == Client::State::Waiting) {
+                client->state = isAddingVideo ? Client::State::WaitingForAudio : Client::State::WaitingForVideo;
+            } else if ((client->state == Client::State::WaitingForAudio && !isAddingVideo)
+                    || (client->state == Client::State::WaitingForVideo && isAddingVideo)) {
 
                 // Audio and video tracks are collected now
                 assert(client->video.has_value() && client->audio.has_value());
@@ -685,22 +572,21 @@ void VideoStream::mounted() {
                 //    state->sendInitialNalus(state->avStream, video);
                 //}
 
-                client->setState(Client::State::Ready);
+                client->state = Client::State::Ready;
             }
             
-            if (client->getState() == Client::State::Ready) {
+            if (client->state == Client::State::Ready) {
                 state->startStream(client);
             }
         };
 
-        state->client_count = [state](shared_ptr<Stream> stream) -> int {
+        state->client_count = [state](Stream stream) -> int {
             int r = 0;
-            Stream *st = stream.get();
-            for (auto &field: state->clients) {
-                shared_ptr<Client> &c = field.second;
-                if (c->stream == st)
+            memory *mem = stream.mem;
+            for (field<Client> &field: state->clients)
+                if (field.value->stream == mem)
                     r++;
-            }
+            
             return r;
         };
 
@@ -712,23 +598,20 @@ void VideoStream::mounted() {
 			if (!it) return;
 			str type = it->grab();
 
-			/// integrate this into the context tree
-
 			if (type == "request") {
-				state->clients.emplace(id, state->createPeerConnection(config, make_weak_ptr(ws), id));
+				state->clients[id] = state->createPeerConnection(config, make_weak_ptr(ws), id);
 			} else if (type == "answer") {
-				/// set and guard
-				if (auto jt = state->clients.find(id); jt != state->clients.end()) {
-					auto pc = jt->second->peerConnection;
+                auto f = state->clients->lookup(id);
+                if (f) {
+                    Client &client = f->value;
 					str sdp = message["sdp"];
 					auto description = Description(sdp, type);
-					pc->setRemoteDescription(description);
+					client->peerConnection->setRemoteDescription(description);
 				}
 			}
 		};
 
 		/// create web socket for connection to relay service
-		/// (should define this in administrative/accounting with data bindings)
 		auto ws = make_shared<WebSocket>();
 		Configuration config;
 		string stunServer = "stun:stun.l.google.com:19302";
@@ -737,8 +620,6 @@ void VideoStream::mounted() {
 		config.disableAutoNegotiation = true;
 		string localId = "server";
 		cout << "The local ID is: " << localId << endl;
-
-        /// server doesnt connect to the session.
 
 		ws->onOpen   ([ ]() {
 			cout << "WebSocket connected, signaling ready" << endl;
@@ -756,32 +637,23 @@ void VideoStream::mounted() {
 			if (!holds_alternative<string>(data))
 				return;
 			string sdata = std::get<std::string>(data);
-			
-			//console.log("onMessage: {0}", { sdata });
-			///
 			var message = var::parse((cstr)sdata.c_str());
-			//console.log("id: {0}, type: {1}", { message["id"], message["type"] });
-
-			/// lets do without these if possible; async can call on main thread without issue
 			state->MainThread->dispatch([state, message, config, ws]() {
-				//wsOnMessage(message, config, ws);
 				state->wsOnMessage(message, config, ws);
 			});
 		});
 
         std::string ws_signal = "ws://127.0.0.1:8000/server";
 		ws->open(ws_signal);
-
 		while (!ws->isOpen()) {
 			if (ws->isClosed())
 				return false;
 			this_thread::sleep_for(100ms);
 		}
 
-		/// wait in loop here, needs ability to cancel
-		while (ws->isOpen()) {
-				this_thread::sleep_for(100ms);
-		}
+		while (ws->isOpen())
+			this_thread::sleep_for(100ms);
+		
 		return true;
 	}};
 }

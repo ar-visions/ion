@@ -12,8 +12,8 @@
 
 #include "fileparser.hpp"
 
-namespace webrtc {
-class OPUSFileParser: public FileParser {
+namespace ion {
+struct OPUSFileParser: public FileParser {
     static const uint32_t defaultSamplesPerSecond = 50;
 
 public:

@@ -151,18 +151,18 @@ struct iTLS {
         str prv  = fmt { "ssl/{0}.key", { host } };
         ret = mbedtls_x509_crt_parse_file(&srvcert, pub.cs());
         if (ret != 0) {
-            mbedtls_printf(" failed\n  !  mbedtls_x509_crt_parse returned %d\n\n", ret);
+            mbedtls_printf("mbedtls_x509_crt_parse returned %d\n\n", ret);
             return;
         }
         ret = mbedtls_pk_parse_keyfile(&pkey, prv.cs(), 0, mbedtls_ctr_drbg_random, &ctr_drbg);
         if (ret != 0) {
-            mbedtls_printf(" failed\n  !  mbedtls_pk_parse_key returned %d\n\n", ret);
+            mbedtls_printf("mbedtls_pk_parse_key returned %d\n\n", ret);
             return;
         }
 
         str port = str::from_integer(url.port());
         if ((ret = mbedtls_net_bind(&fd, host.cs(), port.cs(), MBEDTLS_NET_PROTO_TCP)) != 0) {
-            mbedtls_printf(" failed\n  ! mbedtls_net_bind returned %d\n\n", ret);
+            mbedtls_printf("mbedtls_net_bind returned %d\n\n", ret);
             return;
         }
 
@@ -170,7 +170,7 @@ struct iTLS {
                                             MBEDTLS_SSL_IS_SERVER,
                                             MBEDTLS_SSL_TRANSPORT_STREAM,
                                             MBEDTLS_SSL_PRESET_DEFAULT)) != 0) {
-            mbedtls_printf(" failed\n  ! mbedtls_ssl_config_defaults returned %d\n\n", ret);
+            mbedtls_printf("mbedtls_ssl_config_defaults returned %d\n\n", ret);
             return;
         }
 
@@ -185,7 +185,7 @@ struct iTLS {
 
         mbedtls_ssl_conf_ca_chain(&conf, srvcert.next, NULL);
         if ((ret = mbedtls_ssl_conf_own_cert(&conf, &srvcert, &pkey)) != 0) {
-            mbedtls_printf(" failed\n  ! mbedtls_ssl_conf_own_cert returned %d\n\n", ret);
+            mbedtls_printf("mbedtls_ssl_conf_own_cert returned %d\n\n", ret);
             return;
         }
     }
@@ -233,7 +233,8 @@ struct Session {
         mbedtls_ssl_init(&ssl);
         mbedtls_net_init(&fd);
         mbedtls_ssl_setup(&ssl, &tls->conf);
-        mbedtls_ssl_session_reset(&ssl);
+        // this worked sometimes, but now it doesnt
+        //mbedtls_ssl_session_reset(&ssl);
     }
 
     Session(uri addr) : Session(new iTLS(addr)) { }
@@ -371,14 +372,13 @@ struct Session {
         return rbytes;
     }
 
-    /// integrate connect here, also send and recv from sock
     static Session *accept(TLS &tls) {
         Session *client = new Session(tls);
         
         /// only accept client that passes a handshake
         for (;;) {
             mbedtls_net_init(&client->fd);
-            mbedtls_ssl_session_reset(&client->ssl);
+            //mbedtls_ssl_session_reset(&client->ssl);
             mbedtls_ssl_setup(&client->ssl, &client->tls->conf);
 
             int ret;
@@ -387,6 +387,7 @@ struct Session {
                 delete client;
                 return null;
             }
+            mbedtls_ssl_session_reset(&client->ssl);
             
             bool retry = false;
             mbedtls_ssl_set_bio(&client->ssl, &client->fd, mbedtls_net_send, mbedtls_net_recv, NULL);
@@ -425,7 +426,13 @@ ssize_t     sock::send(const char* buf, size_t len) { return data->send(buf, len
 ssize_t     sock::send(str templ, array<mx> args)   { return data->send(templ, args); }
 ssize_t     sock::send(mx &v)                       { return data->send(v); }
 array<char> sock::read_until(str s, int max_len)    { return data->read_until(s, max_len); }
-sock        sock::accept(TLS tls)                   { return Session::accept(tls); }
+sock        sock::accept(TLS tls)                   {
+    Session *session = Session::accept(tls);
+    if (!session) // not handled properly in the wrap case
+        return {};
+    sock sc = session; /// in this case you take ownership of this pointer (wrap case)
+    return sc;
+}
             sock::operator bool()                   { return data->connected; }
 
 async sock::listen(uri url, lambda<bool(sock&)> fn) {
