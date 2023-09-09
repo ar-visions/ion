@@ -461,7 +461,8 @@ void VideoStream::mounted() {
         /// Start stream (single instance, needs to be improved upon lol)
         /// take the Client and any negotiated uri channel into account
         state->startStream = [state](Client client) {
-            Stream stream = state->stream_select(client);//state->createStream("h264", 30, "opus");
+            /// this is a generic mx call, we grab the memory
+            Stream stream = state->stream_select(client).grab();//state->createStream("h264", 30, "opus");
             
             if (!stream)
                 return; /// could return an error to the client here

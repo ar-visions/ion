@@ -1,3 +1,4 @@
+#ifdef __APPLE__
 #import <AVFoundation/AVFoundation.h>
 #import <Metal/Metal.h>
 
@@ -9,3 +10,4 @@ typedef void(*CaptureCallback)(void*, void*, void*);
 - (void)startCapture;
 - (void)stopCapture;
 @end
+#endif

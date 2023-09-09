@@ -5,5 +5,10 @@ if(APPLE)
     dep(IOSurface QuartzCore Metal CoreMedia CoreFoundation Cocoa IOKit AVFoundation)
     cflags(+-fobjc-arc)
 else()
-    src(-apple.mm)
+    
+    print("src is ${_src}")
+
+    src(-/home/kalen/src/ion/camera/apple.mm)
+
+    print("src is ${_src}")
 endif()

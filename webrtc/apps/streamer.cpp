@@ -1,4 +1,5 @@
 #include <webrtc/webrtc.hpp>
+#include <ux/ux.hpp>
 #include <media/media.hpp>
 
 /// 
@@ -9,6 +10,47 @@
 using namespace std;
 using namespace ion;
 using namespace webrtc;
+
+
+struct View:Element {
+    struct props {
+        int         sample;
+        int         sample2;
+        callback    clicked;
+        ///
+        doubly<prop> meta() {
+            return {
+                prop { "sample",  sample },
+                prop { "sample2", sample2 },
+                prop { "clicked", clicked}
+            };
+        }
+        type_register(props);
+    };
+
+    int context_var;
+
+    doubly<prop> meta() {
+        return {
+            prop { "context_var", context_var }
+        };
+    }
+
+    component(View, Element, props);
+
+    void mounting() {
+        console.log("mounting");
+    }
+ 
+    node update() {
+        return ion::array<node> {
+            Edit {
+                { "content", "Multiline edit test\nAnother line" }
+            }
+        };
+    }
+};
+
 
 int main(int argc, char **argv) try {
     ion::map<mx> defs {
@@ -25,14 +67,14 @@ int main(int argc, char **argv) try {
     ///
     const str localId   = "server";
     const uri ws_signal = fmt { "ws://{0}:{1}/{2}", { config["ip"], config["port"], localId }};
-    const uri https_res = "https://ar-visions.com:10022";
+    const uri https_res = "https://ar-visions.com:10022"; // App/h264
 
     /// VideoStream's input types are:
     /// -----------------------------
     /// Element - runtime app
     /// path    - remote executable app
-    /// uri     - remote stream (would be nice if we could pass-through)
-    /// str     - stream identifier
+    /// pid     - process id to running app
+    /// uri     - remote stream (pass-through)
     /// Stream  - stream instance
 
     return Services([&](Services &app) {
@@ -40,19 +82,37 @@ int main(int argc, char **argv) try {
             VideoStream {
                 { "id",             "streamer" },
                 { "source",         "" },
-                { "stream-select",  StreamSelect([](Client client) -> Stream {
-                    auto video  = H264FileParser("h264", 30, true);
-                    auto audio  = OPUSFileParser("opus", true);
-                    auto stream = Stream(video, audio);
+                { "stream-select",  StreamSelect([](Client client) -> mx {
+                    bool test = false;
+                    if (test) {
+                        auto video  = H264FileParser("h264", 30, true);
+                        auto audio  = OPUSFileParser("opus", true);
+                        auto stream = Stream(video, audio);
 
-                    /// we must run an app here; stream should be an mx generic so we can facilitate lots of function by type
-                    /// --------------------------------
-                    /// if we return a path with executable, i wonder if it could run & stream (use winrt & dx11 on windows)
-                    /// apps can hold spawn/close multiple windows simultaneously so you would
-                    ///  need to actually be able to support that (by not right away)
-                    /// its just a data message to indicate new ones and streamable uri's from those idents
-                    /// --------------------------------
-                    return stream;
+                        /// we must run an app here; stream should be an mx generic so we can facilitate lots of function by type
+                        /// --------------------------------
+                        /// if we return a path with executable, i wonder if it could run & stream (use winrt & dx11 on windows)
+                        /// apps can hold spawn/close multiple windows simultaneously so you would
+                        ///  need to actually be able to support that (by not right away)
+                        /// its just a data message to indicate new ones and streamable uri's from those idents
+                        /// --------------------------------
+                    
+                        return stream;
+                    }
+                    ///
+                    return App([](App &ctx) -> node {
+                        return View {
+                            { "id",      "main" },
+                            { "sample",  int(2) },
+                            { "sample2", "10"   },
+                            { "on-hover", callback([](event e) {
+                                console.log("hi");
+                            }) },
+                            { "clicked", callback([](event e) {
+                                printf("test!\n");
+                            }) }
+                        };
+                    });
                 })}
             },
 

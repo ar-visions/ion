@@ -240,7 +240,7 @@ struct Services:composer {
 /// webrtc, rtc, rtc::impl -> rtc (the impl's are laid out in modules in ways i wouldnt design)
 /// to better understand the protocols i will organize them in simpler ways
 
-using StreamSelect = lambda<Stream(Client)>;
+using StreamSelect = lambda<mx(Client)>;
 
 /// this should look for a video sink
 struct VideoStream: node {
