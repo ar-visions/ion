@@ -172,6 +172,15 @@ static void mouse_button_callback(GLFWwindow* window, int button, int state, int
     }
 }
 
+/// streaming requires that we stage for encoding after presentation
+/// do i render to texture, and then run through compression (yes.)
+/// the alternate is rendering normally, then output to window as normal, but then you
+/// capture the window separately
+/// this works with third party apps too
+/// works for win32, possibly mac cross platform
+/// since we are not drawing to the screen, we should be wasting no time with this shim
+/// it requires nvenc, a more standard api than the ones im pulling from nvpro
+
 int App::run() {
     data->e = vkengine_create(1, 2, "ux",
         VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, VK_PRESENT_MODE_FIFO_KHR, VK_SAMPLE_COUNT_4_BIT,
@@ -232,6 +241,8 @@ int App::run() {
             vkDeviceWaitIdle(data->e->vkh->device);
 		}
         data->e->vk_device->mtx.unlock();
+        if (data->loop_fn)
+            data->loop_fn(*this);
 	}
 
     //data->cameras[0].stop_capture();

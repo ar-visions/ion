@@ -1,5 +1,6 @@
 #include <webrtc/webrtc.hpp>
 #include <media/media.hpp>
+#include <ux/ux.hpp>
 
 #include <webrtc/streamer/stream.hpp>
 #include <webrtc/rtc/peerconnection.hpp>
@@ -307,6 +308,20 @@ uint64_t currentTimeInMicroSeconds() {
 	return uint64_t(time.tv_sec) * 1000 * 1000 + time.tv_usec;
 }
 
+Stream app_stream(lambda<node(App&)> app_fn) {
+    Stream stream;
+    async { 1, [](runtime* rt, int index) -> mx {
+        App app(app_fn);
+        app->loop_fn = [stream](App &app) -> void {
+            int test = 0;
+            test++;
+        };
+        return app.run();
+    }};
+    return stream;
+}
+
+
 /// can update in real time 1/hz or through polling, but not needed at the moment
 int Services::run() {
     node e = data->service_fn(*this);
@@ -462,10 +477,17 @@ void VideoStream::mounted() {
         /// take the Client and any negotiated uri channel into account
         state->startStream = [state](Client client) {
             /// this is a generic mx call, we grab the memory
-            Stream stream = state->stream_select(client).grab();//state->createStream("h264", 30, "opus");
-            
-            if (!stream)
+            mx   istream = state->stream_select(client).grab();//state->createStream("h264", 30, "opus");
+            if (!istream)
                 return; /// could return an error to the client here
+
+            Stream stream;
+            type_t type = istream.type();
+            if (type == typeof(Stream))
+                stream = istream.grab();
+            else if (type == typeof(lambda<node(App&)>)) {
+                stream = app_stream(istream.grab());
+            }
 
             client->stream = stream.mem; // simply weak reference
 
