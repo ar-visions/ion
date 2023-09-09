@@ -42,20 +42,17 @@ int main(int argc, char **argv) try {
                 { "source",         "" },
                 { "stream-select",  StreamSelect([](Client client) -> Stream {
                     auto video  = H264FileParser("h264", 30, true);
-
-                    uint64_t a = video.Source::data->getSampleTime_us();
-
                     auto audio  = OPUSFileParser("opus", true);
                     auto stream = Stream(video, audio);
 
-                    /// we must run an app here
-                    return stream;
+                    /// we must run an app here; stream should be an mx generic so we can facilitate lots of function by type
                     /// --------------------------------
-                    /// if you return a path with executable, i wonder if it could run & stream (use winrt & dx11 on windows)
+                    /// if we return a path with executable, i wonder if it could run & stream (use winrt & dx11 on windows)
                     /// apps can hold spawn/close multiple windows simultaneously so you would
                     ///  need to actually be able to support that (by not right away)
                     /// its just a data message to indicate new ones and streamable uri's from those idents
                     /// --------------------------------
+                    return stream;
                 })}
             },
 
