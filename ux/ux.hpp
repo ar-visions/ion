@@ -1045,7 +1045,7 @@ struct App:composer {
         array<Element*> hover;
         VkEngine     e;
         lambda<node(App&)> app_fn;
-        lambda<void(App&)> loop_fn;
+        lambda<bool(App&)> loop_fn;
         ///
         type_register(adata);
     };

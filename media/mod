@@ -1,4 +1,4 @@
-dep(mx:mx mx:image 
+dep(mx:mx mx:async mx:image 
     opusenc:opusenc opusfile:opusfile
     opus:opus ogg:ogg shine:shine
     speexdsp:speexdsp)

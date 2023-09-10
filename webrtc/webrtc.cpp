@@ -308,13 +308,74 @@ uint64_t currentTimeInMicroSeconds() {
 	return uint64_t(time.tv_sec) * 1000 * 1000 + time.tv_usec;
 }
 
+
+
 Stream app_stream(lambda<node(App&)> app_fn) {
     Stream stream;
-    async { 1, [](runtime* rt, int index) -> mx {
-        App app(app_fn);
-        app->loop_fn = [stream](App &app) -> void {
-            int test = 0;
-            test++;
+
+    async { 1, [stream, app_fn](runtime* rt, int index) -> mx {
+        App   app(app_fn);
+        bool              close = false;
+        Source::iSource  *base = stream.get<Source::iSource>(0);
+        std::vector<byte> sample;
+        mutex             mtx;
+        uint64_t          time = currentTimeInMicroSeconds();
+
+        // std::function<void (StreamType, uint64_t, rtc::binary)> handler
+        h264e enc {[&](mx data) {
+            mtx.lock();
+            time = (time + 1000000/30);
+            u8 *bytes = data.get<u8>(0);
+            size_t len = data.count();
+            assert(bytes && len);
+            sample = std::vector<std::byte>(len);
+            memcpy((u8*)sample.data(), (u8*)bytes, len);
+            sample.resize(len);
+            mtx.unlock();
+            return true;
+        }};
+
+        base->getSampleTime_us      = [&]() -> uint64_t { return time; };
+        base->getSampleDuration_us  = [ ]() -> uint64_t { return 1000000/30; };
+        base->start                 = [&]() { base->loadNextSample(); };
+        base->stop                  = [&]() { close = true; };
+
+        base->getSample = [&]() {
+            mtx.lock();
+            std::vector<byte> s { sample }; /// this one is a bit odd and i dont quite like the bit copy
+            sample = {};
+            mtx.unlock();
+            return s;
+        };
+
+        base->loadNextSample = [&]() { /// waits for frame loop, h264 push, h264 fetch and subsequent data
+            mtx.lock();
+            uint64_t t = time;
+            mtx.unlock();
+            for (;;) {
+                mtx.lock();
+                if (t != time || close) {
+                    mtx.unlock();
+                    break;
+                }
+                mtx.unlock();
+                usleep(1000);
+            }
+        };
+
+        /// start encoder
+        enc.run();
+
+        /// register app loop
+        app->loop_fn = [&](App &app) -> bool {
+            if (close)
+                return false;
+
+            image img { 32, 32 };
+            enc.push(img);
+            
+            /// test pattern here i think.
+            return true;
         };
         return app.run();
     }};

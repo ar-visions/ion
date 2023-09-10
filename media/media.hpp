@@ -1,6 +1,7 @@
 #pragma once
 #include <mx/mx.hpp>
 #include <image/image.hpp>
+#include <async/async.hpp>
 
 namespace ion {
 
@@ -35,8 +36,11 @@ struct audio:mx {
 struct i264e;
 struct h264e:mx {
     mx_declare(h264e, mx, i264e);
-    ///
-    h264e(lambda<yuv420(i64)> fetch, lambda<bool(mx)> data); /// the stream ends on null image
+
+    /// the call is async if there is no input, because that means frames are pushed independent of h264e, it waits for new frames as a result
+    h264e(lambda<bool(mx)> output, lambda<yuv420(i64)> input = {}); /// the stream ends on null image pushed or given in this input
+    void push(yuv420 frame);
+    async run();
 };
 
 }

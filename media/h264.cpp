@@ -1,4 +1,5 @@
 #include <media/media.hpp>
+#include <async/async.hpp>
 ///
 #include <stdio.h>
 #include <stdlib.h>
@@ -107,132 +108,168 @@ public:
     int threads;    /// 4 = default
     int speed;      /// 0 = best quality, 10 = fastest
     bool denoise;
+    bool valid = false;
+
+    mutex  encode_mtx;
+    yuv420 encode_input;
 
     lambda<yuv420(i64)> input;
     lambda<bool(mx)>   output;
 
     type_register(i264e);
 
-    void run() {
-        i64  iframe = 0;
-        yuv420 frame = input(iframe++); /// must be yuv420; this will not convert
-
+    /// called from outside thread; we must maintain sync with encoder
+    void push(yuv420 &frame) {
+        /// if it has not processed last frame yet, it must wait!
+        encode_mtx.lock();
+        encode_input = frame;
         if (!frame) {
-            printf("WARNING: first frame null; unknown dimensions and end of stream\n");
-            return;
+            valid = false; /// we can only know validity on incoming frame
         }
+        encode_mtx.unlock();
+    }
 
-        width               = frame.width();
-        height              = frame.height();
-        frame_size          = width*height*3/2; /// yuv 420
+    yuv420 fetch() {
+        yuv420 result;
+        for (;;) {
+            encode_mtx.lock();
+            if (!encode_input) {
+                encode_mtx.unlock();
+                usleep(1000);
+            } else {
+                result = encode_input;
+                encode_input = {};
+                encode_mtx.unlock();
+                break;
+            }
+        }
+        return result;
+    }
 
-        /// this will be nice to use!
-    #if H264E_SVC_API
-        create_param.num_layers = 1;
-        create_param.inter_layer_pred_flag = 0;
-    #endif
+    async run() {
+        return async {1, [this](runtime *rt, int index) -> mx {
+            int   iframes = 0;
+            yuv420 frame = fetch(); /// must be yuv420; this will not convert
+
+            if (!frame) {
+                printf("WARNING: first frame null; unknown dimensions and end of stream\n");
+                return null;
+            }
+
+            width               = frame.width();
+            height              = frame.height();
+            frame_size          = width*height*3/2; /// yuv 420
+
+            /// this will be nice to use!
+        #if H264E_SVC_API
+            create_param.num_layers = 1;
+            create_param.inter_layer_pred_flag = 0;
+        #endif
+
+        #if H264E_MAX_THREADS
+            void *thread_pool = NULL;
+            create_param.max_threads = threads;
+            if (threads)
+            {
+                thread_pool = h264e_thread_pool_init(threads);
+                create_param.token = thread_pool;
+                create_param.run_func_in_thread = h264e_thread_pool_run;
+            }
+        #endif
+
+            create_param.gop    = gop;
+            create_param.max_long_term_reference_frames = 0;
+            create_param.fine_rate_control_flag = 0;
+            create_param.const_input_flag = 1;
+            //create_param.vbv_overflow_empty_frame_flag = 1;
+            //create_param.vbv_underflow_stuffing_flag = 1;
+            create_param.vbv_size_bytes = kbps*1000/8*2; // 2 seconds vbv buffer for quality, so rate control can allocate more bits for intra frame
+            create_param.temporal_denoise_flag = denoise;
+            create_param.height = height;
+            create_param.width  = width;
+            create_param.enableNEON = 1;
+
+            int sizeof_enc = 0, sizeof_scratch = 0, error;
+            H264E_persist_t *enc = NULL;
+            H264E_scratch_t *scratch = NULL;
+
+            error = H264E_sizeof(&create_param, &sizeof_enc, &sizeof_scratch);
+            if (error) {
+                printf("H264E_init error = %d\n", error);
+                return null;
+            }
+
+            printf("sizeof_enc = %d sizeof_scratch = %d\n", sizeof_enc, sizeof_scratch);
+
+            enc     = (H264E_persist_t *)calloc64(sizeof_enc, 1);
+            scratch = (H264E_scratch_t *)calloc64(sizeof_scratch, 1);
+            error   = H264E_init(enc, &create_param);
+
+            for (;valid;) {
+                /// verify frame is correct count of bytes, yuv 420
+                u8* buf_in = (u8*)frame.mem->origin;
+                assert(frame.mem->count * frame.mem->type->base_sz == frame_size);
+
+                yuv.yuv[0]    = buf_in; 
+                yuv.yuv[1]    = buf_in + width*height; 
+                yuv.yuv[2]    = buf_in + width*height*5/4; 
+                yuv.stride[0] = width;
+                yuv.stride[1] = width/2;
+                yuv.stride[2] = width/2;
+                
+                run_param.frame_type = 0;
+                run_param.encode_speed = speed;
+                //run_param.desired_nalu_bytes = 100;
+
+                /// constant bitrate or constant quality
+                if (kbps) {
+                    run_param.desired_frame_bytes = kbps*1000/8/fps;
+                    run_param.qp_min = 10;
+                    run_param.qp_max = 50;
+                } else {
+                    run_param.qp_min = run_param.qp_max = qp;
+                }
+                
+                /// allocate encoded header (H264E maintains or allocates its source buffer)
+                mx encoded = memory::raw_alloc(typeof(int8_t), 0, 0, 0);
+
+                /// encode
+                int encoded_len = 0;
+                assert(!H264E_encode(enc, scratch, &run_param, &yuv, (u8**)&encoded.mem->origin, &encoded_len));
+                encoded.mem->count   = size_t(encoded_len);
+                encoded.mem->reserve = encoded.mem->count;
+
+                /// output encoded
+                if (!output(encoded))
+                    break;
+
+                /// maintained by H264E (if we referenced this, we may update it in place)
+                /// better to have context in the caching mechanism here, just make it ion oriented
+                encoded.mem->origin = null;
+
+                /// get next frame
+                frame = fetch();
+                iframes++;
+            }
+
+            if (enc)
+                free64(enc);
+            
+            if (scratch)
+                free64(scratch);
 
     #if H264E_MAX_THREADS
-        void *thread_pool = NULL;
-        create_param.max_threads = threads;
-        if (threads)
-        {
-            thread_pool = h264e_thread_pool_init(threads);
-            create_param.token = thread_pool;
-            create_param.run_func_in_thread = h264e_thread_pool_run;
-        }
+            if (thread_pool)
+                h264e_thread_pool_close(thread_pool, threads);
     #endif
-
-        create_param.gop    = gop;
-        create_param.max_long_term_reference_frames = 0;
-        create_param.fine_rate_control_flag = 0;
-        create_param.const_input_flag = 1;
-        //create_param.vbv_overflow_empty_frame_flag = 1;
-        //create_param.vbv_underflow_stuffing_flag = 1;
-        create_param.vbv_size_bytes = kbps*1000/8*2; // 2 seconds vbv buffer for quality, so rate control can allocate more bits for intra frame
-        create_param.temporal_denoise_flag = denoise;
-        create_param.height = height;
-        create_param.width  = width;
-        create_param.enableNEON = 1;
-
-        int sizeof_enc = 0, sizeof_scratch = 0, error;
-        H264E_persist_t *enc = NULL;
-        H264E_scratch_t *scratch = NULL;
-
-        error = H264E_sizeof(&create_param, &sizeof_enc, &sizeof_scratch);
-        if (error) {
-            printf("H264E_init error = %d\n", error);
-            return;
-        }
-
-        printf("sizeof_enc = %d sizeof_scratch = %d\n", sizeof_enc, sizeof_scratch);
-
-        enc     = (H264E_persist_t *)calloc64(sizeof_enc, 1);
-        scratch = (H264E_scratch_t *)calloc64(sizeof_scratch, 1);
-        error   = H264E_init(enc, &create_param);
-
-        for (;frame;) {
-            /// verify frame is correct count of bytes, yuv 420
-            u8* buf_in = (u8*)frame.mem->origin;
-            assert(frame.mem->count * frame.mem->type->base_sz == frame_size);
-
-            yuv.yuv[0]    = buf_in; 
-            yuv.yuv[1]    = buf_in + width*height; 
-            yuv.yuv[2]    = buf_in + width*height*5/4; 
-            yuv.stride[0] = width;
-            yuv.stride[1] = width/2;
-            yuv.stride[2] = width/2;
-            
-            run_param.frame_type = 0;
-            run_param.encode_speed = speed;
-            //run_param.desired_nalu_bytes = 100;
-
-            /// constant bitrate or constant quality
-            if (kbps) {
-                run_param.desired_frame_bytes = kbps*1000/8/fps;
-                run_param.qp_min = 10;
-                run_param.qp_max = 50;
-            } else {
-                run_param.qp_min = run_param.qp_max = qp;
-            }
-            
-            /// allocate encoded header (H264E maintains or allocates its source buffer)
-            mx encoded = memory::raw_alloc(typeof(int8_t), 0, 0, 0);
-
-            /// encode
-            int encoded_len = 0;
-            assert(!H264E_encode(enc, scratch, &run_param, &yuv, (u8**)&encoded.mem->origin, &encoded_len));
-            encoded.mem->count   = size_t(encoded_len);
-            encoded.mem->reserve = encoded.mem->count;
-
-            /// output encoded
-            if (!output(encoded))
-                break;
-
-            /// maintained by H264E (if we referenced this, we may update it in place)
-            /// better to have context in the caching mechanism here, just make it ion oriented
-            encoded.mem->origin = null;
-
-            /// get next frame
-            frame = input(iframe++);
-        }
-
-        if (enc)
-            free64(enc);
-        
-        if (scratch)
-            free64(scratch);
-
-#if H264E_MAX_THREADS
-        if (thread_pool)
-            h264e_thread_pool_close(thread_pool, threads);
-#endif
+            return iframes;
+        }};
     }
 };
 
 mx_implement(h264e, mx);
 
-h264e::h264e(lambda<yuv420(i64)> input, lambda<bool(mx)> output) : h264e() {
+h264e::h264e(lambda<bool(mx)> output, lambda<yuv420(i64)> input) : h264e() {
     data->input      = input;
     data->output     = output;
     data->gop        = 16;
@@ -244,6 +281,15 @@ h264e::h264e(lambda<yuv420(i64)> input, lambda<bool(mx)> output) : h264e() {
     data->denoise    = false;
 
     data->run();
+    /// if input then call at fps rate
+}
+
+void h264e::push(yuv420 image) {
+    data->push(image);
+}
+
+async h264e::run() {
+    return data->run();
 }
 
 };

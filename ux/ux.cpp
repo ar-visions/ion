@@ -242,7 +242,10 @@ int App::run() {
 		}
         data->e->vk_device->mtx.unlock();
         if (data->loop_fn)
-            data->loop_fn(*this);
+            if (!data->loop_fn(*this)) {
+                glfwDestroyWindow(data->win->window);
+                break;
+            }
 	}
 
     //data->cameras[0].stop_capture();
