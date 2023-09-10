@@ -86,7 +86,7 @@ int main(int argc, char **argv) try {
                     bool test = false;
                     if (test) {
                         auto video  = H264FileParser("h264", 30, true);
-                        auto audio  = OPUSFileParser("opus", true);
+                        auto audio  = OPUSFileParser("opus", true); /// set this data on the app stream
                         auto stream = Stream(video, audio);
 
                         /// we must run an app here; stream should be an mx generic so we can facilitate lots of function by type

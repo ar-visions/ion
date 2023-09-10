@@ -58,15 +58,15 @@ enums(StreamType, Audio,
          Audio, Video);
 
 struct Source:mx {
-    
+
     struct iSource {
         StreamType type;
-        lambda<uint64_t(StreamType)>    getSampleTime_us;
-        lambda<uint64_t(StreamType)>    getSampleDuration_us;
+        lambda<   uint64_t(StreamType)> getSampleTime_us;
+        lambda<   uint64_t(StreamType)> getSampleDuration_us;
         lambda<rtc::binary(StreamType)> getSample;
-        lambda<void(StreamType)>          loadNextSample;
-        lambda<void(StreamType)>          start;
-        lambda<void(StreamType)>        stop;
+        lambda<       void(StreamType)> loadNextSample;
+        lambda<       void(StreamType)> start;
+        lambda<       void(StreamType)> stop;
         type_register(iSource);
     };
 
@@ -125,7 +125,9 @@ struct Stream:mx {
             StreamType sst;
             uint64_t nextTime;
 
-            if (audio->getSampleTime_us(StreamType::Audio) < video->getSampleTime_us(StreamType::Video)) {
+            uint64_t audio_sample_time = audio->getSampleTime_us(StreamType::Audio);
+            uint64_t video_sample_time = video->getSampleTime_us(StreamType::Video);
+            if (audio_sample_time < video_sample_time) { /// these sample times need to be 0-based or be aligned at the min/max of either
                 ss = audio;
                 sst = StreamType::Audio;
                 nextTime = audio->getSampleTime_us(sst);
@@ -147,6 +149,7 @@ struct Stream:mx {
             return {ss, sst};
         }
 
+        /// this gets the sample at the ready, of whatever type
         void sendSample() {
             std::lock_guard lock(mutex);
             if (!_isRunning) {
@@ -159,6 +162,8 @@ struct Stream:mx {
             sampleHandler(sst, ss->getSampleTime_us(sst), sample);
             ///
             ss->loadNextSample(sst);
+            int test = 0;
+            test++;
             dispatchQueue.dispatch([this]() {
                 this->sendSample();
             });
@@ -257,8 +262,11 @@ struct VideoStream: node {
 		/// internal states
 		async service; /// if props are changed, the service must be restarted
 
+        /// get these shared_ptr things out of here and replace with mx
+        /// its good exercise to just go through this pretty big code base
         lambda<std::shared_ptr<ClientTrackData>(
             std::shared_ptr<rtc::PeerConnection> pc, const uint8_t payloadType,
+            rtc::H264RtpPacketizer::Separator,
             uint32_t ssrc, std::string cname, std::string msid,
             lambda<void(void)>)> addVideo;
 

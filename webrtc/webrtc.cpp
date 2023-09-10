@@ -124,7 +124,7 @@ H264FileParser::H264FileParser(string directory, uint32_t fps, bool loop): H264F
 
     lambda<void()> base_load = base->loadNextSample;
 
-    base->loadNextSample = [fp, base, h264, base_load]() { // overwrite lambda, and stack base method
+    base->loadNextSample = [fp, base, h264, base_load](StreamType stype) { // overwrite lambda, and stack base method
         base_load();
         size_t i = 0;
         while (i < fp->sample.size()) {
@@ -316,15 +316,22 @@ uint64_t currentTimeInMicroSeconds() {
 
 Stream app_stream(App app) {
     Stream stream;
+    stream->has_data = true;
     bool init = false;
+    ///
     async { 1, [&init, stream, app](runtime* rt, int index) -> mx {
+
+        auto opus_audio  = OPUSFileParser("opus", true); /// set this data on the app stream
+
         bool              close = false;
         Stream::iStream  *base  = stream.get<Stream::iStream>(0);
         Source::iSource  *vsrc  = base->video.get<Source::iSource>(0);
-        Source::iSource  *asrc  = base->audio.get<Source::iSource>(0);
+        Source::iSource  *asrc  = base->audio.get<Source::iSource>(0); /// these are 'optional' still, not sure how i am getting this handle
         std::vector<byte> sample[2];
-        uint64_t          time[2] = { currentTimeInMicroSeconds() };
+        uint64_t        time[2] = { };
         mutex             mtx;
+
+        base->audio = opus_audio;
         
         time[1] = time[0];
         sample[0] = {};
@@ -341,12 +348,12 @@ Stream app_stream(App app) {
             mtx.lock();
             ///
             int  v  = StreamType::Video;
-            time[v] = (time[v] + 1000000/30);
-            time[0] = time[v];
-            u8 *bytes  = data.get<u8>(0);
+            time[v] = (time[v] + 1000000/30); /// we need a fps rate from the app
+            time[0] =  time[v];
+            i8 *bytes  = data.get<i8>(0);
             size_t len = data.count();
             assert(bytes && len);
-            sample[v] = std::vector<std::byte>(len);
+            sample[v] = std::vector<std::byte>(sizeof(uint32_t) + len);
             memcpy((u8*)sample[v].data(), (u8*)bytes, len);
             sample[v].resize(len); /// this sets 'size', the reserve size is separate stat; will not change data if its <= len
             mtx.unlock();
@@ -381,14 +388,19 @@ Stream app_stream(App app) {
                 mtx.unlock();
                 usleep(1000);
             }
+            int test = 0;
+            test++;
         };
 
+        /*
+        testing with opus data from RR
         asrc->getSampleTime_us      = vsrc->getSampleTime_us;
         asrc->getSampleDuration_us  = vsrc->getSampleDuration_us;
         asrc->getSample             = vsrc->getSample;
         asrc->start                 = vsrc->start;
         asrc->stop                  = vsrc->stop;
         asrc->loadNextSample        = vsrc->loadNextSample;
+        */
 
         /// start encoder
         enc.run();
@@ -398,8 +410,15 @@ Stream app_stream(App app) {
             if (close)
                 return false;
 
-            image img {ion::size { 480, 640 }};
-            enc.push(img);
+            /// make white test image!
+            image img {ion::size { 768, 1024 }};
+            memset(img.data, 255, sizeof(rgba8) * img.width() * img.height());
+
+            /// convert to yuv420
+            yuv420 yuv = img;
+
+            /// encode
+            enc.push(yuv);
             
             /// test pattern here i think.
             return true;
@@ -448,15 +467,24 @@ void VideoStream::mounted() {
         /// use async method
         state->MainThread = new webrtc::DispatchQueue("Main");
         
-        state->addVideo = [](shared_ptr<PeerConnection> pc, uint8_t payloadType, uint32_t ssrc, string cname, string msid, function<void (void)> onOpen) {
+        state->addVideo = [](shared_ptr<PeerConnection> pc, uint8_t payloadType, H264RtpPacketizer::Separator frame_std, uint32_t ssrc, string cname, string msid, function<void (void)> onOpen) {
             auto video = Description::Video(cname);
             video.addH264Codec(payloadType);
             video.addSSRC(ssrc, cname, msid, cname);
             auto track = pc->addTrack(video);
             // create RTP configuration
             auto rtpConfig = make_shared<RtpPacketizationConfig>(ssrc, cname, payloadType, H264RtpPacketizer::defaultClockRate);
-            // create packetizer
-            auto packetizer = make_shared<H264RtpPacketizer>(H264RtpPacketizer::Separator::Length, rtpConfig);
+
+            /// NAL unit separator
+            //enum class Separator {
+            //    Length = RTC_NAL_SEPARATOR_LENGTH, // first 4 bytes are NAL unit length
+            //    LongStartSequence = RTC_NAL_SEPARATOR_LONG_START_SEQUENCE,   // 0x00, 0x00, 0x00, 0x01
+            //    ShortStartSequence = RTC_NAL_SEPARATOR_SHORT_START_SEQUENCE, // 0x00, 0x00, 0x01
+            //    StartSequence = RTC_NAL_SEPARATOR_START_SEQUENCE, // LongStartSequence or ShortStartSequence
+            //};
+
+            // create packetizer (we cannot adapt based on the data?)
+            auto packetizer = make_shared<H264RtpPacketizer>(frame_std, rtpConfig);
             // create H264 handler
             auto h264Handler = make_shared<H264PacketizationHandler>(packetizer);
             // add RTCP SR handler
@@ -533,7 +561,8 @@ void VideoStream::mounted() {
                 }
             });
 
-            client->video = state->addVideo(pc, 102, 1, "video-stream", "stream1", [state, id, client]() {
+            client->video = state->addVideo(pc, 102, rtc::H264RtpPacketizer::Separator::LongStartSequence,
+                1, "video-stream", "stream1", [state, id, client]() {
                 state->MainThread->dispatch([state, client]() {
                     state->addToStream(client, true);
                 });

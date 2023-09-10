@@ -108,7 +108,7 @@ public:
     int threads;    /// 4 = default
     int speed;      /// 0 = best quality, 10 = fastest
     bool denoise;
-    bool valid = false;
+    bool valid;     /// while waiting for first frame it should be valid
 
     mutex  encode_mtx;
     yuv420 encode_input;
@@ -155,7 +155,7 @@ public:
                 printf("WARNING: first frame null; unknown dimensions and end of stream\n");
                 return null;
             }
-
+            valid               = true; /// valid frame received for first; this is an indicator of eof, eos, something.
             width               = frame.width();
             height              = frame.height();
             frame_size          = width*height*3/2; /// yuv 420
@@ -239,6 +239,11 @@ public:
                 encoded.mem->count   = size_t(encoded_len);
                 encoded.mem->reserve = encoded.mem->count;
 
+                //u8 *nalu = (u8*)encoded.mem->origin;
+                //u8 &b0 = nalu[0];
+                //u8 &b1 = nalu[1];
+                //u8 &b2 = nalu[2];
+                //u8 &b3 = nalu[3];
                 /// output encoded
                 if (!output(encoded))
                     break;
