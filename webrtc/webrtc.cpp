@@ -65,29 +65,33 @@ void FileParser::init(string directory, string extension, uint32_t samplesPerSec
     data->extension         = extension;
     data->loop              = loop;
     data->sampleDuration_us = 1000 * 1000 / samplesPerSecond;
-
     Source::intern     *base = Source::data;
     FileParser::intern *fp   = FileParser::data;
 
-    base->getSampleTime_us = [fp]() {
+    base->getSampleTime_us = [fp](StreamType type) {
         return fp->sampleTime_us;
     };
-    base->getSampleDuration_us = [fp]() {
+
+    base->getSampleDuration_us = [fp](StreamType type) {
         return fp->sampleDuration_us;
     };
-    base->start = [base, fp]() {
+
+    base->start = [base, fp](StreamType type) {
         fp->sampleTime_us = std::numeric_limits<uint64_t>::max() - fp->sampleDuration_us + 1;
-        base->loadNextSample();
+        base->loadNextSample(type);
     };
-    base->stop = [base, fp]() {
+
+    base->stop = [base, fp](StreamType type) {
         fp->sample = {};
         fp->sampleTime_us = 0;
         fp->counter = -1;
     };
-    base->getSample = [fp]() {
+
+    base->getSample = [fp](StreamType type) {
         return fp->sample;
     };
-    base->loadNextSample = [base, fp]() {
+
+    base->loadNextSample = [base, fp](StreamType type) {
         string frame_id = std::to_string(++fp->counter);
         string url = fp->directory + "/sample-" + frame_id + fp->extension;
         ifstream source(url, ios_base::binary);
@@ -95,7 +99,7 @@ void FileParser::init(string directory, string extension, uint32_t samplesPerSec
             if (fp->loop && fp->counter > 0) {
                 fp->loopTimestampOffset = fp->sampleTime_us;
                 fp->counter = -1;
-                base->loadNextSample();
+                base->loadNextSample(type);
                 return;
             }
             fp->sample = {};
@@ -315,45 +319,62 @@ Stream app_stream(App app) {
     bool init = false;
     async { 1, [&init, stream, app](runtime* rt, int index) -> mx {
         bool              close = false;
-        Stream::iStream  *base = stream.get<Stream::iStream>(0);
-        std::vector<byte> sample;
+        Stream::iStream  *base  = stream.get<Stream::iStream>(0);
+        Source::iSource  *vsrc  = base->video.get<Source::iSource>(0);
+        Source::iSource  *asrc  = base->audio.get<Source::iSource>(0);
+        std::vector<byte> sample[2];
+        uint64_t          time[2] = { currentTimeInMicroSeconds() };
         mutex             mtx;
-        uint64_t          time = currentTimeInMicroSeconds();
+        
+        time[1] = time[0];
+        sample[0] = {};
+        sample[1] = {};
+
+        auto get_time = [&](StreamType type) -> uint64_t {
+            mtx.lock();
+            uint64_t t = time[type.value];
+            return t;
+        };
 
         // std::function<void (StreamType, uint64_t, rtc::binary)> handler
         h264e enc {[&](mx data) {
             mtx.lock();
-            time = (time + 1000000/30);
-            u8 *bytes = data.get<u8>(0);
+            ///
+            int  v  = StreamType::Video;
+            time[v] = (time[v] + 1000000/30);
+            time[0] = time[v];
+            u8 *bytes  = data.get<u8>(0);
             size_t len = data.count();
             assert(bytes && len);
-            sample = std::vector<std::byte>(len);
-            memcpy((u8*)sample.data(), (u8*)bytes, len);
-            sample.resize(len);
+            sample[v] = std::vector<std::byte>(len);
+            memcpy((u8*)sample[v].data(), (u8*)bytes, len);
+            sample[v].resize(len); /// this sets 'size', the reserve size is separate stat; will not change data if its <= len
             mtx.unlock();
+            /// sync in audio right here.  makes no sense for any further decouplement
             return true;
         }};
 
-        base->getSampleTime_us      = [&]() -> uint64_t { return time; };
-        base->getSampleDuration_us  = [ ]() -> uint64_t { return 1000000/30; };
-        base->start                 = [&]() { base->loadNextSample(); };
-        base->stop                  = [&]() { close = true; };
-
-        base->getSample = [&]() {
+        vsrc->getSampleTime_us      = [&](StreamType type) -> uint64_t { return time[type.value]; };
+        vsrc->getSampleDuration_us  = [ ](StreamType type) -> uint64_t { return 1000000/30; };
+        vsrc->start                 = [&](StreamType type) { vsrc->loadNextSample(type); };
+        vsrc->stop                  = [&](StreamType type) { close = true; };
+        ///
+        vsrc->getSample = [&](StreamType type) {
+            int i = type.value;
             mtx.lock();
-            std::vector<byte> s { sample }; /// this one is a bit odd and i dont quite like the bit copy
-            sample = {};
+            std::vector<byte> s { sample[i] }; /// this one is a bit odd and i dont quite like the bit copy
+            sample[i] = {};
             mtx.unlock();
             return s;
         };
 
-        base->loadNextSample = [&]() { /// waits for frame loop, h264 push, h264 fetch and subsequent data
-            mtx.lock();
-            uint64_t t = time;
+        vsrc->loadNextSample = [&](StreamType type) { /// waits for frame loop, h264 push, h264 fetch and subsequent data
+            uint64_t t = get_time(type);
+            int i = type.value;
             mtx.unlock();
             for (;;) {
                 mtx.lock();
-                if (t != time || close) {
+                if (t != time[i] || close) {
                     mtx.unlock();
                     break;
                 }
@@ -361,6 +382,13 @@ Stream app_stream(App app) {
                 usleep(1000);
             }
         };
+
+        asrc->getSampleTime_us      = vsrc->getSampleTime_us;
+        asrc->getSampleDuration_us  = vsrc->getSampleDuration_us;
+        asrc->getSample             = vsrc->getSample;
+        asrc->start                 = vsrc->start;
+        asrc->stop                  = vsrc->stop;
+        asrc->loadNextSample        = vsrc->loadNextSample;
 
         /// start encoder
         enc.run();
@@ -444,7 +472,7 @@ void VideoStream::mounted() {
             return trackData;
         };
 
-        state->addAudio = [](shared_ptr<PeerConnection> pc, uint8_t payloadType, uint32_t ssrc, string cname, string msid, lambda<void (void)> onOpen) {
+        state->addAudio = [](shared_ptr<PeerConnection> pc, uint8_t payloadType, uint32_t ssrc, string cname, string msid, function<void (void)> onOpen) {
             auto audio = Description::Audio(cname);
             audio.addOpusCodec(payloadType);
             audio.addSSRC(ssrc, cname, msid, cname);
@@ -636,7 +664,7 @@ void VideoStream::mounted() {
 
             // send previous NALU key frame so users don't have to wait to see stream works
             if (!initialNalus.empty()) {
-                const double frameDuration_s = double(h264.Source::data->getSampleDuration_us()) / (1000 * 1000);
+                const double frameDuration_s = double(h264.Source::data->getSampleDuration_us(StreamType::Video)) / (1000 * 1000);
                 const uint32_t frameTimestampDuration = video->sender->rtpConfig->secondsToTimestamp(frameDuration_s);
                 video->sender->rtpConfig->timestamp = video->sender->rtpConfig->startTimestamp - frameTimestampDuration * 2;
                 video->track->send(initialNalus);

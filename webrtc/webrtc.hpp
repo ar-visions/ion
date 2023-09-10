@@ -60,13 +60,13 @@ enums(StreamType, Audio,
 struct Source:mx {
     
     struct iSource {
-        StreamType              type;
-        lambda<uint64_t()>      getSampleTime_us;
-        lambda<uint64_t()>      getSampleDuration_us;
-        lambda<rtc::binary()>   getSample;
-        lambda<void()>          loadNextSample;
-        lambda<void()>          start;
-        lambda<void()>          stop;
+        StreamType type;
+        lambda<uint64_t(StreamType)>    getSampleTime_us;
+        lambda<uint64_t(StreamType)>    getSampleDuration_us;
+        lambda<rtc::binary(StreamType)> getSample;
+        lambda<void(StreamType)>          loadNextSample;
+        lambda<void(StreamType)>          start;
+        lambda<void(StreamType)>        stop;
         type_register(iSource);
     };
 
@@ -98,8 +98,8 @@ struct Stream:mx {
             }
             _isRunning = true;
             startTime = currentTimeInMicroSeconds();
-            audio->start();
-            video->start();
+            audio->start(StreamType::Audio);
+            video->start(StreamType::Video);
             dispatchQueue.dispatch([this]() {
                 this->sendSample();
             });
@@ -112,8 +112,8 @@ struct Stream:mx {
             }
             _isRunning = false;
             dispatchQueue.removePending();
-            audio->stop();
-            video->stop();
+            audio->stop(StreamType::Audio);
+            video->stop(StreamType::Video);
         }
 
         ~iStream() {
@@ -125,14 +125,14 @@ struct Stream:mx {
             StreamType sst;
             uint64_t nextTime;
 
-            if (audio->getSampleTime_us() < video->getSampleTime_us()) {
+            if (audio->getSampleTime_us(StreamType::Audio) < video->getSampleTime_us(StreamType::Video)) {
                 ss = audio;
                 sst = StreamType::Audio;
-                nextTime = audio->getSampleTime_us();
+                nextTime = audio->getSampleTime_us(sst);
             } else {
                 ss = video;
                 sst = StreamType::Video;
-                nextTime = video->getSampleTime_us();
+                nextTime = video->getSampleTime_us(sst);
             }
 
             auto currentTime = currentTimeInMicroSeconds();
@@ -152,12 +152,13 @@ struct Stream:mx {
             if (!_isRunning) {
                 return;
             }
-            auto ssSST = unsafePrepareForSample();
-            auto ss = ssSST.first;
-            auto sst = ssSST.second;
-            auto sample = ss->getSample();
-            sampleHandler(sst, ss->getSampleTime_us(), sample);
-            ss->loadNextSample();
+            auto ssSST  = unsafePrepareForSample();
+            auto ss     = ssSST.first;
+            auto sst    = ssSST.second;
+            auto sample = ss->getSample(sst);
+            sampleHandler(sst, ss->getSampleTime_us(sst), sample);
+            ///
+            ss->loadNextSample(sst);
             dispatchQueue.dispatch([this]() {
                 this->sendSample();
             });
@@ -256,16 +257,14 @@ struct VideoStream: node {
 		/// internal states
 		async service; /// if props are changed, the service must be restarted
 
-		/// ideally we want to express this in node tree!
-		/// this is a foothold into a graple on this
-
         lambda<std::shared_ptr<ClientTrackData>(
             std::shared_ptr<rtc::PeerConnection> pc, const uint8_t payloadType,
             uint32_t ssrc, std::string cname, std::string msid,
             lambda<void(void)>)> addVideo;
 
         lambda<std::shared_ptr<ClientTrackData>(
-            std::shared_ptr<rtc::PeerConnection>, uint8_t, uint32_t, std::string, std::string, lambda<void (void)>
+            std::shared_ptr<rtc::PeerConnection>, uint8_t, uint32_t,
+            std::string, std::string, std::function<void (void)>
         )> addAudio;
 
         lambda<Client
