@@ -411,7 +411,7 @@ Stream app_stream(App app) {
                 return false;
 
             /// make white test image!
-            image img {ion::size { 768, 1024 }};
+            image img {ion::size { 128, 128 }};
             memset(img.data, 255, sizeof(rgba8) * img.width() * img.height());
 
             /// convert to yuv420
