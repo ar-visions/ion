@@ -1061,6 +1061,8 @@ struct App:composer {
 
     operator int() { return run(); }
 
+    operator bool() { return true; }
+
     ///
     array<Element *> select_at(vec2d cur, bool active = true) {
         array<Element*> result = array<Element*>();

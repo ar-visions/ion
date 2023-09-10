@@ -310,13 +310,12 @@ uint64_t currentTimeInMicroSeconds() {
 
 
 
-Stream app_stream(lambda<node(App&)> app_fn) {
+Stream app_stream(App app) {
     Stream stream;
-
-    async { 1, [stream, app_fn](runtime* rt, int index) -> mx {
-        App   app(app_fn);
+    bool init = false;
+    async { 1, [&init, stream, app](runtime* rt, int index) -> mx {
         bool              close = false;
-        Source::iSource  *base = stream.get<Source::iSource>(0);
+        Stream::iStream  *base = stream.get<Stream::iStream>(0);
         std::vector<byte> sample;
         mutex             mtx;
         uint64_t          time = currentTimeInMicroSeconds();
@@ -367,18 +366,24 @@ Stream app_stream(lambda<node(App&)> app_fn) {
         enc.run();
 
         /// register app loop
-        app->loop_fn = [&](App &app) -> bool {
+        ((App&)app)->loop_fn = [&](App &app) -> bool {
             if (close)
                 return false;
 
-            image img { 32, 32 };
+            image img {ion::size { 480, 640 }};
             enc.push(img);
             
             /// test pattern here i think.
             return true;
         };
-        return app.run();
+
+        init = true;
+        return ((App&)app).run();
     }};
+
+    while (!init) {
+        usleep(1000);
+    }
     return stream;
 }
 
@@ -539,14 +544,14 @@ void VideoStream::mounted() {
         state->startStream = [state](Client client) {
             /// this is a generic mx call, we grab the memory
             mx   istream = state->stream_select(client).grab();//state->createStream("h264", 30, "opus");
-            if (!istream)
+            if (istream.type() == typeof(null_t))
                 return; /// could return an error to the client here
 
             Stream stream;
             type_t type = istream.type();
             if (type == typeof(Stream))
                 stream = istream.grab();
-            else if (type == typeof(lambda<node(App&)>)) {
+            else if (type == typeof(App)) {
                 stream = app_stream(istream.grab());
             }
 
