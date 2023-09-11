@@ -5,6 +5,12 @@ if(WIN32)
     dep(bcrypt msvcrt)
 endif()
 
+if(UNIX)
+    dep(X11 GLX GL)
+    #dep(X11-xcb)
+    dep(xcb-xkb xkbcommon xkbcommon-x11 Xcomposite)
+endif()
+
 # wide-linking interns (the order must prefer impl first)
 includes(${p})
 includes(${p}/src)

@@ -343,6 +343,8 @@ Stream app_stream(App app) {
             return t;
         };
 
+        
+
         // std::function<void (StreamType, uint64_t, rtc::binary)> handler
         h264e enc {[&](mx data) {
             mtx.lock();
@@ -410,15 +412,8 @@ Stream app_stream(App app) {
             if (close)
                 return false;
 
-            /// make white test image!
-            image img {ion::size { 128, 128 }};
-            memset(img.data, 255, sizeof(rgba8) * img.width() * img.height());
-
-            /// convert to yuv420
-            yuv420 yuv = img;
-
             /// encode
-            enc.push(yuv);
+            enc.push(app->win->window);
             
             /// test pattern here i think.
             return true;

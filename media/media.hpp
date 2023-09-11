@@ -32,15 +32,4 @@ struct audio:mx {
     size_t       mono_size();
 };
 
-/// interface for minih264e
-struct i264e;
-struct h264e:mx {
-    mx_declare(h264e, mx, i264e);
-
-    /// the call is async if there is no input, because that means frames are pushed independent of h264e, it waits for new frames as a result
-    h264e(lambda<bool(mx)> output, lambda<yuv420(i64)> input = {}); /// the stream ends on null image pushed or given in this input
-    void push(yuv420 frame);
-    async run();
-};
-
 }

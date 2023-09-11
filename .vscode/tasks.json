@@ -23,38 +23,13 @@
                 "command": "msbuild ion.sln /t:ux-app"
             },
             "osx": {
-                "command": "make ux-app -j4"
+                "command": "make ux-app -j16"
             },
             "linux": {
-                "command": "make ux-app -j4"
-            }
-        },
-        {
-            "label": "build-https-server",
-            "type": "shell",
-			"options": {
-                "cwd": "${workspaceFolder}/../ion/build"
-            },
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            },
-            "presentation": {
-                "reveal": "always",
-                "panel": "shared",
-                "group": "build0",
-                "clear": true
-            },
-			"isBackground": false,
-			"problemMatcher": ["$gcc"],
-            "windows": {
-                "command": "msbuild ion.sln /t:https-server"
-            },
-            "osx": {
-                "command": "make https-server -j4"
-            },
-            "linux": {
-                "command": "make https-server -j4"
+                "command": "make ux-app -j16",
+                "options":{
+                    "env":{"VERBOSE":"1"}
+                }
             }
         },
         {
@@ -79,10 +54,13 @@
                 "command": "msbuild ion.sln /t:streamer"
             },
             "osx": {
-                "command": "make streamer -j4"
+                "command": "make streamer -j10"
             },
             "linux": {
-                "command": "make streamer -j4"
+                "command": "make streamer -j16",
+                "options":{
+                    "env":{"VERBOSE":"1"}
+                }
             }
         }
    

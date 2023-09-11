@@ -1,15 +1,47 @@
+#include <webrtc/webrtc.hpp>
+#include <vk/vk.hpp>
 #include <media/media.hpp>
 #include <async/async.hpp>
+
 ///
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
 #include <math.h>
+
+#if defined(__linux__)
+#include <GL/gl.h>
+#include <GL/glx.h>
+#include <GL/glxext.h>
+#include <X11/Xlib.h>
+#include <X11/extensions/Xcomposite.h>
+#define GLFW_EXPOSE_NATIVE_X11
+#define GLFW_EXPOSE_NATIVE_GLX
+static Display* dpy;
+static int composite_event_base, composite_error_base;
+
+#elif defined(_WIN32_)
+#define GLFW_EXPOSE_NATIVE_WIN32
+#elif defined(__APPLE__)
+#define GLFW_EXPOSE_NATIVE_COCOA
+#endif
+
+#include <GLFW/glfw3native.h>
+
+
+namespace ion {
+
+using PFNGlXBindTexImageEXTPROC = void (*)(Display *, GLXDrawable, int, const int *);
+using PFNGlXReleaseTexImageEXTPROC = void (*)(Display *, GLXDrawable, int);
+
+PFNGlXBindTexImageEXTPROC    glXBindTexImageEXT    = null;
+PFNGlXReleaseTexImageEXTPROC glXReleaseTexImageEXT = null;
+
 ///
 #define MINIH264_IMPLEMENTATION
 #define H264E_ENABLE_PLAIN_C    1
-#include <media/minih264e.h>
+#include <webrtc/minih264e.h>
 
 #if H264E_MAX_THREADS
 #include "system.h"
@@ -90,7 +122,7 @@ void h264e_thread_pool_run(void *pool, void (*callback)(void*), void *callback_j
 #endif
 
 
-namespace ion {
+using namespace ion;
 
 struct i264e {
 protected:
@@ -109,6 +141,121 @@ public:
     int speed;      /// 0 = best quality, 10 = fastest
     bool denoise;
     bool valid;     /// while waiting for first frame it should be valid
+
+#if defined(__linux__)
+
+    struct glxCache {
+        NV_ENC
+        NV_ENC_REGISTER_RESOURCE nvenc_res = {};
+        int         screen;
+        int         sx = -1, sy = -1;
+        GLFWwindow* glfw;
+        ::Window    window;
+        Pixmap      pixmap; /// this is active texture management in OS
+        GLXDrawable glx_pixmap;
+        GLuint      texture_id;
+        GLint       attributes[5] = {
+            GLX_TEXTURE_TARGET_EXT, GLX_TEXTURE_2D_EXT,
+            GLX_TEXTURE_FORMAT_EXT, GLX_TEXTURE_FORMAT_RGBA_EXT,
+            None
+        };
+        int         visual_attribs[24] = {
+            GLX_X_RENDERABLE,   True,
+            GLX_DRAWABLE_TYPE,  GLX_WINDOW_BIT,
+            GLX_RENDER_TYPE,    GLX_RGBA_BIT,
+            GLX_X_VISUAL_TYPE,  GLX_TRUE_COLOR,
+            GLX_RED_SIZE,       8,
+            GLX_GREEN_SIZE,     8,
+            GLX_BLUE_SIZE,      8,
+            GLX_ALPHA_SIZE,     8,
+            GLX_DEPTH_SIZE,     24,
+            GLX_STENCIL_SIZE,   8,
+            GLX_DOUBLEBUFFER,   True,
+            // Add any other attributes you need
+            None,               0
+        };
+
+        ~glxCache() {
+            release();
+        }
+
+        void encode() {
+
+            // Map the registered resource
+            NV_ENC_MAP_INPUT_RESOURCE mapResource = {};
+            mapResource.version = NV_ENC_MAP_INPUT_RESOURCE_VER;
+            mapResource.registeredResource = registerResource.registeredResource;
+            nvEncMapInputResource(encoder, &mapResource);
+
+            // Now you can encode using the mapped resource.
+            NV_ENC_PIC_PARAMS picParams = {};
+            picParams.version = NV_ENC_PIC_PARAMS_VER;
+            picParams.inputBuffer = mapResource.mappedResource;
+            ... // Set other necessary parameters for encoding
+            nvEncEncodePicture(encoder, &picParams);
+
+            // After you're done, unmap and unregister the resource
+            nvEncUnmapInputResource(encoder, mapResource.mappedResource);
+            
+        }
+
+        void release() {
+            glXReleaseTexImageEXT(dpy, glx_pixmap, GLX_FRONT_LEFT_EXT);
+            glXDestroyPixmap(dpy, glx_pixmap);
+            glDeleteTextures(1, &texture_id);
+            XFreePixmap(dpy, pixmap);
+            nvEncUnregisterResource(encoder, registerResource.registeredResource);
+        }
+
+        void init(GLFWwindow* glfw) {
+            this->glfw = glfw;
+            window = glfwGetX11Window(glfw);
+            /// lookup a session by map id here..
+            // Handle the error: The extension function isn't available.
+            glXBindTexImageEXT = (PFNGlXBindTexImageEXTPROC) glXGetProcAddressARB((const GLubyte*) "glXBindTexImageEXT");
+            if (!glXBindTexImageEXT) {
+                console.fault("glXBindTexImageEXT not found");
+            }
+            // Get the X11 Pixmap
+            // GLX setup to bind pixmap to a texture
+            pixmap = XCompositeNameWindowPixmap(dpy, window);
+            screen = DefaultScreen(dpy);
+        }
+
+        void update() {
+            int x, y;
+            glfwGetWindowSize(glfw, &x, &y);
+            if (sx == -1 || x != sx || y != sy) {
+                release();
+                ///
+                sx = x;
+                sy = y;
+                int          fbcount;
+                GLXFBConfig* fbconfigs = glXChooseFBConfig(dpy, screen, visual_attribs, &fbcount);
+                if (!fbconfigs) console.fault("glXChooseFBConfig no configurations");
+
+                glx_pixmap = glXCreatePixmap(dpy, fbconfigs[0], pixmap, attributes);
+                
+                // Bind to an OpenGL texture
+                glGenTextures(1, &texture_id);
+                glBindTexture(GL_TEXTURE_2D, texture_id);
+                glXBindTexImageEXT(dpy, glx_pixmap, GLX_FRONT_LEFT_EXT, NULL);
+
+                // Register the texture with NVENC
+                nvenc_res = {};
+                nvenc_res.version = NV_ENC_REGISTER_RESOURCE_VER;
+                nvenc_res.resourceType = NV_ENC_INPUT_RESOURCE_TYPE_OPENGL_TEX;
+                nvenc_res.resourceToRegister = &texture;
+                nvenc_res.bufferFormat = ... ; // Depending on your texture format e.g., NV_ENC_BUFFER_FORMAT_ABGR
+                nvEncRegisterResource(encoder, &nvenc_res);
+
+            }
+        }
+    };
+
+    doubly<glxCache> windows;
+
+#endif
 
     mutex  encode_mtx;
     yuv420 encode_input;
@@ -275,6 +422,18 @@ public:
 mx_implement(h264e, mx);
 
 h264e::h264e(lambda<bool(mx)> output, lambda<yuv420(i64)> input) : h264e() {
+
+#ifdef __linux__
+    if (!dpy) {
+        dpy = XOpenDisplay(NULL);
+        int screen = DefaultScreen(dpy);
+        if (!XCompositeQueryExtension(dpy, &composite_event_base, &composite_error_base)) {
+            console.fault("X Composite extension required in X11 for accelerated encoding");
+        }
+        XCompositeRedirectSubwindows(dpy, RootWindow(dpy, screen), CompositeRedirectAutomatic);
+    }
+#endif
+
     data->input      = input;
     data->output     = output;
     data->gop        = 16;
@@ -287,6 +446,23 @@ h264e::h264e(lambda<bool(mx)> output, lambda<yuv420(i64)> input) : h264e() {
 
     data->run();
     /// if input then call at fps rate
+}
+
+void h264e::push(GLFWwindow *glfw) {
+    auto fetch_window = [data=data](GLFWwindow* glfw) -> i264e::glxCache& {
+        for (i264e::glxCache &c: data->windows)
+            if (c.glfw == glfw)
+                return c;
+
+        i264e::glxCache &c = data->windows->push();
+        c.init(glfw);
+    };
+    i264e::glxCache &window = fetch_window(glfw);
+
+    /// update texture, or create new one
+    /// we may have a fault here if the subsystem responds with
+    /// closure before GLFW but i dont believe thats quite possible
+    window.update();
 }
 
 void h264e::push(yuv420 image) {
