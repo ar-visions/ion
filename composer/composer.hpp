@@ -464,15 +464,15 @@ struct composer:mx {
         map<mx>       args;
         ion::style    style;
 
-        /// called from app
-        void update_all(node e);
-
-        /// called recursively from update_all -> update(), also called from node generic render (node will need a composer data member)
-        static void update(cmdata *composer, node *parent, node *&instance, node &e);
-
         type_register(cmdata);
     };
-    
+
+    /// called from app
+    void update_all(node e);
+
+    /// called recursively from update_all -> update(), also called from node generic render (node will need a composer data member)
+    static void update(cmdata *composer, node *parent, node *&instance, node &e);
+
     ///
     mx_object(composer, mx, cmdata);
 };

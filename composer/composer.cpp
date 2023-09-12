@@ -21,7 +21,7 @@ double duration_millis(duration dur) {
     return 0.0;
 }
 
-void composer::cmdata::update(composer::cmdata *composer, node *parent, node *&instance, node &e) {
+void composer::update(composer::cmdata *composer, node *parent, node *&instance, node &e) {
     bool       diff = !instance;
     bool     is_new = false;
     size_t args_len = e->args.len();
@@ -288,11 +288,11 @@ void composer::cmdata::update(composer::cmdata *composer, node *parent, node *&i
     }
 }
 
-void composer::cmdata::update_all(node e) {
-    if (!instances)
-        style = style::init();
+void composer::update_all(node e) {
+    if (!data->instances)
+        data->style = style::init();
     
-    update(this, null, instances, e);
+    update(data, null, data->instances, e);
 }
 
 

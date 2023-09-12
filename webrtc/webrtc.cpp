@@ -314,17 +314,13 @@ uint64_t currentTimeInMicroSeconds() {
 
 
 
-Stream app_stream(App app_ctx) {
-    app_ctx.grab();
-    App::adata* app = app_ctx.data;
+Stream app_stream(App app) {
     Stream stream;
     stream->has_data = true;
     bool init = false;
     ///
     async { 1, [&init, stream, app](runtime* rt, int index) -> mx {
-
-        auto opus_audio  = OPUSFileParser("opus", true); /// set this data on the app stream
-
+        auto        opus_audio  = OPUSFileParser("opus", true); /// set this data on the app stream
         bool              close = false;
         Stream::iStream  *base  = stream.get<Stream::iStream>(0);
         Source::iSource  *vsrc  = base->video.get<Source::iSource>(0);
@@ -367,6 +363,7 @@ Stream app_stream(App app_ctx) {
         vsrc->getSampleDuration_us  = [ ](StreamType type) -> uint64_t { return 1000000/30; };
         vsrc->start                 = [&](StreamType type) { vsrc->loadNextSample(type); };
         vsrc->stop                  = [&](StreamType type) { close = true; };
+
         ///
         vsrc->getSample = [&](StreamType type) {
             int i = type.value;
@@ -406,19 +403,19 @@ Stream app_stream(App app_ctx) {
         enc.run();
 
         /// register app loop
-        app->loop_fn = [&](App::adata &app) -> bool {
+        app.data->loop_fn = [&](App &app) -> bool {
             if (close)
                 return false;
 
             /// encode
-            enc.push(app.e->window);
+            enc.push(app.data->e->window);
             
             /// test pattern here i think.
             return true;
         };
 
         init = true;
-        return app->run();
+        return ((App&)app).run();
     }};
 
     while (!init) {
@@ -429,9 +426,9 @@ Stream app_stream(App app_ctx) {
 
 
 /// can update in real time 1/hz or through polling, but not needed at the moment
-int Services::iServices::run() {
-    node e = service_fn(*this);
-    cmdata->update_all(e);
+int Services::run() {
+    node e = data->service_fn(*this);
+    update_all(e);
     for (;;) {
         usleep(10000);
     }

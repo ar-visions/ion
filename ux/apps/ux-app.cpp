@@ -58,7 +58,7 @@ struct View:Element {
 };
 
 int main() {
-    return App([](App::adata &app) -> node {
+    return App([](App &app) -> node {
         return View {
             { "id",      "main" },
             { "sample",  int(2) },
