@@ -11,6 +11,10 @@ if(UNIX)
     dep(xcb-xkb xkbcommon xkbcommon-x11 Xcomposite)
 endif()
 
+if(NOT APPLE)
+    dep(nvcuvid nvidia-encode)
+endif()
+
 # wide-linking interns (the order must prefer impl first)
 includes(${p})
 includes(${p}/src)

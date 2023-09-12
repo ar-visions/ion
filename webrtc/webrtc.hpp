@@ -230,10 +230,11 @@ struct Service: node {
 /// todo: set composer as parent to first node!
 /// todo: scratch that, not type safe.
 struct Services:composer {
-    struct sdata {
-        bool                    running;
-        lambda<node(Services&)> service_fn;
-		VideoSink				video_sink;
+    struct iServices {
+        composer::cmdata*        cmdata;
+        bool                     running;
+        lambda<node(iServices&)> service_fn;
+		VideoSink				 video_sink;
 		///
 		doubly<prop> meta() {
 			return {
@@ -241,20 +242,22 @@ struct Services:composer {
 			};
 		}
 		///
-        type_register(sdata);
+        int run();
+        ///
+        type_register(iServices);
     };
-    mx_object(Services, composer, sdata);
+    mx_object(Services, composer, iServices);
 
-    Services(lambda<node(Services&)> service_fn) : Services() {
+    Services(lambda<node(iServices&)> service_fn) : Services() {
+        data->cmdata = composer::data;
+        data->cmdata->app = mem;
         data->service_fn = service_fn;
     }
 
     /// wait for all services to return
     operator int() {
-        return run();
+        return data->run();
     }
-
-    int run();
 };
 
 /// webrtc, rtc, rtc::impl -> rtc (the impl's are laid out in modules in ways i wouldnt design)

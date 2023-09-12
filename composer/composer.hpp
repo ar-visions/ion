@@ -449,7 +449,34 @@ struct dispatch:mx {
     listener &listen(callback cb);
 };
 
-struct composer;
+struct node;
+
+struct composer:mx {
+    ///
+    struct cmdata {
+        memory* app;
+        //node* root_instance;
+        node* instances;
+
+        struct vk_interface *vk;
+        //fn_render     render;
+        lambda<node()> render;
+        map<mx>       args;
+        ion::style    style;
+
+        /// called from app
+        void update_all(node e);
+
+        /// called recursively from update_all -> update(), also called from node generic render (node will need a composer data member)
+        static void update(cmdata *composer, node *parent, node *&instance, node &e);
+
+        type_register(cmdata);
+    };
+    
+    ///
+    mx_object(composer, mx, cmdata);
+};
+
 struct node:mx {
     /// style implemented at node data and in composer
     /// this is so one can style their services
@@ -471,7 +498,7 @@ struct node:mx {
         node*                   parent;
         style::style_map        style_avail; /// properties outside of meta are effectively internal state only; it can be labelled as such
         map<selection>          selections; /// style selected per member
-        ion::composer*          composer;
+        ion::composer::cmdata*  cmdata;
 
         ///
         doubly<prop> meta() {
@@ -631,37 +658,13 @@ struct node:mx {
 //typedef node* (*FnFactory)();
 using FnFactory = node*(*)();
 
-struct composer:mx {
-    ///
-    struct cdata {
-        //node* root_instance;
-        node* instances;
-
-        struct vk_interface *vk;
-        //fn_render     render;
-        lambda<node()> render;
-        map<mx>       args;
-        ion::style    style;
-        type_register(cdata);
-    };
-    
-    ///
-    mx_object(composer, mx, cdata);
-    
-    /// called from app
-    void update_all(node e);
-
-    /// called recursively from update_all -> update(), also called from node generic render (node will need a composer data member)
-    static void update(composer *composer, node *parent, node *&instance, node &e);
-};
-
 template <typename T>
 T *node::context(str id) {
     node *n = (node*)this;
     prop* member = null;
     /// fetch context through self/parents in tree
     while (n) {
-        u8*   addr   = property_find(n->mem, id, member);
+        u8*   addr   = property_find(n->mem->origin, n->mem->type, id, member);
         if (addr) {
             assert(member->member_type == typeof(T));
             return (T*)addr;
@@ -669,11 +672,8 @@ T *node::context(str id) {
         n = n->data->parent;
     }
     /// get context from app composer lastly (use-case: video sink service)
-    composer *app      = data->composer; assert(app);
-    type_t    app_type = app->mem->type;
-    u8       *app_data = (u8*)app->mem->origin;
-
-    u8 *addr = property_find(app->mem, id, member);
+    memory *app  = data->cmdata->app;
+    u8     *addr = property_find(app->origin, app->type, id, member);
     ///
     if (addr) {
         assert(member->member_type == typeof(T));

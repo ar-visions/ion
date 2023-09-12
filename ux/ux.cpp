@@ -65,8 +65,8 @@ void App::resize(vec2i &sz, App *app) {
     printf("resized: %d, %d\n", sz.x, sz.y);
 }
 
-App *app_data(GLFWwindow *window) {
-    return (App*)glfwGetWindowUserPointer(window);
+App::adata *app_data(GLFWwindow *window) {
+    return (App::adata*)glfwGetWindowUserPointer(window);
 }
 
 static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
@@ -181,51 +181,47 @@ static void mouse_button_callback(GLFWwindow* window, int button, int state, int
 /// since we are not drawing to the screen, we should be wasting no time with this shim
 /// it requires nvenc, a more standard api than the ones im pulling from nvpro
 
-int App::run() {
-    data->e = vkengine_create(1, 2, "ux",
+int App::adata::run() {
+    e = vkengine_create(1, 2, "ux",
         VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, VK_PRESENT_MODE_FIFO_KHR, VK_SAMPLE_COUNT_4_BIT,
         512, 512, 0, this);
 
-    data->canvas = new Canvas(data->e->renderer); /// width and height are fetched from renderer (which updates in vkengine)
+    canvas = new Canvas(e->renderer); /// width and height are fetched from renderer (which updates in vkengine)
+	vkengine_set_key_callback       (e, key_callback);
+	vkengine_set_mouse_but_callback (e, mouse_button_callback);
+	vkengine_set_cursor_pos_callback(e, mouse_move_callback);
+	vkengine_set_scroll_callback    (e, scroll_callback);
+	vkengine_set_title              (e, "ux");
 
-    //image img = image(path("/Users/kalen/Desktop/test.png"));
-    //image img2 = image(path("/Users/kalen/Desktop/test2.png"));
+    /// works on macOS currently (needs to present, and update a canvas)
+    //cameras  = array<Camera>(32);
+    //cameras += Camera { e, 0, 1920, 1080, 30 };
+    //cameras[0].start_capture();
 
-	vkengine_set_key_callback       (data->e, key_callback);
-	vkengine_set_mouse_but_callback (data->e, mouse_button_callback);
-	vkengine_set_cursor_pos_callback(data->e, mouse_move_callback);
-	vkengine_set_scroll_callback    (data->e, scroll_callback);
-	vkengine_set_title              (data->e, "ux");
-
-    //data->cameras  = array<Camera>(32);
-    //data->cameras += Camera { data->e, 0, 1920, 1080, 30 };
-    //data->cameras[0].start_capture();
-
-    Canvas &canvas = *data->canvas;
-	while (!vkengine_should_close(data->e)) {
+	while (!vkengine_should_close(e)) {
 		glfwPollEvents();
 
-        data->e->vk_device->mtx.lock();
+        e->vk_device->mtx.lock();
 
         rgbad c = { 0.0, 0.0, 0.0, 1.0 };
-        canvas.clear(c);
+        canvas->clear(c);
         
-        node e = data->app_fn(*this);
-        update_all(e);
-        Element *eroot = (Element*)(composer::data->instances->data->children ?
-                                    composer::data->instances->data->children[0] : 
-                                    composer::data->instances);
+        node ee = app_fn(*this);
+        cmdata->update_all(ee);
+        Element *eroot = (Element*)(cmdata->instances->data->children ?
+                                    cmdata->instances->data->children[0] : 
+                                    cmdata->instances);
         if (eroot) {
             /// update rect need to get eroot->children[0]
             eroot->data->bounds = rectd {
                 0, 0,
-                (real)data->canvas->get_virtual_width(),
-                (real)data->canvas->get_virtual_height()
+                (real)canvas->get_virtual_width(),
+                (real)canvas->get_virtual_height()
             };
-            eroot->draw(*data->canvas);
+            eroot->draw(*canvas);
         }
 
-        canvas.flush();
+        canvas->flush();
 
         /// blt this to VkImage, bound to a canvas that we can perform subsequent drawing ops on
         /// canvas needs to draw other canvas too (Sk has this)
@@ -236,19 +232,19 @@ int App::run() {
         //        data->cameras[0].width / 2, data->cameras[0].height / 2); 
 
         /// we need an array of renderers/presenters; must work with a 3D scene, bloom shading etc
-		if (!vkh_presenter_draw(data->e->renderer)) {
-            data->canvas->app_resize();
-            vkDeviceWaitIdle(data->e->vkh->device);
+		if (!vkh_presenter_draw(e->renderer)) {
+            canvas->app_resize();
+            vkDeviceWaitIdle(e->vkh->device);
 		}
-        data->e->vk_device->mtx.unlock();
-        if (data->loop_fn)
-            if (!data->loop_fn(*this)) {
-                glfwDestroyWindow(data->win->window);
+        e->vk_device->mtx.unlock();
+        if (loop_fn)
+            if (!loop_fn(*this)) {
+                glfwDestroyWindow(e->window);
                 break;
             }
 	}
 
-    //data->cameras[0].stop_capture();
+    //cameras[0].stop_capture();
     return 0;
 }
 

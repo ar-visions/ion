@@ -21,7 +21,7 @@ double duration_millis(duration dur) {
     return 0.0;
 }
 
-void composer::update(composer *composer, node *parent, node *&instance, node &e) {
+void composer::cmdata::update(composer::cmdata *composer, node *parent, node *&instance, node &e) {
     bool       diff = !instance;
     bool     is_new = false;
     size_t args_len = e->args.len();
@@ -76,8 +76,8 @@ void composer::update(composer *composer, node *parent, node *&instance, node &e
             str   id = node_id(e); /// needed for style computation of available entries in the style blocks
             (*instance)->parent = parent;
             (*instance)->id     = id.grab();
-            (*instance)->composer = composer; /// verify context is not lost on this object
-            (*instance)->style_avail = composer->data->style->compute(instance);
+            (*instance)->cmdata = composer;
+            (*instance)->style_avail = composer->style->compute(instance);
             /// compute available properties for this Element given its type, placement, and props styled 
         }
 
@@ -112,7 +112,7 @@ void composer::update(composer *composer, node *parent, node *&instance, node &e
                 field<array<style::entry*>> *entries = style_avail->lookup(name); // ctx name is Button, name == id, and it has a null entry for entries[0] == null with count > 
                 if (entries) {
                     /// get best style matching entry for this property
-                    style::entry *best = composer->data->style->best_match(instance, &p, *entries);
+                    style::entry *best = composer->style->best_match(instance, &p, *entries);
                     ///
                     type_t prop_type = p.member_type;
                     u8    *prop_dst  = &data_origin[p.offset];
@@ -288,11 +288,11 @@ void composer::update(composer *composer, node *parent, node *&instance, node &e
     }
 }
 
-void composer::update_all(node e) {
-    if (!data->instances)
-        data->style = style::init();
+void composer::cmdata::update_all(node e) {
+    if (!instances)
+        style = style::init();
     
-    update(this, null, data->instances, e);
+    update(this, null, instances, e);
 }
 
 
@@ -423,7 +423,7 @@ size_t style::block::score(node *pn, bool score_state) {
         /// Element data contains things like capture, focus, etc (second level)
         if (state_match) {
             prop* member = null;
-            u8*   addr   = property_find(pn->mem, qd.id, member);
+            u8*   addr   = property_find(pn->mem->origin, pn->mem->type, qd.id, member);
             if (addr) {
                 state_match = member->member_type->functions->boolean(null, addr);
                 break;

@@ -2,6 +2,7 @@
 #include <vk/vk.hpp>
 #include <media/media.hpp>
 #include <async/async.hpp>
+#include <nvenc/nvEncodeAPI.h>
 
 ///
 #include <stdio.h>
@@ -145,8 +146,18 @@ public:
 #if defined(__linux__)
 
     struct glxCache {
-        NV_ENC
-        NV_ENC_REGISTER_RESOURCE nvenc_res = {};
+        
+        
+        
+        struct NVenc {
+            void* enc;
+            NV_ENC_REGISTER_RESOURCE       res       { NV_ENC_REGISTER_RESOURCE_VER };
+            NV_ENC_MAP_INPUT_RESOURCE      input     { NV_ENC_MAP_INPUT_RESOURCE_VER };
+            NV_ENCODE_API_FUNCTION_LIST    fn        { NV_ENCODE_API_FUNCTION_LIST_VER };
+            NV_ENC_CREATE_BITSTREAM_BUFFER bitstream { NV_ENC_CREATE_BITSTREAM_BUFFER_VER };
+
+        } nv;
+
         int         screen;
         int         sx = -1, sy = -1;
         GLFWwindow* glfw;
@@ -179,24 +190,34 @@ public:
             release();
         }
 
-        void encode() {
-
-            // Map the registered resource
-            NV_ENC_MAP_INPUT_RESOURCE mapResource = {};
-            mapResource.version = NV_ENC_MAP_INPUT_RESOURCE_VER;
-            mapResource.registeredResource = registerResource.registeredResource;
-            nvEncMapInputResource(encoder, &mapResource);
+        bool encode(lambda<bool(mx)> &output) {
+            void *bytes = null;
 
             // Now you can encode using the mapped resource.
-            NV_ENC_PIC_PARAMS picParams = {};
-            picParams.version = NV_ENC_PIC_PARAMS_VER;
-            picParams.inputBuffer = mapResource.mappedResource;
-            ... // Set other necessary parameters for encoding
-            nvEncEncodePicture(encoder, &picParams);
+            NV_ENC_PIC_PARAMS picParams { NV_ENC_PIC_PARAMS_VER };
+            picParams.inputBuffer         = nv.input.mappedResource;
+            picParams.inputWidth          = sx;
+            picParams.inputHeight         = sy;
+            picParams.outputBitstream     = nv.bitstream.bitstreamBuffer;
+            picParams.bufferFmt           = NV_ENC_BUFFER_FORMAT_ARGB;
+            NVENCSTATUS s0 = nv.fn.nvEncEncodePicture(nv.enc, &picParams);
 
-            // After you're done, unmap and unregister the resource
-            nvEncUnmapInputResource(encoder, mapResource.mappedResource);
-            
+            NV_ENC_LOCK_BITSTREAM lock { NV_ENC_LOCK_BITSTREAM_VER };
+            lock.outputBitstream = nv.bitstream.bitstreamBuffer; // The output buffer associated with the input frame
+            lock.doNotWait       = false; // Set to true for non-blocking mode
+            NVENCSTATUS s1 = nv.fn.nvEncLockBitstream(nv.enc, &lock);
+
+            bool result = false;
+            if (s1 == NV_ENC_SUCCESS) {
+                mx encoded = memory::raw_alloc(typeof(int8_t), 0, 0, 0);
+                encoded.mem->origin  = lock.bitstreamBufferPtr;
+                encoded.mem->count   = lock.bitstreamSizeInBytes;
+                encoded.mem->reserve = lock.bitstreamSizeInBytes;
+                result = output(encoded);
+                encoded.mem->origin = null;
+                nv.fn.nvEncUnlockBitstream(nv.enc, nv.bitstream.bitstreamBuffer);
+            }
+            return result;
         }
 
         void release() {
@@ -204,10 +225,22 @@ public:
             glXDestroyPixmap(dpy, glx_pixmap);
             glDeleteTextures(1, &texture_id);
             XFreePixmap(dpy, pixmap);
-            nvEncUnregisterResource(encoder, registerResource.registeredResource);
+
+            // After you're done, unmap and unregister the resource
+            nv.fn.nvEncUnmapInputResource(nv.enc, nv.input.mappedResource);
+            
+            nv.fn.nvEncDestroyBitstreamBuffer(nv.enc, &nv.bitstream);
+
+            nv.fn.nvEncUnregisterResource(nv.enc, nv.res.registeredResource);
+            nv.fn.nvEncDestroyEncoder((void*)nv.enc);
         }
 
         void init(GLFWwindow* glfw) {
+            nv.fn.version = NV_ENCODE_API_FUNCTION_LIST_VER;
+            assert(NV_ENC_SUCCESS == NvEncodeAPICreateInstance(&nv.fn));
+            NVENCSTATUS nvStatus = nv.fn.nvEncOpenEncodeSession(
+                glfw, NV_ENC_DEVICE_TYPE_OPENGL, &nv.enc); /// handle is opaque for GL
+
             this->glfw = glfw;
             window = glfwGetX11Window(glfw);
             /// lookup a session by map id here..
@@ -242,13 +275,15 @@ public:
                 glXBindTexImageEXT(dpy, glx_pixmap, GLX_FRONT_LEFT_EXT, NULL);
 
                 // Register the texture with NVENC
-                nvenc_res = {};
-                nvenc_res.version = NV_ENC_REGISTER_RESOURCE_VER;
-                nvenc_res.resourceType = NV_ENC_INPUT_RESOURCE_TYPE_OPENGL_TEX;
-                nvenc_res.resourceToRegister = &texture;
-                nvenc_res.bufferFormat = ... ; // Depending on your texture format e.g., NV_ENC_BUFFER_FORMAT_ABGR
-                nvEncRegisterResource(encoder, &nvenc_res);
+                nv.res.resourceType         = NV_ENC_INPUT_RESOURCE_TYPE_OPENGL_TEX;
+                nv.res.resourceToRegister   = &texture_id;
+                nv.res.bufferFormat         = NV_ENC_BUFFER_FORMAT_ARGB;
+                nv.fn.nvEncRegisterResource(nv.enc, &nv.res);
 
+                nv.input.registeredResource = nv.res.registeredResource;
+                nv.fn.nvEncMapInputResource(nv.enc, &nv.input);
+
+                nv.fn.nvEncCreateBitstreamBuffer(nv.enc, &nv.bitstream);
             }
         }
     };
@@ -456,13 +491,13 @@ void h264e::push(GLFWwindow *glfw) {
 
         i264e::glxCache &c = data->windows->push();
         c.init(glfw);
+        return c;
     };
     i264e::glxCache &window = fetch_window(glfw);
-
-    /// update texture, or create new one
-    /// we may have a fault here if the subsystem responds with
-    /// closure before GLFW but i dont believe thats quite possible
+    ///
     window.update();
+    window.encode(data->output); // this calls output()
+    /// needs a true/false return
 }
 
 void h264e::push(yuv420 image) {

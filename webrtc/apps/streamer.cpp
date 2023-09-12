@@ -77,7 +77,7 @@ int main(int argc, char **argv) try {
     /// uri     - remote stream (pass-through)
     /// Stream  - stream instance
 
-    return Services([&](Services &app) {
+    return Services([&](Services::iServices &app) {
         return ion::array<node> {
             VideoStream {
                 { "id",             "streamer" },
@@ -100,7 +100,7 @@ int main(int argc, char **argv) try {
                         return stream;
                     }
                     ///
-                    return App([](App &ctx) -> node {
+                    return App([](App::adata &ctx) -> node {
                         return View {
                             { "id",      "main" },
                             { "sample",  int(2) },

@@ -314,7 +314,9 @@ uint64_t currentTimeInMicroSeconds() {
 
 
 
-Stream app_stream(App app) {
+Stream app_stream(App app_ctx) {
+    app_ctx.grab();
+    App::adata* app = app_ctx.data;
     Stream stream;
     stream->has_data = true;
     bool init = false;
@@ -342,8 +344,6 @@ Stream app_stream(App app) {
             uint64_t t = time[type.value];
             return t;
         };
-
-        
 
         // std::function<void (StreamType, uint64_t, rtc::binary)> handler
         h264e enc {[&](mx data) {
@@ -390,8 +390,6 @@ Stream app_stream(App app) {
                 mtx.unlock();
                 usleep(1000);
             }
-            int test = 0;
-            test++;
         };
 
         /*
@@ -408,19 +406,19 @@ Stream app_stream(App app) {
         enc.run();
 
         /// register app loop
-        ((App&)app)->loop_fn = [&](App &app) -> bool {
+        app->loop_fn = [&](App::adata &app) -> bool {
             if (close)
                 return false;
 
             /// encode
-            enc.push(app->win->window);
+            enc.push(app.e->window);
             
             /// test pattern here i think.
             return true;
         };
 
         init = true;
-        return ((App&)app).run();
+        return app->run();
     }};
 
     while (!init) {
@@ -431,9 +429,9 @@ Stream app_stream(App app) {
 
 
 /// can update in real time 1/hz or through polling, but not needed at the moment
-int Services::run() {
-    node e = data->service_fn(*this);
-    update_all(e);
+int Services::iServices::run() {
+    node e = service_fn(*this);
+    cmdata->update_all(e);
     for (;;) {
         usleep(10000);
     }
