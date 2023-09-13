@@ -36,11 +36,11 @@
     static Display* dpy;
     static int composite_event_base, composite_error_base;
 
-    using PFNGlXBindTexImageEXTPROC     = void (*)(Display *, GLXDrawable, int, const int *);
-    using PFNGlXReleaseTexImageEXTPROC  = void (*)(Display *, GLXDrawable, int);
-        PFNGlXBindTexImageEXTPROC       glXBindTexImageEXT    = ion::null;
-        PFNGlXReleaseTexImageEXTPROC    glXReleaseTexImageEXT = ion::null;
-        
+    using  PFNGlXBindTexImageEXTPROC     = void (*)(Display *, GLXDrawable, int, const int *);
+    using  PFNGlXReleaseTexImageEXTPROC  = void (*)(Display *, GLXDrawable, int);
+    static PFNGlXBindTexImageEXTPROC       glXBindTexImageEXT    = ion::null;
+    static PFNGlXReleaseTexImageEXTPROC    glXReleaseTexImageEXT = ion::null;
+
     static int
     Xwindows_error (Display *xdisplay, XErrorEvent *error) {
         int test = 0;
@@ -380,6 +380,9 @@ protected:
 
         bool SetupGLXResources()
         {
+            glXBindTexImageEXT    = (PFNGlXBindTexImageEXTPROC)    glXGetProcAddressARB((const GLubyte *)"glXBindTexImageEXT");
+            glXReleaseTexImageEXT = (PFNGlXReleaseTexImageEXTPROC) glXGetProcAddressARB((const GLubyte *)"glXReleaseTexImageEXT");
+
             int argc = 1;
             char *argv[1] = {(char*)"dummy"};
 
@@ -445,16 +448,100 @@ protected:
 
         void init(GLFWwindow* glfw) {
             static bool glx_init = false;
-            /// perform this first; start a GL instance
             if (!glx_init) {
                 SetupGLXResources();
                 glx_init = true;
             }
-            h264_sample *sample = sample_init(glfw);
+
+            XSetErrorHandler (Xwindows_error);
+            //glfwMakeContextCurrent(window);
+            
+            window = glfwGetX11Window(glfw);
+            this->glfw = glfw;
+
+            /*
+            assert(NV_ENC_SUCCESS == NvEncodeAPICreateInstance(&nv.fn));
+            NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS startup = { NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS_VER };
+            startup.device     = null;
+            startup.deviceType = NV_ENC_DEVICE_TYPE_OPENGL; // NV_ENC_DEVICE_TYPE_OPENGL
+            startup.apiVersion = NVENCAPI_VERSION;
+
+            NVENCSTATUS nvStatus = nv.fn.nvEncOpenEncodeSessionEx(&startup, &nv.enc);
+            */
         }
 
         void update_window() {
-            sample_update(glfw);
+
+            XWindowAttributes attrs;
+            XGetWindowAttributes(dpy, window, &attrs);
+            Visual *visual = attrs.visual;
+
+            int          fbcount;
+            GLXFBConfig* fbc = glXChooseFBConfig(dpy, screen, NULL, &fbcount);
+            if (!fbc) console.fault("glXChooseFBConfig no configurations");
+
+            GLXFBConfig suitable = NULL;
+            for (int i = 0; i < fbcount; i++) {
+                XVisualInfo *vi = glXGetVisualFromFBConfig(dpy, fbc[i]);
+                if (!vi) {
+                    continue;
+                }
+                if (vi->visual == visual) {
+                    suitable = fbc[i];
+                    XFree(vi);
+                    break;
+                }
+                XFree(vi);
+            }
+            assert(suitable);
+
+            pixmap = XCompositeNameWindowPixmap(dpy, window);
+            glx_pixmap = glXCreatePixmap(dpy, suitable, pixmap, NULL);
+            
+            // Bind to an OpenGL texture
+            glGenTextures(1, &texture_id);
+            glBindTexture(GL_TEXTURE_2D, texture_id);
+
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, sx, sy, 0, GL_BGRA, GL_UNSIGNED_BYTE, NULL);
+            glXBindTexImageEXT(dpy, glx_pixmap, GLX_FRONT_LEFT_EXT, NULL);
+
+
+            glBindTexture(GL_TEXTURE_2D, texture_id);
+            GLubyte *pixels = (GLubyte *)malloc(4 * sx * sy); // Assuming RGBA format
+            glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+
+            ion::image img { ion::size { sy, sx }, (rgba8*)pixels };
+            img.save("/home/kalen/test.png");
+
+
+            XImage *image = XGetImage(dpy, window, 0, 0, sx, sy, AllPlanes, ZPixmap);
+            ion::image img2 { ion::size { sy, sx }, (rgba8*)image->data };
+            img2.save("/home/kalen/test2.png");
+            int test = 0;
+            test++;
+            
+            /*
+            // Register the texture with NVENC
+            nv.res.resourceType         = NV_ENC_INPUT_RESOURCE_TYPE_OPENGL_TEX;
+
+            NV_ENC_INPUT_RESOURCE_OPENGL_TEX tx = {
+                texture_id, GL_TEXTURE_2D
+            };
+
+            nv.res.resourceToRegister   = &tx;
+            nv.res.bufferFormat         = NV_ENC_BUFFER_FORMAT_ARGB;
+            nv.res.width                = sx;
+            nv.res.height               = sy;
+            nv.res.pitch                = sx * 4;
+            NVENCSTATUS s0 = nv.fn.nvEncRegisterResource(nv.enc, &nv.res);
+
+            nv.input.registeredResource = nv.res.registeredResource;
+            NVENCSTATUS s1 = nv.fn.nvEncMapInputResource(nv.enc, &nv.input);
+            NVENCSTATUS s2 = nv.fn.nvEncCreateBitstreamBuffer(nv.enc, &nv.bitstream);
+
+            int test = 0;
+            test++;
+            */
         }
 
     #elif defined(_WIN32)

@@ -3811,7 +3811,13 @@ void EncodeGL(char *szInFilePath, char *szOutFilePath, int nWidth, int nHeight,
     std::cout << "Saved in file " << szOutFilePath << std::endl;
 }
 
-int main(int argc, char **argv)
+/// get texture from window, read fn when its updated...
+
+GLuint texture_from_window() {
+
+}
+
+int main_sample(int argc, char **argv)
 {
     char szInFilePath[256] = "",
         szOutFilePath[256] = "",
