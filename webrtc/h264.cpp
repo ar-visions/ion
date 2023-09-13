@@ -450,66 +450,11 @@ protected:
                 SetupGLXResources();
                 glx_init = true;
             }
-
-            XSetErrorHandler (Xwindows_error);
-            //glfwMakeContextCurrent(window);
-            
-            assert(NV_ENC_SUCCESS == NvEncodeAPICreateInstance(&nv.fn));
-
-            window = glfwGetX11Window(glfw);
-            this->glfw = glfw;
-
-            NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS startup = { NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS_VER };
-            startup.device     = null;
-            startup.deviceType = NV_ENC_DEVICE_TYPE_OPENGL; // NV_ENC_DEVICE_TYPE_OPENGL
-            startup.apiVersion = NVENCAPI_VERSION;
-
-            NVENCSTATUS nvStatus = nv.fn.nvEncOpenEncodeSessionEx(&startup, &nv.enc);
-
-            /// lookup a session by map id here..
-            // Handle the error: The extension function isn't available.
-            glXBindTexImageEXT = (PFNGlXBindTexImageEXTPROC) glXGetProcAddressARB((const GLubyte*) "glXBindTexImageEXT");
-            if (!glXBindTexImageEXT) {
-                console.fault("glXBindTexImageEXT not found");
-            }
-            // Get the X11 Pixmap
-            // GLX setup to bind pixmap to a texture
-            pixmap = XCompositeNameWindowPixmap(dpy, window);
-            screen = DefaultScreen(dpy);
+            h264_sample *sample = sample_init(glfw);
         }
 
         void update_window() {
-            int          fbcount;
-            GLXFBConfig* fbconfigs = glXChooseFBConfig(dpy, screen, visual_attribs, &fbcount);
-            if (!fbconfigs) console.fault("glXChooseFBConfig no configurations");
-
-            glx_pixmap = glXCreatePixmap(dpy, fbconfigs[0], pixmap, attributes);
-            
-            // Bind to an OpenGL texture
-            glGenTextures(1, &texture_id);
-            glBindTexture(GL_TEXTURE_2D, texture_id);
-            glXBindTexImageEXT(dpy, glx_pixmap, GLX_FRONT_LEFT_EXT, NULL);
-
-            // Register the texture with NVENC
-            nv.res.resourceType         = NV_ENC_INPUT_RESOURCE_TYPE_OPENGL_TEX;
-
-            NV_ENC_INPUT_RESOURCE_OPENGL_TEX tx = {
-                texture_id, GL_TEXTURE_2D
-            };
-
-            nv.res.resourceToRegister   = &tx;
-            nv.res.bufferFormat         = NV_ENC_BUFFER_FORMAT_ARGB;
-            nv.res.width                = sx;
-            nv.res.height               = sy;
-            nv.res.pitch                = sx * 4;
-            NVENCSTATUS s0 = nv.fn.nvEncRegisterResource(nv.enc, &nv.res);
-
-            nv.input.registeredResource = nv.res.registeredResource;
-            NVENCSTATUS s1 = nv.fn.nvEncMapInputResource(nv.enc, &nv.input);
-            NVENCSTATUS s2 = nv.fn.nvEncCreateBitstreamBuffer(nv.enc, &nv.bitstream);
-
-            int test = 0;
-            test++;
+            sample_update(glfw);
         }
 
     #elif defined(_WIN32)
