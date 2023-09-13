@@ -444,17 +444,15 @@ void Service::mounted() {
 /// contextual class instances are safely allocated until the data is not;
 /// we dont mount and then free the context leaving the data, thats possible but we leave the context open with data
 void VideoStream::mounted() {
-	VideoSink *video_sink = context<VideoSink>("video_sink"); /// send to nearest video sink, we think.
-	assert(video_sink);
+    using PeerConnection = rtc::PeerConnection;
+    using Configuration  = rtc::Configuration;
+	//VideoSink *video_sink = context<VideoSink>("video_sink"); /// send to nearest video sink, we think.
+	//assert(video_sink);
 
     VideoStream::props *state = this->state;
 
     /// all props are set prior to mount call (args & style)
-	state->service = async {1, [state, video_sink](runtime *proc, int i) -> mx {
-
-        using PeerConnection = rtc::PeerConnection;
-        using Configuration = rtc::Configuration;
-
+	state->service = async {1, [state](runtime *proc, int i) -> mx {
         /// Main dispatch queue (this is main for webrtc module, its own abstract)
         /// use async method
         state->MainThread = new webrtc::DispatchQueue("Main");

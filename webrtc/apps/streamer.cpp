@@ -51,8 +51,7 @@ struct View:Element {
     }
 };
 
-
-int main(int argc, char **argv) try {
+int main(int argc, char **argv) {
     ion::map<mx> defs {
         {"audio",   str("opus")},
         {"video",   str("h264")},
@@ -143,8 +142,4 @@ int main(int argc, char **argv) try {
             })}}
         };
     });
-
-} catch (const std::exception &e) {
-    std::cout << "Error: " << e.what() << std::endl;
-    return -1;
 }

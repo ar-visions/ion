@@ -14,7 +14,7 @@ struct h264e:mx {
     mx_declare(h264e, mx, i264e);
 
     /// the call is async if there is no input, because that means frames are pushed independent of h264e, it waits for new frames as a result
-    h264e(lambda<bool(mx)> output, lambda<yuv420(i64)> input = {}); /// the stream ends on null image pushed or given in this input
+    h264e(lambda<bool(mx)> output);
     void push(yuv420 frame);
     void push(GLFWwindow *glfw);
     async run();
@@ -201,10 +201,6 @@ struct Stream:mx {
     }
 };
 
-
-
-using VideoSink = lambda<void(mx)>;
-
 struct Service: node {
 	struct props {
 		ion::async 				  service; /// not exposed in meta; private state var
@@ -233,20 +229,13 @@ struct Services:composer {
     struct iServices {
         composer::cmdata*        cmdata;
         bool                     running;
-        lambda<node(iServices&)> service_fn;
-		VideoSink				 video_sink;
-		///
-		doubly<prop> meta() {
-			return {
-				prop { "video_sink", video_sink }
-			};
-		}
+        lambda<node(Services&)>  service_fn;
         ///
         type_register(iServices);
     };
     mx_object(Services, composer, iServices);
 
-    Services(lambda<node(iServices&)> service_fn) : Services() {
+    Services(lambda<node(Services&)> service_fn) : Services() {
         data->cmdata = composer::data;
         data->cmdata->app = mem;
         data->service_fn = service_fn;
@@ -256,6 +245,8 @@ struct Services:composer {
 
     /// wait for all services to return
     operator int() {
+        int test = 0;
+        test++;
         return run();
     }
 };
