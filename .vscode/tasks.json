@@ -62,6 +62,37 @@
                     "env":{"VERBOSE":"1"}
                 }
             }
+        },
+        {
+            "label": "build-sample",
+            "type": "shell",
+			"options": {
+                "cwd": "${workspaceFolder}/../ion/build"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "group": "build0",
+                "clear": true
+            },
+			"isBackground": false,
+			"problemMatcher": ["$gcc"],
+            "windows": {
+                "command": "msbuild ion.sln /t:sample"
+            },
+            "osx": {
+                "command": "make sample -j10"
+            },
+            "linux": {
+                "command": "make sample -j16",
+                "options":{
+                    "env":{"VERBOSE":"1"}
+                }
+            }
         }
    
 	]

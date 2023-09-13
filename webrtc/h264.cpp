@@ -21,7 +21,8 @@
     #define GLFW_EXPOSE_NATIVE_COCOA
 
 #elif defined(__linux__)
-
+    #include <GL/freeglut.h>
+    #include <GL/glew.h>
     #include <GL/gl.h>
     #include <GL/glx.h>
     #include <GL/glxext.h>
@@ -361,7 +362,7 @@ protected:
         };
         int         visual_attribs[(22 * 2) + 1] = {
             GLX_X_RENDERABLE,   True,
-            GLX_DRAWABLE_TYPE,  GLX_WINDOW_BIT,
+            GLX_DRAWABLE_TYPE,  GLX_PIXMAP_BIT,
             GLX_RENDER_TYPE,    GLX_RGBA_BIT,
             GLX_X_VISUAL_TYPE,  GLX_TRUE_COLOR,
             GLX_RED_SIZE,       8,
@@ -374,6 +375,27 @@ protected:
             // Add any other attributes you need
             None
         };
+
+        bool SetupGLXResources()
+        {
+            int argc = 1;
+            char *argv[1] = {(char*)"dummy"};
+
+            // Use glx context/surface
+            glutInit(&argc, argv);
+            glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE);
+            glutInitWindowSize(16, 16);
+
+            int window = glutCreateWindow("h264");
+            if (!window)
+            {
+                std::cout << "\nUnable to create GLUT window.\n" << std::endl;
+                return false;
+            }
+
+            glutHideWindow();
+            return true;
+        }
 
         bool encode(lambda<bool(mx)> &output) {
             void *bytes = null;
@@ -412,26 +434,36 @@ protected:
                 glDeleteTextures(1, &texture_id);
                 XFreePixmap(dpy, pixmap);
 
-                // After you're done, unmap and unregister the resource
                 nv.fn.nvEncUnmapInputResource(nv.enc, nv.input.mappedResource);
-                
                 nv.fn.nvEncDestroyBitstreamBuffer(nv.enc, &nv.bitstream);
-
                 nv.fn.nvEncUnregisterResource(nv.enc, nv.res.registeredResource);
                 nv.fn.nvEncDestroyEncoder((void*)nv.enc);
             }
         }
 
         void init(GLFWwindow* glfw) {
+            static bool glx_init = false;
+            /// perform this first; start a GL instance
+            if (!glx_init) {
+                SetupGLXResources();
+                glx_init = true;
+            }
+
             XSetErrorHandler (Xwindows_error);
-
-            nv.fn.version = NV_ENCODE_API_FUNCTION_LIST_VER;
+            //glfwMakeContextCurrent(window);
+            
             assert(NV_ENC_SUCCESS == NvEncodeAPICreateInstance(&nv.fn));
-            NVENCSTATUS nvStatus = nv.fn.nvEncOpenEncodeSession(
-                glfw, NV_ENC_DEVICE_TYPE_OPENGL, &nv.enc); /// handle is opaque for GL
 
-            this->glfw = glfw;
             window = glfwGetX11Window(glfw);
+            this->glfw = glfw;
+
+            NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS startup = { NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS_VER };
+            startup.device     = null;
+            startup.deviceType = NV_ENC_DEVICE_TYPE_OPENGL; // NV_ENC_DEVICE_TYPE_OPENGL
+            startup.apiVersion = NVENCAPI_VERSION;
+
+            NVENCSTATUS nvStatus = nv.fn.nvEncOpenEncodeSessionEx(&startup, &nv.enc);
+
             /// lookup a session by map id here..
             // Handle the error: The extension function isn't available.
             glXBindTexImageEXT = (PFNGlXBindTexImageEXTPROC) glXGetProcAddressARB((const GLubyte*) "glXBindTexImageEXT");
@@ -458,14 +490,24 @@ protected:
 
             // Register the texture with NVENC
             nv.res.resourceType         = NV_ENC_INPUT_RESOURCE_TYPE_OPENGL_TEX;
-            nv.res.resourceToRegister   = &texture_id;
+
+            NV_ENC_INPUT_RESOURCE_OPENGL_TEX tx = {
+                texture_id, GL_TEXTURE_2D
+            };
+
+            nv.res.resourceToRegister   = &tx;
             nv.res.bufferFormat         = NV_ENC_BUFFER_FORMAT_ARGB;
-            nv.fn.nvEncRegisterResource(nv.enc, &nv.res);
+            nv.res.width                = sx;
+            nv.res.height               = sy;
+            nv.res.pitch                = sx * 4;
+            NVENCSTATUS s0 = nv.fn.nvEncRegisterResource(nv.enc, &nv.res);
 
             nv.input.registeredResource = nv.res.registeredResource;
-            nv.fn.nvEncMapInputResource(nv.enc, &nv.input);
+            NVENCSTATUS s1 = nv.fn.nvEncMapInputResource(nv.enc, &nv.input);
+            NVENCSTATUS s2 = nv.fn.nvEncCreateBitstreamBuffer(nv.enc, &nv.bitstream);
 
-            nv.fn.nvEncCreateBitstreamBuffer(nv.enc, &nv.bitstream);
+            int test = 0;
+            test++;
         }
 
     #elif defined(_WIN32)

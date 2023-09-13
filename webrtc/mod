@@ -6,7 +6,7 @@ if(WIN32)
 endif()
 
 if(UNIX)
-    dep(X11 GLX GL)
+    dep(X11 EGL GLX GL glut)
     dep(xcb-xkb xkbcommon xkbcommon-x11 Xcomposite)
 endif()
 

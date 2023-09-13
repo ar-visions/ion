@@ -101,6 +101,30 @@
                 "type": "cppvsdbg",
                 "program": "${workspaceFolder}/../ion/build/Debug/streamer",
             }
+        },
+        {
+            "name": "sample",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/../ion/build/sample",
+            "args": ["-i", "file.iyuv", "-s", "512x512"],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/../ion/build",
+            "environment": [],
+            "MIMode": "gdb",
+            "preLaunchTask": "build-sample",
+            "presentation": {
+                "hidden": false,
+                "group": "",
+                "order": 1,
+            },
+            "osx": {
+                "MIMode": "lldb"
+            },
+            "windows": {
+                "type": "cppvsdbg",
+                "program": "${workspaceFolder}/../ion/build/Debug/sample",
+            }
         }
     ]
 }

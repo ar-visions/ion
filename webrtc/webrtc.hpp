@@ -1,4 +1,5 @@
 #pragma once
+#include <GL/glew.h>
 #include <net/net.hpp>
 #include <media/media.hpp>
 #include <vk/vk.hpp>
@@ -8,7 +9,9 @@
 
 namespace ion {
 
-/// interface for minih264e
+/// interface for minih264e, dx11   -> nvenc on windows or 
+///                          glx/gl -> nvenc on linux,  or 
+///                          ScreenCapture/Crop -> the AV Foundation on macOS
 struct i264e;
 struct h264e:mx {
     mx_declare(h264e, mx, i264e);
@@ -226,14 +229,14 @@ struct Service: node {
 /// todo: set composer as parent to first node!
 /// todo: scratch that, not type safe.
 struct Services:composer {
-    struct iServices {
+    struct internal {
         composer::cmdata*        cmdata;
         bool                     running;
         lambda<node(Services&)>  service_fn;
         ///
-        type_register(iServices);
+        type_register(internal);
     };
-    mx_object(Services, composer, iServices);
+    mx_object(Services, composer, internal);
 
     Services(lambda<node(Services&)> service_fn) : Services() {
         data->cmdata = composer::data;
@@ -243,10 +246,7 @@ struct Services:composer {
 
     int run();
 
-    /// wait for all services to return
     operator int() {
-        int test = 0;
-        test++;
         return run();
     }
 };
