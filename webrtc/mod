@@ -5,9 +5,11 @@ if(WIN32)
     dep(bcrypt msvcrt dx11 dxgi11)
 endif()
 
-if(UNIX)
-    dep(X11 EGL GLX GL glut)
-    dep(xcb-xkb xkbcommon xkbcommon-x11 Xcomposite)
+if(NOT APPLE)
+    if(UNIX)
+        dep(X11 EGL GLX GL glut)
+        dep(xcb-xkb xkbcommon xkbcommon-x11 Xcomposite)
+    endif()
 endif()
 
 if(APPLE)
@@ -92,6 +94,6 @@ src(impl/wstransport.cpp
     impl/websocketserver.cpp
     impl/wshandshake.cpp)
 
-#if(APPLE)
-#    src(capture/apple.mm)
-#endif()
+if(APPLE)
+    src(objc/apple_capture.mm)
+endif()

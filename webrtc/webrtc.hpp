@@ -1,5 +1,7 @@
 #pragma once
+#ifdef __linux__
 #include <GL/glew.h>
+#endif
 #include <net/net.hpp>
 #include <media/media.hpp>
 #include <vk/vk.hpp>

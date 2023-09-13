@@ -18,6 +18,7 @@
 
 #elif defined(__APPLE__)
 
+    #include <webrtc/objc/apple_capture.h>
     #define GLFW_EXPOSE_NATIVE_COCOA
 
 #elif defined(__linux__)
@@ -319,6 +320,7 @@ protected:
 #else
 
     struct Session {
+        i264e *idata;
 
 #if defined(__linux__) || defined(_WIN32)
         struct NVenc {
@@ -600,19 +602,61 @@ protected:
 
     #elif defined(__APPLE__)
 
+        AppleCapture *apple_capture;
+        NSWindow     *window;
+
+        bool encode(lambda<bool(mx)> &output) {
+            return window != null;
+        }
+
+        /// going to CG blows because it has no backend texture
+        /// i think unless this is required on a headless front its better to use AVFoundation to get the crop of the window
+        CGImageRef captureWindowWithId(CGWindowID windowId) {
+            CGImageRef image = NULL;
+            CFArrayRef windowList = CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly, kCGNullWindowID);
+            if (windowList) {
+                CFIndex count = CFArrayGetCount(windowList);
+                for (CFIndex i = 0; i < count; i++) {
+                    CFDictionaryRef windowInfo = (CFDictionaryRef)CFArrayGetValueAtIndex(windowList, i);
+                    CFNumberRef windowNumber = (CFNumberRef)CFDictionaryGetValue(windowInfo, kCGWindowNumber);
+                    int number;
+                    if (CFNumberGetValue(windowNumber, kCFNumberIntType, &number) && (CGWindowID)number == windowId) {
+                        CGRect bounds;
+                        CGRectMakeWithDictionaryRepresentation((CFDictionaryRef)CFDictionaryGetValue(windowInfo, kCGWindowBounds), &bounds);
+                        image = CGWindowListCreateImage(bounds, kCGWindowListOptionIncludingWindow, windowId, kCGWindowImageDefault);
+                        break;
+                    }
+                }
+                CFRelease(windowList);
+            }
+            return image;
+        }
+
+        static void capture_fn(void *user, unsigned char *data, int length) {
+            i264e *capture = (i264e*)user;
+            mx encoded = memory::raw_alloc(typeof(int8_t), 0, 0, 0);
+            encoded.mem->origin  = data;
+            encoded.mem->count   = (size_t)length;
+            encoded.mem->reserve = (size_t)length;
+            capture->output(data);
+        }
+
         void init(GLFWwindow* glfw) {
             this->glfw = glfw;
+            window = glfwGetCocoaWindow(glfw);
             /// on mac-os the AVFoundation and capture at window pos need to be instanced
         }
 
-        void encode(lambda<bool(mx)> &output) {
-            
-        }
-
         void release() {
+            if (apple_capture) {
+                capture_stop(apple_capture);
+                apple_capture = null;
+            }
         }
 
         void update_window() {
+            /// must start and stop the service here
+            apple_capture = capture_start((void*)this, window, capture_fn);
         }
 
     #endif
@@ -672,6 +716,7 @@ void h264e::push(GLFWwindow *glfw) {
     };
     i264e::Session &window = fetch_window(glfw);
     ///
+    window.idata = data;
     window.update();
     window.encode(data->output); // this calls output()
     /// needs a true/false return
