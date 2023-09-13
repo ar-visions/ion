@@ -2,16 +2,17 @@
 dep(mx:mx ion:net ion:ux vulkan:vk juice:juice srtp:srtp2 usrsctp:usrsctp)
 
 if(WIN32)
-    dep(bcrypt msvcrt)
+    dep(bcrypt msvcrt dx11 dxgi11)
 endif()
 
 if(UNIX)
     dep(X11 GLX GL)
-    #dep(X11-xcb)
     dep(xcb-xkb xkbcommon xkbcommon-x11 Xcomposite)
 endif()
 
-if(NOT APPLE)
+if(APPLE)
+    dep(AVFoundation VideoToolbox)
+else()
     dep(nvcuvid nvidia-encode)
 endif()
 
@@ -90,3 +91,7 @@ src(impl/wstransport.cpp
     impl/websocket.cpp
     impl/websocketserver.cpp
     impl/wshandshake.cpp)
+
+#if(APPLE)
+#    src(capture/apple.mm)
+#endif()

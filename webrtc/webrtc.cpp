@@ -365,6 +365,7 @@ Stream app_stream(App app) {
         vsrc->getSampleDuration_us  = [ ](StreamType type) -> uint64_t { return 1000000/30; };
         vsrc->start                 = [&](StreamType type) { vsrc->loadNextSample(type); };
         vsrc->stop                  = [&](StreamType type) { close = true; };
+
         ///
         vsrc->getSample = [&](StreamType type) {
             int i = type.value;

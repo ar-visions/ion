@@ -2,14 +2,16 @@
 #include <vk/vk.hpp>
 #include <media/media.hpp>
 #include <async/async.hpp>
-#include <nvenc/nvEncodeAPI.h>
 
-///
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
 #include <math.h>
+
+#ifndef __APPLE__
+#include <nvenc/nvEncodeAPI.h>
+#endif
 
 #if defined(__linux__)
 #include <GL/gl.h>
@@ -42,10 +44,19 @@ namespace ion {
 
 using PFNGlXBindTexImageEXTPROC = void (*)(Display *, GLXDrawable, int, const int *);
 using PFNGlXReleaseTexImageEXTPROC = void (*)(Display *, GLXDrawable, int);
-
 PFNGlXBindTexImageEXTPROC    glXBindTexImageEXT    = null;
 PFNGlXReleaseTexImageEXTPROC glXReleaseTexImageEXT = null;
 
+#elif defined(_WIN32_)
+#include <d3d11.h>
+#include <dxgi.h>
+#include <windows.h>
+#define GLFW_EXPOSE_NATIVE_WIN32
+#elif defined(__APPLE__)
+#define GLFW_EXPOSE_NATIVE_COCOA
+
+#else
+#define SOFTWARE
 ///
 #define MINIH264_IMPLEMENTATION
 #define H264E_ENABLE_PLAIN_C    1
@@ -127,17 +138,23 @@ void h264e_thread_pool_run(void *pool, void (*callback)(void*), void *callback_j
         event_wait(t->event_done, INFINITE);
     }
 }
+
+#endif
 #endif
 
 struct i264e {
+public:
+    bool            valid;     /// while waiting for first frame it should be valid
+    size_t          frame_size, width, height;
+
+#ifdef SOFTWARE
 protected:
     H264E_create_param_t    create_param;
     H264E_run_param_t       run_param;
     H264E_io_yuv_t          yuv;
     uint8_t                *buf_in, *buf_save;
     uint8_t                *coded_data;
-    size_t                  frame_size, width, height;
-public:
+
     int gop;        /// key frame period
     int qp;         /// QP = 10..51
     int kbps;       /// 0 = default (constant qp)
@@ -145,7 +162,7 @@ public:
     int threads;    /// 4 = default
     int speed;      /// 0 = best quality, 10 = fastest
     bool denoise;
-    bool valid;     /// while waiting for first frame it should be valid
+#endif
 
     struct Session {
 
@@ -165,8 +182,6 @@ public:
 #if defined(__linux)
 
         int         screen;
-        int         sx = -1, sy = -1;
-        GLFWwindow* glfw;
         ::Window    window;
         Pixmap      pixmap; /// this is active texture management in OS
         GLXDrawable glx_pixmap;
@@ -261,35 +276,150 @@ public:
             screen = DefaultScreen(dpy);
         }
 
+        void update_window() {
+            int          fbcount;
+            GLXFBConfig* fbconfigs = glXChooseFBConfig(dpy, screen, visual_attribs, &fbcount);
+            if (!fbconfigs) console.fault("glXChooseFBConfig no configurations");
+
+            glx_pixmap = glXCreatePixmap(dpy, fbconfigs[0], pixmap, attributes);
+            
+            // Bind to an OpenGL texture
+            glGenTextures(1, &texture_id);
+            glBindTexture(GL_TEXTURE_2D, texture_id);
+            glXBindTexImageEXT(dpy, glx_pixmap, GLX_FRONT_LEFT_EXT, NULL);
+
+            // Register the texture with NVENC
+            nv.res.resourceType         = NV_ENC_INPUT_RESOURCE_TYPE_OPENGL_TEX;
+            nv.res.resourceToRegister   = &texture_id;
+            nv.res.bufferFormat         = NV_ENC_BUFFER_FORMAT_ARGB;
+            nv.fn.nvEncRegisterResource(nv.enc, &nv.res);
+
+            nv.input.registeredResource = nv.res.registeredResource;
+            nv.fn.nvEncMapInputResource(nv.enc, &nv.input);
+
+            nv.fn.nvEncCreateBitstreamBuffer(nv.enc, &nv.bitstream);
+        }
+
+    #elif defined(_WIN32)
+            IDXGIFactory1* pFactory;
+            IDXGIAdapter1* pAdapter;
+            IDXGIOutput* pOutput;
+            DXGI_OUTPUT_DESC desc;
+            ID3D11Texture2D* prev;
+            HWND hWnd;
+
+        void release() {
+            pOutput->Release();
+            pAdapter->Release();
+            pFactory->Release();
+        }
+
+        void init(GLFWwindow *window) {
+            hWnd = glfwGetWin32Window(window);
+
+                // Obtain the DXGI factory
+            if (FAILED(CreateDXGIFactory1(__uuidof(IDXGIFactory1), (void**)&pFactory))) {
+                assert("create dxgi failure");
+                return;
+            }
+
+            if (FAILED(pFactory->EnumAdapters1(0, &pAdapter))) {
+                pFactory->Release();
+                assert("enum adapters failure");
+                return;
+            }
+
+            if (FAILED(pAdapter->EnumOutputs(0, &pOutput))) {
+                pAdapter->Release();
+                pFactory->Release();
+                assert("enum outputs failure");
+                return;
+            }
+
+            pOutput->GetDesc(&desc);
+        }
+
+        ID3D11Texture2D* capture() {
+            ID3D11Texture2D* pTexture = nullptr;
+
+            if (desc.AttachedToDesktop && desc.DesktopCoordinates.right > 0) {
+                IDXGIOutput1* pOutput1;
+                if (SUCCEEDED(pOutput->QueryInterface(__uuidof(IDXGIOutput1), (void**)&pOutput1))) {
+                    ID3D11Device* pDevice;
+                    D3D_FEATURE_LEVEL featureLevel;
+                    if (SUCCEEDED(D3D11CreateDevice(pAdapter, D3D_DRIVER_TYPE_UNKNOWN, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &pDevice, &featureLevel, nullptr))) {
+                        ID3D11DeviceContext* pContext;
+                        pDevice->GetImmediateContext(&pContext);
+
+                        if (SUCCEEDED(pOutput1->DuplicateOutput(pDevice, &pOutput1))) {
+                            DXGI_OUTDUPL_FRAME_INFO frameInfo;
+                            IDXGIResource* pDesktopResource = nullptr;
+                            if (SUCCEEDED(pOutput1->AcquireNextFrame(1000, &frameInfo, &pDesktopResource))) {
+                                pDesktopResource->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&pTexture);
+                                pDesktopResource->Release();
+                                pOutput1->ReleaseFrame();
+                            }
+                            pOutput1->Release();
+                        }
+                        pContext->Release();
+                        pDevice->Release();
+                    }
+                }
+            }
+            return pTexture;
+        }
+
+        void encode(lambda<bool(mx)> &output) {
+            ID3D11Texture2D* tx = capture(); // acquired from DXGI Duplication
+            if (!tx || tx != prev) {
+                if (prev) {
+                    // Unregister prevTexture with NVENC
+                    nv.fn.nvEncUnregisterResource(nv.enc, nv.res.registeredResource);
+                }
+                // Register tx with NVENC
+                nv.res.resourceType       = NV_ENC_INPUT_RESOURCE_TYPE_DIRECTX;
+                nv.res.resourceToRegister = (void*)tx;
+                nv.res.bufferFormat       = NV_ENC_BUFFER_FORMAT_ARGB;  // or appropriate format
+                NVENCSTATUS nvStatus      = nv.fn.nvEncRegisterResource(nv.enc, &nv.res);
+                prev = tx;
+            }
+        }
+
+        void update_window() {
+        }
+
+    #elif defined(__APPLE__)
+
+        void init(GLFWwindow* glfw) {
+            this->glfw = glfw;
+            /// on mac-os the AVFoundation and capture at window pos need to be instanced
+        }
+
+        void encode(lambda<bool(mx)> &output) {
+            
+        }
+
+        void release() {
+        }
+
+        void update_window() {
+        }
+
+    #endif
+
+        ~Session() {
+            release();
+        }
+        
         void update() {
             int x, y;
-            glfwGetWindowSize(glfw, &x, &y);
+            glfwGetWindowSize(this->glfw, &x, &y);
             if (sx == -1 || x != sx || y != sy) {
                 release();
                 ///
                 sx = x;
                 sy = y;
-                int          fbcount;
-                GLXFBConfig* fbconfigs = glXChooseFBConfig(dpy, screen, visual_attribs, &fbcount);
-                if (!fbconfigs) console.fault("glXChooseFBConfig no configurations");
-
-                glx_pixmap = glXCreatePixmap(dpy, fbconfigs[0], pixmap, attributes);
-                
-                // Bind to an OpenGL texture
-                glGenTextures(1, &texture_id);
-                glBindTexture(GL_TEXTURE_2D, texture_id);
-                glXBindTexImageEXT(dpy, glx_pixmap, GLX_FRONT_LEFT_EXT, NULL);
-
-                // Register the texture with NVENC
-                nv.res.resourceType         = NV_ENC_INPUT_RESOURCE_TYPE_OPENGL_TEX;
-                nv.res.resourceToRegister   = &texture_id;
-                nv.res.bufferFormat         = NV_ENC_BUFFER_FORMAT_ARGB;
-                nv.fn.nvEncRegisterResource(nv.enc, &nv.res);
-
-                nv.input.registeredResource = nv.res.registeredResource;
-                nv.fn.nvEncMapInputResource(nv.enc, &nv.input);
-
-                nv.fn.nvEncCreateBitstreamBuffer(nv.enc, &nv.bitstream);
+                update_window();
             }
         }
     };
@@ -337,6 +467,8 @@ public:
     async run() {
         return async {1, [this](runtime *rt, int index) -> mx {
             int   iframes = 0;
+
+        #if defined(H264E)
             yuv420 frame = fetch(); /// must be yuv420; this will not convert
 
             if (!frame) {
@@ -455,6 +587,8 @@ public:
             if (thread_pool)
                 h264e_thread_pool_close(thread_pool, threads);
     #endif
+
+    #endif
             return iframes;
         }};
     }
@@ -473,10 +607,6 @@ h264e::h264e(lambda<bool(mx)> output, lambda<yuv420(i64)> input) : h264e() {
         }
         XCompositeRedirectSubwindows(dpy, RootWindow(dpy, screen), CompositeRedirectAutomatic);
     }
-#endif
-
-    data->input      = input;
-    data->output     = output;
     data->gop        = 16;
     data->qp         = 33;
     data->kbps       = 0; /// not sure whats normal here, but default shouldnt set it
@@ -484,8 +614,15 @@ h264e::h264e(lambda<bool(mx)> output, lambda<yuv420(i64)> input) : h264e() {
     data->threads    = 4;
     data->speed      = 5;
     data->denoise    = false;
+#endif
 
-    data->run();
+    data->input      = input;
+    data->output     = output;
+
+    /// no-op if async (no input provided)
+    if (data->input)
+        data->run();
+
     /// if input then call at fps rate
 }
 

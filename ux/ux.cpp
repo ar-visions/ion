@@ -87,14 +87,13 @@ static void char_callback (GLFWwindow* window, uint32_t c) {
 }
 
 static void mouse_move_callback(GLFWwindow* window, double x, double y) {
-    App *app            = app_data(window);
-    app->data->cursor   = vec2d { x, y };// / app->data->e->vk_gpu->dpi_scale;
+    App *app = app_data(window);
+    app->data->cursor = vec2d { x, y };// / app->data->e->vk_gpu->dpi_scale;
 
     for (Element* n: app->data->hover)
         n->Element::data->hover = false;
     
     app->data->hover = app->select_at(app->data->cursor, app->data->buttons[0]);
-
     Element *last = null;
     for (Element* n: app->data->hover) {
         n->Element::data->hover  = true;
@@ -128,7 +127,7 @@ static void mouse_button_callback(GLFWwindow* window, int button, int state, int
         if (n->Element::data->tab_index >= 0)
             last = n;
     }
-    Element *prev = root->Element::data->focused;
+    Element *prev = root->Element::data->focused; // identifying your data members is important and you do that with member<> .... you can further meta describe in the type itself; you may also describe outside, but thats not strong because its distant from the implementation
     if (last && prev != last) {
         if (prev) {
             prev->Element::data->focus = false;
@@ -186,9 +185,6 @@ int App::run() {
         512, 512, 0, this);
     
     vk_engine_t *e = data->e;
-    ///
-    /// we are hosting window here and effectively establishing
-    /// interface at engine level. must do this damn thing now.
     ///
     Canvas *canvas = data->canvas = new Canvas(e->renderer); /// width and height are fetched from renderer (which updates in vkengine)
 	vkengine_set_key_callback       (e, key_callback);
