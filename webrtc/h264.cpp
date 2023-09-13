@@ -31,6 +31,13 @@ static int composite_event_base, composite_error_base;
 #include <GLFW/glfw3native.h>
 
 
+static int
+Xwindows_error (Display *xdisplay, XErrorEvent *error) {
+    int test = 0;
+    test++;
+    return 0;
+}
+
 namespace ion {
 
 using PFNGlXBindTexImageEXTPROC = void (*)(Display *, GLXDrawable, int, const int *);
@@ -122,9 +129,6 @@ void h264e_thread_pool_run(void *pool, void (*callback)(void*), void *callback_j
 }
 #endif
 
-
-using namespace ion;
-
 struct i264e {
 protected:
     H264E_create_param_t    create_param;
@@ -143,20 +147,22 @@ public:
     bool denoise;
     bool valid;     /// while waiting for first frame it should be valid
 
-#if defined(__linux__)
+    struct Session {
 
-    struct glxCache {
-        
-        
-        
+#if defined(__linux__) || defined(_WIN32)
         struct NVenc {
             void* enc;
             NV_ENC_REGISTER_RESOURCE       res       { NV_ENC_REGISTER_RESOURCE_VER };
             NV_ENC_MAP_INPUT_RESOURCE      input     { NV_ENC_MAP_INPUT_RESOURCE_VER };
             NV_ENCODE_API_FUNCTION_LIST    fn        { NV_ENCODE_API_FUNCTION_LIST_VER };
             NV_ENC_CREATE_BITSTREAM_BUFFER bitstream { NV_ENC_CREATE_BITSTREAM_BUFFER_VER };
-
         } nv;
+#endif
+        ~Session() {
+            release();
+        }
+
+#if defined(__linux)
 
         int         screen;
         int         sx = -1, sy = -1;
@@ -170,7 +176,7 @@ public:
             GLX_TEXTURE_FORMAT_EXT, GLX_TEXTURE_FORMAT_RGBA_EXT,
             None
         };
-        int         visual_attribs[24] = {
+        int         visual_attribs[(22 * 2) + 1] = {
             GLX_X_RENDERABLE,   True,
             GLX_DRAWABLE_TYPE,  GLX_WINDOW_BIT,
             GLX_RENDER_TYPE,    GLX_RGBA_BIT,
@@ -183,12 +189,8 @@ public:
             GLX_STENCIL_SIZE,   8,
             GLX_DOUBLEBUFFER,   True,
             // Add any other attributes you need
-            None,               0
+            None
         };
-
-        ~glxCache() {
-            release();
-        }
 
         bool encode(lambda<bool(mx)> &output) {
             void *bytes = null;
@@ -221,21 +223,25 @@ public:
         }
 
         void release() {
-            glXReleaseTexImageEXT(dpy, glx_pixmap, GLX_FRONT_LEFT_EXT);
-            glXDestroyPixmap(dpy, glx_pixmap);
-            glDeleteTextures(1, &texture_id);
-            XFreePixmap(dpy, pixmap);
+            if (glx_pixmap) {
+                glXReleaseTexImageEXT(dpy, glx_pixmap, GLX_FRONT_LEFT_EXT);
+                glXDestroyPixmap(dpy, glx_pixmap);
+                glDeleteTextures(1, &texture_id);
+                XFreePixmap(dpy, pixmap);
 
-            // After you're done, unmap and unregister the resource
-            nv.fn.nvEncUnmapInputResource(nv.enc, nv.input.mappedResource);
-            
-            nv.fn.nvEncDestroyBitstreamBuffer(nv.enc, &nv.bitstream);
+                // After you're done, unmap and unregister the resource
+                nv.fn.nvEncUnmapInputResource(nv.enc, nv.input.mappedResource);
+                
+                nv.fn.nvEncDestroyBitstreamBuffer(nv.enc, &nv.bitstream);
 
-            nv.fn.nvEncUnregisterResource(nv.enc, nv.res.registeredResource);
-            nv.fn.nvEncDestroyEncoder((void*)nv.enc);
+                nv.fn.nvEncUnregisterResource(nv.enc, nv.res.registeredResource);
+                nv.fn.nvEncDestroyEncoder((void*)nv.enc);
+            }
         }
 
         void init(GLFWwindow* glfw) {
+            XSetErrorHandler (Xwindows_error);
+
             nv.fn.version = NV_ENCODE_API_FUNCTION_LIST_VER;
             assert(NV_ENC_SUCCESS == NvEncodeAPICreateInstance(&nv.fn));
             NVENCSTATUS nvStatus = nv.fn.nvEncOpenEncodeSession(
@@ -288,9 +294,9 @@ public:
         }
     };
 
-    doubly<glxCache> windows;
-
 #endif
+
+    doubly<Session> windows;
 
     mutex  encode_mtx;
     yuv420 encode_input;
@@ -484,16 +490,16 @@ h264e::h264e(lambda<bool(mx)> output, lambda<yuv420(i64)> input) : h264e() {
 }
 
 void h264e::push(GLFWwindow *glfw) {
-    auto fetch_window = [data=data](GLFWwindow* glfw) -> i264e::glxCache& {
-        for (i264e::glxCache &c: data->windows)
+    auto fetch_window = [data=data](GLFWwindow* glfw) -> i264e::Session& {
+        for (i264e::Session &c: data->windows)
             if (c.glfw == glfw)
                 return c;
 
-        i264e::glxCache &c = data->windows->push();
+        i264e::Session &c = data->windows->push();
         c.init(glfw);
         return c;
     };
-    i264e::glxCache &window = fetch_window(glfw);
+    i264e::Session &window = fetch_window(glfw);
     ///
     window.update();
     window.encode(data->output); // this calls output()

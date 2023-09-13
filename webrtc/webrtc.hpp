@@ -241,8 +241,6 @@ struct Services:composer {
 				prop { "video_sink", video_sink }
 			};
 		}
-		///
-        int run();
         ///
         type_register(iServices);
     };
@@ -254,9 +252,11 @@ struct Services:composer {
         data->service_fn = service_fn;
     }
 
+    int run();
+
     /// wait for all services to return
     operator int() {
-        return data->run();
+        return run();
     }
 };
 

@@ -1045,24 +1045,24 @@ struct App:composer {
         array<Element*> active;
         array<Element*> hover;
         VkEngine     e;
-        lambda<node(App::adata&)> app_fn;
-        lambda<bool(App::adata&)> loop_fn;
-        int run();
+        lambda<node(App&)> app_fn;
+        lambda<bool(App&)> loop_fn;
         ///
         type_register(adata);
     };
 
     mx_object(App, composer, adata);
 
-    App(lambda<node(App::adata&)> app_fn) : App() {
+    App(lambda<node(App&)> app_fn) : App() {
         data->cmdata = composer::data; /// perhaps each data should be wrapped instance with an awareness of its peers
         data->app_fn = app_fn;
     }
-    
+
+    int run();
     
     static void resize(vec2i &sz, App *app);
 
-    operator int() { return data->run(); }
+    operator int() { return run(); }
 
     operator bool() { return true; }
 

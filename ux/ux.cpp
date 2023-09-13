@@ -65,20 +65,19 @@ void App::resize(vec2i &sz, App *app) {
     printf("resized: %d, %d\n", sz.x, sz.y);
 }
 
-App::adata *app_data(GLFWwindow *window) {
-    return (App::adata*)glfwGetWindowUserPointer(window);
+App *app_data(GLFWwindow *window) {
+    return (App*)glfwGetWindowUserPointer(window);
 }
 
 static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
     App *app = app_data(window);
-    App::adata *data = app->data;
 	if (action != GLFW_PRESS)
 		return;
 	switch (key) {
 	case GLFW_KEY_SPACE:
 		break;
 	case GLFW_KEY_ESCAPE:
-        vkengine_should_close(data->e);
+        vkengine_should_close(app->data->e);
 		break;
 	}
 }
@@ -181,12 +180,17 @@ static void mouse_button_callback(GLFWwindow* window, int button, int state, int
 /// since we are not drawing to the screen, we should be wasting no time with this shim
 /// it requires nvenc, a more standard api than the ones im pulling from nvpro
 
-int App::adata::run() {
-    e = vkengine_create(1, 2, "ux",
+int App::run() {
+    data->e = vkengine_create(1, 2, "ux",
         VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, VK_PRESENT_MODE_FIFO_KHR, VK_SAMPLE_COUNT_4_BIT,
         512, 512, 0, this);
-
-    canvas = new Canvas(e->renderer); /// width and height are fetched from renderer (which updates in vkengine)
+    
+    vk_engine_t *e = data->e;
+    ///
+    /// we are hosting window here and effectively establishing
+    /// interface at engine level. must do this damn thing now.
+    ///
+    Canvas *canvas = data->canvas = new Canvas(e->renderer); /// width and height are fetched from renderer (which updates in vkengine)
 	vkengine_set_key_callback       (e, key_callback);
 	vkengine_set_mouse_but_callback (e, mouse_button_callback);
 	vkengine_set_cursor_pos_callback(e, mouse_move_callback);
@@ -206,11 +210,12 @@ int App::adata::run() {
         rgbad c = { 0.0, 0.0, 0.0, 1.0 };
         canvas->clear(c);
         
-        node ee = app_fn(*this);
-        cmdata->update_all(ee);
-        Element *eroot = (Element*)(cmdata->instances->data->children ?
-                                    cmdata->instances->data->children[0] : 
-                                    cmdata->instances);
+        node ee = data->app_fn(*this);
+        update_all(ee);
+        Element *eroot = (Element*)(
+            composer::data->instances->data->children ?
+            composer::data->instances->data->children[0] : 
+            composer::data->instances);
         if (eroot) {
             /// update rect need to get eroot->children[0]
             eroot->data->bounds = rectd {
@@ -237,8 +242,8 @@ int App::adata::run() {
             vkDeviceWaitIdle(e->vkh->device);
 		}
         e->vk_device->mtx.unlock();
-        if (loop_fn)
-            if (!loop_fn(*this)) {
+        if (data->loop_fn)
+            if (!data->loop_fn(*this)) {
                 glfwDestroyWindow(e->window);
                 break;
             }
