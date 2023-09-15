@@ -103,6 +103,30 @@
             }
         },
         {
+            "name": "winrt",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/../ion/build/winrt",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/../ion/build",
+            "environment": [],
+            "MIMode": "gdb",
+            "preLaunchTask": "build-winrt",
+            "presentation": {
+                "hidden": false,
+                "group": "",
+                "order": 1,
+            },
+            "osx": {
+                "MIMode": "lldb"
+            },
+            "windows": {
+                "type": "cppvsdbg",
+                "program": "${workspaceFolder}/../ion/build/Debug/winrt",
+            }
+        },
+        {
             "name": "sample",
             "type": "cppdbg",
             "request": "launch",

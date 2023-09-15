@@ -1,5 +1,4 @@
 #include <webrtc/webrtc.hpp>
-#include <vk/vk.hpp>
 #include <media/media.hpp>
 #include <async/async.hpp>
 
@@ -9,10 +8,39 @@
 
 #endif
 
-#if defined(_WIN32_)
+#if defined(_WIN32)
+
+
+    #include <Unknwn.h>
+    #include <inspectable.h>
+
+    // WinRT
+    #include <winrt/Windows.Foundation.h>
+    #include <winrt/Windows.System.h>
+    #include <winrt/Windows.UI.h>
+    #include <winrt/Windows.UI.Composition.h>
+    #include <winrt/Windows.UI.Composition.Desktop.h>
+    #include <winrt/Windows.UI.Popups.h>
+    #include <winrt/Windows.Graphics.Capture.h>
+    #include <winrt/Windows.Graphics.DirectX.h>
+    #include <winrt/Windows.Graphics.DirectX.Direct3d11.h>
+
+    #include <windows.ui.composition.interop.h>
+    #include <DispatcherQueue.h>
+
+    // STL
+    #include <atomic>
+    #include <memory>
+
+    // D3D
+    #include <d3d11_4.h>
+    #include <dxgi1_6.h>
+    #include <d2d1_3.h>
+    #include <wincodec.h>
 
     #include <d3d11.h>
     #include <dxgi.h>
+    #include <dxgi1_2.h>
     #include <windows.h>
     #define GLFW_EXPOSE_NATIVE_WIN32
 
@@ -594,16 +622,16 @@ protected:
                     if (SUCCEEDED(D3D11CreateDevice(pAdapter, D3D_DRIVER_TYPE_UNKNOWN, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &pDevice, &featureLevel, nullptr))) {
                         ID3D11DeviceContext* pContext;
                         pDevice->GetImmediateContext(&pContext);
-
-                        if (SUCCEEDED(pOutput1->DuplicateOutput(pDevice, &pOutput1))) {
+                        IDXGIOutputDuplication* pOutputDuplication = nullptr;
+                        if (SUCCEEDED(pOutput1->DuplicateOutput(pDevice, &pOutputDuplication))) {
                             DXGI_OUTDUPL_FRAME_INFO frameInfo;
                             IDXGIResource* pDesktopResource = nullptr;
-                            if (SUCCEEDED(pOutput1->AcquireNextFrame(1000, &frameInfo, &pDesktopResource))) {
+                            if (SUCCEEDED(pOutputDuplication->AcquireNextFrame(1000, &frameInfo, &pDesktopResource))) {
                                 pDesktopResource->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&pTexture);
                                 pDesktopResource->Release();
-                                pOutput1->ReleaseFrame();
+                                pOutputDuplication->ReleaseFrame();
                             }
-                            pOutput1->Release();
+                            pOutputDuplication->Release();
                         }
                         pContext->Release();
                         pDevice->Release();

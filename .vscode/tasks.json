@@ -64,6 +64,37 @@
             }
         },
         {
+            "label": "build-winrt",
+            "type": "shell",
+			"options": {
+                "cwd": "${workspaceFolder}/../ion/build"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "group": "build0",
+                "clear": true
+            },
+			"isBackground": false,
+			"problemMatcher": ["$gcc"],
+            "windows": {
+                "command": "msbuild ion.sln /t:winrt"
+            },
+            "osx": {
+                "command": "make winrt -j10"
+            },
+            "linux": {
+                "command": "make winrt -j16",
+                "options":{
+                    "env":{"VERBOSE":"1"}
+                }
+            }
+        },
+        {
             "label": "build-sample",
             "type": "shell",
 			"options": {

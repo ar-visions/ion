@@ -1,21 +1,16 @@
 
 dep(mx:mx ion:net ion:ux vulkan:vk juice:juice srtp:srtp2 usrsctp:usrsctp)
 
-if(WIN32)
-    dep(bcrypt msvcrt dx11 dxgi11)
-endif()
-
-if(NOT APPLE)
-    if(UNIX)
-        dep(X11 EGL GLX GL glut)
-        dep(xcb-xkb xkbcommon xkbcommon-x11 Xcomposite)
-    endif()
-endif()
-
 if(APPLE)
     dep(AVFoundation VideoToolbox)
 else()
-    dep(nvcuvid nvidia-encode)
+    src(nvenc/NvEncoder.cpp
+        nvenc/NvEncoderD3D11.cpp)
+    if(UNIX)
+        dep(X11 EGL GLX GL glut nvcuvid nvidia-encode xcb-xkb xkbcommon xkbcommon-x11 Xcomposite)
+    else()
+        dep(nvcuvid nvencodeapi Windowscodecs windowsapp dwmapi advapi32 uuid bcrypt msvcrt d3d11 dxgi dxgi11)
+    endif()
 endif()
 
 # wide-linking interns (the order must prefer impl first)
@@ -23,6 +18,17 @@ includes(${p})
 includes(${p}/src)
 includes(${p}/rtc)
 includes(${p}/impl)
+
+if(APPLE)
+    file(TO_CMAKE_PATH "$ENV{VULKAN_SDK}/macOS/include" VULKAN_INCLUDE)
+    includes(${VULKAN_INCLUDE})
+elseif(UNIX)
+    # this is installed with a package currently
+    #file(TO_CMAKE_PATH "$ENV{VULKAN_SDK}/include" VULKAN_INCLUDE)
+else()
+    file(TO_CMAKE_PATH "$ENV{VULKAN_SDK}/Include" VULKAN_INCLUDE)
+    includes(${VULKAN_INCLUDE})
+endif()
 
 # MBEDTLS_SSL_DTLS_SRTP
 
@@ -96,4 +102,8 @@ src(impl/wstransport.cpp
 
 if(APPLE)
     src(objc/apple_capture.mm)
+endif()
+
+if(WIN32)
+    cflags(+/bigobj)
 endif()
