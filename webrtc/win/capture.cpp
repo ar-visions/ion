@@ -1,3 +1,6 @@
+/// include spec for Capture class
+#include <webrtc/win/capture.h>
+#include <async/async.hpp>
 #include <dxgi.h>
 #include <dxgi1_2.h>
 #include <d3d11.h>
@@ -32,8 +35,6 @@ using DispatcherQueueController     = winrt::Windows::System::DispatcherQueueCon
 using namespace std;
 using namespace ion;
 
-#define errorf(...) do { fprintf(stderr, __VA_ARGS__); exit(1); } while (0);
-
 extern "C"
 {
     HRESULT __stdcall CreateDirect3D11DeviceFromDXGIDevice(::IDXGIDevice* dxgiDevice,
@@ -41,37 +42,6 @@ extern "C"
 
     HRESULT __stdcall CreateDirect3D11SurfaceFromDXGISurface(::IDXGISurface* dgxiSurface,
         ::IInspectable** graphicsSurface);
-}
-
-auto CreateDXGISwapChain(winrt::com_ptr<ID3D11Device> const& device, const DXGI_SWAP_CHAIN_DESC1* desc)
-{
-    auto dxgiDevice = device.as<IDXGIDevice2>();
-    winrt::com_ptr<IDXGIAdapter> adapter;
-    winrt::check_hresult(dxgiDevice->GetParent(winrt::guid_of<IDXGIAdapter>(), adapter.put_void()));
-    winrt::com_ptr<IDXGIFactory2> factory;
-    winrt::check_hresult(adapter->GetParent(winrt::guid_of<IDXGIFactory2>(), factory.put_void()));
-
-    winrt::com_ptr<IDXGISwapChain1> swapchain;
-    winrt::check_hresult(factory->CreateSwapChainForComposition(device.get(), desc, nullptr, swapchain.put()));
-    return swapchain;
-}
-
-auto CreateDXGISwapChain(com_ptr<ID3D11Device> const& device,
-    uint32_t width, uint32_t height, DXGI_FORMAT format, uint32_t bufferCount)
-{
-    DXGI_SWAP_CHAIN_DESC1 desc = {};
-    desc.Width = width;
-    desc.Height = height;
-    desc.Format = format;
-    desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-    desc.SampleDesc.Count = 1;
-    desc.SampleDesc.Quality = 0;
-    desc.BufferCount = bufferCount;
-    desc.Scaling = DXGI_SCALING_STRETCH;
-    desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
-    desc.AlphaMode = DXGI_ALPHA_MODE_PREMULTIPLIED;
-
-    return CreateDXGISwapChain(device, &desc);
 }
 
 template <typename T>
@@ -83,6 +53,7 @@ auto GetDXGIInterfaceFromObject(winrt::Windows::Foundation::IInspectable const& 
     return result;
 }
 
+namespace ion {
 struct iCapture {
     protected:
     struct NVenc {
@@ -95,20 +66,20 @@ struct iCapture {
 
     public:
 
-    inline static DispatcherQueueController dispatcher { nullptr };
+    inline static DispatcherQueueController dispatcher { null };
     inline static com_ptr<  ID3D11Device>   d3d_device;
     inline static com_ptr<::IInspectable>   d3d_device_i;
 
     bool async_start = false;
     std::mutex mtx;
     
-    GraphicsCaptureItem                 m_item          { nullptr };
-    IDirect3DDevice                     m_device        { nullptr };
-    com_ptr<ID3D11DeviceContext>        m_d3dContext    { nullptr };
-    Direct3D11CaptureFramePool          m_framePool     { nullptr };
-    GraphicsCaptureSession              m_session       { nullptr };
+    GraphicsCaptureItem                 m_item          { null };
+    IDirect3DDevice                     m_device        { null };
+    com_ptr<ID3D11DeviceContext>        m_d3dContext    { null };
+    Direct3D11CaptureFramePool          m_framePool     { null };
+    GraphicsCaptureSession              m_session       { null };
     SizeInt32                           m_lastSize;
-    com_ptr<IDXGISwapChain1>            m_swapChain     { nullptr };
+    com_ptr<IDXGISwapChain1>            m_swapChain     { null };
     DirectXPixelFormat                  m_pixelFormat;
     uint32_t                            width = 0, height = 0;
     lambda<bool(mx)>                    m_output;
@@ -118,6 +89,8 @@ struct iCapture {
     ID3D11DeviceContext*                d3d11_context;
     com_ptr<ID3D11Texture2D>            m_TexSysMem;
     NvEncoderD3D11 *                    nvenc;
+
+    type_register(iCapture);
 
     void OnFrameArrived(Direct3D11CaptureFramePool const& sender, winrt::Windows::Foundation::IInspectable const&) {
         Direct3D11CaptureFrame frame = sender.TryGetNextFrame();
@@ -136,7 +109,6 @@ struct iCapture {
 
     void init(HWND hwnd, lambda<bool(mx)> on_encoded) {
         static bool init = false;
-        static int sessions = 0;
         static std::mutex mtx;
 
         /// lets protect during init
@@ -151,16 +123,15 @@ struct iCapture {
             
             winrt::check_hresult(
                 D3D11CreateDevice(
-                    nullptr, D3D_DRIVER_TYPE_HARDWARE,   nullptr,
-                    D3D11_CREATE_DEVICE_BGRA_SUPPORT,    nullptr, 0,
-                    D3D11_SDK_VERSION, d3d_device.put(), nullptr, nullptr));
+                    null, D3D_DRIVER_TYPE_HARDWARE,   null,
+                    D3D11_CREATE_DEVICE_BGRA_SUPPORT,    null, 0,
+                    D3D11_SDK_VERSION, d3d_device.put(), null, null));
             
             auto dxgi_device = d3d_device.as<IDXGIDevice>();
             winrt::check_hresult(
                 CreateDirect3D11DeviceFromDXGIDevice(
                     dxgi_device.get(), d3d_device_i.put()));
         }
-        sessions++;
         mtx.unlock();
 
         /// get context info
@@ -170,12 +141,16 @@ struct iCapture {
         d3dDevice->GetImmediateContext(m_d3dContext.put());
         d3d11_context      = m_d3dContext.get();
 
+        /// object has a falsey state if a window is not found
+
+        
         /// get window item
         auto interop_factory = winrt::get_activation_factory<GraphicsCaptureItem, IGraphicsCaptureItemInterop>();
-        winrt::check_hresult(
-            interop_factory->CreateForWindow(
-                hwnd, winrt::guid_of<IGraphicsCaptureItem>(), winrt::put_abi(m_item)));
-
+        interop_factory->CreateForWindow(
+            hwnd, winrt::guid_of<IGraphicsCaptureItem>(), winrt::put_abi(m_item));
+        if (!m_item) /// not a fault
+            return;
+        
         /// instance nvenc
         assert(NV_ENC_SUCCESS == NvEncodeAPICreateInstance(&nv.fn));
         NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS startup { NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS_VER };
@@ -196,7 +171,7 @@ struct iCapture {
         m_session          = m_framePool.CreateCaptureSession(m_item);
         
         /// set frame processor
-        m_framePool.FrameArrived({ this, &Capture::OnFrameArrived });
+        m_framePool.FrameArrived({ this, &iCapture::OnFrameArrived });
 
         /// allocate nvenc and set initial config
         nvenc = new NvEncoderD3D11(
@@ -237,32 +212,34 @@ struct iCapture {
     {
         nvenc->DestroyEncoder();
         delete nvenc;
+
         m_session.Close();
         m_framePool.Close();
-        m_framePool = nullptr;
-        m_session   = nullptr;
-        m_item      = nullptr;
+        m_framePool = null;
+        m_session   = null;
+        m_item      = null;
     }
 };
 
 mx_implement(Capture, mx);
 
-/// async makes case for context-data schema strong
-Capture::Capture(HWND hwnd, lambda<bool(mx)> encoded):Capture() {
-    async { 1, [data](runtime *rt, int idx) {
+/// async makes case for context-data
+Capture::Capture(HWND hwnd, lambda<bool(mx)> encoded, lambda<void(iCapture*)> closed):Capture() {
+    async { 1, [hwnd, encoded, closed, data=data](runtime *rt, int idx) -> mx {
         data->mtx.lock();
         data->async_start = true;
         data->init(hwnd, encoded);
         data->mtx.unlock();
-
+        ///
         MSG     msg { 0 };
-        while (GetMessage(&msg, nullptr, 0, 0)) {
+        while (GetMessage(&msg, null, 0, 0)) {
             if (!data->nvenc)
                 break;
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         }
-
+        closed(data);
+        return int(0);
     }};
 }
 
@@ -272,20 +249,4 @@ void Capture::stop() {
     }
     data->Close();
 }
-
-
-
-int test_for_window(char *win) {    
-    HWND hwnd = FindWindowA(NULL, win);
-
-    lambda<bool(mx)> encoded = [](mx data) -> bool {
-        printf("data encoded: %d bytes\n", data.count());
-        return true;
-    };
-
-    Capture capture { hwnd, encoded };
-
-
-    int test = 0;
-    test++;
 }
