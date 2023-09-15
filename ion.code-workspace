@@ -193,7 +193,8 @@
 			"*.tcc": "cpp",
 			"numbers": "cpp",
 			"semaphore": "cpp",
-			"resumable": "cpp"
+			"resumable": "cpp",
+			"*.ipp": "cpp"
 		}
 	}
 }

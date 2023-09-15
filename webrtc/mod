@@ -101,9 +101,10 @@ src(impl/wstransport.cpp
     impl/wshandshake.cpp)
 
 if(APPLE)
-    src(objc/apple_capture.mm)
+    src(apple/apple_capture.mm)
 endif()
 
 if(WIN32)
     cflags(+/bigobj)
+    src(win/capture.cpp)
 endif()
