@@ -176,8 +176,6 @@ struct Stream:mx {
             sampleHandler(sst, ss->getSampleTime_us(sst), sample);
             ///
             ss->loadNextSample(sst);
-            int test = 0;
-            test++;
             dispatchQueue.dispatch([this]() {
                 this->sendSample();
             });
