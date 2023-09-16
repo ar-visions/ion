@@ -82,20 +82,11 @@ int main(int argc, char **argv) {
                 { "id",             "streamer" },
                 { "source",         "" },
                 { "stream-select",  StreamSelect([](Client client) -> mx {
-                    bool test = false;
+                    bool test = true; /// this <-----
                     if (test) {
                         auto video  = H264FileParser("h264", 30, true);
-                        auto audio  = OPUSFileParser("opus", true); /// set this data on the app stream
+                        auto audio  = OPUSFileParser("opus", true);
                         auto stream = Stream(video, audio);
-
-                        /// we must run an app here; stream should be an mx generic so we can facilitate lots of function by type
-                        /// --------------------------------
-                        /// if we return a path with executable, i wonder if it could run & stream (use winrt & dx11 on windows)
-                        /// apps can hold spawn/close multiple windows simultaneously so you would
-                        ///  need to actually be able to support that (by not right away)
-                        /// its just a data message to indicate new ones and streamable uri's from those idents
-                        /// --------------------------------
-                    
                         return stream;
                     }
                     ///
@@ -116,9 +107,9 @@ int main(int argc, char **argv) {
             },
 
             /// https resource server
-            Service {{ "id", "https" },
-                     { "url", https_res },
-                     { "root", "www" },
+            Service {{ "id",   "https"   },
+                     { "url",  https_res },
+                     { "root", "www"     },
                      { "on-message", lambda<message(message&)>([](message &msg) -> message {
                 ///
                 console.log("message = {0}: {1}", { msg->code, msg->query });

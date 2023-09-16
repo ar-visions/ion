@@ -195,6 +195,7 @@
 			"semaphore": "cpp",
 			"resumable": "cpp",
 			"*.ipp": "cpp"
-		}
+		},
+		"git.ignoreLimitWarning": true
 	}
 }

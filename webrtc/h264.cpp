@@ -2,93 +2,14 @@
 #include <media/media.hpp>
 #include <async/async.hpp>
 
-#ifndef __APPLE__
-
-    #include <nvenc/nvEncodeAPI.h>
-
-#endif
-
-#if defined(_WIN32)
-
-
-    #include <Unknwn.h>
-    #include <inspectable.h>
-
-    // WinRT
-    #include <winrt/Windows.Foundation.h>
-    #include <winrt/Windows.System.h>
-    #include <winrt/Windows.UI.h>
-    #include <winrt/Windows.UI.Composition.h>
-    #include <winrt/Windows.UI.Composition.Desktop.h>
-    #include <winrt/Windows.UI.Popups.h>
-    #include <winrt/Windows.Graphics.Capture.h>
-    #include <winrt/Windows.Graphics.DirectX.h>
-    #include <winrt/Windows.Graphics.DirectX.Direct3d11.h>
-
-    #include <windows.ui.composition.interop.h>
-    #include <DispatcherQueue.h>
-
-    // STL
-    #include <atomic>
-    #include <memory>
-
-    // D3D
-    #include <d3d11_4.h>
-    #include <dxgi1_6.h>
-    #include <d2d1_3.h>
-    #include <wincodec.h>
-
-    #include <d3d11.h>
-    #include <dxgi.h>
-    #include <dxgi1_2.h>
-    #include <windows.h>
-    #define GLFW_EXPOSE_NATIVE_WIN32
-
-#elif defined(__APPLE__)
-
-    #include <webrtc/objc/apple_capture.h>
-    #define GLFW_EXPOSE_NATIVE_COCOA
-
-#elif defined(__linux__)
-    #include <GL/freeglut.h>
-    #include <GL/glew.h>
-    #include <GL/gl.h>
-    #include <GL/glx.h>
-    #include <GL/glxext.h>
-    #include <X11/Xlib.h>
-    #include <X11/extensions/Xcomposite.h>
-
-    #define GLFW_EXPOSE_NATIVE_X11
-    #define GLFW_EXPOSE_NATIVE_GLX
-    
-    static Display* dpy;
-    static int composite_event_base, composite_error_base;
-
-    using  PFNGlXBindTexImageEXTPROC     = void (*)(Display *, GLXDrawable, int, const int *);
-    using  PFNGlXReleaseTexImageEXTPROC  = void (*)(Display *, GLXDrawable, int);
-    static PFNGlXBindTexImageEXTPROC       glXBindTexImageEXT    = ion::null;
-    static PFNGlXReleaseTexImageEXTPROC    glXReleaseTexImageEXT = ion::null;
-
-    static int
-    Xwindows_error (Display *xdisplay, XErrorEvent *error) {
-        int test = 0;
-        test++;
-        return 0;
-    }
-#endif
-
-    #include <GLFW/glfw3native.h>
-
-#ifdef USE_H264E
-
 ///
 #define MINIH264_IMPLEMENTATION
 #define H264E_ENABLE_PLAIN_C    1
 #include <webrtc/minih264e.h>
 
-    #if H264E_MAX_THREADS
-
+#if H264E_MAX_THREADS
 #include "system.h"
+
 typedef struct {
     void *event_start;
     void *event_done;
@@ -163,35 +84,31 @@ void h264e_thread_pool_run(void *pool, void (*callback)(void*), void *callback_j
         event_wait(t->event_done, INFINITE);
     }
 }
-    #endif
-
 #endif
 
 namespace ion {
 
 struct i264e {
 public:
-    bool            valid;     /// while waiting for first frame it should be valid
-    size_t          frame_size, width, height;
+    bool                    valid;     /// while waiting for first frame it should be valid
+    size_t                  frame_size, width, height;
 
-#ifdef USE_H264E
-protected:
     H264E_create_param_t    create_param;
     H264E_run_param_t       run_param;
     H264E_io_yuv_t          yuv;
     uint8_t                *buf_in, *buf_save;
     uint8_t                *coded_data;
 
-    int gop;        /// key frame period
-    int qp;         /// QP = 10..51
-    int kbps;       /// 0 = default (constant qp)
-    int fps;        /// 30 is default
-    int threads;    /// 4 = default
-    int speed;      /// 0 = best quality, 10 = fastest
-    bool denoise;
+    int                     gop;        /// key frame period
+    int                     qp;         /// QP = 10..51
+    int                     kbps;       /// 0 = default (constant qp)
+    int                     fps;        /// 30 is default
+    int                     threads;    /// 4 = default
+    int                     speed;      /// 0 = best quality, 10 = fastest
+    bool                    denoise;
 
-    mutex  encode_mtx;
-    yuv420 encode_input;
+    mutex                   encode_mtx;
+    yuv420                  encode_input;
 
     /// called from outside thread; we must maintain sync with encoder
     void push(yuv420 &frame) {
@@ -314,11 +231,6 @@ protected:
                 encoded.mem->count   = size_t(encoded_len);
                 encoded.mem->reserve = encoded.mem->count;
 
-                //u8 *nalu = (u8*)encoded.mem->origin;
-                //u8 &b0 = nalu[0];
-                //u8 &b1 = nalu[1];
-                //u8 &b2 = nalu[2];
-                //u8 &b3 = nalu[3];
                 /// output encoded
                 if (!output(encoded))
                     break;
@@ -344,393 +256,7 @@ protected:
     #endif
             return iframes;
         }};
-
-#else
-
-    struct Session {
-        i264e *idata;
-
-#if defined(__linux__) || defined(_WIN32)
-        struct NVenc {
-            void* enc;
-            NV_ENC_REGISTER_RESOURCE       res       { NV_ENC_REGISTER_RESOURCE_VER };
-            NV_ENC_MAP_INPUT_RESOURCE      input     { NV_ENC_MAP_INPUT_RESOURCE_VER };
-            NV_ENCODE_API_FUNCTION_LIST    fn        { NV_ENCODE_API_FUNCTION_LIST_VER };
-            NV_ENC_CREATE_BITSTREAM_BUFFER bitstream { NV_ENC_CREATE_BITSTREAM_BUFFER_VER };
-        } nv;
-#endif
-        ~Session() {
-            release();
-        }
-
-        GLFWwindow* glfw;
-        int sx = -1, sy = -1;
-
-        void update() {
-            int x, y;
-            glfwGetWindowSize(glfw, &x, &y);
-            if (sx == -1 || x != sx || y != sy) {
-                release();
-                ///
-                sx = x;
-                sy = y;
-                update_window();
-            }
-        }
-
-#if defined(__linux)
-
-        int         screen;
-        ::Window    window;
-        Pixmap      pixmap; /// this is active texture management in OS
-        GLXDrawable glx_pixmap;
-        GLuint      texture_id;
-        GLint       attributes[5] = {
-            GLX_TEXTURE_TARGET_EXT, GLX_TEXTURE_2D_EXT,
-            GLX_TEXTURE_FORMAT_EXT, GLX_TEXTURE_FORMAT_RGBA_EXT,
-            None
-        };
-        int         visual_attribs[(22 * 2) + 1] = {
-            GLX_X_RENDERABLE,   True,
-            GLX_DRAWABLE_TYPE,  GLX_PIXMAP_BIT,
-            GLX_RENDER_TYPE,    GLX_RGBA_BIT,
-            GLX_X_VISUAL_TYPE,  GLX_TRUE_COLOR,
-            GLX_RED_SIZE,       8,
-            GLX_GREEN_SIZE,     8,
-            GLX_BLUE_SIZE,      8,
-            GLX_ALPHA_SIZE,     8,
-            GLX_DEPTH_SIZE,     24,
-            GLX_STENCIL_SIZE,   8,
-            GLX_DOUBLEBUFFER,   True,
-            // Add any other attributes you need
-            None
-        };
-
-        bool SetupGLXResources()
-        {
-            glXBindTexImageEXT    = (PFNGlXBindTexImageEXTPROC)    glXGetProcAddressARB((const GLubyte *)"glXBindTexImageEXT");
-            glXReleaseTexImageEXT = (PFNGlXReleaseTexImageEXTPROC) glXGetProcAddressARB((const GLubyte *)"glXReleaseTexImageEXT");
-
-            int argc = 1;
-            char *argv[1] = {(char*)"dummy"};
-
-            // Use glx context/surface
-            glutInit(&argc, argv);
-            glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE);
-            glutInitWindowSize(16, 16);
-
-            int window = glutCreateWindow("h264");
-            if (!window)
-            {
-                std::cout << "\nUnable to create GLUT window.\n" << std::endl;
-                return false;
-            }
-
-            glutHideWindow();
-            return true;
-        }
-
-        bool encode(lambda<bool(mx)> &output) {
-            void *bytes = null;
-
-            // Now you can encode using the mapped resource.
-            NV_ENC_PIC_PARAMS picParams { NV_ENC_PIC_PARAMS_VER };
-            picParams.inputBuffer         = nv.input.mappedResource;
-            picParams.inputWidth          = sx;
-            picParams.inputHeight         = sy;
-            picParams.outputBitstream     = nv.bitstream.bitstreamBuffer;
-            picParams.bufferFmt           = NV_ENC_BUFFER_FORMAT_ARGB;
-            NVENCSTATUS s0 = nv.fn.nvEncEncodePicture(nv.enc, &picParams);
-
-            NV_ENC_LOCK_BITSTREAM lock { NV_ENC_LOCK_BITSTREAM_VER };
-            lock.outputBitstream = nv.bitstream.bitstreamBuffer; // The output buffer associated with the input frame
-            lock.doNotWait       = false; // Set to true for non-blocking mode
-            NVENCSTATUS s1 = nv.fn.nvEncLockBitstream(nv.enc, &lock);
-
-            bool result = false;
-            if (s1 == NV_ENC_SUCCESS) {
-                mx encoded = memory::raw_alloc(typeof(int8_t), 0, 0, 0);
-                encoded.mem->origin  = lock.bitstreamBufferPtr;
-                encoded.mem->count   = lock.bitstreamSizeInBytes;
-                encoded.mem->reserve = lock.bitstreamSizeInBytes;
-                result = output(encoded);
-                encoded.mem->origin = null;
-                nv.fn.nvEncUnlockBitstream(nv.enc, nv.bitstream.bitstreamBuffer);
-            }
-            return result;
-        }
-
-        void release() {
-            if (glx_pixmap) {
-                glXReleaseTexImageEXT(dpy, glx_pixmap, GLX_FRONT_LEFT_EXT);
-                glXDestroyPixmap(dpy, glx_pixmap);
-                glDeleteTextures(1, &texture_id);
-                XFreePixmap(dpy, pixmap);
-
-                nv.fn.nvEncUnmapInputResource(nv.enc, nv.input.mappedResource);
-                nv.fn.nvEncDestroyBitstreamBuffer(nv.enc, &nv.bitstream);
-                nv.fn.nvEncUnregisterResource(nv.enc, nv.res.registeredResource);
-                nv.fn.nvEncDestroyEncoder((void*)nv.enc);
-            }
-        }
-
-        void init(GLFWwindow* glfw) {
-            static bool glx_init = false;
-            if (!glx_init) {
-                SetupGLXResources();
-                glx_init = true;
-            }
-
-            XSetErrorHandler (Xwindows_error);
-            //glfwMakeContextCurrent(window);
-            
-            window = glfwGetX11Window(glfw);
-            this->glfw = glfw;
-
-            /*
-            assert(NV_ENC_SUCCESS == NvEncodeAPICreateInstance(&nv.fn));
-            NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS startup = { NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS_VER };
-            startup.device     = null;
-            startup.deviceType = NV_ENC_DEVICE_TYPE_OPENGL; // NV_ENC_DEVICE_TYPE_OPENGL
-            startup.apiVersion = NVENCAPI_VERSION;
-
-            NVENCSTATUS nvStatus = nv.fn.nvEncOpenEncodeSessionEx(&startup, &nv.enc);
-            */
-        }
-
-        void update_window() {
-
-            XWindowAttributes attrs;
-            XGetWindowAttributes(dpy, window, &attrs);
-            Visual *visual = attrs.visual;
-
-            int          fbcount;
-            GLXFBConfig* fbc = glXChooseFBConfig(dpy, screen, NULL, &fbcount);
-            if (!fbc) console.fault("glXChooseFBConfig no configurations");
-
-            GLXFBConfig suitable = NULL;
-            for (int i = 0; i < fbcount; i++) {
-                XVisualInfo *vi = glXGetVisualFromFBConfig(dpy, fbc[i]);
-                if (!vi) {
-                    continue;
-                }
-                if (vi->visual == visual) {
-                    suitable = fbc[i];
-                    XFree(vi);
-                    break;
-                }
-                XFree(vi);
-            }
-            assert(suitable);
-
-            pixmap = XCompositeNameWindowPixmap(dpy, window);
-            glx_pixmap = glXCreatePixmap(dpy, suitable, pixmap, NULL);
-            
-            // Bind to an OpenGL texture
-            glGenTextures(1, &texture_id);
-            glBindTexture(GL_TEXTURE_2D, texture_id);
-
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, sx, sy, 0, GL_BGRA, GL_UNSIGNED_BYTE, NULL);
-            glXBindTexImageEXT(dpy, glx_pixmap, GLX_FRONT_LEFT_EXT, NULL);
-
-
-            glBindTexture(GL_TEXTURE_2D, texture_id);
-            GLubyte *pixels = (GLubyte *)malloc(4 * sx * sy); // Assuming RGBA format
-            glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
-
-            ion::image img { ion::size { sy, sx }, (rgba8*)pixels };
-            img.save("/home/kalen/test.png");
-
-
-            XImage *image = XGetImage(dpy, window, 0, 0, sx, sy, AllPlanes, ZPixmap);
-            ion::image img2 { ion::size { sy, sx }, (rgba8*)image->data };
-            img2.save("/home/kalen/test2.png");
-            int test = 0;
-            test++;
-            
-            /*
-            // Register the texture with NVENC
-            nv.res.resourceType         = NV_ENC_INPUT_RESOURCE_TYPE_OPENGL_TEX;
-
-            NV_ENC_INPUT_RESOURCE_OPENGL_TEX tx = {
-                texture_id, GL_TEXTURE_2D
-            };
-
-            nv.res.resourceToRegister   = &tx;
-            nv.res.bufferFormat         = NV_ENC_BUFFER_FORMAT_ARGB;
-            nv.res.width                = sx;
-            nv.res.height               = sy;
-            nv.res.pitch                = sx * 4;
-            NVENCSTATUS s0 = nv.fn.nvEncRegisterResource(nv.enc, &nv.res);
-
-            nv.input.registeredResource = nv.res.registeredResource;
-            NVENCSTATUS s1 = nv.fn.nvEncMapInputResource(nv.enc, &nv.input);
-            NVENCSTATUS s2 = nv.fn.nvEncCreateBitstreamBuffer(nv.enc, &nv.bitstream);
-
-            int test = 0;
-            test++;
-            */
-        }
-
-    #elif defined(_WIN32)
-            IDXGIFactory1* pFactory;
-            IDXGIAdapter1* pAdapter;
-            IDXGIOutput* pOutput;
-            DXGI_OUTPUT_DESC desc;
-            ID3D11Texture2D* prev;
-            HWND hWnd;
-
-        void release() {
-            pOutput->Release();
-            pAdapter->Release();
-            pFactory->Release();
-        }
-
-        void init(GLFWwindow *window) {
-            hWnd = glfwGetWin32Window(window);
-
-                // Obtain the DXGI factory
-            if (FAILED(CreateDXGIFactory1(__uuidof(IDXGIFactory1), (void**)&pFactory))) {
-                assert("create dxgi failure");
-                return;
-            }
-
-            if (FAILED(pFactory->EnumAdapters1(0, &pAdapter))) {
-                pFactory->Release();
-                assert("enum adapters failure");
-                return;
-            }
-
-            if (FAILED(pAdapter->EnumOutputs(0, &pOutput))) {
-                pAdapter->Release();
-                pFactory->Release();
-                assert("enum outputs failure");
-                return;
-            }
-
-            pOutput->GetDesc(&desc);
-        }
-
-        ID3D11Texture2D* capture() {
-            ID3D11Texture2D* pTexture = nullptr;
-
-            if (desc.AttachedToDesktop && desc.DesktopCoordinates.right > 0) {
-                IDXGIOutput1* pOutput1;
-                if (SUCCEEDED(pOutput->QueryInterface(__uuidof(IDXGIOutput1), (void**)&pOutput1))) {
-                    ID3D11Device* pDevice;
-                    D3D_FEATURE_LEVEL featureLevel;
-                    if (SUCCEEDED(D3D11CreateDevice(pAdapter, D3D_DRIVER_TYPE_UNKNOWN, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &pDevice, &featureLevel, nullptr))) {
-                        ID3D11DeviceContext* pContext;
-                        pDevice->GetImmediateContext(&pContext);
-                        IDXGIOutputDuplication* pOutputDuplication = nullptr;
-                        if (SUCCEEDED(pOutput1->DuplicateOutput(pDevice, &pOutputDuplication))) {
-                            DXGI_OUTDUPL_FRAME_INFO frameInfo;
-                            IDXGIResource* pDesktopResource = nullptr;
-                            if (SUCCEEDED(pOutputDuplication->AcquireNextFrame(1000, &frameInfo, &pDesktopResource))) {
-                                pDesktopResource->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&pTexture);
-                                pDesktopResource->Release();
-                                pOutputDuplication->ReleaseFrame();
-                            }
-                            pOutputDuplication->Release();
-                        }
-                        pContext->Release();
-                        pDevice->Release();
-                    }
-                }
-            }
-            return pTexture;
-        }
-
-        void encode(lambda<bool(mx)> &output) {
-            ID3D11Texture2D* tx = capture(); // acquired from DXGI Duplication
-            if (!tx || tx != prev) {
-                if (prev) {
-                    // Unregister prevTexture with NVENC
-                    nv.fn.nvEncUnregisterResource(nv.enc, nv.res.registeredResource);
-                }
-                // Register tx with NVENC
-                nv.res.resourceType       = NV_ENC_INPUT_RESOURCE_TYPE_DIRECTX;
-                nv.res.resourceToRegister = (void*)tx;
-                nv.res.bufferFormat       = NV_ENC_BUFFER_FORMAT_ARGB;  // or appropriate format
-                NVENCSTATUS nvStatus      = nv.fn.nvEncRegisterResource(nv.enc, &nv.res);
-                prev = tx;
-            }
-        }
-
-        void update_window() {
-        }
-
-    #elif defined(__APPLE__)
-
-        AppleCapture *apple_capture;
-        NSWindow     *window;
-
-        bool encode(lambda<bool(mx)> &output) {
-            return window != null;
-        }
-
-        /// going to CG blows because it has no backend texture
-        /// i think unless this is required on a headless front its better to use AVFoundation to get the crop of the window
-        CGImageRef captureWindowWithId(CGWindowID windowId) {
-            CGImageRef image = NULL;
-            CFArrayRef windowList = CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly, kCGNullWindowID);
-            if (windowList) {
-                CFIndex count = CFArrayGetCount(windowList);
-                for (CFIndex i = 0; i < count; i++) {
-                    CFDictionaryRef windowInfo = (CFDictionaryRef)CFArrayGetValueAtIndex(windowList, i);
-                    CFNumberRef windowNumber = (CFNumberRef)CFDictionaryGetValue(windowInfo, kCGWindowNumber);
-                    int number;
-                    if (CFNumberGetValue(windowNumber, kCFNumberIntType, &number) && (CGWindowID)number == windowId) {
-                        CGRect bounds;
-                        CGRectMakeWithDictionaryRepresentation((CFDictionaryRef)CFDictionaryGetValue(windowInfo, kCGWindowBounds), &bounds);
-                        image = CGWindowListCreateImage(bounds, kCGWindowListOptionIncludingWindow, windowId, kCGWindowImageDefault);
-                        break;
-                    }
-                }
-                CFRelease(windowList);
-            }
-            return image;
-        }
-
-        static void capture_fn(void *user, unsigned char *data, int length) {
-            i264e *capture = (i264e*)user;
-            mx encoded = memory::raw_alloc(typeof(int8_t), 0, 0, 0);
-            encoded.mem->origin  = data;
-            encoded.mem->count   = (size_t)length;
-            encoded.mem->reserve = (size_t)length;
-            capture->output(data);
-        }
-
-        void init(GLFWwindow* glfw) {
-            this->glfw = glfw;
-            window = glfwGetCocoaWindow(glfw);
-            /// on mac-os the AVFoundation and capture at window pos need to be instanced
-        }
-
-        void release() {
-            if (apple_capture) {
-                capture_stop(apple_capture);
-                apple_capture = null;
-            }
-        }
-
-        void update_window() {
-            /// must start and stop the service here
-            apple_capture = capture_start((void*)this, window, capture_fn);
-        }
-
-    #endif
-
-    };
-
-    async run() {
-        return async {1, [this](runtime *rt, int index) -> mx {
-            return true;
-        }};
     }
-    doubly<Session>  windows;
-
-#endif
 
     lambda<bool(mx)> output;
     type_register(i264e);
@@ -739,19 +265,6 @@ protected:
 mx_implement(h264e, mx);
 
 h264e::h264e(lambda<bool(mx)> output) : h264e() {
-
-#ifdef __linux__
-    if (!dpy) {
-        dpy = XOpenDisplay(NULL);
-        int screen = DefaultScreen(dpy);
-        if (!XCompositeQueryExtension(dpy, &composite_event_base, &composite_error_base)) {
-            console.fault("X Composite extension required in X11 for accelerated encoding");
-        }
-        XCompositeRedirectSubwindows(dpy, RootWindow(dpy, screen), CompositeRedirectAutomatic);
-    }
-#endif
-
-#ifdef USE_H264E
     data->gop        = 16;
     data->qp         = 33;
     data->kbps       = 0; /// not sure whats normal here, but default shouldnt set it
@@ -759,41 +272,15 @@ h264e::h264e(lambda<bool(mx)> output) : h264e() {
     data->threads    = 4;
     data->speed      = 5;
     data->denoise    = false;
-#endif
-
     data->output     = output;
 }
 
-void h264e::push(GLFWwindow *glfw) {
-    auto fetch_window = [data=data](GLFWwindow* glfw) -> i264e::Session& {
-        for (i264e::Session &c: data->windows)
-            if (c.glfw == glfw)
-                return c;
-
-        i264e::Session &c = data->windows->push();
-        c.init(glfw);
-        return c;
-    };
-    i264e::Session &window = fetch_window(glfw);
-    ///
-    window.idata = data;
-    window.update();
-    window.encode(data->output); // this calls output()
-    /// needs a true/false return
-}
-
 void h264e::push(yuv420 image) {
-
-#ifdef USE_H264E
     data->push(image);
-#else
-    assert(false);
-#endif
-
 }
 
 async h264e::run() {
     return data->run();
 }
 
-};
+}

@@ -1,5 +1,13 @@
 /// include spec for Capture class
 #include <webrtc/win/capture.h>
+
+#include <vk/vk.hpp>
+#define GLFW_EXPOSE_NATIVE_WIN32
+#include <GLFW/glfw3native.h>
+
+//#include <webrtc/apple/apple_capture.h>
+//#define GLFW_EXPOSE_NATIVE_COCOA
+
 #include <async/async.hpp>
 #include <dxgi.h>
 #include <dxgi1_2.h>
@@ -82,7 +90,7 @@ struct iCapture {
     com_ptr<IDXGISwapChain1>            m_swapChain     { null };
     DirectXPixelFormat                  m_pixelFormat;
     uint32_t                            width = 0, height = 0;
-    lambda<bool(mx)>                    m_output;
+    Capture::OnData                     m_output;
     atomic<optional<DirectXPixelFormat>> m_pixelFormatUpdate = std::nullopt;
     atomic<bool>                        m_closed           = false;
     atomic<bool>                        m_captureNextImage = false;
@@ -93,12 +101,13 @@ struct iCapture {
     type_register(iCapture);
 
     void OnFrameArrived(Direct3D11CaptureFramePool const& sender, winrt::Windows::Foundation::IInspectable const&) {
+        u64      frame_time = microseconds();
         Direct3D11CaptureFrame frame = sender.TryGetNextFrame();
         auto surfaceTexture = GetDXGIInterfaceFromObject<ID3D11Texture2D>(frame.Surface());
         mx            bytes = Encode(surfaceTexture.get());
         SizeInt32        sz = frame.ContentSize();
         if (bytes)
-            if (!m_output(bytes)) {
+            if (!m_output(frame_time, bytes)) {
                 Close();
             }
         if (sz != m_lastSize) {
@@ -107,7 +116,7 @@ struct iCapture {
         }
     }
 
-    void init(HWND hwnd, lambda<bool(mx)> on_encoded) {
+    void init(HWND hwnd, Capture::OnData on_encoded) {
         static bool init = false;
         static std::mutex mtx;
 
@@ -205,7 +214,19 @@ struct iCapture {
         ID3D11Texture2D *pTexInput = reinterpret_cast<ID3D11Texture2D*>(input_frame->inputPtr);
         d3d11_context->CopyResource(pTexInput, texture);
         nvenc->EncodeFrame(vPacket);
-        return vPacket.size() ? mx { (u8*)vPacket[0].data(), vPacket[0].size() } : mx {};
+        if (vPacket.size()) {
+            u8    *src = vPacket[0].data();
+            size_t sz  = vPacket[0].size();
+            int b0 = src[0];
+            int b1 = src[1];
+            int b2 = src[2];
+            int b3 = src[3];
+            /// must be NALU header with this type of prefix
+            assert(b0 == 0 && b1 == 0 && b2 == 0 && b3 == 1);
+            assert(vPacket.size() == 1);
+            return mx { src, sz };
+        }
+        return mx {};
     }
 
     void Close()
@@ -224,10 +245,11 @@ struct iCapture {
 mx_implement(Capture, mx);
 
 /// async makes case for context-data
-Capture::Capture(HWND hwnd, lambda<bool(mx)> encoded, lambda<void(iCapture*)> closed):Capture() {
-    async { 1, [hwnd, encoded, closed, data=data](runtime *rt, int idx) -> mx {
+Capture::Capture(GLFWwindow *glfw, OnData encoded, OnClosed closed):Capture() {
+    async { 1, [glfw, encoded, closed, data=data](runtime *rt, int idx) -> mx {
         data->mtx.lock();
         data->async_start = true;
+        HWND hwnd = glfwGetWin32Window((GLFWwindow*)glfw);
         data->init(hwnd, encoded);
         data->mtx.unlock();
         ///

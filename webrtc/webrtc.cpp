@@ -2,6 +2,10 @@
 #include <media/media.hpp>
 #include <ux/ux.hpp>
 
+#ifdef _WIN32
+#include <webrtc/win/capture.h>
+#endif
+
 #include <webrtc/streamer/stream.hpp>
 #include <webrtc/rtc/peerconnection.hpp>
 
@@ -17,7 +21,6 @@
 #include <fstream>
 #include <ctime>
 #include <shared_mutex>
-
 /// 
 #include <webrtc/streamer/fileparser.hpp>
 #include <webrtc/streamer/h264fileparser.hpp>
@@ -306,22 +309,19 @@ ClientTrack::ClientTrack(string id, shared_ptr<ClientTrackData> trackData) {
 	this->trackData = trackData;
 }
 
-uint64_t currentTimeInMicroSeconds() {
-	struct timeval time;
-	gettimeofday(&time, NULL);
-	return uint64_t(time.tv_sec) * 1000 * 1000 + time.tv_usec;
-}
-
-
+/// use Capture directly here
 
 Stream app_stream(App app) {
     Stream stream;
     stream->has_data = true;
     bool init = false;
     ///
+    /// output frame rate
     async { 1, [&init, stream, _app=app](runtime* rt, int index) -> mx {
         App &app = (App&)_app;
-        auto opus_audio  = OPUSFileParser("opus", true); /// set this data on the app stream
+        auto opus_audio  = OPUSFileParser("opus", true);
+        /// set this data on the app stream as TEST
+        /// todo: must encode pcm as opus direct from global pcm; prefer window specific but not possible currently
 
         bool              close = false;
         Stream::iStream  *base  = stream.get<Stream::iStream>(0);
@@ -343,23 +343,7 @@ Stream app_stream(App app) {
             return t;
         };
 
-        // std::function<void (StreamType, uint64_t, rtc::binary)> handler
-        h264e enc {[&](mx data) {
-            mtx.lock();
-            ///
-            int  v  = StreamType::Video;
-            time[v] = (time[v] + 1000000/30); /// we need a fps rate from the app
-            time[0] =  time[v];
-            i8 *bytes  = data.get<i8>(0);
-            size_t len = data.count();
-            assert(bytes && len);
-            sample[v] = std::vector<std::byte>(sizeof(uint32_t) + len);
-            memcpy((u8*)sample[v].data(), (u8*)bytes, len);
-            sample[v].resize(len); /// this sets 'size', the reserve size is separate stat; will not change data if its <= len
-            mtx.unlock();
-            /// sync in audio right here.  makes no sense for any further decouplement
-            return true;
-        }};
+        Capture *capture = null;
 
         vsrc->getSampleTime_us      = [&](StreamType type) -> uint64_t { return time[type.value]; };
         vsrc->getSampleDuration_us  = [ ](StreamType type) -> uint64_t { return 1000000/30; };
@@ -401,18 +385,41 @@ Stream app_stream(App app) {
         asrc->loadNextSample        = vsrc->loadNextSample;
         */
 
-        /// start encoder
-        enc.run();
-
         /// register app loop
         ((App&)app)->loop_fn = [&](App &app) -> bool {
             if (close)
                 return false;
 
-            /// encode
-            enc.push(app->e->window);
+            /// start capture when window is first seen
+            if (!capture) {
+                capture = new Capture { (GLFWwindow*)app->e->window,
+                    Capture::OnData([&](u64 frame_time, mx data) -> bool {
+                        if (close)
+                            return false; /// network session in sync with encoding
+                        
+                        /// protected copy to stream sources
+                        mtx.lock();
+                        int  v  = StreamType::Video;
+                        time[v] = frame_time - base->startTime;
+                        time[0] = time[v];
+                        i8 *bytes  = (i8*)data.get<u8>(0);
+                        size_t len = data.count();
+                        assert(bytes && len);
+                        sample[v] = std::vector<std::byte>(sizeof(uint32_t) + len);
+                        memcpy((u8*)sample[v].data(), (u8*)bytes, len);
+                        sample[v].resize(len); /// this sets 'size', the reserve size is separate stat; will not change data if its <= len
+                        mtx.unlock();
+
+                        /// sync in audio right here.
+                        /// WSAPIAPSIAPISAPI should work.
+                        return true;
+                    }),
+                    Capture::OnClosed([](iCapture *handle) -> void {
+                        console.log("capture closed");
+                    })
+                };
+            }
             
-            /// test pattern here i think.
             return true;
         };
 
@@ -585,14 +592,12 @@ void VideoStream::mounted() {
             return client;
         };
 
-
-        /// Start stream (single instance, needs to be improved upon lol)
         /// take the Client and any negotiated uri channel into account
         state->startStream = [state](Client client) {
             /// this is a generic mx call, we grab the memory
-            mx   istream = state->stream_select(client).grab();//state->createStream("h264", 30, "opus");
+            mx   istream = state->stream_select(client).grab();
             if (istream.type() == typeof(null_t))
-                return; /// could return an error to the client here
+                return;
 
             Stream stream;
             type_t type = istream.type();

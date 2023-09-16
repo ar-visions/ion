@@ -11,17 +11,12 @@
 
 namespace ion {
 
-/// interface for minih264e, dx11   -> nvenc on windows or 
-///                          glx/gl -> nvenc on linux,  or 
-///                          ScreenCapture/Crop -> the AV Foundation on macOS
 struct i264e;
 struct h264e:mx {
     mx_declare(h264e, mx, i264e);
-
-    /// the call is async if there is no input, because that means frames are pushed independent of h264e, it waits for new frames as a result
+    
     h264e(lambda<bool(mx)> output);
     void push(yuv420 frame);
-    void push(GLFWwindow *glfw);
     async run();
 };
 
@@ -70,8 +65,6 @@ struct ClientTrack {
     ClientTrack(std::string id, std::shared_ptr<ClientTrackData> trackData);
 };
 
-uint64_t currentTimeInMicroSeconds();
-
 enums(StreamType, Audio,
         "Audio, Video",
          Audio, Video);
@@ -116,7 +109,7 @@ struct Stream:mx {
                 return;
             }
             _isRunning = true;
-            startTime = currentTimeInMicroSeconds();
+            startTime = microseconds();
             audio->start(StreamType::Audio);
             video->start(StreamType::Video);
             dispatchQueue.dispatch([this]() {
@@ -156,9 +149,11 @@ struct Stream:mx {
                 nextTime = video->getSampleTime_us(sst);
             }
 
-            auto currentTime = currentTimeInMicroSeconds();
+            printf("sample: a: %I64u\n", audio_sample_time);
+            printf("sample: v: %I64u\n", video_sample_time);
 
-            auto elapsed = currentTime - startTime;
+            u64 current = microseconds();
+            u64 elapsed = current - startTime;
             if (nextTime > elapsed) {
                 auto waitTime = nextTime - elapsed;
                 mutex.unlock();
