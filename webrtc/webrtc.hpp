@@ -82,6 +82,8 @@ struct Source:mx {
         type_register(iSource);
     };
 
+    operator bool() { return data && data->start; }
+
     mx_object(Source, mx, iSource);
 };
 
@@ -110,7 +112,8 @@ struct Stream:mx {
             }
             _isRunning = true;
             startTime = microseconds();
-            audio->start(StreamType::Audio);
+            if (audio)
+                audio->start(StreamType::Audio);
             video->start(StreamType::Video);
             dispatchQueue.dispatch([this]() {
                 this->sendSample();
@@ -124,7 +127,10 @@ struct Stream:mx {
             }
             _isRunning = false;
             dispatchQueue.removePending();
-            audio->stop(StreamType::Audio);
+            
+            if (audio)
+                audio->stop(StreamType::Audio);
+            
             video->stop(StreamType::Video);
         }
 
@@ -132,20 +138,23 @@ struct Stream:mx {
             stop();
         }
 
-        std::pair<Source, StreamType> unsafePrepareForSample() {
-            Source ss;
+        std::pair<Source, StreamType> unsafePrepareForSample()
+        {
+            Source     ss;
             StreamType sst;
-            uint64_t nextTime;
-
-            uint64_t audio_sample_time = audio->getSampleTime_us(StreamType::Audio);
-            uint64_t video_sample_time = video->getSampleTime_us(StreamType::Video);
-            if (audio_sample_time < video_sample_time) { /// these sample times need to be 0-based or be aligned at the min/max of either
-                ss = audio;
-                sst = StreamType::Audio;
+            uint64_t   nextTime;
+            bool       has_audio = bool(audio);
+            uint64_t   audio_sample_time = has_audio ? audio->getSampleTime_us(StreamType::Audio) : 0;
+            uint64_t   video_sample_time = video->getSampleTime_us(StreamType::Video);
+            
+            /// these sample times need to be 0-based or be aligned at the min/max of either
+            if (has_audio && audio_sample_time < video_sample_time) { 
+                ss       = audio;
+                sst      = StreamType::Audio;
                 nextTime = audio->getSampleTime_us(sst);
             } else {
-                ss = video;
-                sst = StreamType::Video;
+                ss       = video;
+                sst      = StreamType::Video;
                 nextTime = video->getSampleTime_us(sst);
             }
 
@@ -288,8 +297,6 @@ struct VideoStream: node {
 
 		//state->stream = createStream(const string h264Samples, const unsigned fps, const string opusSamples)
 		lambda<Stream (std::string, unsigned, std::string)> createStream;
-
-		lambda<void(Stream , std::shared_ptr<ClientTrackData> video)> sendInitialNalus;
 
 		lambda<void(Client, bool)> addToStream;
 

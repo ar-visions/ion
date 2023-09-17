@@ -156,23 +156,6 @@ H264FileParser::H264FileParser(string directory, uint32_t fps, bool loop): H264F
 }
 
 
-vector<byte> H264FileParser::initialNALUS() {
-    vector<byte> units{};
-    if (data->previousUnitType7.has_value()) {
-        auto nalu = data->previousUnitType7.value();
-        units.insert(units.end(), nalu.begin(), nalu.end());
-    }
-    if (data->previousUnitType8.has_value()) {
-        auto nalu = data->previousUnitType8.value();
-        units.insert(units.end(), nalu.begin(), nalu.end());
-    }
-    if (data->previousUnitType5.has_value()) {
-        auto nalu = data->previousUnitType5.value();
-        units.insert(units.end(), nalu.begin(), nalu.end());
-    }
-    return units;
-}
-
 OPUSFileParser::OPUSFileParser(string directory, bool loop, uint32_t samplesPerSecond): FileParser(directory, ".opus", samplesPerSecond, loop) { }
 
 }
@@ -319,20 +302,20 @@ Stream app_stream(App app) {
     /// output frame rate
     async { 1, [&init, stream, _app=app](runtime* rt, int index) -> mx {
         App &app = (App&)_app;
-        auto opus_audio  = OPUSFileParser("opus", true);
+        
         /// set this data on the app stream as TEST
-        /// todo: must encode pcm as opus direct from global pcm; prefer window specific but not possible currently
-
+        /// todo: must encode pcm as opus direct from global pcm; prefer app-specific but not possible currently
+        
         bool              close = false;
         Stream::iStream  *base  = stream.get<Stream::iStream>(0);
+        base->audio = {}; // OPUSFileParser("opus", true);
+
         Source::iSource  *vsrc  = base->video.get<Source::iSource>(0);
         Source::iSource  *asrc  = base->audio.get<Source::iSource>(0); /// these are 'optional' still, not sure how i am getting this handle
         std::vector<byte> sample[2];
         uint64_t        time[2] = { };
         mutex             mtx;
 
-        base->audio = opus_audio;
-        
         time[1] = time[0];
         sample[0] = {};
         sample[1] = {};
@@ -346,7 +329,7 @@ Stream app_stream(App app) {
         Capture *capture = null;
 
         vsrc->getSampleTime_us      = [&](StreamType type) -> uint64_t { return time[type.value]; };
-        vsrc->getSampleDuration_us  = [ ](StreamType type) -> uint64_t { return 1000000/30; };
+        vsrc->getSampleDuration_us  = [ ](StreamType type) -> uint64_t { return 1000 * 1000 / 60; };
         vsrc->start                 = [&](StreamType type) { vsrc->loadNextSample(type); };
         vsrc->stop                  = [&](StreamType type) { close = true; };
 
@@ -558,7 +541,7 @@ void VideoStream::mounted() {
                 }
             });
 
-            bool use_annex_B = false;
+            bool use_annex_B = true;
 
             client->video = state->addVideo(pc, 102,
                 use_annex_B ? rtc::H264RtpPacketizer::Separator::LongStartSequence :
@@ -569,14 +552,14 @@ void VideoStream::mounted() {
                 });
                 cout << "Video from " << id << " opened" << endl;
             });
-
+            /*
             client->audio = state->addAudio(pc, 111, 2, "audio-stream", "stream1", [state, id, client]() {
                 state->MainThread->dispatch([state, client]() {
                     state->addToStream(client, false);
                 });
                 cout << "Audio from " << id << " opened" << endl;
             });
-
+            */
             auto dc = pc->createDataChannel("ping-pong");
             dc->onOpen([id, wdc = make_weak_ptr(dc)]() {
                 if (auto dc = wdc.lock()) {
@@ -686,30 +669,14 @@ void VideoStream::mounted() {
                 stream->start();
         };
 
-        state->sendInitialNalus = [](Stream stream, shared_ptr<ClientTrackData> video) {
-            auto h264 = H264FileParser(stream->video.grab());
-            auto initialNalus = h264.initialNALUS();
-
-            // send previous NALU key frame so users don't have to wait to see stream works
-            if (!initialNalus.empty()) {
-                const double frameDuration_s = double(h264.Source::data->getSampleDuration_us(StreamType::Video)) / (1000 * 1000);
-                const uint32_t frameTimestampDuration = video->sender->rtpConfig->secondsToTimestamp(frameDuration_s);
-                video->sender->rtpConfig->timestamp = video->sender->rtpConfig->startTimestamp - frameTimestampDuration * 2;
-                video->track->send(initialNalus);
-                video->sender->rtpConfig->timestamp += frameTimestampDuration;
-                // Send initial NAL units again to start stream in firefox browser
-                video->track->send(initialNalus);
-            }
-        };
-
         state->addToStream = [state](Client client, bool isAddingVideo) {
             if (client->state == Client::State::Waiting) {
                 client->state = isAddingVideo ? Client::State::WaitingForAudio : Client::State::WaitingForVideo;
-            } else if ((client->state == Client::State::WaitingForAudio && !isAddingVideo)
-                    || (client->state == Client::State::WaitingForVideo && isAddingVideo)) {
+            //} else if ((client->state == Client::State::WaitingForAudio && !isAddingVideo)
+            //        || (client->state == Client::State::WaitingForVideo && isAddingVideo)) {
 
                 // Audio and video tracks are collected now
-                assert(client->video.has_value() && client->audio.has_value());
+                //assert(client->video.has_value() && client->audio.has_value());
 
                 //auto video = client->video.value();
                 /// this is Optional and not advised here because we havent called the stream_select

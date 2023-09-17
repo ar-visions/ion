@@ -104,12 +104,12 @@ struct iCapture {
         u64      frame_time = microseconds();
         Direct3D11CaptureFrame frame = sender.TryGetNextFrame();
         auto surfaceTexture = GetDXGIInterfaceFromObject<ID3D11Texture2D>(frame.Surface());
-        array<mx>   packets = Encode(surfaceTexture.get());
+        mx bytes = Encode(surfaceTexture.get());
         SizeInt32        sz = frame.ContentSize();
-        for (mx &bytes: packets) {
-            if (!m_output(frame_time, bytes))
+
+        if (bytes)
+            if (!m_output(frame_time, bytes)) // encode test data in 0001 annex B, see if it actually works.  if it doesnt theres issues iwth that format
                 Close();
-        }
 
         if (sz != m_lastSize) {
             m_lastSize = sz; 
@@ -151,9 +151,6 @@ struct iCapture {
         d3dDevice->GetImmediateContext(m_d3dContext.put());
         d3d11_context      = m_d3dContext.get();
 
-        /// object has a falsey state if a window is not found
-
-        
         /// get window item
         auto interop_factory = winrt::get_activation_factory<GraphicsCaptureItem, IGraphicsCaptureItemInterop>();
         interop_factory->CreateForWindow(
@@ -208,9 +205,8 @@ struct iCapture {
     }
 
     /// control for how many frames it encodes
-    array<mx> Encode(ID3D11Texture2D *texture)
+    mx Encode(ID3D11Texture2D *texture)
     {
-        array<mx> res;
         std::vector<std::vector<uint8_t>> vPacket;
         const NvEncInputFrame* input_frame = nvenc->GetNextInputFrame();
         ID3D11Texture2D *pTexInput = reinterpret_cast<ID3D11Texture2D*>(input_frame->inputPtr);
@@ -223,40 +219,12 @@ struct iCapture {
             int b1 = src[1];
             int b2 = src[2];
             int b3 = src[3];
-            
             /// must be NALU header with this type of prefix
             assert(b0 == 0 && b1 == 0 && b2 == 0 && b3 == 1);
-
-            int header = 0;
-            int start  = 0;
-            for (int i = 0; i < sz; i++) {
-                int b0 = src[i+0];
-                int b1 = src[i+1];
-                int b2 = src[i+2];
-                int b3 = src[i+3];
-                
-            /// must be NALU header with this type of prefix
-                if (b0 == 0 && b1 == 0 && b2 == 0 && b3 == 1) {
-                    u_long len = i - start + 4;
-                    header++;
-
-                    uint8_t *p = (uint8_t*)calloc64(1, len + 4);
-                    memcpy(p, &src[start], len + 4);
-                    *(uint32_t*)p = htonl(len);
-                    res += mx { p, size_t(len + 4) };
-
-                    start = i;
-                }
-            }
-
-            printf("n headers: %d\n", header);
-
-            uint32_t len = ntohl(*(uint32_t*)&src[4]);
-
             assert(vPacket.size() == 1);
-            return res;
+            return mx { src, sz };
         }
-        return res;
+        return {};
     }
 
     void Close()

@@ -23,7 +23,6 @@ struct H264FileParser:FileParser {
     };
     mx_object(H264FileParser, FileParser, h264data);
     H264FileParser(std::string directory, uint32_t fps, bool loop);
-    std::vector<std::byte> initialNALUS();
 };
 }
 

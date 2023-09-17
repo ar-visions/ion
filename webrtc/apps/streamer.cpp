@@ -85,8 +85,8 @@ int main(int argc, char **argv) {
                     bool test = false;
                     if (test) {
                         auto video  = H264FileParser("h264", 30, true);
-                        auto audio  = OPUSFileParser("opus", true);
-                        auto stream = Stream(video, audio);
+                        //auto audio  = OPUSFileParser("opus", true);
+                        auto stream = Stream(video, {});
                         return stream;
                     }
                     ///
