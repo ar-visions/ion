@@ -82,7 +82,7 @@ int main(int argc, char **argv) {
                 { "id",             "streamer" },
                 { "source",         "" },
                 { "stream-select",  StreamSelect([](Client client) -> mx {
-                    bool test = true; /// this <-----
+                    bool test = false;
                     if (test) {
                         auto video  = H264FileParser("h264", 30, true);
                         auto audio  = OPUSFileParser("opus", true);

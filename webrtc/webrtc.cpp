@@ -402,10 +402,10 @@ Stream app_stream(App app) {
                         int  v  = StreamType::Video;
                         time[v] = frame_time - base->startTime;
                         time[0] = time[v];
-                        i8 *bytes  = (i8*)data.get<u8>(0);
+                        u8 *bytes  = data.get<u8>(0);
                         size_t len = data.count();
                         assert(bytes && len);
-                        sample[v] = std::vector<std::byte>(sizeof(uint32_t) + len);
+                        sample[v] = std::vector<std::byte>(len);
                         memcpy((u8*)sample[v].data(), (u8*)bytes, len);
                         sample[v].resize(len); /// this sets 'size', the reserve size is separate stat; will not change data if its <= len
                         mtx.unlock();
@@ -558,7 +558,11 @@ void VideoStream::mounted() {
                 }
             });
 
-            client->video = state->addVideo(pc, 102, rtc::H264RtpPacketizer::Separator::LongStartSequence,
+            bool use_annex_B = false;
+
+            client->video = state->addVideo(pc, 102,
+                use_annex_B ? rtc::H264RtpPacketizer::Separator::LongStartSequence :
+                              rtc::H264RtpPacketizer::Separator::Length,
                 1, "video-stream", "stream1", [state, id, client]() {
                 state->MainThread->dispatch([state, client]() {
                     state->addToStream(client, true);

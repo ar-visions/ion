@@ -194,7 +194,8 @@
 			"numbers": "cpp",
 			"semaphore": "cpp",
 			"resumable": "cpp",
-			"*.ipp": "cpp"
+			"*.ipp": "cpp",
+			"barrier": "cpp"
 		},
 		"git.ignoreLimitWarning": true
 	}
