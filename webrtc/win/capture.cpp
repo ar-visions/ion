@@ -219,6 +219,7 @@ struct iCapture {
             int b1 = src[1];
             int b2 = src[2];
             int b3 = src[3];
+            
             /// must be NALU header with this type of prefix
             assert(b0 == 0 && b1 == 0 && b2 == 0 && b3 == 1);
             assert(vPacket.size() == 1);

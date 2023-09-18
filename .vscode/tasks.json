@@ -64,6 +64,34 @@
             }
         },
         {
+            "label": "build-encoder",
+            "type": "shell",
+			"options": {
+                "cwd": "${workspaceFolder}/../ion/build"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "group": "build0",
+                "clear": true
+            },
+			"isBackground": false,
+			"problemMatcher": ["$gcc"],
+            "windows": {
+                "command": "msbuild ion.sln /t:encoder"
+            },
+            "osx": {
+                "command": "make encoder -j10"
+            },
+            "linux": {
+                "command": "make encoder -j16"
+            }
+        },
+        {
             "label": "build-winrt",
             "type": "shell",
 			"options": {

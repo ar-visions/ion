@@ -103,6 +103,30 @@
             }
         },
         {
+            "name": "encoder",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/../ion/build/encoder",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/../ion/build",
+            "environment": [],
+            "MIMode": "gdb",
+            "preLaunchTask": "build-encoder",
+            "presentation": {
+                "hidden": false,
+                "group": "",
+                "order": 1,
+            },
+            "osx": {
+                "MIMode": "lldb"
+            },
+            "windows": {
+                "type": "cppvsdbg",
+                "program": "${workspaceFolder}/../ion/build/Debug/encoder",
+            }
+        },
+        {
             "name": "winrt",
             "type": "cppdbg",
             "request": "launch",
