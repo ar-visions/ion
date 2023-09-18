@@ -1,5 +1,10 @@
-dep(vulkan:vkh)
 cpp(17)
+dep(mx:mx)
+#dep(mx:mx ion:net vulkan:vk @Vulkan)
+
+if(WIN32)
+    dep(mf mfplat mfreadwrite mfuuid strmiids quartz ole32 oleaut32 uuid)
+endif()
 
 if(APPLE)
     dep(IOSurface QuartzCore Metal CoreMedia CoreFoundation Cocoa IOKit AVFoundation)

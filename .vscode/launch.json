@@ -151,6 +151,30 @@
             }
         },
         {
+            "name": "camera-test",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/../ion/build/camera-test",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/../ion/build",
+            "environment": [],
+            "MIMode": "gdb",
+            "preLaunchTask": "build-camera-test",
+            "presentation": {
+                "hidden": false,
+                "group": "",
+                "order": 1,
+            },
+            "osx": {
+                "MIMode": "lldb"
+            },
+            "windows": {
+                "type": "cppvsdbg",
+                "program": "${workspaceFolder}/../ion/build/Debug/camera-test",
+            }
+        },
+        {
             "name": "sample",
             "type": "cppdbg",
             "request": "launch",

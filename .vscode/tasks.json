@@ -92,6 +92,37 @@
             }
         },
         {
+            "label": "build-camera-test",
+            "type": "shell",
+			"options": {
+                "cwd": "${workspaceFolder}/../ion/build"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "group": "build0",
+                "clear": true
+            },
+			"isBackground": false,
+			"problemMatcher": ["$gcc"],
+            "windows": {
+                "command": "msbuild ion.sln /t:camera-test"
+            },
+            "osx": {
+                "command": "make camera-test -j10"
+            },
+            "linux": {
+                "command": "make camera-test -j16",
+                "options":{
+                    "env":{"VERBOSE":"1"}
+                }
+            }
+        },
+        {
             "label": "build-winrt",
             "type": "shell",
 			"options": {
