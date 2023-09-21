@@ -22,6 +22,10 @@ struct opaque_capture {
 };
 
 /*
+/// this 'camera' capture method is not ideal due to its texture-based model
+/// universally we need h264 data only.  we stream this, not images and we would never, Ever want to convert from image to h264 because it likely already has been compressed
+/// this delay is not ideal for performant runtime
+
 void global_callback(void *metal_texture, void *metal_layer, void *context) {
     Camera *camera = (Camera*)context;
     camera->e->vk_device->mtx.lock();
@@ -31,12 +35,15 @@ void global_callback(void *metal_texture, void *metal_layer, void *context) {
         VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT, metal_texture);
     camera->e->vk_device->mtx.unlock();
 }
+
+todo:
+convert metal_texture to h264 nalu packet src
 */
 
 /// Camera will resolve the vulkan texture in this module (not doing this in ux/app lol)
 void Camera::start_capture() {
     capture          = new opaque_capture();
-    capture->capture = [[metal_capture alloc] initWithCallback:global_callback context:(void*)this camera_index:camera_index];
+    //capture->capture = [[metal_capture alloc] initWithCallback:global_callback context:(void*)this camera_index:camera_index];
     [capture->capture startCapture];
 }
 

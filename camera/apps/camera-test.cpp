@@ -1,7 +1,11 @@
 
 #include <stdio.h>
 
-#if defined(__linux__)
+#if defined(__APPLE__)
+
+
+
+#elif defined(__linux__)
 
 #include <fcntl.h>
 #include <linux/videodev2.h>

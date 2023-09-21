@@ -158,8 +158,8 @@ struct Stream:mx {
                 nextTime = video->getSampleTime_us(sst);
             }
 
-            printf("sample: a: %I64u\n", audio_sample_time);
-            printf("sample: v: %I64u\n", video_sample_time);
+            printf("sample: a: %" PRId64 "\n", (int64_t)audio_sample_time);
+            printf("sample: v: %" PRId64 "\n", (int64_t)video_sample_time);
 
             u64 current = microseconds();
             u64 elapsed = current - startTime;
