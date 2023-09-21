@@ -18,7 +18,7 @@ int main() {
     struct v4l2_format fmt = {};
     fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     fmt.fmt.pix.width       = 640;  // Adjust as per your requirement
-    fmt.fmt.pix.height      = 480;  // Adjust as per your requirement
+    fmt.fmt.pix.height      = 360;  // Adjust as per your requirement
     fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_H264;
     fmt.fmt.pix.field       = V4L2_FIELD_ANY;
 
