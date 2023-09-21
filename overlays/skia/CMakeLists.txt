@@ -8,8 +8,8 @@ add_executable(bootstrap bootstrap.c)
 if(WIN32)
     # we copy the files in ninja.bat
     add_custom_target(build
-        COMMAND "gen.bat"
-        COMMAND "ninja.bat"
+        COMMAND "gen.bat" ${SDK}
+        COMMAND "ninja.bat" ${SDK}
         COMMENT "running skia build"
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
         VERBATIM)

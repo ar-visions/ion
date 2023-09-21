@@ -1,6 +1,9 @@
 @echo on
 
+setlocal enabledelayedexpansion
+set sdk=!%~1!
+
 third_party\ninja\ninja -C out\Vulkan
 
-xcopy include ..\..\install\include\skia /E /I /Y
-copy /Y out\Vulkan\skia.lib ..\..\install\lib\
+xcopy include ..\..\install\%sdk%\include\skia /E /I /Y
+copy /Y out\Vulkan\skia.lib ..\..\install\%sdk%\lib\
