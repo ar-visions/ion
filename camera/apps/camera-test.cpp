@@ -9,6 +9,7 @@
 #include <unistd.h>
 
 int main() {
+    printf("camera-test!\n");
     int fd = open("/dev/video0", O_RDWR);
     if (fd == -1) {
         perror("Cannot open device");
