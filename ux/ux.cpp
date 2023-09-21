@@ -187,7 +187,8 @@ int App::run() {
     vk_engine_t *e = data->e;
     ///
     Canvas *canvas = data->canvas = new Canvas(e->renderer); /// width and height are fetched from renderer (which updates in vkengine)
-	vkengine_set_key_callback       (e, key_callback);
+
+    vkengine_set_key_callback       (e, key_callback);
 	vkengine_set_mouse_but_callback (e, mouse_button_callback);
 	vkengine_set_cursor_pos_callback(e, mouse_move_callback);
 	vkengine_set_scroll_callback    (e, scroll_callback);
@@ -205,8 +206,10 @@ int App::run() {
 
         rgbad c = { 0.0, 0.0, 0.0, 1.0 };
         canvas->clear(c);
-        
+
+        /*
         node ee = data->app_fn(*this);
+
         update_all(ee);
         Element *eroot = (Element*)(
             composer::data->instances->data->children ?
@@ -219,8 +222,19 @@ int App::run() {
                 (real)canvas->get_virtual_width(),
                 (real)canvas->get_virtual_height()
             };
+            auto &bounds = eroot->data->bounds;
             eroot->draw(*canvas);
         }
+        */
+
+        rectd bounds = rectd {
+            0, 0,
+            (real)canvas->get_virtual_width(),
+            (real)canvas->get_virtual_height()
+        };
+
+        canvas->color({1.0, 0.0, 1.0, 1.0});
+        canvas->fill(bounds);
 
         canvas->flush();
 

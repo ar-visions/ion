@@ -952,12 +952,14 @@ mx_implement(Canvas, mx);
 Canvas::Canvas(VkhImage image) : Canvas() {
     data->e = image->vkh->e;
     data->canvas_resize(image, image->width, image->height);
+    data->save();
 }
 
 Canvas::Canvas(VkhPresenter renderer) : Canvas() {
     data->e = renderer->vkh->e;
     data->renderer = renderer;
     data->app_resize();
+    data->save();
 }
 
 u32 Canvas::get_virtual_width()  { return data->sz.x / data->dpi_scale.x; }
