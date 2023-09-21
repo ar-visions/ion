@@ -15,7 +15,7 @@ if [ -n "$MSYSTEM" ]; then
     NINJA="/mingw64/bin/ninja"
 fi
 
-if [[ $sdk != "native" ]]; then
+if [ $sdk != "native" ]; then
     cxx="$sdk-g++"
     cc="$sdk-gcc"
 fi
