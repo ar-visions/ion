@@ -4,7 +4,7 @@ elseif(LINUX)
     dep(X11)
 endif()
 
-dep(vulkan:vk @Vulkan vulkan:vkh mx:async ion:net ion:media ion:camera skia:skia bzip2:bz2_static)
+dep(vulkan:vk @Vulkan vulkan:vkh mx:async ion:net ion:media ion:camera skia:skia)
 
 includes(${INSTALL_PREFIX}/../../extern/skia)
 includes(${INSTALL_PREFIX}/include/skia)
