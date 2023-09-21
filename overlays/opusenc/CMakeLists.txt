@@ -14,6 +14,7 @@ add_library(opusenc
 target_compile_definitions(opusenc PUBLIC PACKAGE_NAME="opusenc" PACKAGE_VERSION="0.21")
 
 target_include_directories(opusenc PUBLIC
+    ${CMAKE_INSTALL_PREFIX}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_INSTALL_PREFIX}/include/opus

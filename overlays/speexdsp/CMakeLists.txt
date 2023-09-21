@@ -24,10 +24,10 @@ endif()
 
 install(
     TARGETS speexdsp
-    LIBRARY DESTINATION lib  # for shared libs
-    ARCHIVE DESTINATION lib) # for static libs
+    LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}/lib  # for shared libs
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/lib) # for static libs
 
 install(
     DIRECTORY       include/
-    DESTINATION     include
+    DESTINATION     ${CMAKE_INSTALL_PREFIX}/include
     FILES_MATCHING  PATTERN "*.h")
