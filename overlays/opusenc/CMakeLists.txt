@@ -23,6 +23,9 @@ target_include_directories(opusenc PUBLIC
 target_link_libraries(opusenc PRIVATE opus opusfile)
 
 file(GLOB_RECURSE INC_FILES "${CMAKE_SOURCE_DIR}/include/*.h")
+if (NOT INC_FILES)
+  message(FATAL_ERROR "no header files found in ${CMAKE_SOURCE_DIR}/include/") # somehow this isnt installing whats there in opusenc
+endif()
 
 install(FILES   ${INC_FILES} DESTINATION ${CMAKE_INSTALL_PREFIX}/include/opusenc)
 install(TARGETS opusenc      DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
