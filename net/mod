@@ -3,7 +3,7 @@ if(mac)
     dep(CoreFoundation Security)
 endif()
 ##
-includes(${INSTALL_PREFIX}/../extern/mbedtls/tests/include)
+includes(${INSTALL_PREFIX}/../../extern/mbedtls/tests/include)
 ##
 if(NOT WIN32)
     cflags(+-Wno-write-strings)

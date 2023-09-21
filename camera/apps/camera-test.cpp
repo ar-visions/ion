@@ -1,5 +1,53 @@
 
-#include <iostream>
+#include <stdio.h>
+
+#if defined(__linux__)
+
+#include <fcntl.h>
+#include <linux/videodev2.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
+
+int main() {
+    int fd = open("/dev/video0", O_RDWR);
+    if (fd == -1) {
+        perror("Cannot open device");
+        return 1;
+    }
+
+    struct v4l2_format fmt = {};
+    fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    fmt.fmt.pix.width       = 640;  // Adjust as per your requirement
+    fmt.fmt.pix.height      = 480;  // Adjust as per your requirement
+    fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_H264;
+    fmt.fmt.pix.field       = V4L2_FIELD_ANY;
+
+    if (ioctl(fd, VIDIOC_S_FMT, &fmt) == -1) {
+        perror("Setting Pixel Format");
+        return 1;
+    }
+
+    FILE* file = fopen("output.h264", "wb");
+    if (!file) {
+        perror("Cannot open output file");
+        return 1;
+    }
+
+    char buffer[8192];
+    int bytesRead;
+
+    while ((bytesRead = read(fd, buffer, sizeof(buffer))) > 0) {
+        fwrite(buffer, 1, bytesRead, file);
+    }
+
+    fclose(file);
+    close(fd);
+
+    return 0;
+}
+
+#else
+
 #include <windows.h>
 #include <mfapi.h>
 #include <mfidl.h>
@@ -83,3 +131,5 @@ int main() {
     MFShutdown();
     return 0;
 }
+
+#endif
