@@ -15,7 +15,7 @@ if(WIN32)
         VERBATIM)
 else()
     add_custom_target(build
-        COMMAND sh "build.sh"
+        COMMAND sh "build.sh" ${SDK}
         COMMENT "running skia build"
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
         VERBATIM)
