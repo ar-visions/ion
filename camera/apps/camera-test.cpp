@@ -32,8 +32,12 @@ int main(int argc, char* argv[]) {
 #include <unistd.h>
 
 int main() {
+    usleep(10000000);
+    
+    int test =0;
+    test++;
     printf("camera-test!\n");
-    int fd = open("/dev/video0", O_RDWR);
+    int fd = open("/dev/video2", O_RDWR);
     if (fd == -1) {
         perror("Cannot open device");
         return 1;
