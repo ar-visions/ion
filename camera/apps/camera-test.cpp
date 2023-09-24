@@ -32,46 +32,39 @@ int main(int argc, char* argv[]) {
 #include <unistd.h>
 
 int main() {
-    usleep(10000000);
-    
-    int test =0;
-    test++;
-    printf("camera-test!\n");
-    int fd = open("/dev/video2", O_RDWR);
-    if (fd == -1) {
-        perror("Cannot open device");
-        return 1;
-    }
+  // Open the video device file
+  int fd = open("/dev/video0", O_RDONLY);
+  if (fd < 0) {
+    perror("open");
+    exit(1);
+  }
 
-    struct v4l2_format fmt = {};
-    fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    fmt.fmt.pix.width       = 640;  // Adjust as per your requirement
-    fmt.fmt.pix.height      = 360;  // Adjust as per your requirement
-    fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_H264;
-    fmt.fmt.pix.field       = V4L2_FIELD_ANY;
+  // Set the video capture format to MJPEG
+  struct v4l2_format fmt;
+  fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+  fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_MJPEG;
 
-    if (ioctl(fd, VIDIOC_S_FMT, &fmt) == -1) {
-        perror("Setting Pixel Format");
-        return 1;
-    }
+  int ret = ioctl(fd, VIDIOC_S_FMT, &fmt);
+  if (ret < 0) {
+    perror("ioctl");
+    exit(1);
+  }
 
-    FILE* file = fopen("output.h264", "wb");
-    if (!file) {
-        perror("Cannot open output file");
-        return 1;
-    }
+  // Read an MJPEG frame
+  unsigned char buffer[fmt.fmt.pix.sizeimage];
+  ret = read(fd, buffer, fmt.fmt.pix.sizeimage);
+  if (ret < 0) {
+    perror("read");
+    exit(1);
+  }
 
-    char buffer[8192];
-    int bytesRead;
+  // Process the MJPEG frame
+  // TODO: Process the MJPEG frame here
 
-    while ((bytesRead = read(fd, buffer, sizeof(buffer))) > 0) {
-        fwrite(buffer, 1, bytesRead, file);
-    }
+  // Close the video device file
+  close(fd);
 
-    fclose(file);
-    close(fd);
-
-    return 0;
+  return 0;
 }
 
 #else

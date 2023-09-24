@@ -14,7 +14,7 @@ fi
 sudo apt update
 sudo apt-get install build-essential v4l-utils libv4l-dev ffmpeg git libtool libx11-dev \
 	libxrandr-dev libxext-dev cmake vulkan-sdk libmagic-dev python3 \
-	python3-pip libxinerama-dev libxcursor-dev libxi-dev gobjc++ clang clang++ 
+	python3-pip libxinerama-dev libxcursor-dev libxi-dev gobjc++ clang clang++ libxkbcommon-x11-dev
 
 pip3 install python-magic
 

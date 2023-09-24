@@ -204,7 +204,7 @@ int App::run() {
 
         e->vk_device->mtx.lock();
 
-        rgbad c = { 0.0, 0.0, 0.0, 1.0 };
+        rgbad c = { 0.5, 0.0, 1.0, 1.0 };
         canvas->clear(c);
 
         /*
