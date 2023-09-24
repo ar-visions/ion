@@ -1,136 +1,89 @@
-#import <camera/apple.h>
-#import <media/media.hpp>
+#import "apple.h"
 
-@interface metal_capture () <AVCaptureVideoDataOutputSampleBufferDelegate>
-@property (nonatomic, strong) AVCaptureSession         *captureSession;
-@property (nonatomic, strong) AVCaptureDeviceInput     *videoInput;
-@property (nonatomic, strong) AVCaptureVideoDataOutput *videoOutput;
-@property (nonatomic, strong) dispatch_queue_t          videoOutputQueue;
-@property (nonatomic, strong) id<MTLTexture>            currentFrameTexture;
-@property (nonatomic, strong) id<MTLDevice>             metalDevice;
-@property (nonatomic, strong) id<MTLCommandQueue>       metalCommandQueue;
-@property (nonatomic, assign) CVMetalTextureCacheRef    metalTextureCache;
-@property (nonatomic, assign) CaptureCallback           captureCallback;
-@property (nonatomic, assign) void*                     ctx;
-@property (nonatomic, assign) int                       camera_index;
-@end
+@implementation AppleCapture
 
-@implementation metal_capture
-
-- (instancetype)initWithCallback:(CaptureCallback)callback context:(void*)ctx camera_index:(int)camera_index {
-    self = [super init];
-    if (self) {
-        _captureSession = [[AVCaptureSession alloc] init];
-        _videoOutputQueue = dispatch_queue_create("videoOutputQueue", DISPATCH_QUEUE_SERIAL);
-        _metalDevice = MTLCreateSystemDefaultDevice();
-        _metalCommandQueue = [_metalDevice newCommandQueue];
-        _captureCallback = callback;
-        _ctx = ctx;
-        _camera_index = camera_index;
-        // Create the Metal texture cache
-        CVMetalTextureCacheCreate(kCFAllocatorDefault, nil, _metalDevice, nil, &_metalTextureCache);
+- (AVCaptureDeviceFormat *)filterDevice:(AVCaptureDevice *)device format:(FourCharCode)f {
+    for (AVCaptureDeviceFormat *format in [device formats]) {
+        CMFormatDescriptionRef formatDescription = format.formatDescription;
+        FourCharCode codecType = CMFormatDescriptionGetMediaSubType(formatDescription);
+        if (codecType == f) {
+            return format;
+        }
     }
-    return self;
+    return nil;
 }
 
-- (void)dealloc {
-    CVMetalTextureCacheFlush(_metalTextureCache, 0);
-    CFRelease(_metalTextureCache);
+- (void)stop {
+    [self.captureSession stopRunning];
 }
 
-AVCaptureDevice* select_camera(int camera_index) {
-    #pragma clang diagnostic push
-    #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    NSArray<AVCaptureDevice *> *devices = [AVCaptureDevice devicesWithMediaType:AVMediaTypeVideo];    
-    #pragma clang diagnostic pop
-    return (devices.count > camera_index) ? devices[camera_index] : nil;
-}
+- (void)start:(int)index width:(int)width height:(int)height user:(void*)user callback:(CaptureCallback)callback {
+    self.captureSession = [[AVCaptureSession alloc] init];
+    self.captureSession.sessionPreset = AVCaptureSessionPresetHigh;
+    self.user = user;
+    self.callback = callback;
 
-- (void)startCapture {
-    [_captureSession beginConfiguration];
+    //NSArray<AVCaptureDeviceType> *deviceTypes = @[AVCaptureDeviceTypeExternalUnknown];
+    //AVCaptureDeviceDiscoverySession *discoverySession = [AVCaptureDeviceDiscoverySession discoverySessionWithDeviceTypes:deviceTypes mediaType:AVMediaTypeVideo position:AVCaptureDevicePositionUnspecified];
+    //NSArray<AVCaptureDevice *> *devices = discoverySession.devices;
 
-    // Set the capture preset (choose an appropriate resolution)
-    if ([_captureSession canSetSessionPreset:AVCaptureSessionPreset1920x1080]) {
-        [_captureSession setSessionPreset:AVCaptureSessionPreset1920x1080];
+    NSArray<AVCaptureDevice *> *devices = [AVCaptureDevice devices];
+
+    int current_index = 0;
+
+    printf("devices count %d\n", (int)[devices count]);
+    for (AVCaptureDevice *device in devices) {
+        if ([device hasMediaType:AVMediaTypeVideo] && [device supportsAVCaptureSessionPreset:AVCaptureSessionPresetHigh]) {
+            
+            /// check if device supports format specified
+            if (![self filterDevice:device format:kCMVideoCodecType_JPEG])
+                continue;
+            
+            bool use_device = current_index++ == index;
+            if (!use_device)
+                continue;
+
+            NSError *error;
+            AVCaptureDeviceInput *input = [AVCaptureDeviceInput deviceInputWithDevice:device error:&error];
+            if (error) {
+                fprintf(stderr, "failed to obtain capture device\n");
+                exit(1);
+            }
+            if ([self.captureSession canAddInput:input]) {
+                [self.captureSession addInput:input];
+            }
+
+            exit(1);
+
+            self.videoOutput = [[AVCaptureVideoDataOutput alloc] init];
+            [self.videoOutput setSampleBufferDelegate:self queue:dispatch_queue_create("videoQueue", DISPATCH_QUEUE_SERIAL)];
+
+            if ([self.captureSession canAddOutput:self.videoOutput]) {
+                [self.captureSession addOutput:self.videoOutput];
+            }
+
+            [self.captureSession startRunning];
+            break;
+        }
     }
-
-    // Create an AVCaptureDevice for the webcam (front or back camera)
-    AVCaptureDevice *videoDevice = select_camera(_camera_index);
-    NSAssert(videoDevice, @"camera not found at index: %d", _camera_index);
-
-    // Create an AVCaptureDeviceInput using the video device
-    NSError *error = nil;
-    _videoInput = [AVCaptureDeviceInput deviceInputWithDevice:videoDevice error:&error];
-    
-    if (error) {
-        NSLog(@"Error creating AVCaptureDeviceInput: %@", error);
-        return;
-    }
-
-    // Add the input to the session
-    if ([_captureSession canAddInput:_videoInput]) {
-        [_captureSession addInput:_videoInput];
-    }
-
-    // Create an AVCaptureVideoDataOutput to receive frames
-    _videoOutput = [[AVCaptureVideoDataOutput alloc] init];
-
-    // Set the output pixel format (choose appropriate format for your needs)
-    NSDictionary *videoSettings = @{(NSString*)kCVPixelBufferPixelFormatTypeKey : @(kCVPixelFormatType_32BGRA)};
-    _videoOutput.videoSettings = videoSettings;
-
-    // Set the dispatch queue for frame capture
-    [_videoOutput setSampleBufferDelegate:self queue:_videoOutputQueue];
-
-    // Add the output to the session
-    if ([_captureSession canAddOutput:_videoOutput]) {
-        [_captureSession addOutput:_videoOutput];
-    }
-
-    [_captureSession commitConfiguration];
-    [_captureSession startRunning];
-}
-
-- (void)stopCapture {
-    [_captureSession stopRunning];
-    [_captureSession removeInput:_videoInput];
-    [_captureSession removeOutput:_videoOutput];
 }
 
 #pragma mark - AVCaptureVideoDataOutputSampleBufferDelegate
 
-- (void)captureOutput:(AVCaptureOutput *)output didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
-            fromConnection:(AVCaptureConnection *)connection {
-    // Convert the CMSampleBuffer to a CVPixelBuffer
-    CVPixelBufferRef imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
-
-    // Create a Metal texture from the CVPixelBuffer using the Metal texture cache
-    size_t width = CVPixelBufferGetWidth(imageBuffer);
-    size_t height = CVPixelBufferGetHeight(imageBuffer);
-    
-    
-    MTLTextureDescriptor *textureDescriptor = [MTLTextureDescriptor
-        texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
-        width:width height:height mipmapped:NO];
-    
-    CVMetalTextureRef metalTextureRef = nil;
-
-    CVReturn status = CVMetalTextureCacheCreateTextureFromImage(
-        kCFAllocatorDefault, _metalTextureCache, imageBuffer, nil,
-        textureDescriptor.pixelFormat, width, height, 0, &metalTextureRef);
-    
-    if (status != kCVReturnSuccess) {
-        NSLog(@"Error creating Metal texture from CVPixelBuffer");
-        return;
+- (void)captureOutput:(AVCaptureOutput *)output didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection *)connection {
+    // Extracting the CMBlockBuffer from the CMSampleBuffer
+    printf("got capture\n");
+    CMBlockBufferRef blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer);
+    if (blockBuffer == NULL) {
+        return; // Handle the error or exit the function
     }
     
-    self.currentFrameTexture = CVMetalTextureGetTexture(metalTextureRef);
-
-    if (self.captureCallback) {
-        self.captureCallback((__bridge void*)self.currentFrameTexture, 0, self.ctx);
-    }
-
-    CFRelease(metalTextureRef);
+    // Getting a pointer to the raw data
+    size_t lengthAtOffset;
+    size_t totalLength;
+    char *dataPointer;
+    CMBlockBufferGetDataPointer(blockBuffer, 0, &lengthAtOffset, &totalLength, &dataPointer);
+    self.callback(self.user, (void*)dataPointer, totalLength);
 }
 
 @end

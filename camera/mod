@@ -1,15 +1,14 @@
 cpp(17)
 dep(mx:mx)
 #dep(mx:mx ion:net vulkan:vk @Vulkan)
+src(-apple.mm)
 
 if(APPLE)
     dep(IOSurface QuartzCore Metal CoreMedia CoreFoundation Cocoa IOKit AVFoundation)
     cflags(+-fobjc-arc)
-    src(-apple.mm) # disabling for now; we are changing camera capture from texture to h264 data; not handling both either.
+    src(apple.mm)
 elseif(WIN32)
     dep(mf mfplat mfreadwrite mfuuid strmiids quartz ole32 oleaut32 uuid)
-    src(-apple.mm)
 elseif(UNIX)
     dep(v4l2)
-    src(-apple.mm)
 endif()

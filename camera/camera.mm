@@ -9,23 +9,13 @@
 
 using namespace ion;
 
-Camera::Camera() { }
+namespace ion {
 
-//Camera::Camera(VkEngine e, int camera_index, int width, int height, int rate) : 
-//    e(e), camera_index(camera_index), width(width), height(height), rate(rate) { }
+Camera::Camera(void *user, CaptureCallback callback) : user(user), callback(callback) { }
 
 #ifdef __APPLE__
 
-struct opaque_capture {
-    metal_capture *capture;
-    opaque_capture() { }
-};
-
 /*
-/// this 'camera' capture method is not ideal due to its texture-based model
-/// universally we need h264 data only.  we stream this, not images and we would never, Ever want to convert from image to h264 because it likely already has been compressed
-/// this delay is not ideal for performant runtime
-
 void global_callback(void *metal_texture, void *metal_layer, void *context) {
     Camera *camera = (Camera*)context;
     camera->e->vk_device->mtx.lock();
@@ -40,16 +30,23 @@ todo:
 convert metal_texture to h264 nalu packet src
 */
 
+
+void Camera::on_data(void *user, void *data, int len) {
+    printf("got data: %p, %d\n", user, len);
+}
+
 /// Camera will resolve the vulkan texture in this module (not doing this in ux/app lol)
 void Camera::start_capture() {
-    capture          = new opaque_capture();
     //capture->capture = [[metal_capture alloc] initWithCallback:global_callback context:(void*)this camera_index:camera_index];
-    [capture->capture startCapture];
+    AppleCapture *cap = [AppleCapture new];
+    [cap start:0 width:1920 height:1080 user:(void*)this callback:&Camera::on_data];
+
+    capture = (AppleCapture_*)CFBridgingRetain(cap);
+
 }
 
 void Camera::stop_capture() {
-    [capture->capture stopCapture];
-    delete capture;
+    [((__bridge AppleCapture*)capture) stop];
     capture = null;
 }
 
@@ -62,3 +59,5 @@ void Camera::stop_capture() {
 }
 
 #endif
+
+}

@@ -3,7 +3,26 @@
 
 #if defined(__APPLE__)
 
+#include <mx/mx.hpp>
+#include <camera/camera.hpp>
 
+using namespace ion;
+
+void on_data(void *user, void *data, int len) {
+    printf("camera-test: %d\n", len);
+}
+
+int main(int argc, char* argv[]) {
+    printf("stupid\n");
+    usleep(100000);
+    Camera cam(null, on_data);
+    printf("starting capture\n");
+    cam.start_capture();
+
+    while (1) {
+        usleep(10000);
+    }
+}
 
 #elif defined(__linux__)
 
