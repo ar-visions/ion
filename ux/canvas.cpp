@@ -435,9 +435,9 @@ struct ICanvas {
 
     struct state {
         ion::image  img;
-        double      outline_sz;
-        double      font_scale;
-        double      opacity;
+        double      outline_sz = 0.0;
+        double      font_scale = 1.0;
+        double      opacity    = 1.0;
         m44d        m;
         rgbad       color;
         graphics::shape clip;

@@ -39,6 +39,10 @@ Edit {
     sel-background:  #fff;
 }
 
+Edit:hover {
+    fill-color: #a82, 200ms quad;
+}
+
 Edit:focus {
     fill-color: #48ff, 200ms quad;
 }

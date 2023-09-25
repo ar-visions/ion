@@ -49,7 +49,7 @@
             "windows":{
                 "type": "cppvsdbg",
                 "program": "${workspaceFolder}/../ion/build/Debug/ux-app",
-                "cwd": "${workspaceFolder}/../ion/build/Debug"
+                "cwd": "${workspaceFolder}/../ion/build"
             },
             "osx": {
                 "MIMode": "lldb"

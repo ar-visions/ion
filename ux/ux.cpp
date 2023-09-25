@@ -65,64 +65,64 @@ void App::resize(vec2i &sz, App *app) {
     printf("resized: %d, %d\n", sz.x, sz.y);
 }
 
-App *app_data(GLFWwindow *window) {
-    return (App*)glfwGetWindowUserPointer(window);
+inline App app_data(mx &user) {
+    return App(user);
 }
 
-static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
-    App *app = app_data(window);
+static void key_callback(mx &user, int key, int scancode, int action, int mods) {
+    App app = app_data(user);
 	if (action != GLFW_PRESS)
 		return;
 	switch (key) {
 	case GLFW_KEY_SPACE:
 		break;
 	case GLFW_KEY_ESCAPE:
-        vkengine_should_close(app->data->e);
+        vkengine_close(app->e);
 		break;
 	}
 }
 
-static void char_callback (GLFWwindow* window, uint32_t c) {
-    App *app = app_data(window);
+static void char_callback (mx &user, uint32_t c) {
+    App app = app_data(user);
 }
 
-static void mouse_move_callback(GLFWwindow* window, double x, double y) {
-    App *app = app_data(window);
-    app->data->cursor = vec2d { x, y };// / app->data->e->vk_gpu->dpi_scale;
+static void mouse_move_callback(mx &user, double x, double y) {
+    App app = app_data(user);
+    app->cursor = vec2d { x, y };// / app->data->e->vk_gpu->dpi_scale;
 
-    for (Element* n: app->data->hover)
+    for (Element* n: app->hover)
         n->Element::data->hover = false;
     
-    app->data->hover = app->select_at(app->data->cursor, app->data->buttons[0]);
+    app->hover = app.select_at(app->cursor, app->buttons[0]);
     Element *last = null;
-    for (Element* n: app->data->hover) {
+    for (Element* n: app->hover) {
         n->Element::data->hover  = true;
         //n->Element::data->cursor = app->data->cursor; /// this type could be bool true when the point is in bounds
         last = n;
     }
 }
 
-static void scroll_callback(GLFWwindow* window, double x, double y) {
-    App* app = app_data(window);
+static void scroll_callback(mx &user, double x, double y) {
+    App app = app_data(user);
 }
 
-static void mouse_button_callback(GLFWwindow* window, int button, int state, int mods) {
-    App* app   = app_data(window);
+static void mouse_button_callback(mx &user, int button, int state, int mods) {
+    App  app   = app_data(user);
     bool shift = mods & GLFW_MOD_SHIFT;
 
-    app->data->buttons[button] = bool(state);
-    Element* root = (Element*)app->composer::data->instances; /// for ux this is always single
+    app->buttons[button] = bool(state);
+    Element* root = (Element*)app.composer::data->instances; /// for ux this is always single
 
-    for (Element* n: app->data->active)
+    for (Element* n: app->active)
         n->Element::data->active = false;
     
     if (state)
-        app->data->active = app->select_at(app->data->cursor, false);
+        app->active = app.select_at(app->cursor, false);
     else
-        app->data->active = {};
+        app->active = {};
 
     Element* last = null;
-    for (Element* n: app->data->active) {
+    for (Element* n: app->active) {
         n->Element::data->active = true;
         if (n->Element::data->tab_index >= 0)
             last = n;
@@ -141,8 +141,8 @@ static void mouse_button_callback(GLFWwindow* window, int button, int state, int
     if (last) {
         if (last->data->selectable || last->data->editable) {
             /// compute sel start on mouse click down
-            bool    is_down = app->data->active[0];
-            TextSel s = last->get_selection(app->data->cursor, is_down);
+            bool    is_down = app->active[0];
+            TextSel s = last->get_selection(app->cursor, is_down);
 
             /// we are either setting the sel_start, or sel_end (with a swap potential for out of sync selection)
             if (is_down) {
@@ -182,17 +182,16 @@ static void mouse_button_callback(GLFWwindow* window, int button, int state, int
 int App::run() {
     data->e = vkengine_create(1, 2, "ux",
         VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, VK_PRESENT_MODE_FIFO_KHR, VK_SAMPLE_COUNT_4_BIT,
-        512, 512, 0, this);
+        512, 512, 0, (mx&)*this);
     
     vk_engine_t *e = data->e;
-    ///
-    Canvas *canvas = data->canvas = new Canvas(e->renderer); /// width and height are fetched from renderer (which updates in vkengine)
+    Canvas *canvas = data->canvas = new Canvas(e->renderer);
 
-    vkengine_set_key_callback       (e, key_callback);
-	vkengine_set_mouse_but_callback (e, mouse_button_callback);
-	vkengine_set_cursor_pos_callback(e, mouse_move_callback);
-	vkengine_set_scroll_callback    (e, scroll_callback);
-	vkengine_set_title              (e, "ux");
+    vkengine_key_callback    (e, key_callback);
+	vkengine_button_callback (e, mouse_button_callback);
+	vkengine_move_callback   (e, mouse_move_callback);
+	vkengine_scroll_callback (e, scroll_callback);
+	vkengine_set_title       (e, "ux");
 
     /// works on macOS currently (needs to present, and update a canvas)
     //cameras  = array<Camera>(32);
@@ -200,14 +199,13 @@ int App::run() {
     //cameras[0].start_capture();
 
 	while (!vkengine_should_close(e)) {
-		glfwPollEvents();
+        vkengine_poll_events(e);
 
         e->vk_device->mtx.lock();
 
-        rgbad c = { 0.5, 0.0, 1.0, 1.0 };
+        rgbad c = { 0.0, 0.0, 0.0, 1.0 };
         canvas->clear(c);
 
-        /*
         node ee = data->app_fn(*this);
 
         update_all(ee);
@@ -225,16 +223,10 @@ int App::run() {
             auto &bounds = eroot->data->bounds;
             eroot->draw(*canvas);
         }
-        */
 
-        rectd bounds = rectd {
-            0, 0,
-            (real)canvas->get_virtual_width(),
-            (real)canvas->get_virtual_height()
-        };
-
-        canvas->color({1.0, 0.0, 1.0, 1.0});
-        canvas->fill(bounds);
+        //rectd bounds = rectd { 0, 0, 64, 64 };
+        //canvas->color({0.0, 0.0, 1.0, 1.0});
+        //canvas->fill(bounds);
 
         canvas->flush();
 

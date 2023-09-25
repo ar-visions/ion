@@ -425,7 +425,13 @@ size_t style::block::score(node *pn, bool score_state) {
             prop* member = null;
             u8*   addr   = property_find(pn->mem->origin, pn->mem->type, qd.id, member);
             if (addr) {
+                if (qd.id == "focus") {
+                    int test = 0;
+                    test++;
+                }
                 state_match = member->member_type->functions->boolean(null, addr);
+                int test = 0;
+                test++;
                 break;
             }
         }
@@ -628,7 +634,7 @@ style::entry *style::impl::best_match(node *n, prop *member, array<style::entry*
     type_t type = n->mem->type;
     for (style::entry *e: entries) {
         block *bl = e->bl;
-        real score = bl->match(n, true);
+        real score = bl->match(n, true); /// fix at tm
         if (score > 0 && score >= best_score) {
             match = bl->entries[*member->s_key];
             assert(match);
