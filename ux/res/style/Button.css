@@ -40,9 +40,9 @@ Edit {
 }
 
 Edit:hover {
-    fill-color: #a82, 200ms quad;
+    fill-color: #0000, 200ms quad;
 }
 
 Edit:focus {
-    fill-color: #48ff, 200ms quad;
+    fill-color: #ffff, 200ms quad;
 }

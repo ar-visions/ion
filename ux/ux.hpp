@@ -504,7 +504,7 @@ struct Element:node {
         bool                    capture;
         bool                    hover;
         bool                    active;
-        bool                    focus;
+        bool                    focus = true;
         int                     tab_index;
         vec2d                   cursor;
 
@@ -623,7 +623,6 @@ struct Element:node {
                 prop { "text-align",     drawings[operation::text]   .align   },
 
                 prop { "capture",   capture   },
-                prop { "focuse",    focus     },
                 prop { "hover",     hover     },
                 prop { "active",    active    },
                 prop { "focus",     focus     },
@@ -1069,7 +1068,7 @@ struct App:composer {
                 rectd &bounds = ee->data->fill_bounds ? ee->data->fill_bounds : ee->data->bounds;
                 bool in = bounds.contains(rel);
                 e->data->cursor = in ? vec2d(x, y) : vec2d(-1, -1);
-                return (in && (!active || !edata->active)) ? e : null;
+                return (in && (!active || !edata->active)) ? ee : null;
             });
             array<Element*> actives = e->select([&](Element *ee) -> Element* {
                 return (active && ee->data->active) ? ee : null;
