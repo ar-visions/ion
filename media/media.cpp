@@ -26,9 +26,11 @@
 #include <opusenc/opusenc.h>
 #include <opusfile/opusfile.h>
 
+#if 0
 extern "C" {
     #include <shine/layer3.h>
 };
+#endif
 
 namespace ion {
 
@@ -199,6 +201,7 @@ bool audio::save(path dest, i64 bitrate) {
         ope_comments_destroy(comments);
         
     } else if (ext == ".mp3") {
+        #if 0
         FILE          *mp3_file = fopen(s_path, "wb");
         shine_config_t config;
         shine_t        s;
@@ -229,6 +232,7 @@ bool audio::save(path dest, i64 bitrate) {
         
         /// set id3 info separate
         mp3_set_id3(s_path, data->artist, data->title);
+        #endif
         ///
     } else if (ext == ".wav") {
         /// hiii everybody!

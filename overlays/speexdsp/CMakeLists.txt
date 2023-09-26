@@ -4,20 +4,23 @@ project(libspeexdsp)
 include_directories(include)
 
 # this still needs the configure script to be there (need better solution for this lib)
+
 if (EXISTS "${CMAKE_SOURCE_DIR}/configure")
     # set(autoreconf "0")
 elseif (EXISTS "${CMAKE_SOURCE_DIR}/autogen.sh")
     execute_process(COMMAND sh "autogen.sh" RESULT_VARIABLE autoreconf WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-else()
+elseif(NOT WIN32)
     execute_process(COMMAND autoreconf "-i" RESULT_VARIABLE autoreconf WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endif()
 
 # [sync] run configure
-message(STATUS "prefix = ${CMAKE_INSTALL_PREFIX}")
-execute_process(COMMAND sh "./configure" "--prefix=${CMAKE_INSTALL_PREFIX}"
+if(EXISTS "./configure")
+    execute_process(COMMAND sh "./configure" "--prefix=${CMAKE_INSTALL_PREFIX}"
     RESULT_VARIABLE configure WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-if(NOT configure EQUAL 0)
-    message(FATAL_ERROR "configure script failed")
+    # lets try not configuring on windows
+    if(NOT configure EQUAL 0)
+        message(FATAL_ERROR "configure script failed")
+    endif()
 endif()
 
 add_library(

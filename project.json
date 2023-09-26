@@ -113,13 +113,15 @@
             "name":     "shine",
             "version":  "3.1.1",
             "url":      "https://github.com/toots/shine",
-            "commit":   "97f188e"
+            "commit":   "97f188e",
+            "platforms": []
         },
         {
             "name":     "speexdsp",
             "version":  "1.2.1",
             "url":      "https://github.com/xiph/speexdsp",
-            "commit":   "1b28a0f"
+            "commit":   "1b28a0f",
+            "platforms": []
         },
         {
             "name":     "opusenc",

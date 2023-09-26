@@ -1,6 +1,8 @@
 dep(mx:mx mx:async mx:image 
     opusenc:opusenc opusfile:opusfile
-    opus:opus ogg:ogg shine:shine
-    speexdsp:speexdsp)
+    opus:opus ogg:ogg)
+
+dep(shine:shine)
+dep(speexdsp:speexdsp)
 
 includes(${INSTALL_PREFIX}/include/opus)
