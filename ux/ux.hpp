@@ -632,6 +632,11 @@ struct Element:node {
         type_register(props);
     };
 
+    void debug() {
+        int test = 0;
+        test++;
+    }
+
     TextSel get_selection(vec2d pos, bool is_down) {
         rectd r = data->bounds;
         Element *n = this;
