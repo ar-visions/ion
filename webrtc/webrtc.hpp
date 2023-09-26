@@ -66,7 +66,6 @@ struct ClientTrack {
 };
 
 enums(StreamType, Audio,
-        "Audio, Video",
          Audio, Video);
 
 struct Source:mx {

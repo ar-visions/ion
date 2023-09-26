@@ -7,13 +7,11 @@ namespace ion {
 /// style can go in composer if we are good at separating functionality
 
 enums(duration, ms,
-    "ns, ms, s",
      ns, ms, s);
 
 /// needs more distance units.  pc = parsec
 enums(distance, px,
-    "px, m, cm, in, ft, pc, %",
-     px, m, cm, in, ft, parsec, percent);
+     px, m, cm, in, ft, pc, percent); /// needs % -> percent generic
 
 
 template <typename U>
@@ -64,11 +62,9 @@ struct style:mx {
     ///
     struct transition {
         enums(ease, linear,
-            "linear, quad, cubic, quart, quint, sine, expo, circ, back, elastic, bounce",
              linear, quad, cubic, quart, quint, sine, expo, circ, back, elastic, bounce);
         ///
         enums(direction, in,
-            "in, out, in-out",
              in, out, in_out);
 
         ease easing;
@@ -344,11 +340,9 @@ template <> struct is_singleton<style> : true_type { };
 
 
 enums(keyboard, none,
-    "none, caps_lock, shift, ctrl, alt, meta",
      none, caps_lock, shift, ctrl, alt, meta);
 
 enums(mouse, none,
-    "none, left, right, middle, inactive",
      none, left, right, middle, inactive);
 
 namespace user {

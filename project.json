@@ -32,7 +32,8 @@
             "name":     "skia",
             "version":  "m116",
             "url":      "https://skia.googlesource.com/skia.git",
-            "branch":   "remotes/origin/chrome/m116"
+            "branch":   "remotes/origin/chrome/m116",
+            "platforms": ["win"]
         },
         {
             "name":     "mbedtls",

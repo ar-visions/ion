@@ -16,11 +16,9 @@ using ssize_t = ion::i64;
 namespace ion {
 
 enums(protocol, undefined,
-    "undefined, http, https, ws",
      undefined, http, https, ws);
 
 enums(method, undefined, 
-   "undefined, response, get, post, put, delete",
     undefined, response, get, post, put, del);
 
 struct uri:mx {

@@ -31,6 +31,31 @@
             "justMyCode": true
         },
         {
+            "name": "lambda",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/../ion/build/lambda",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/../ion/build",
+            "environment": [],
+            "MIMode": "gdb",
+            "presentation": {
+                "hidden": false,
+                "group": "",
+                "order": 1,
+            },
+            "preLaunchTask": "build-lambda",
+            "windows":{
+                "type": "cppvsdbg",
+                "program": "${workspaceFolder}/../ion/build/Debug/lambda",
+                "cwd": "${workspaceFolder}/../ion/build"
+            },
+            "osx": {
+                "MIMode": "lldb"
+            }
+        },
+        {
             "name": "ux-app",
             "type": "cppdbg",
             "request": "launch",

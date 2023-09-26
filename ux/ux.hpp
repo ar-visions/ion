@@ -36,11 +36,9 @@ using tm_t = text_metrics;
 /// would be nice to handle basically everything model-wise in graphics
 namespace graphics {
     enums(cap, none,
-       "none, blunt, round",
         none, blunt, round);
     
     enums(join, miter,
-       "miter, round, bevel",
         miter, round, bevel);
 
     struct shape:mx {
@@ -157,22 +155,18 @@ namespace graphics {
     };
 };
 
-enums(nil, none, "none", none);
+enums(nil, none, none);
 
 enums(xalign, left,
-    "left, middle, right, width",
      left, middle, right, width);
     
 enums(yalign, top,
-    "top, middle, bottom, height",
      top, middle, bottom, height);
 
 enums(blending, undefined,
-    "undefined, clear, src, dst, src-over, dst-over, src-in, dst-in, src-out, dst-out, src-atop, dst-atop, xor, plus, modulate, screen, overlay, color-dodge, color-burn, hard-light, soft-light, difference, exclusion, multiply, hue, saturation, color",
      undefined, clear, src, dst, src_over, dst_over, src_in, dst_in, src_out, dst_out, src_atop, dst_atop, Xor, plus, modulate, screen, overlay, color_dodge, color_burn, hard_light, soft_light, difference, exclusion, multiply, hue, saturation, color);
 
 enums(filter, none,
-    "none, blur, brightness, contrast, drop-shadow, grayscale, hue-rotate, invert, opacity, saturate, sepia",
      none, blur, brightness, contrast, drop_shadow, grayscale, hue_rotate, invert, opacity, saturate, sepia);
 
 /// need interpolation with enumerable type.  the alignment itsself will represent an axis
@@ -425,7 +419,6 @@ struct OBJ:mx {
 };
 
 enums(mode, regular,
-     "regular, headless",
       regular, headless);
 
 struct Canvas;
@@ -471,7 +464,6 @@ struct font:mx {
 };
 
 enums(operation, fill,
-    "fill, image, outline, text, child",
      fill, image, outline, text, child);
 
 template <typename> struct simple_content : true_type { };
@@ -825,7 +817,6 @@ struct object:Element {
 ///
 struct Button:Element {
     enums(Behavior, push,
-        "push, label, toggle, radio",
          push, label, toggle, radio);
     
     struct props {

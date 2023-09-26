@@ -33,6 +33,37 @@
             }
         },
         {
+            "label": "build-lambda",
+            "type": "shell",
+			"options": {
+                "cwd": "${workspaceFolder}/../ion/build"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "group": "build0",
+                "clear": true
+            },
+			"isBackground": false,
+			"problemMatcher": ["$gcc"],
+            "windows": {
+                "command": "msbuild ion.sln /t:lambda"
+            },
+            "osx": {
+                "command": "make lambda -j16"
+            },
+            "linux": {
+                "command": "make lambda -j16",
+                "options":{
+                    "env":{"VERBOSE":"1"}
+                }
+            }
+        },
+        {
             "label": "build-streamer",
             "type": "shell",
 			"options": {
