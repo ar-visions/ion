@@ -18,13 +18,7 @@
 #define BUF_SIZE 2049
 #endif
 
-#ifndef KEYS_FOLDER
-#ifdef _WIN32
-#define KEYS_FOLDER
-#else
-#define KEYS_FOLDER "/etc/ssh/"
-#endif
-#endif
+#define KEYS_FOLDER "./ssl/"
 
 #define USER "myuser"
 #define PASSWORD "mypassword"
@@ -229,7 +223,72 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
 static struct argp argp = {options, parse_opt, args_doc, doc, NULL, NULL, NULL};
 #endif /* HAVE_ARGP_H */
 
-int main(int argc, char **argv){
+int file_exists(const char *filename) {
+    FILE *file = fopen(filename, "r");
+    if (file != NULL) {
+        fclose(file);
+        return 1;  // File exists
+    }
+    return 0;  // File doesn't exist
+}
+
+bool init_keys(const char *name) {
+    char key_name[256];
+    char key_pub [256];
+    sprintf(key_name, "ssl/%s.ssh",     name);
+    sprintf(key_pub,  "ssl/%s.ssh.pub", name);
+
+    if (file_exists(key_name) && file_exists(key_pub)) {
+        printf("init_keys: in cache\n");
+        return true;
+    }
+    
+    ssh_key private_key;
+    ssh_key public_key;
+    int rc;
+
+    // Generate RSA private key
+    rc = ssh_pki_generate(SSH_KEYTYPE_RSA, 4096, &private_key);
+    if (rc != SSH_OK) {
+        fprintf(stderr, "Error generating RSA key pair\n");
+        return false;
+    }
+
+    // Extract public key from private key
+    rc = ssh_pki_export_privkey_to_pubkey(private_key, &public_key);
+    if (rc != SSH_OK) {
+        fprintf(stderr, "Error extracting public key\n");
+        ssh_key_free(private_key);
+        return false;
+    }
+
+    // Export private key to file
+    rc = ssh_pki_export_privkey_file(private_key, NULL, NULL, NULL, key_name);
+    if (rc != SSH_OK) {
+        fprintf(stderr, "Error writing private key to file\n");
+        ssh_key_free(private_key);
+        ssh_key_free(public_key);
+        return false;
+    }
+
+    // Export public key to file
+    rc = ssh_pki_export_pubkey_file(public_key, key_pub);
+    if (rc != SSH_OK) {
+        fprintf(stderr, "Error writing public key to file\n");
+        ssh_key_free(private_key);
+        ssh_key_free(public_key);
+        return false;
+    }
+
+    printf("init_keys: generated\n");
+
+    // Cleanup
+    ssh_key_free(private_key);
+    ssh_key_free(public_key);
+    return true;
+}
+
+int ssh_server(const char *name, int port) {
     ssh_session session;
     ssh_bind sshbind;
     ssh_event mainloop;
@@ -250,7 +309,12 @@ int main(int argc, char **argv){
     sshbind=ssh_bind_new();
     session=ssh_new();
 
-    ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_HOSTKEY, KEYS_FOLDER "ssh_host_rsa_key");
+    const char *name = "ar-visions.com";
+    init_keys(name);
+
+    char key_path[256];
+    sprintf(key_path, "ssl/%s.ssh", name); /// these need to be generated when they arent there.  make it simple.
+    ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_HOSTKEY, key_path);
 
 #ifdef HAVE_ARGP_H
     /*
@@ -326,4 +390,7 @@ int main(int argc, char **argv){
     ssh_bind_free(sshbind);
     ssh_finalize();
     return 0;
+}
+
+int main(int argc, char **argv){
 }
