@@ -216,6 +216,7 @@ TLS::TLS(uri url) : TLS(new iTLS(url)) {
 int uri::port() {
     if (data->port) return data->port;
     switch (data->proto.value) {
+        case protocol::undefined: break;
         case protocol::http:  return 80;
         case protocol::https: return 443;
         case protocol::ssh:   return 22;
