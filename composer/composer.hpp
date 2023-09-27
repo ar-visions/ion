@@ -493,6 +493,7 @@ struct node:mx {
         style::style_map        style_avail; /// properties outside of meta are effectively internal state only; it can be labelled as such
         map<selection>          selections; /// style selected per member
         ion::composer::cmdata*  cmdata;
+        lambda<void(mx)>        ref;
 
         ///
         doubly<prop> meta() {
@@ -642,11 +643,7 @@ struct node:mx {
     C(initial<arg>  props) :            B(typeof(C), props), state(defaults<intern>()) { }\
     C(mx                o) : C(o.mem->grab())  { }\
     C()                    : C(mx::alloc<C>()) { }\
-    intern    &operator *() { return *state; }\
     intern    *operator->() { return  state; }\
-    intern    *operator &() { return  state; }\
-    operator     intern *() { return  state; }\
-    operator     intern &() { return *state; }\
     type_register(C);
 
 //typedef node* (*FnFactory)();

@@ -228,32 +228,6 @@ struct Service: node {
 	component(Service, node, props);
 };
 
-/// these should be read by the context api; although, the parent chain will not go this far back (nor should it?)
-/// todo: set composer as parent to first node!
-/// todo: scratch that, not type safe.
-struct Services:composer {
-    struct internal {
-        composer::cmdata*        cmdata;
-        bool                     running;
-        lambda<node(Services&)>  service_fn;
-        ///
-        type_register(internal);
-    };
-    mx_object(Services, composer, internal);
-
-    Services(lambda<node(Services&)> service_fn) : Services() {
-        data->cmdata = composer::data;
-        data->cmdata->app = mem;
-        data->service_fn = service_fn;
-    }
-
-    int run();
-
-    operator int() {
-        return run();
-    }
-};
-
 /// webrtc, rtc, rtc::impl -> rtc (the impl's are laid out in modules in ways i wouldnt design)
 /// to better understand the protocols i will organize them in simpler ways
 

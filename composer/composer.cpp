@@ -283,6 +283,9 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
         /// need to know if its mounted, or changed by argument
         /// it can know if a style is different but i dont see major value here
         if (is_new) {
+            if (instance->data->ref) {
+                instance->data->ref(mx(instance->mem->grab()));
+            }
             instance->mounted();
         }
     }

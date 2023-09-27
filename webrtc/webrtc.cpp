@@ -241,47 +241,6 @@ void DispatchQueue::dispatchThreadHandler(void) {
 
 namespace ion {
 
-/// general service function to facilitate https or web sockets messages
-ion::async service(uri url, lambda<message(message)> fn_process) {
-
-    /// web socket protocol is a connector protocol unless a method of listen is explicitly called elsewhere
-    if (url->proto == protocol::ws) {
-        return ion::async {1, [url, fn_process](runtime *rt, int i) -> mx {
-            console.log("async test");
-			return null;
-        }};
-    }
-
-    /// https is all we support for a listening service, no raw protocols without encryption in this stack per design
-    if (url->proto == protocol::https)
-        return sock::listen(url, [fn_process](sock &sc) -> bool {
-            bool close = false;
-            for (close = false; !close;) {
-                close  = true;
-                ///
-                message request(sc);
-                if (!request)
-                    break;
-                
-                console.log("(https) {0} -> {1}", { request->query->mtype, request->query->query });
-
-                message response(
-                    fn_process(request)
-                );
-                response.write(sc);
-
-                /// default is keep-alive on HTTP/1.1
-                const char *F = "Connection";
-                close = (request[F] == "close" && !response[F]) ||
-                       (response[F] == "close");
-            }
-            return close;
-        });
-
-    console.fault("unsupported url: {0}", { url });
-    return {};
-};
-
 ClientTrackData::ClientTrackData(std::shared_ptr<rtc::Track> track, std::shared_ptr<rtc::RtcpSrReporter> sender) {
 	this->track = track;
 	this->sender = sender;
@@ -414,21 +373,6 @@ Stream app_stream(App app) {
         usleep(1000);
     }
     return stream;
-}
-
-
-/// can update in real time 1/hz or through polling, but not needed at the moment
-int Services::run() {
-    node e = data->service_fn(*this);
-    update_all(e);
-    for (;;) {
-        usleep(10000);
-    }
-    return 0;
-}
-
-void Service::mounted() {	
-	state->service = ion::service(state->url, state->on_message);
 }
 
 /// contextual class instances are safely allocated until the data is not;

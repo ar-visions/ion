@@ -1,12 +1,9 @@
 #pragma once
 
 #include <mx/mx.hpp>
-#include <composer/composer.hpp>
 #include <async/async.hpp>
+#include <composer/composer.hpp>
 
-struct WOLFSSL_CTX;
-struct WOLFSSL;
-struct WOLFSSL_METHOD;
 struct sockaddr_in;
 
 #if defined(WIN32)
@@ -233,19 +230,19 @@ struct sock:mx {
     sock(TLS tls);
     sock(uri addr);
 
-    bool bind(uri addr);
-    bool connect();
-    bool close();
-    void set_timeout(i64 t);
-    bool read_sz(char *v, size_t sz);
-    ssize_t recv(char* buf, size_t len);
-    ssize_t send(const char* buf, size_t len);
-    ssize_t send(str templ, array<mx> args);
-    ssize_t send(mx &v);
+    bool        bind(uri addr);
+    bool        connect();
+    bool        close();
+    void        set_timeout(i64 t);
+    bool        read_sz(char *v, size_t sz);
+    ssize_t     recv(char* buf, size_t len);
+    ssize_t     send(const char* buf, size_t len);
+    ssize_t     send(str templ, array<mx> args);
+    ssize_t     send(mx &v);
     array<char> read_until(str s, int max_len);
     
     static async listen(uri url, lambda<bool(sock&)> fn);
-    static sock accept(TLS tls);
+    static sock  accept(TLS tls);
 
     operator bool();
 };
@@ -302,13 +299,80 @@ struct message:mx {
     mx &header(mx key);
 };
 
+
+/// these should be read by the context api; although, the parent chain will not go this far back (nor should it?)
+/// todo: set composer as parent to first node!
+/// todo: scratch that, not type safe.
+struct Services:composer {
+    struct internal {
+        composer::cmdata*        cmdata;
+        bool                     running;
+        lambda<node(Services&)>  service_fn;
+        ///
+        type_register(internal);
+    };
+    mx_object(Services, composer, internal);
+
+    Services(lambda<node(Services&)> service_fn) : Services() {
+        data->cmdata = composer::data;
+        data->cmdata->app = mem;
+        data->service_fn = service_fn;
+    }
+
+    int run();
+
+    operator int() {
+        return run();
+    }
+};
+
+struct WebService:node {
+    struct props {
+        uri url;
+        lambda<message(message)> on_message;
+
+        type_register(WebService);
+
+		doubly<prop> meta() {
+			return {
+				prop { "url", url },
+				prop { "on-message", on_message }
+			};
+		}
+    };
+
+    component(WebService, node, props);
+
+    void mounted() {
+        /// https is all we support for a listening service, no raw protocols without encryption in this stack per design
+        sock::listen(state->url, [state=state](sock &sc) -> bool {
+            bool close = false;
+            for (close = false; !close;) {
+                close  = true;
+                ///
+                message request(sc);
+                if (!request)
+                    break;
+                
+                console.log("(https) {0} -> {1}", { request->query->mtype, request->query->query });
+
+                message response(
+                    state->on_message(request)
+                );
+                response.write(sc);
+
+                /// default is keep-alive on HTTP/1.1
+                const char *F = "Connection";
+                close = (request[F] == "close" && !response[F]) ||
+                       (response[F] == "close");
+            }
+            return close;
+        });
+    }
+};
+
 //void test_wolf();
 bool test_mbed();
-///
-/// high level server method (on top of listen)
-/// you receive messages from clients through lambda; supports https
-/// web sockets should support the same interface with some additions
-async service(uri bind, lambda<message(message)> fn_process);
 
 /// useful utility function here for general web requests; driven by the future
 future request(uri url, map<mx> args);

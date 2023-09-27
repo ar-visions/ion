@@ -1,11 +1,8 @@
-
 #include <libssh/libssh.h>
 #include <libssh/server.h>
 #include <libssh/callbacks.h>
+#include <arpa/inet.h>
 
-#ifdef HAVE_ARGP_H
-#include <argp.h>
-#endif
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -14,383 +11,347 @@
 #include <io.h>
 #endif
 
-#ifndef BUF_SIZE
-#define BUF_SIZE 2049
-#endif
+#include <mx/mx.hpp>
+#include <composer/composer.hpp>
 
-#define KEYS_FOLDER "./ssl/"
+using namespace ion;
 
-#define USER "myuser"
-#define PASSWORD "mypassword"
+struct SSHPeer:mx {
+    struct pdata {
+        str                         id;
+        str                         address;
+        int                         port;
+        void*                       service;
+        ssh_session                 session;
+        bool                        connected;
+        bool                        is_auth;
+        int                         tries;
+        ssh_channel                 chan;
+        ssh_event                   mainloop;
 
-static int authenticated=0;
-static int tries = 0;
-static int error = 0;
-static ssh_channel chan=NULL;
+        void disconnect() {
+            ssh_disconnect(session);
+        }
+    };
+    mx_object(SSHPeer, mx, pdata);
 
-static int auth_none(ssh_session session,
-                     const char *user,
-                     void *userdata)
-{
-    ssh_string banner = NULL;
-
-    (void)user; /* unused */
-    (void)userdata; /* unused */
-
-    ssh_set_auth_methods(session,
-                         SSH_AUTH_METHOD_PASSWORD | SSH_AUTH_METHOD_GSSAPI_MIC);
-
-    banner = ssh_string_from_char("Banner Example\n");
-    if (banner != NULL) {
-        ssh_send_issue_banner(session, banner);
+    operator bool() {
+        return data->connected;
     }
-    ssh_string_free(banner);
-
-    return SSH_AUTH_DENIED;
-}
-
-static int auth_password(ssh_session session, const char *user,
-        const char *password, void *userdata){
-    (void)userdata;
-    printf("Authenticating user %s pwd %s\n",user, password);
-    if(strcmp(user,USER) == 0 && strcmp(password, PASSWORD) == 0){
-        authenticated = 1;
-        printf("Authenticated\n");
-        return SSH_AUTH_SUCCESS;
+    bool operator!() {
+        return !data->connected;
     }
-    if (tries >= 3){
-        printf("Too many authentication tries\n");
-        ssh_disconnect(session);
-        error = 1;
-        return SSH_AUTH_DENIED;
-    }
-    tries++;
-    return SSH_AUTH_DENIED;
-}
-
-#ifdef WITH_GSSAPI
-static int auth_gssapi_mic(ssh_session session, const char *user, const char *principal, void *userdata){
-    ssh_gssapi_creds creds = ssh_gssapi_get_creds(session);
-    (void)userdata;
-    printf("Authenticating user %s with gssapi principal %s\n",user, principal);
-    if (creds != NULL)
-        printf("Received some gssapi credentials\n");
-    else
-        printf("Not received any forwardable creds\n");
-    printf("authenticated\n");
-    authenticated = 1;
-    return SSH_AUTH_SUCCESS;
-}
-#endif
-
-static int pty_request(ssh_session session, ssh_channel channel, const char *term,
-        int x,int y, int px, int py, void *userdata){
-    (void) session;
-    (void) channel;
-    (void) term;
-    (void) x;
-    (void) y;
-    (void) px;
-    (void) py;
-    (void) userdata;
-    printf("Allocated terminal\n");
-    return 0;
-}
-
-static int shell_request(ssh_session session, ssh_channel channel, void *userdata){
-    (void)session;
-    (void)channel;
-    (void)userdata;
-    printf("Allocated shell\n");
-    return 0;
-}
-struct ssh_channel_callbacks_struct channel_cb = {
-    .channel_pty_request_function = pty_request,
-    .channel_shell_request_function = shell_request
 };
 
-static ssh_channel new_session_channel(ssh_session session, void *userdata){
-    (void) session;
-    (void) userdata;
-    if(chan != NULL)
-        return NULL;
-    printf("Allocated session channel\n");
-    chan = ssh_channel_new(session);
-    ssh_callbacks_init(&channel_cb);
-    ssh_set_channel_callbacks(chan, &channel_cb);
-    return chan;
-}
+struct SSHService:node {
+    struct props {
+        bool                        running;
+        ssh_bind                    sshbind;
 
+        /// meta
+        lambda<bool(str, str, str)> on_auth; // user-id, user, pass
+        lambda<void(SSHPeer)>       on_peer;
+        lambda<void(SSHPeer,str)>   on_recv;
+        lambda<void(SSHPeer)>       on_disconnect;
 
-#ifdef HAVE_ARGP_H
-const char *argp_program_version = "libssh server example "
-SSH_STRINGIFY(LIBSSH_VERSION);
-const char *argp_program_bug_address = "<libssh@libssh.org>";
+        str                         no_auth;
+        uri                         bind;
+        str                         banner = "default message here\n";
+        int                         max_attempts = 3;
 
-/* Program documentation. */
-static char doc[] = "libssh -- a Secure Shell protocol implementation";
-
-/* A description of the arguments we accept. */
-static char args_doc[] = "BINDADDR";
-
-/* The options we understand. */
-static struct argp_option options[] = {
-    {
-        .name  = "port",
-        .key   = 'p',
-        .arg   = "PORT",
-        .flags = 0,
-        .doc   = "Set the port to bind.",
-        .group = 0
-    },
-    {
-        .name  = "hostkey",
-        .key   = 'k',
-        .arg   = "FILE",
-        .flags = 0,
-        .doc   = "Set the host key.",
-        .group = 0
-    },
-    {
-        .name  = "rsakey",
-        .key   = 'r',
-        .arg   = "FILE",
-        .flags = 0,
-        .doc   = "Set the rsa key (deprecated alias for 'k').",
-        .group = 0
-    },
-    {
-        .name  = "verbose",
-        .key   = 'v',
-        .arg   = NULL,
-        .flags = 0,
-        .doc   = "Get verbose output.",
-        .group = 0
-    },
-    {
-        .name  = "config",
-        .key   = 'f',
-        .arg   = "FILE",
-        .flags = 0,
-        .doc   = "Configuration file to use.",
-        .group = 0
-    },
-    {NULL, 0, NULL, 0, NULL, 0}
-};
-
-/* Parse a single option. */
-static error_t parse_opt (int key, char *arg, struct argp_state *state) {
-    /* Get the input argument from argp_parse, which we
-     * know is a pointer to our arguments structure.
-     */
-    ssh_bind sshbind = state->input;
-
-    switch (key) {
-        case 'p':
-            ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_BINDPORT_STR, arg);
-            break;
-        case 'r':
-        case 'k':
-            ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_HOSTKEY, arg);
-            break;
-        case 'v':
-            ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_LOG_VERBOSITY_STR, "3");
-            break;
-        case 'f':
-            ssh_bind_options_parse_config(sshbind, arg);
-            break;
-        case ARGP_KEY_ARG:
-            if (state->arg_num >= 1) {
-                /* Too many arguments. */
-                argp_usage (state);
-            }
-            ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_BINDADDR, arg);
-            break;
-        case ARGP_KEY_END:
-            if (state->arg_num < 1) {
-                /* Not enough arguments. */
-                argp_usage (state);
-            }
-            break;
-        default:
-            return ARGP_ERR_UNKNOWN;
-    }
-
-    return 0;
-}
-
-/* Our argp parser. */
-static struct argp argp = {options, parse_opt, args_doc, doc, NULL, NULL, NULL};
-#endif /* HAVE_ARGP_H */
-
-int file_exists(const char *filename) {
-    FILE *file = fopen(filename, "r");
-    if (file != NULL) {
-        fclose(file);
-        return 1;  // File exists
-    }
-    return 0;  // File doesn't exist
-}
-
-bool init_keys(const char *name) {
-    char key_name[256];
-    char key_pub [256];
-    sprintf(key_name, "ssl/%s.ssh",     name);
-    sprintf(key_pub,  "ssl/%s.ssh.pub", name);
-
-    if (file_exists(key_name) && file_exists(key_pub)) {
-        printf("init_keys: in cache\n");
-        return true;
-    }
-    
-    ssh_key private_key;
-    ssh_key public_key;
-    int rc;
-
-    // Generate RSA private key
-    rc = ssh_pki_generate(SSH_KEYTYPE_RSA, 4096, &private_key);
-    if (rc != SSH_OK) {
-        fprintf(stderr, "Error generating RSA key pair\n");
-        return false;
-    }
-
-    // Extract public key from private key
-    rc = ssh_pki_export_privkey_to_pubkey(private_key, &public_key);
-    if (rc != SSH_OK) {
-        fprintf(stderr, "Error extracting public key\n");
-        ssh_key_free(private_key);
-        return false;
-    }
-
-    // Export private key to file
-    rc = ssh_pki_export_privkey_file(private_key, NULL, NULL, NULL, key_name);
-    if (rc != SSH_OK) {
-        fprintf(stderr, "Error writing private key to file\n");
-        ssh_key_free(private_key);
-        ssh_key_free(public_key);
-        return false;
-    }
-
-    // Export public key to file
-    rc = ssh_pki_export_pubkey_file(public_key, key_pub);
-    if (rc != SSH_OK) {
-        fprintf(stderr, "Error writing public key to file\n");
-        ssh_key_free(private_key);
-        ssh_key_free(public_key);
-        return false;
-    }
-
-    printf("init_keys: generated\n");
-
-    // Cleanup
-    ssh_key_free(private_key);
-    ssh_key_free(public_key);
-    return true;
-}
-
-int ssh_server(const char *name, int port) {
-    ssh_session session;
-    ssh_bind sshbind;
-    ssh_event mainloop;
-    struct ssh_server_callbacks_struct cb = {
-        .userdata = NULL,
-        .auth_password_function = auth_password,
-        .auth_none_function = auth_none,
-        .channel_open_request_session_function = new_session_channel,
-#ifdef WITH_GSSAPI
-        .auth_gssapi_mic_function = auth_gssapi_mic
-#endif
+        doubly<prop> meta() const {
+            return {
+                prop { "on-auth",       on_auth       },
+                prop { "on-peer",       on_peer       },
+                prop { "on-disconnect", on_disconnect },
+                prop { "on-recv",       on_recv       },
+                prop { "no-auth",       no_auth       },
+                prop { "bind",          bind          }
+            };
+        }
     };
 
-    char buf[BUF_SIZE];
-    int i;
-    int r;
+    component(SSHService, node, props);
 
-    sshbind=ssh_bind_new();
-    session=ssh_new();
+    private:
+    bool ssh_init() {
+        str         host = state->bind.host();
+        int         port = state->bind.port();
+        path        key_name = fmt { "ssl/{0}.ssh",     { host }};
+        path        key_pub  = fmt { "ssl/{0}.ssh.pub", { host }};
+        path        ssl { "ssl" };
 
-    const char *name = "ar-visions.com";
-    init_keys(name);
+        if (!ssl.exists())
+            ssl.make_dir();
 
-    char key_path[256];
-    sprintf(key_path, "ssl/%s.ssh", name); /// these need to be generated when they arent there.  make it simple.
-    ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_HOSTKEY, key_path);
+        if (key_name.exists() && key_pub.exists()) {
+            printf("ssh: found keys\n");
+        } else {
+            ssh_key private_key;
+            ssh_key public_key;
+            int rc;
 
-#ifdef HAVE_ARGP_H
-    /*
-     * Parse our arguments; every option seen by parse_opt will
-     * be reflected in arguments.
-     */
-    argp_parse (&argp, argc, argv, 0, 0, sshbind);
-#else
-    (void) argc;
-    (void) argv;
-#endif
+            // Generate RSA private key
+            rc = ssh_pki_generate(SSH_KEYTYPE_RSA, 4096, &private_key);
+            if (rc != SSH_OK) {
+                fprintf(stderr, "Error generating RSA key pair\n");
+                return false;
+            }
 
-    int port = 2224; // Or any other port number you'd like to use
-    ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_BINDPORT, &port);
+            // Extract public key from private key
+            rc = ssh_pki_export_privkey_to_pubkey(private_key, &public_key);
+            if (rc != SSH_OK) {
+                fprintf(stderr, "Error extracting public key\n");
+                ssh_key_free(private_key);
+                return false;
+            }
 
-    if(ssh_bind_listen(sshbind)<0){
-        printf("Error listening to socket: %s\n",ssh_get_error(sshbind));
-        return 1;
-    }
-    r=ssh_bind_accept(sshbind,session);
-    if(r==SSH_ERROR){
-        printf("error accepting a connection : %s\n",ssh_get_error(sshbind));
-        return 1;
-    }
-    ssh_callbacks_init(&cb);
-    ssh_set_server_callbacks(session, &cb);
+            // Export private key to file
+            rc = ssh_pki_export_privkey_file(private_key, NULL, NULL, NULL, key_name.cs());
+            if (rc != SSH_OK) {
+                fprintf(stderr, "Error writing private key to file\n");
+                ssh_key_free(private_key);
+                ssh_key_free(public_key);
+                return false;
+            }
 
-    if (ssh_handle_key_exchange(session)) {
-        printf("ssh_handle_key_exchange: %s\n", ssh_get_error(session));
-        return 1;
-    }
-    ssh_set_auth_methods(session,SSH_AUTH_METHOD_PASSWORD | SSH_AUTH_METHOD_GSSAPI_MIC);
-    mainloop = ssh_event_new();
-    ssh_event_add_session(mainloop, session);
+            // Export public key to file
+            rc = ssh_pki_export_pubkey_file(public_key, key_pub.cs());
+            if (rc != SSH_OK) {
+                fprintf(stderr, "Error writing public key to file\n");
+                ssh_key_free(private_key);
+                ssh_key_free(public_key);
+                return false;
+            }
+            printf("ssh: generated keys\n");
 
-    while (!(authenticated && chan != NULL)){
-        if(error)
-            break;
-        r = ssh_event_dopoll(mainloop, -1);
-        if (r == SSH_ERROR){
-            printf("Error : %s\n",ssh_get_error(session));
-            ssh_disconnect(session);
+            // Cleanup
+            ssh_key_free(private_key);
+            ssh_key_free(public_key);
+        }
+
+        state->sshbind = ssh_bind_new();
+        ssh_bind_options_set(state->sshbind, SSH_BIND_OPTIONS_HOSTKEY, key_name.cs());
+        ssh_bind_options_set(state->sshbind, SSH_BIND_OPTIONS_BINDPORT, &port);
+
+        if (ssh_bind_listen(state->sshbind) < 0) {
+            printf("Error listening to socket: %s\n",ssh_get_error(state->sshbind));
             return 1;
         }
+
+        state->running = true;
+        return true;
     }
-    if(error){
-        printf("Error, exiting loop\n");
-    } else
-        printf("Authenticated and got a channel\n");
-    do{
-        i=ssh_channel_read(chan, buf, sizeof(buf) - 1, 0);
-        if(i>0) {
-            if (ssh_channel_write(chan, buf, i) == SSH_ERROR) {
-                printf("error writing to channel\n");
-                return 1;
+
+    static int auth_none(ssh_session session,
+                        const char *user,
+                        void *userdata)
+    {
+        SSHPeer::pdata*   peer = (SSHPeer::pdata *)userdata;
+        SSHService::props *ssh = (SSHService::props *)peer->service;
+
+        ssh_set_auth_methods(session, SSH_AUTH_METHOD_PASSWORD);
+
+        if (ssh->banner) {
+            ssh_string banner = ssh_string_from_char(ssh->banner.cs());
+            if (banner != NULL) {
+                ssh_send_issue_banner(session, banner);
             }
-
-            buf[i] = '\0';
-            printf("%s", buf);
-            fflush(stdout);
-
-            if (buf[0] == '\x0d') {
-                if (ssh_channel_write(chan, "\n", 1) == SSH_ERROR) {
-                    printf("error writing to channel\n");
-                    return 1;
-                }
-
-                printf("\n");
-            }
+            ssh_string_free(banner);
         }
-    } while (i>0);
-    ssh_disconnect(session);
-    ssh_bind_free(sshbind);
-    ssh_finalize();
-    return 0;
-}
 
-int main(int argc, char **argv){
+        return SSH_AUTH_DENIED;
+    }
+
+    static int auth_password(ssh_session session, const char *user, const char *password, void *userdata){
+        SSHPeer::pdata*   peer = (SSHPeer::pdata *)userdata;
+        SSHService::props *ssh = (SSHService::props *)peer->service;
+        
+        if (ssh->on_auth(peer->id, str(user), str(password))) {
+            peer->is_auth = true;
+            printf("authenticated\n");
+            return SSH_AUTH_SUCCESS;
+        }
+
+        if (peer->tries++ > ssh->max_attempts) {
+            printf("authentication fail\n");
+            ssh_disconnect(session);
+            return SSH_AUTH_DENIED;
+        }
+        
+        return SSH_AUTH_DENIED;
+    }
+
+    static int pty_request(ssh_session session, ssh_channel channel, const char *term,
+            int x,int y, int px, int py, void *userdata) {
+        printf("Allocated terminal\n");
+        return 0;
+    }
+
+    static int shell_request(ssh_session session, ssh_channel channel, void *userdata) {
+        printf("Allocated shell\n");
+        return 0;
+    }
+
+    static ssh_channel new_session_channel(ssh_session session, void *userdata){
+        /// static just in case it doesnt copy
+        static struct ssh_channel_callbacks_struct channel_cb = {
+            .channel_pty_request_function   = pty_request,
+            .channel_shell_request_function = shell_request
+        };
+        SSHPeer::pdata *peer = (SSHPeer::pdata *)userdata;
+        printf("Allocated session channel\n");
+        peer->chan = ssh_channel_new(session);
+        ssh_callbacks_init(&channel_cb);
+        ssh_set_channel_callbacks(peer->chan, &channel_cb);
+        return peer->chan;
+    }
+
+    SSHPeer accept() {
+        const char *name = state->bind.host().cs();
+        int         port = state->bind.port();
+        SSHPeer     peer;
+        ssh_session session = ssh_new();
+        
+        peer->service = (raw_t)state;
+        peer->session = session;
+
+        /// loop until we are to return a peer
+        for (;;) {
+            int r = ssh_bind_accept(state->sshbind, session);
+            if (r == SSH_ERROR) {
+                printf("error accepting a connection : %s\n",ssh_get_error(state->sshbind));
+                break;
+            }
+
+            int fd_session = ssh_get_fd(session);
+            struct sockaddr_storage tmp;
+            socklen_t len = sizeof(tmp);
+            getpeername(fd_session, (struct sockaddr*)&tmp, &len);
+            struct sockaddr_in *sock = (struct sockaddr_in*)&tmp;
+            char ip_addr[INET_ADDRSTRLEN];
+            inet_ntop(AF_INET, &sock->sin_addr, ip_addr, INET_ADDRSTRLEN);
+
+            printf("IP address of the session: %s\n", ip_addr);
+            peer->address = ip_addr;
+            peer->port    = ntohs(sock->sin_port);
+            peer->id      = fmt { "{0}:{1}", { peer->address, peer->port }};
+
+            /// set user data to peer, which has service data
+            ssh_server_callbacks_struct cb {
+                .userdata                              = (void*)peer.data,
+                .auth_password_function                = auth_password,
+                .auth_none_function                    = auth_none,
+                .channel_open_request_session_function = new_session_channel
+            };
+
+            /// callback registration
+            ssh_callbacks_init(&cb);
+            ssh_set_server_callbacks(session, &cb);
+            if (ssh_handle_key_exchange(session)) {
+                printf("ssh_handle_key_exchange: %s\n", ssh_get_error(session));
+                continue;
+            }
+            ssh_set_auth_methods(session, SSH_AUTH_METHOD_PASSWORD);
+            peer->mainloop = ssh_event_new();
+
+    
+            ssh_event_add_session(peer->mainloop, session);
+
+            /// authenticate
+            bool error = false;
+            while (!(peer->is_auth && peer->chan != NULL)){
+                r = ssh_event_dopoll(peer->mainloop, -1);
+                if (r == SSH_ERROR) {
+                    printf("Error : %s\n",ssh_get_error(session));
+                    ssh_disconnect(session);
+                    error = true;
+                    break;
+                }
+            }
+            
+            /// the above may need to be in its own thread
+            if (error) {
+                printf("error during handshake, resuming next accept\n");
+                continue;
+            }
+
+            printf("Authenticated and got a channel\n");
+            peer->connected = true;
+            if (state->on_peer)
+                state->on_peer(peer);
+
+            /// message receive loop; might need a mutex
+            async(1, [state=state, peer, session]() {
+                int n_bytes = 0;
+                do {
+                    char buf[2048];
+                    n_bytes = ssh_channel_read(peer->chan, buf, sizeof(buf), 0);
+                    if (n_bytes > 0) {
+                        str msg { buf, size_t(n_bytes) };
+                        if (state->on_recv)
+                            state->on_recv(peer, msg);
+                    }
+                } while (n_bytes > 0);
+                peer->disconnect(); /// remove from list probably
+                if (state->on_disconnect)
+                    state->on_disconnect(peer);
+            });
+
+            break;
+        }
+
+        return peer;
+    }
+
+    public:
+
+    bool send_message(SSHPeer peer, str msg) {
+        printf("%s", msg.cs());
+        return ssh_channel_write(peer->chan, msg.cs(), msg.len()) != SSH_ERROR;
+    }
+    
+    void mounted() {
+        ssh_init();
+        async(1, [this](runtime *rt, int i) {
+            while (state->running) {
+                accept();
+            }
+            ssh_bind_free(state->sshbind);
+            ssh_finalize(); /// not until app shutdown?
+        });
+    }
+};
+
+
+int main(int argc, char **argv) {
+    /// parse args with defaults; print when not enough given
+    ion::map<mx> defs {
+        {"host",    str("ar-visions.com")},
+        {"port",    int(10022)}
+    };
+    ion::map<mx> config = args::parse(argc, argv, defs);
+    if (!config) return   args::defaults(defs);
+
+    const uri bind = fmt {"ssh://{0}:{1}", { config["host"], config["port"] }};
+    SSHService service;
+
+    return Services([&](Services &app) {
+        return ion::array<node> {
+            SSHService {
+                { "id",   "ssh" },
+                { "bind",  bind },
+                { "ref", [&](mx obj) { service = obj.grab(); }},
+                { "on-auth", lambda<bool(str, str, str)>([&](str remote, str user, str pass) -> bool {
+                    return user == "admin" && pass == "admin";
+                })},
+                { "on-peer", lambda<void(SSHPeer)>([&](SSHPeer peer) -> void {
+                    console.log("peer connected: {0}", { peer->id });
+                })},
+                { "on-recv", lambda<void(SSHPeer, str)>([&](SSHPeer peer, str msg) -> void {
+                    service.send_message(peer, msg); /// relay back
+                })}
+            }
+        };
+    });
 }
