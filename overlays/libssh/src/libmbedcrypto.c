@@ -48,7 +48,8 @@ static int libmbedcrypto_initialized = 0;
 
 void ssh_reseed(void)
 {
-    mbedtls_ctr_drbg_reseed(&ssh_mbedtls_ctr_drbg, NULL, 0);
+    // this crashes
+    //mbedtls_ctr_drbg_reseed(&ssh_mbedtls_ctr_drbg, NULL, 0);
 }
 
 static mbedtls_md_type_t nid_to_md_algo(int nid)

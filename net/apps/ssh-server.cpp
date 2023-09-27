@@ -263,6 +263,9 @@ int main(int argc, char **argv){
     (void) argv;
 #endif
 
+    int port = 2224; // Or any other port number you'd like to use
+    ssh_bind_options_set(sshbind, SSH_BIND_OPTIONS_BINDPORT, &port);
+
     if(ssh_bind_listen(sshbind)<0){
         printf("Error listening to socket: %s\n",ssh_get_error(sshbind));
         return 1;
