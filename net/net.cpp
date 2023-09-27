@@ -1,4 +1,6 @@
 
+#include <mx/mx.hpp>
+
 #include <stdlib.h>
 #include <string.h>
 
@@ -22,7 +24,6 @@
 #include <mbedtls/ssl_cache.h>
 #endif
 
-#include <mx/mx.hpp>
 #include <async/async.hpp>
 #include <net/net.hpp>
 #include <image/image.hpp>

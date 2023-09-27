@@ -25,8 +25,8 @@ else()
         DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
 
     # without the trailing slash it puts 'include' inside of skia
-    install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
-        DESTINATION ${CMAKE_INSTALL_PREFIX}/include/skia)
+    install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/*
+        DESTINATION ${CMAKE_INSTALL_PREFIX}/include/skia/)
 endif()
 
 # the bootstrap (made with all) depends on build to run
