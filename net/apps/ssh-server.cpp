@@ -12,6 +12,7 @@
 #endif
 
 #include <mx/mx.hpp>
+#include <net/net.hpp>
 #include <composer/composer.hpp>
 
 using namespace ion;
@@ -310,7 +311,7 @@ struct SSHService:node {
         printf("%s", msg.cs());
         return ssh_channel_write(peer->chan, msg.cs(), msg.len()) != SSH_ERROR;
     }
-    
+
     void mounted() {
         ssh_init();
         async(1, [this](runtime *rt, int i) {
@@ -341,15 +342,12 @@ int main(int argc, char **argv) {
             SSHService {
                 { "id",   "ssh" },
                 { "bind",  bind },
-                { "ref", [&](mx obj) { service = obj.grab(); }},
-                { "on-auth", lambda<bool(str, str, str)>([&](str remote, str user, str pass) -> bool {
-                    return user == "admin" && pass == "admin";
-                })},
-                { "on-peer", lambda<void(SSHPeer)>([&](SSHPeer peer) -> void {
-                    console.log("peer connected: {0}", { peer->id });
-                })},
-                { "on-recv", lambda<void(SSHPeer, str)>([&](SSHPeer peer, str msg) -> void {
-                    service.send_message(peer, msg); /// relay back
+                { "ref",     lambda<void(mx)>           ([&](mx obj)                     { service = obj.grab(); })},
+                { "on-auth", lambda<bool(str, str, str)>([&](str id, str user, str pass) { return user == "admin" && pass == "admin"; })},
+                { "on-peer", lambda<void(SSHPeer)>      ([&](SSHPeer peer)               { console.log("peer connected: {0}", { peer->id }); })},
+                { "on-recv", lambda<void(SSHPeer, str)> ([&](SSHPeer peer, str msg) {
+                    /// relay clients message back
+                    service.send_message(peer, msg);
                 })}
             }
         };
