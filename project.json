@@ -56,12 +56,11 @@
                     "-DBUILD_SHARED_LIBS=OFF",
                     "-DBUILD_STATIC_LIB=ON",
                     "-DWITH_MBEDTLS=ON",
-                    "-DMBEDTLS_ROOT_DIR=/home/kalen/src/prefix/extern/mbedtls",
-                    "-DMBEDTLS_LIBRARIES=/home/kalen/src/prefix/install/native/lib",
-                    "-DMBEDTLS_INCLUDE_DIR=/home/kalen/src/prefix/extern/mbedtls/include",
+                    "-DMBEDTLS_ROOT_DIR=%EXTERN%/mbedtls",
+                    "-DMBEDTLS_LIBRARIES=%PREFIX%/lib",
+                    "-DMBEDTLS_INCLUDE_DIR=%PREFIX%/include",
                     "-DWITH_ZLIB=OFF",
-                    "-DWITH_SERVER=ON",
-                    "-DCMAKE_INSTALL_PREFIX=/home/kalen/src/prefix/install/native"
+                    "-DWITH_SERVER=ON"
                 ]
             }
         },
