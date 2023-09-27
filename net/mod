@@ -7,7 +7,9 @@ dep(mx:mx
     mbedtls:mbedcrypto
     libssh:ssh)
 
-cpp(20) # msvc c++20 is like clang/gcc c++17
+if(WIN32)  
+    cpp(20) # msvc c++20 is like clang/gcc c++17
+endif()
 
 if(mac)
     dep(CoreFoundation Security)
