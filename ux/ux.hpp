@@ -1053,6 +1053,7 @@ struct App:composer {
         data->app_fn = app_fn;
     }
 
+    void shell_server(uri url);
     int run();
     
     static void resize(vec2i &sz, App *app);

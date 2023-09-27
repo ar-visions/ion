@@ -1,8 +1,4 @@
 
-#include "mbedtls/build_info.h"
-
-#include "mbedtls/platform.h"
-
 #include <stdlib.h>
 #include <string.h>
 
@@ -11,20 +7,20 @@
 #include <windows.h>
 #endif
 
-#include "mbedtls/entropy.h"
-#include "mbedtls/ctr_drbg.h"
-#include "mbedtls/x509.h"
-#include "mbedtls/ssl.h"
-#include "mbedtls/net_sockets.h"
-#include "mbedtls/error.h"
-#include "mbedtls/debug.h"
+#include <mbedtls/build_info.h>
+#include <mbedtls/platform.h>
+#include <mbedtls/entropy.h>
+#include <mbedtls/ctr_drbg.h>
+#include <mbedtls/x509.h>
+#include <mbedtls/ssl.h>
+#include <mbedtls/net_sockets.h>
+#include <mbedtls/error.h>
+#include <mbedtls/debug.h>
 //#include "test/certs.h"
 
 #if defined(MBEDTLS_SSL_CACHE_C)
-#include "mbedtls/ssl_cache.h"
+#include <mbedtls/ssl_cache.h>
 #endif
-
-
 
 #include <mx/mx.hpp>
 #include <async/async.hpp>
@@ -214,6 +210,18 @@ mx_implement(TLS, mx);
 TLS::TLS(uri url) : TLS(new iTLS(url)) {
     int test = 0;
     test++;
+}
+
+int uri::port() {
+    if (data->port) return data->port;
+    switch (data->proto.value) {
+        case protocol::http:  return 80;
+        case protocol::https: return 443;
+        case protocol::ssh:   return 22;
+        case protocol::wss:   return 443;
+    }
+    assert(false);
+    return 0;
 }
 
 struct Session {
@@ -465,7 +473,7 @@ str dns(str hostname) {
     /// perform DNS lookup
     status = getaddrinfo(symbol(hostname.cs()), nullptr, &hints, &res);
     if (status != 0) {
-        std::cerr << "DNS lookup failed: " << gai_strerror(status) << std::endl;
+        console.log("DNS lookup failed: {0}", { status });
         return null;
     }
     

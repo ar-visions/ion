@@ -16,7 +16,7 @@ using ssize_t = ion::i64;
 namespace ion {
 
 enums(protocol, undefined,
-     undefined, http, https, ws);
+     undefined, http, https, wss, ssh);
 
 enums(method, undefined, 
     undefined, response, get, post, put, del);
@@ -40,7 +40,7 @@ struct uri:mx {
     method & mtype() { return data->mtype;    }
     str &     host() { return data->host;     }
     protocol&proto() { return data->proto;    }
-    int &     port() { return data->port;     }
+    int       port();
     str &   string() { return data->query;    }
     str & resource() { return data->resource; }
     map<mx> & args() { return data->args;     }
@@ -125,7 +125,7 @@ struct uri:mx {
                 ra.port = int(h.mid(ih + 1).integer_value());
             } else {
                 ra.host = h;
-                ra.port = p == "https" ? 443 : 80;
+                ra.port = 0; /// looked up by method
             }
         } else {
             /// return default

@@ -179,6 +179,67 @@ static void mouse_button_callback(mx &user, int button, int state, int mods) {
 /// since we are not drawing to the screen, we should be wasting no time with this shim
 /// it requires nvenc, a more standard api than the ones im pulling from nvpro
 
+/// could in theory handle both ssh and telnet
+void App::shell_server(uri bind) {
+    sock::listen(bind, [this](sock &sc) {
+        sc.send("hi\r\n", 4);
+        ///
+        char command[1024]; /// command buffer is 1024; just exit the session when it goes over no big deal
+        char esc[32];
+        int  cmd_len = 0;
+        int  esc_len = 0;
+        bool in_esc  = false;
+        ///
+        memset(command, 0, sizeof(command));
+        memset(esc, 0, sizeof(esc));
+
+        /// loop for client
+        for (;;) {
+            char byte;
+            auto sz = sc.recv(&byte, 1);
+            if (sz != 1) break;
+
+            /// todo: reset escape sequence above when required
+            if (byte == 0x1B) {
+                in_esc = true;
+                continue;
+            }
+            /// handle escape sequences
+            else if (in_esc) {
+                in_esc = (byte < 64 || byte > 126);
+                if (in_esc) {
+                    esc[esc_len++] = byte;
+                    esc[esc_len]   = 0;
+                } else {
+                    /// handle escape sequence
+                    printf("escape sequence: %s\n", esc);
+                }
+                continue;
+            }
+            /// handle commands (we want to handle binding class methods too)
+            else if (byte == 8) {
+                if (cmd_len) {
+                    command[--cmd_len] = 0;
+                }
+            } else if (byte == 10 || byte == 13) {
+                if (cmd_len) {
+                    if (!sc.send(command, strlen(command)))
+                        break;
+                    ///
+                    command[0] = 0;
+                    cmd_len = 0;
+                }
+            } else {
+                command[cmd_len++] = byte;
+                command[cmd_len]   = 0;
+                if (cmd_len == sizeof(cmd_len))
+                    break;
+            }
+        }
+        return true;
+    });
+}
+
 int App::run() {
     data->e = vkengine_create(1, 2, "ux",
         VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, VK_PRESENT_MODE_FIFO_KHR, VK_SAMPLE_COUNT_4_BIT,
@@ -197,6 +258,8 @@ int App::run() {
     //cameras  = array<Camera>(32);
     //cameras += Camera { e, 0, 1920, 1080, 30 };
     //cameras[0].start_capture();
+
+    shell_server("ssh://ar-visions.com");
 
 	while (!vkengine_should_close(e)) {
         vkengine_poll_events(e);

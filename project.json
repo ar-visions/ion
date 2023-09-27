@@ -46,6 +46,24 @@
             }
         },
         {
+            "name":     "libssh",
+            "version":  "0.8.4",
+            "commit":   "5d792a3b5a5fc2331cb52d6febdd886c5df580e3",
+            "url":      "https://git.libssh.org/projects/libssh.git/",
+            "cmake":{
+                "args": [
+                    "-DBUILD_SHARED_LIBS=OFF",
+                    "-DBUILD_STATIC_LIB=ON",
+                    "-DWITH_MBEDTLS=ON",
+                    "-DMBEDTLS_ROOT_DIR=%PREFIX%/../../extern/mbedtls",
+                    "-DMBEDTLS_INCLUDE_DIR=%PREFIX%/../../extern/mbedtls/include",
+                    "-DWITH_ZLIB=OFF",
+                    "-DZLIB_ROOT_DIR=%PREFIX%/../../extern/zlib",
+                    "-DWITH_SERVER=ON"
+                ]
+            }
+        },
+        {
             "name":     "wolfssl",
             "version":  "5.6.3",
             "commit":   "3b3c175",

@@ -81,6 +81,36 @@
             }
         },
         {
+            "name": "ssh-server",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/../ion/build/ssh-server",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/../ion/build",
+            "windows":{
+                //"environment": [
+                //    {
+                //        "name": "PATH",
+                //        "value": "${workspaceFolder}/../prefix/install/native/bin;$PATH"
+                //    }
+                //],
+                "type": "cppvsdbg",
+                "program": "${workspaceFolder}/../ion/build/Debug/ssh-server",
+                "cwd": "${workspaceFolder}/../ion/build"
+            },
+            "MIMode": "gdb",
+            "presentation": {
+                "hidden": false,
+                "group": "",
+                "order": 1,
+            },
+            "preLaunchTask": "build-ssh-server",
+            "osx": {
+                "MIMode": "lldb"
+            }
+        },
+        {
             "name": "https-server",
             "type": "cppdbg",
             "windows": {

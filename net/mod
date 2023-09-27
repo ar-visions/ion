@@ -1,4 +1,14 @@
-dep(mx:mx mx:async ion:composer ion:media mbedtls:mbedtls mbedtls:mbedx509 mbedtls:mbedcrypto)
+dep(mx:mx
+    mx:async
+    ion:composer
+    ion:media 
+    mbedtls:mbedtls
+    mbedtls:mbedx509
+    mbedtls:mbedcrypto
+    libssh:ssh)
+
+cpp(20) # msvc c++20 is like clang/gcc c++17
+
 if(mac)
     dep(CoreFoundation Security)
 endif()
