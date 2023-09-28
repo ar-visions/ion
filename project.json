@@ -32,7 +32,7 @@
             "name":     "skia",
             "version":  "m116",
             "url":      "https://skia.googlesource.com/skia.git",
-            "branch":   "remotes/origin/chrome/m116",
+            "commit":   "bb40886d43b5fcbcdfb5587a2d20db418622990a",
             "platforms": ["win"]
         },
         {
