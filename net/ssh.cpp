@@ -23,67 +23,68 @@ void SSHPeer::pdata::disconnect() {
 }
 
 bool SSHService::ssh_init() {
-    str         host = state->bind.host();
-    int         port = state->bind.port();
-    path        key_name = fmt { "ssl/{0}.ssh",     { host }};
-    path        key_pub  = fmt { "ssl/{0}.ssh.pub", { host }};
-    path        ssl { "ssl" };
+    str     host     = state->bind.host();
+    int     port     = state->bind.port();
+    path    file_pri  = fmt { "ssl/{0}.ssh",     { host }};
+    path    file_pub  = fmt { "ssl/{0}.ssh.pub", { host }};
+    path    ssl { "ssl" };
 
     if (!ssl.exists())
         ssl.make_dir();
 
-    if (key_name.exists() && key_pub.exists()) {
+    if (file_pri.exists() && file_pub.exists()) {
         printf("ssh: found keys\n");
     } else {
-        ssh_key private_key;
-        ssh_key public_key;
+        ssh_key pri;
+        ssh_key pub;
         int rc;
 
         // Generate RSA private key
-        rc = ssh_pki_generate(SSH_KEYTYPE_RSA, 4096, &private_key);
+        rc = ssh_pki_generate(SSH_KEYTYPE_RSA, 4096, &pri);
         if (rc != SSH_OK) {
-            fprintf(stderr, "Error generating RSA key pair\n");
+            console.error("Error generating RSA key pair");
             return false;
         }
 
         // Extract public key from private key
-        rc = ssh_pki_export_privkey_to_pubkey(private_key, &public_key);
+        rc = ssh_pki_export_privkey_to_pubkey(pri, &pub);
         if (rc != SSH_OK) {
-            fprintf(stderr, "Error extracting public key\n");
-            ssh_key_free(private_key);
+            console.error("Error extracting public key");
+            ssh_key_free(pri);
             return false;
         }
 
         // Export private key to file
-        rc = ssh_pki_export_privkey_file(private_key, NULL, NULL, NULL, key_name.cs());
+        rc = ssh_pki_export_privkey_file(pri,
+            NULL, NULL, NULL, file_pri.cs());
         if (rc != SSH_OK) {
-            fprintf(stderr, "Error writing private key to file\n");
-            ssh_key_free(private_key);
-            ssh_key_free(public_key);
+            console.error("Error writing private key to file");
+            ssh_key_free(pri);
+            ssh_key_free(pub);
             return false;
         }
 
         // Export public key to file
-        rc = ssh_pki_export_pubkey_file(public_key, key_pub.cs());
+        rc = ssh_pki_export_pubkey_file(pub, file_pub.cs());
         if (rc != SSH_OK) {
-            fprintf(stderr, "Error writing public key to file\n");
-            ssh_key_free(private_key);
-            ssh_key_free(public_key);
+            console.error("Error writing public key to file");
+            ssh_key_free(pri);
+            ssh_key_free(pub);
             return false;
         }
-        printf("ssh: generated keys\n");
+        console.log("ssh: generated keys");
 
         // Cleanup
-        ssh_key_free(private_key);
-        ssh_key_free(public_key);
+        ssh_key_free(pri);
+        ssh_key_free(pub);
     }
 
     state->sshbind = ssh_bind_new();
-    ssh_bind_options_set(state->sshbind, SSH_BIND_OPTIONS_HOSTKEY, key_name.cs());
+    ssh_bind_options_set(state->sshbind, SSH_BIND_OPTIONS_HOSTKEY, file_pri.cs());
     ssh_bind_options_set(state->sshbind, SSH_BIND_OPTIONS_BINDPORT, &port);
 
     if (ssh_bind_listen(state->sshbind) < 0) {
-        printf("Error listening to socket: %s\n",ssh_get_error(state->sshbind));
+        console.log("Error listening to socket: {0}", { ssh_get_error(state->sshbind) });
         return 1;
     }
 
@@ -99,7 +100,6 @@ int SSHService::auth_none(ssh_session session,
     SSHService::props *ssh = (SSHService::props *)peer->service;
 
     ssh_set_auth_methods(session, SSH_AUTH_METHOD_PASSWORD);
-
     if (ssh->banner) {
         ssh_string banner = ssh_string_from_char(ssh->banner.cs());
         if (banner != NULL) {
@@ -107,7 +107,6 @@ int SSHService::auth_none(ssh_session session,
         }
         ssh_string_free(banner);
     }
-
     return SSH_AUTH_DENIED;
 }
 
@@ -230,9 +229,11 @@ SSHPeer SSHService::accept() {
             state->on_peer(peer);
 
         /// message receive loop; might need a mutex
-        async(1, [state=state, peer, session]() {
+        async(1, [this, state=state, peer, session](runtime *rt, int i) -> mx {
             SSHPeer &p = (SSHPeer&)peer;
             int n_bytes = 0;
+            doubly<char> chars;
+            int          index = 0;
             do {
                 char buf[2048];
                 n_bytes = ssh_channel_read(p->chan, buf, sizeof(buf), 0);
@@ -240,31 +241,45 @@ SSHPeer SSHService::accept() {
                     str msg { buf, size_t(n_bytes) };
                     if (state->on_recv)
                         state->on_recv(p, msg);
+                    if (msg[0] == 13) {
+                        char lf[2] = { 10, 0 };
+                        send_message(peer, lf);
+                    } else if (msg[0] == 0x08 || msg[0] == 0x7F) {          /// Added: Backspace key
+                        char backspaceSequence[] = { 0x08, ' ', 0x08, 0 };  /// Move cursor back, overwrite with space, move cursor back again
+                        send_message(peer, backspaceSequence);
+                    }
                 }
             } while (n_bytes > 0);
-            p->disconnect(); /// remove from list probably
+            p->disconnect();
             if (state->on_disconnect)
                 state->on_disconnect(p);
+            return true;
         });
-
         break;
     }
 
     return peer;
 }
 
+/// if we pass a null parameter here it effectively tells us we are broadcasting
 bool SSHService::send_message(SSHPeer peer, str msg) {
     printf("%s", msg.cs());
-    return ssh_channel_write(peer->chan, msg.cs(), msg.len()) != SSH_ERROR;
+    bool err   = false;
+    auto write = [&](SSHPeer &peer) { err |= ssh_channel_write(peer->chan, msg.cs(), msg.len()) != SSH_ERROR; };
+    if (peer.is_broadcast()) {
+        for (SSHPeer &peer: state->peers)
+            write(peer);
+    } else
+        write(peer);
+    return err;
 }
 
 void SSHService::mounted() {
     ssh_init();
     async(1, [this](runtime *rt, int i) -> mx {
-        while (state->running) {
-            accept();
-        }
+        while (state->running) accept();
         ssh_bind_free(state->sshbind);
+        //composer::cmdata *composer = ((node*)this)->data->composer;
         ssh_finalize(); /// not until app shutdown?
         return false;
     });

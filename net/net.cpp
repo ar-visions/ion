@@ -933,9 +933,11 @@ future json(uri addr, map<mx> args, map<mx> headers) {
 int Services::run() {
     node e = data->service_fn(*this);
     update_all(e);
-    for (;;) {
+    for (;!data->stop;) {
+        /// the only thing you woud lwant to monitor here is for updates forced and changes made to args?
         usleep(10000);
     }
+    data->stopped = true;
     return 0;
 }
 

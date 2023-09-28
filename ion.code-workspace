@@ -195,7 +195,8 @@
 			"semaphore": "cpp",
 			"resumable": "cpp",
 			"*.ipp": "cpp",
-			"barrier": "cpp"
+			"barrier": "cpp",
+			"__assert": "cpp"
 		},
 		"git.ignoreLimitWarning": true
 	}

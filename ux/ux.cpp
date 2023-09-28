@@ -1,3 +1,4 @@
+#include <net/ssh.hpp>
 #include <ux/ux.hpp>
 #include <array>
 #include <set>
@@ -170,74 +171,51 @@ static void mouse_button_callback(mx &user, int button, int state, int mods) {
     }
 }
 
-/// streaming requires that we stage for encoding after presentation
-/// do i render to texture, and then run through compression (yes.)
-/// the alternate is rendering normally, then output to window as normal, but then you
-/// capture the window separately
-/// this works with third party apps too
-/// works for win32, possibly mac cross platform
-/// since we are not drawing to the screen, we should be wasting no time with this shim
-/// it requires nvenc, a more standard api than the ones im pulling from nvpro
-
-/// could in theory handle both ssh and telnet
 void App::shell_server(uri bind) {
-    sock::listen(bind, [this](sock &sc) {
-        sc.send("hi\r\n", 4);
-        ///
-        char command[1024]; /// command buffer is 1024; just exit the session when it goes over no big deal
-        char esc[32];
-        int  cmd_len = 0;
-        int  esc_len = 0;
-        bool in_esc  = false;
-        ///
-        memset(command, 0, sizeof(command));
-        memset(esc, 0, sizeof(esc));
+    ///
+    async([&](runtime *rt, int i) -> mx {
+        SSHService ssh;
+        logger::service = [p=&ssh](mx msg) -> void {
+            p->send_message(null, msg.grab());
+        };
+        data->services = Services({}, [&](Services &app) {
+            return array<node> {
+                SSHService {
+                    { "id",   "ssh" },
+                    { "bind",  bind },
+                    { "ref",     lambda<void(mx)>           ([&](mx obj)                     { ssh = obj.grab(); })},
+                    { "on-auth", lambda<bool(str, str, str)>([&](str id, str user, str pass) { return user == "admin" && pass == "admin"; })},
+                    { "on-peer", lambda<void(SSHPeer)>      ([&](SSHPeer peer)               { console.log("peer connected: {0}", { peer->id }); })},
+                    { "on-recv", lambda<void(SSHPeer, str)> ([&](SSHPeer peer, str msg) {
+                        /// relay clients message back
+                        ssh.send_message(peer, msg);
 
-        /// loop for client
-        for (;;) {
-            char byte;
-            auto sz = sc.recv(&byte, 1);
-            if (sz != 1) break;
+                        /// run method in scope of app?
+                        /// use-case 1, set props: id.ClassNameWithoutId.another_id.prop = value
+                        /// value can be "string", or string
+                        /// value could be looked up with #id.here; dont see a lot of point here though.
+                        /// we are setting its value by string, same way we do in css
+                        /// once a variable is overridden it may be useful to keep it that way, composer-wise
+                        /// we are debugging with a certain value so once set, it should stay.  no style or arg should override?
+                        /// i just want to do this once though
 
-            /// todo: reset escape sequence above when required
-            if (byte == 0x1B) {
-                in_esc = true;
-                continue;
-            }
-            /// handle escape sequences
-            else if (in_esc) {
-                in_esc = (byte < 64 || byte > 126);
-                if (in_esc) {
-                    esc[esc_len++] = byte;
-                    esc[esc_len]   = 0;
-                } else {
-                    /// handle escape sequence
-                    printf("escape sequence: %s\n", esc);
+                        /// use-case 2, get props:
+                        /// id.ClassNameWithoutId.another_id.prop
+                        /// we get the string from the type table to_string function
+
+                        /// use-case 3, call method:
+                        /// id.ClassNameWithoutId.another_id.prop()
+                        /// we may technically want to insert this as a to-call, and have the composer call it AFTER updating?
+
+                        /// 
+                    })}
                 }
-                continue;
-            }
-            /// handle commands (we want to handle binding class methods too)
-            else if (byte == 8) {
-                if (cmd_len) {
-                    command[--cmd_len] = 0;
-                }
-            } else if (byte == 10 || byte == 13) {
-                if (cmd_len) {
-                    if (!sc.send(command, strlen(command)))
-                        break;
-                    ///
-                    command[0] = 0;
-                    cmd_len = 0;
-                }
-            } else {
-                command[cmd_len++] = byte;
-                command[cmd_len]   = 0;
-                if (cmd_len == sizeof(cmd_len))
-                    break;
-            }
-        }
+            };
+        });
+        data->services.run();
         return true;
     });
+    
 }
 
 int App::run() {
@@ -259,7 +237,7 @@ int App::run() {
     //cameras += Camera { e, 0, 1920, 1080, 30 };
     //cameras[0].start_capture();
 
-    shell_server("ssh://ar-visions.com");
+    shell_server(data->args["debug"]);
 
 	while (!vkengine_should_close(e)) {
         vkengine_poll_events(e);

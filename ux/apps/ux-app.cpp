@@ -16,13 +16,15 @@ struct View:Element {
     struct props {
         int         sample;
         int         sample2;
+        int         test_set;
         callback    clicked;
         ///
         doubly<prop> meta() {
             return {
-                prop { "sample",  sample },
-                prop { "sample2", sample2 },
-                prop { "clicked", clicked}
+                prop { "sample",   sample   },
+                prop { "sample2",  sample2  },
+                prop { "test_set", test_set },
+                prop { "clicked",  clicked  }
             };
         }
         type_register(props);
@@ -51,8 +53,28 @@ struct View:Element {
     }
 };
 
-int main() {
-    return App([](App &app) -> node {
+int main(int argc, char *argv[]) {
+
+    using ltype = lambda<int(int, short, str)>;
+
+    ltype test = [](int a, short b, protocol c) -> int {
+        printf("a = %d\n", (int)a);
+        printf("b = %d\n", (int)b);
+        printf("c = %s\n", str(c).cs());
+        return 4;
+    };
+
+    array<str> args = {"1", "2", "ssh"};
+    type_t     lt   = typeof(ltype);
+    mx result       = (*lt->generic_lambda)(test.data, args); /// i suppose if its R value is void we would have to handle
+
+    int ires = int(result);
+
+    map<mx> defs { { "debug", uri { "ssh://ar-visions.com:1022" } } };
+    map<mx> config { args::parse(argc, argv, defs) };
+    if    (!config) return args::defaults(defs);
+    ///
+    return App(config, [](App &app) -> node {
         return View {
             { "id",      "main" },
             { "sample",  int(2) },

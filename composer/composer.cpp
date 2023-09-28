@@ -76,7 +76,7 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
             str   id = node_id(e); /// needed for style computation of available entries in the style blocks
             (*instance)->parent = parent;
             (*instance)->id     = id.grab();
-            (*instance)->cmdata = composer;
+            (*instance)->composer = composer;
             (*instance)->style_avail = composer->style->compute(instance);
             /// compute available properties for this Element given its type, placement, and props styled 
         }
@@ -612,18 +612,23 @@ void style::impl::load(str code) {
 style style::init() {
     style st;
     if (!st->loaded) {
-        path base_path = "style";
-        path p2 = base_path;
-        /// there could be sub-dirs here with an argument
-        base_path.resources({".css"}, {},
-            [&](path css_file) -> void {
-                str style_str = css_file.read<str>();
-                st->load(style_str);
-            });
+        static std::mutex mx; /// more checks, less locks, less time? [ssh server ends up calling this in another thread]
+        mx.lock();
+        if (!st->loaded) {
+            path base_path = "style";
+            path p2 = base_path;
+            /// there could be sub-dirs here with an argument
+            base_path.resources({".css"}, {},
+                [&](path css_file) -> void {
+                    str style_str = css_file.read<str>();
+                    st->load(style_str);
+                });
 
-        /// store blocks by member, the interface into all style: style::members[name]
-        st->cache_members();
-        st->loaded = true;
+            /// store blocks by member, the interface into all style: style::members[name]
+            st->cache_members();
+            st->loaded = true;
+        }
+        mx.unlock();
     }
     return st;
 }

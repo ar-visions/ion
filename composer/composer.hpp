@@ -492,7 +492,7 @@ struct node:mx {
         node*                   parent;
         style::style_map        style_avail; /// properties outside of meta are effectively internal state only; it can be labelled as such
         map<selection>          selections; /// style selected per member
-        ion::composer::cmdata*  cmdata;
+        ion::composer::cmdata*  composer;
         lambda<void(mx)>        ref;
 
         ///
@@ -663,7 +663,7 @@ T *node::context(str id) {
         n = n->data->parent;
     }
     /// get context from app composer lastly (use-case: video sink service)
-    memory *app  = data->cmdata->app;
+    memory *app  = data->composer->app;
     u8     *addr = property_find(app->origin, app->type, id, member);
     ///
     if (addr) {

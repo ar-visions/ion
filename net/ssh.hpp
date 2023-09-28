@@ -35,11 +35,15 @@ struct SSHPeer:mx {
     };
     mx_object(SSHPeer, mx, pdata);
 
+    SSHPeer(null_t n) { data = null; }
+
+    bool is_broadcast() { return !data; }
+
     operator bool() {
-        return data->connected;
+        return data && data->connected;
     }
     bool operator!() {
-        return !data->connected;
+        return data && !data->connected;
     }
 };
 
@@ -47,6 +51,8 @@ struct SSHService:node {
     struct props {
         bool                        running;
         ssh_bind                    sshbind;
+
+        doubly<SSHPeer>             peers;
 
         /// meta
         lambda<bool(str, str, str)> on_auth; // user-id, user, pass

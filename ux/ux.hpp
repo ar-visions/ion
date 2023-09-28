@@ -1031,24 +1031,27 @@ struct list_view:node {
 
 struct App:composer {
     struct adata {
-        composer::cmdata* cmdata;
-        array<Camera> cameras;
-        //GPU          win;
-        Canvas      *canvas;
-        vec2d        cursor;
-        bool         buttons[16];
-        array<Element*> active;
-        array<Element*> hover;
-        VkEngine     e;
-        lambda<node(App&)> app_fn;
-        lambda<bool(App&)> loop_fn;
+        composer::cmdata*   cmdata;
+        array<Camera>       cameras;
+        //GPU               win;
+        Canvas             *canvas;
+        vec2d               cursor;
+        bool                buttons[16];
+        array<Element*>     active;
+        array<Element*>     hover;
+        VkEngine            e;
+        lambda<node(App&)>  app_fn;
+        lambda<bool(App&)>  loop_fn;
+        map<mx>             args;
+        Services            services;
         ///
         type_register(adata);
     };
 
     mx_object(App, composer, adata);
 
-    App(lambda<node(App&)> app_fn) : App() {
+    App(map<mx> args, lambda<node(App&)> app_fn) : App() {
+        data->args   = args;
         data->cmdata = composer::data; /// perhaps each data should be wrapped instance with an awareness of its peers
         data->app_fn = app_fn;
     }
@@ -1061,6 +1064,8 @@ struct App:composer {
     operator int() { return run(); }
 
     operator bool() { return true; }
+
+    mx operator[](symbol s) { return data->args[s]; }
 
     ///
     array<Element *> select_at(vec2d cur, bool active = true) {
