@@ -35,13 +35,21 @@
             "commit":   "bb40886d43b5fcbcdfb5587a2d20db418622990a",
             "platforms": ["win"]
         },
+        
+        {
+            "name":     "pthread-w32",
+            "version":  "3.1.0",
+            "commit":   "73024cf",
+            "url":      "https://github.com/GerHobbelt/pthread-win32",
+            "platforms": ["win"]
+        }, 
         {
             "name":     "mbedtls",
             "version":  "3.4.0",
             "commit":   "1873d3b",
             "url":      "https://github.com/Mbed-TLS/mbedtls",
             "cmake": {
-                "args-win": ["-DENABLE_TESTING=1","-DMSVC_STATIC_RUNTIME=1"],
+                "args-win": ["-DENABLE_TESTING=0", "-DMSVC_STATIC_RUNTIME=1", "-DLINK_WITH_PTHREAD=1"],
                 "args-mac": ["-DENABLE_TESTING=1"]
             }
         },

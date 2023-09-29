@@ -4,7 +4,6 @@ build*
 !*.gn
 .DS_Store
 Thumbs.db
-ssl
 rtc/res/*
 webrtc/res/samples/*
 webrtc/streamer/samples/*
