@@ -65,8 +65,7 @@ int main(int argc, char *argv[]) {
     };
 
     array<str> args = {"1", "2", "ssh"};
-    type_t     lt   = typeof(ltype);
-    mx result       = (*lt->generic_lambda)(test.data, args); /// i suppose if its R value is void we would have to handle
+    mx result       = invoke(test, args);
 
     int ires = int(result);
 
