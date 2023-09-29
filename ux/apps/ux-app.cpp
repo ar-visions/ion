@@ -65,7 +65,7 @@ int main(int argc, char *argv[]) {
     };
 
     array<str> args = {"1", "2", "ssh"};
-    mx result       = invoke(test, args);
+    mx result       = call(test, args);
 
     int ires = int(result);
 
