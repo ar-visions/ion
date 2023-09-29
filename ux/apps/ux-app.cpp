@@ -53,9 +53,25 @@ struct View:Element {
     }
 };
 
+struct test11 {
+    int a = 1;
+    test11() { }
+    int method(int v) {
+        printf("a = %d\n", a);
+        return 1;
+    }
+};
+
 int main(int argc, char *argv[]) {
 
-    using ltype = lambda<int(int, short, str)>;
+    test11 t1;
+    t1.a = 5;
+    lambda<int(int)> test = lambda<int(int)>(&t1, &test11::method);
+
+    test(1); // should print a = 6
+
+    /*
+    using ltype = lambda<int(int, short, protocol)>;
 
     ltype test = [](int a, short b, protocol c) -> int {
         printf("a = %d\n", (int)a);
@@ -68,6 +84,8 @@ int main(int argc, char *argv[]) {
     mx result       = call(test, args);
 
     int ires = int(result);
+    */
+
 
     map<mx> defs { { "debug", uri { "ssh://ar-visions.com:1022" } } };
     map<mx> config { args::parse(argc, argv, defs) };
