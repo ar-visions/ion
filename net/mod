@@ -1,3 +1,10 @@
+defines(LIBSSH_STATIC)
+
+if(WIN32)
+    dep(pthread-w32:pthread libcmt)
+    cpp(20) # msvc c++20 is like clang/gcc c++17
+endif()
+
 dep(mx:mx
     mx:async
     ion:composer
@@ -7,13 +14,10 @@ dep(mx:mx
     mbedtls:mbedcrypto
     libssh:ssh)
 
-if(WIN32)  
-    cpp(20) # msvc c++20 is like clang/gcc c++17
-endif()
-
-if(mac)
+if(APPLE)
     dep(CoreFoundation Security)
 endif()
+
 ##
 includes(${INSTALL_PREFIX}/../../extern/mbedtls/tests/include)
 ##

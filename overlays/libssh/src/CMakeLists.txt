@@ -352,6 +352,7 @@ target_link_libraries(ssh
 
 if (WIN32 AND NOT BUILD_SHARED_LIBS)
     target_compile_definitions(ssh PUBLIC "LIBSSH_STATIC")
+    target_compile_options(ssh PUBLIC /MT)
 endif ()
 
 add_library(ssh::ssh ALIAS ssh)

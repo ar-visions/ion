@@ -25,7 +25,7 @@
 
 #if defined _WIN32 || defined __CYGWIN__
   #ifdef LIBSSH_STATIC
-    #define LIBSSH_API __declspec(dllexport)
+    #define LIBSSH_API
   #else
     #ifdef LIBSSH_EXPORTS
       #ifdef __GNUC__

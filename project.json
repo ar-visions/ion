@@ -70,6 +70,18 @@
                     "-DMBEDTLS_INCLUDE_DIR=%PREFIX%/include",
                     "-DWITH_ZLIB=OFF",
                     "-DWITH_SERVER=ON"
+                ],
+                "args-win": [
+                    "-DBUILD_SHARED_LIBS=OFF",
+                    "-DBUILD_STATIC_LIB=ON",
+                    "-DWITH_MBEDTLS=ON",
+                    "-DWITH_GSSAPI=OFF",
+                    "-DMBEDTLS_ROOT_DIR=%EXTERN%/mbedtls",
+                    "-DMBEDTLS_LIBRARIES=%PREFIX%/lib",
+                    "-DMBEDTLS_INCLUDE_DIR=%PREFIX%/include",
+                    "-DCMAKE_USE_WIN32_THREADS_INIT=1",
+                    "-DWITH_ZLIB=OFF",
+                    "-DWITH_SERVER=ON"
                 ]
             }
         },

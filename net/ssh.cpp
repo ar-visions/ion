@@ -3,7 +3,13 @@
 #include <libssh/libssh.h>
 #include <libssh/server.h>
 #include <libssh/callbacks.h>
+
+#ifdef WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>  // Optional, for additional features
+#else
 #include <arpa/inet.h>
+#endif
 
 #define SSH_IMPL
 #include <net/ssh.hpp>

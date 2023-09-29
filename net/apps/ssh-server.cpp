@@ -10,6 +10,7 @@ int main(int argc, char **argv) {
     map<mx> config { args::parse(argc, argv, defs) };
     if    (!config) return args::defaults(defs);
     
+    SSHService service;
     return Services(config, [&](Services &app) {
         return array<node> {
             SSHService {
