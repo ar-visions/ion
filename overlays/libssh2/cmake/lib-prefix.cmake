@@ -1,8 +1,0 @@
-set(L "-l")
-set(LPath "-L")
-set(Lext "")
-if(MSVC)
-  set(L "")
-  set(LPath "")
-  set(Lext ".lib")
-endif()

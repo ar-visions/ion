@@ -1,0 +1,45 @@
+# we define our own module for an external resource of source, libssh (LGPL).
+# we also define our own config.h, not generated but hand written; this pattern is better for modular build
+cpp(20)
+dep(ion:net zlib:z)
+
+includes(${module_path}
+         ${EXTERN_DIR}/libssh/include)
+defines(LIBSSH_STATIC HAVE_LIBMBEDCRYPTO)
+set(dir ${EXTERN_DIR}/libssh/src)
+
+# add source references
+src(${dir}/agent.c              ${dir}/auth.c                   ${dir}/base64.c  
+    ${dir}/channels.c           ${dir}/client.c                 ${dir}/config.c                
+    ${dir}/curve25519.c         ${dir}/dh.c                     ${dir}/ecdh.c                  
+    ${dir}/kex.c                ${dir}/known_hosts.c            ${dir}/knownhosts.c            
+    ${dir}/messages.c           ${dir}/misc.c                   ${dir}/options.c               
+    ${dir}/pcap.c               ${dir}/pki.c                    ${dir}/pki_container_openssh.c 
+    ${dir}/socket.c             ${dir}/string.c                 ${dir}/threads.c               
+    ${dir}/config_parser.c      ${dir}/token.c                  ${dir}/pki_ed25519_common.c    
+    ${dir}/bignum.c             ${dir}/buffer.c                 ${dir}/callbacks.c
+    ${dir}/connect.c            ${dir}/connector.c              ${dir}/crypto_common.c
+    ${dir}/error.c              ${dir}/getpass.c                ${dir}/init.c 
+    ${dir}/legacy.c             ${dir}/log.c                    ${dir}/match.c
+    ${dir}/packet.c             ${dir}/packet_cb.c              ${dir}/packet_crypt.c
+    ${dir}/poll.c               ${dir}/session.c                ${dir}/scp.c
+    ${dir}/wrapper.c            ${dir}/external/bcrypt_pbkdf.c  ${dir}/external/blowfish.c
+    ${dir}/threads/noop.c       ${dir}/kdf.c)
+
+# could switch by gcrypt or mbedtls here
+src(${dir}/threads/mbedtls.c    ${dir}/libmbedcrypto.c          ${dir}/mbedcrypto_missing.c
+    ${dir}/pki_mbedcrypto.c     ${dir}/ecdh_mbedcrypto.c        ${dir}/getrandom_mbedcrypto.c
+    ${dir}/md_mbedcrypto.c      ${dir}/dh_key.c                 ${dir}/pki_ed25519.c
+    ${dir}/external/ed25519.c   ${dir}/external/fe25519.c       ${dir}/external/ge25519.c
+    ${dir}/external/sc25519.c   ${dir}/external/chacha.c        ${dir}/external/poly1305.c
+    ${dir}/chachapoly.c         ${dir}/server.c                 ${dir}/bind.c
+    ${dir}/bind_config.c        ${dir}/gzip.c
+    ${dir}/external/curve25519_ref.c)
+
+# add platform specific source
+if (WIN32)
+    dep(-zlib:z zlib:zlibstatic)
+    src(${dir}/threads/winlocks.c)
+else()
+    src(${dir}/threads/pthread.c)
+endif()

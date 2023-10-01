@@ -1,0 +1,10 @@
+# make your own makefiles after setting up a config.h, put 'configure' checks in for all env
+set(dir ${EXTERN_DIR}/speexdsp)
+includes(${dir}/include)
+src(${dir}/buffer.c     ${dir}/filterbank.c ${dir}/jitter.c     ${dir}/kiss_fft.c
+	${dir}/kiss_fftr.c  ${dir}/mdf.c        ${dir}/preprocess.c ${dir}/resample.c
+    ${dir}/scal.c       ${dir}/smallft.c)
+defines(FLOATING_POINT=1)
+if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64") 
+    defines(USE_SSE=1)
+endif()

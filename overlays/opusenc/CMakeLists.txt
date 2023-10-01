@@ -30,9 +30,3 @@ endif()
 
 install(FILES   ${INC_FILES} DESTINATION ${CMAKE_INSTALL_PREFIX}/include/opusenc)
 install(TARGETS opusenc      DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
-
-if (MSVC)
-    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-endif()
-
-add_compile_options(/MT)

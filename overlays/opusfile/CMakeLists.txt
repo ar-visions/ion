@@ -8,13 +8,6 @@ string(REPLACE "." ";" PROJECT_VERSION_LIST ${PROJECT_VERSION})
 list(GET PROJECT_VERSION_LIST 0 PROJECT_VERSION_MAJOR)
 list(GET PROJECT_VERSION_LIST 1 PROJECT_VERSION_MINOR)
 
-if(WIN32)
-  add_compile_options(
-    $<$<CONFIG:>:/MT>
-    $<$<CONFIG:Debug>:/MT>
-    $<$<CONFIG:Release>:/MT>)
-endif()
-
 project(OpusFile
   VERSION ${PROJECT_VERSION}
   LANGUAGES C
@@ -310,9 +303,3 @@ install(
 #
 file(GLOB_RECURSE INC_FILES "${CMAKE_SOURCE_DIR}/include/*.h")
 install(FILES ${INC_FILES} DESTINATION ${CMAKE_INSTALL_PREFIX}/include/opusfile)
-
-if (MSVC)
-    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-endif()
-
-add_compile_options(/MT)

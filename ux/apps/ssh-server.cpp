@@ -1,4 +1,4 @@
-#include <net/ssh.hpp>
+#include <ssh/ssh.hpp>
 
 using namespace ion;
 
@@ -9,7 +9,7 @@ int main(int argc, char **argv) {
     };
     map<mx> config { args::parse(argc, argv, defs) };
     if    (!config) return args::defaults(defs);
-    
+
     SSHService service;
     return Services(config, [&](Services &app) {
         return array<node> {
@@ -21,6 +21,7 @@ int main(int argc, char **argv) {
                 { "on-peer", lambda<void(SSHPeer)>      ([&](SSHPeer peer)               { console.log("peer connected: {0}", { peer->id }); })},
                 { "on-recv", lambda<void(SSHPeer, str)> ([&](SSHPeer peer, str msg) {
                     /// relay clients message back
+                    console.log(msg);
                     service.send_message(peer, msg);
                 })}
             }

@@ -12,7 +12,7 @@
 #endif
 
 #define SSH_IMPL
-#include <net/ssh.hpp>
+#include <ssh/ssh.hpp>
 
 #include <stdlib.h>
 #include <string.h>
@@ -35,54 +35,17 @@ bool SSHService::ssh_init() {
     path    file_pub  = fmt { "ssl/{0}.ssh.pub", { host }};
     path    ssl { "ssl" };
 
+    ::ssh_init();
     if (!ssl.exists())
         ssl.make_dir();
 
     if (file_pri.exists() && file_pub.exists()) {
         printf("ssh: found keys\n");
     } else {
-        ssh_key pri;
-        ssh_key pub;
-        int rc;
-
-        // Generate RSA private key
-        rc = ssh_pki_generate(SSH_KEYTYPE_RSA, 4096, &pri);
-        if (rc != SSH_OK) {
-            console.error("Error generating RSA key pair");
-            return false;
-        }
-
-        // Extract public key from private key
-        rc = ssh_pki_export_privkey_to_pubkey(pri, &pub);
-        if (rc != SSH_OK) {
-            console.error("Error extracting public key");
-            ssh_key_free(pri);
-            return false;
-        }
-
-        // Export private key to file
-        rc = ssh_pki_export_privkey_file(pri,
-            NULL, NULL, NULL, file_pri.cs());
-        if (rc != SSH_OK) {
-            console.error("Error writing private key to file");
-            ssh_key_free(pri);
-            ssh_key_free(pub);
-            return false;
-        }
-
-        // Export public key to file
-        rc = ssh_pki_export_pubkey_file(pub, file_pub.cs());
-        if (rc != SSH_OK) {
-            console.error("Error writing public key to file");
-            ssh_key_free(pri);
-            ssh_key_free(pub);
-            return false;
-        }
-        console.log("ssh: generated keys");
-
-        // Cleanup
-        ssh_key_free(pri);
-        ssh_key_free(pub);
+        file_pri.remove(); /// the command prompts the user if the file exists
+        file_pub.remove();
+        exec cmd = fmt { "ssh-keygen -t rsa -b 4096 -f {0} -q -N \"\"", { file_pri.cs() }};
+        async(cmd).sync(); /// run command, generating keys
     }
 
     state->sshbind = ssh_bind_new();

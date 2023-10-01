@@ -1,7 +1,7 @@
 defines(LIBSSH_STATIC)
 
 if(WIN32)
-    dep(pthread-w32:pthread libcmt)
+    dep(libcmt)
     cpp(20) # msvc c++20 is like clang/gcc c++17
 endif()
 
@@ -11,8 +11,7 @@ dep(mx:mx
     ion:media 
     mbedtls:mbedtls
     mbedtls:mbedx509
-    mbedtls:mbedcrypto
-    libssh:ssh)
+    mbedtls:mbedcrypto)
 
 if(APPLE)
     dep(CoreFoundation Security)
