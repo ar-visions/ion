@@ -499,7 +499,8 @@ struct node:mx {
         doubly<prop> meta() {
             return {
                 prop { "id",        id        },
-                prop { "children",  children  }
+                prop { "children",  children  },
+                prop { "ref",       ref       }
             };
         }
 

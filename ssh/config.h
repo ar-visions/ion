@@ -28,10 +28,10 @@
 #define HAVE_HTONLL                     1
 #define HAVE_STRTOULL                   1
 #define HAVE__STRTOUI64                 1
-#define HAVE_SECURE_ZERO_MEMORY         1
 #define HAVE_LIBMBEDCRYPTO              1
 
 #ifdef _WIN32
+#define HAVE_SECURE_ZERO_MEMORY         1
 #define HAVE_MSC_THREAD_LOCAL_STORAGE   1
 #define HAVE_WSPIAPI_H                  1
 #else
@@ -44,4 +44,9 @@
 
 #define WITH_ZLIB                       1
 #define WITH_SERVER                     1
+
+#ifdef __APPLE__
+#define HAVE_CLOCK_GETTIME 1
+#include <sys/time.h>
+#endif
 

@@ -32,7 +32,13 @@
             "name":     "skia",
             "version":  "m116",
             "url":      "https://skia.googlesource.com/skia.git",
-            "commit":   "bb40886d43b5fcbcdfb5587a2d20db418622990a",
+            "commit":   "bb40886d43b5fcbcdfb5587a2d20db418622990a"
+        },
+        {
+            "name":     "pthread-w32",
+            "version":  "3.1.0",
+            "commit":   "73024cf",
+            "url":      "https://github.com/GerHobbelt/pthread-win32",
             "platforms": ["win"]
         },
         {
