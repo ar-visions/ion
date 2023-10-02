@@ -47,8 +47,7 @@
             "commit":   "1873d3b",
             "url":      "https://github.com/Mbed-TLS/mbedtls",
             "cmake": {
-                "args-win": ["-DENABLE_TESTING=0", "-DMSVC_STATIC_RUNTIME=1"],
-                "args-mac": ["-DENABLE_TESTING=1"]
+                "args": ["-DENABLE_TESTING=0", "-DMSVC_STATIC_RUNTIME=1", "-DLINK_WITH_PTHREAD=1"]
             }
         },
         {

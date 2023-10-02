@@ -52,8 +52,8 @@ endif()
 # Set the project root directory.
 set(MBEDTLS_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
-#include_directories(${CMAKE_INSTALL_PREFIX}/include)
-#link_directories(${CMAKE_INSTALL_PREFIX}/lib)
+include_directories(${CMAKE_INSTALL_PREFIX}/include)
+link_directories(${CMAKE_INSTALL_PREFIX}/lib)
 
 option(ENABLE_PROGRAMS "Build mbed TLS programs." ON)
 
