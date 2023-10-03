@@ -11,7 +11,8 @@ dep(mx:mx
     ion:media 
     mbedtls:mbedtls
     mbedtls:mbedx509
-    mbedtls:mbedcrypto)
+    mbedtls:mbedcrypto
+    pthread) # use system pthread or our own (w32), in this case
 
 if(APPLE)
     dep(CoreFoundation Security)

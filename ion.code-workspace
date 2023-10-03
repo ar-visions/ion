@@ -5,6 +5,10 @@
 			"path": "../prefix"
 		},
 		{
+			"name": "silver",
+			"path": "../silver"
+		},
+		{
 			"name": "mx",
 			"path": "../mx"
 		},
