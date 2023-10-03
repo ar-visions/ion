@@ -366,6 +366,7 @@ struct event:mx {
     struct edata {
         user::chr               unicode;
         user::key               key;
+        str                     text;
         vec2d                   wheel_delta;
         vec2d                   cursor;
         states<mouse>           buttons;

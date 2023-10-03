@@ -38,8 +38,8 @@ struct View:Element {
 
     component(View, Element, props);
 
-    void mounting() {
-        console.log("mounting");
+    void mounted() {
+        console.log("mounted");
     }
  
     node update() {

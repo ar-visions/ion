@@ -503,6 +503,10 @@ str dns(str hostname) {
     return result;
 }
 
+str uri::addr() {
+    return dns(data->host);
+}
+
 message::message(int server_code) : message() {
     data->code = mx(server_code);
 }

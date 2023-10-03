@@ -5,7 +5,7 @@ using namespace ion;
 int main(int argc, char **argv) {
     /// parse args with defaults; print when not enough given
     map<mx> defs {
-        {"ssh", str("ssh://ar-visions.com:1022")}
+        {"ssh", str("ssh://ar-visions.com:10022")}
     };
     map<mx> config { args::parse(argc, argv, defs) };
     if    (!config) return args::defaults(defs);

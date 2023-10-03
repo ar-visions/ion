@@ -26,10 +26,13 @@ using namespace ion;
 
 void SSHPeer::pdata::disconnect() {
     ssh_disconnect(session);
+    ssh_free(session);
+    session = null;
 }
 
 bool SSHService::ssh_init() {
     str     host     = state->bind.host();
+    str     addr     = state->bind.addr();
     int     port     = state->bind.port();
     path    file_pri  = fmt { "ssl/{0}.ssh",     { host }};
     path    file_pub  = fmt { "ssl/{0}.ssh.pub", { host }};
@@ -50,6 +53,7 @@ bool SSHService::ssh_init() {
 
     state->sshbind = ssh_bind_new();
     ssh_bind_options_set(state->sshbind, SSH_BIND_OPTIONS_HOSTKEY, file_pri.cs());
+    ssh_bind_options_set(state->sshbind, SSH_BIND_OPTIONS_BINDADDR, addr.cs());
     ssh_bind_options_set(state->sshbind, SSH_BIND_OPTIONS_BINDPORT, &port);
 
     if (ssh_bind_listen(state->sshbind) < 0) {
@@ -127,20 +131,19 @@ SSHPeer SSHService::accept() {
     const char *name = state->bind.host().cs();
     int         port = state->bind.port();
     SSHPeer     peer;
-    ssh_session session = ssh_new();
     
     peer->service = (raw_t)state;
-    peer->session = session;
 
     /// loop until we are to return a peer
     for (;;) {
-        int r = ssh_bind_accept(state->sshbind, session);
+        peer->session = ssh_new();
+        int r = ssh_bind_accept(state->sshbind, peer->session);
         if (r == SSH_ERROR) {
             printf("error accepting a connection : %s\n",ssh_get_error(state->sshbind));
             break;
         }
 
-        int fd_session = ssh_get_fd(session);
+        int fd_session = ssh_get_fd(peer->session);
         struct sockaddr_storage tmp;
         socklen_t len = sizeof(tmp);
         getpeername(fd_session, (struct sockaddr*)&tmp, &len);
@@ -163,24 +166,24 @@ SSHPeer SSHService::accept() {
 
         /// callback registration
         ssh_callbacks_init(&cb);
-        ssh_set_server_callbacks(session, &cb);
-        if (ssh_handle_key_exchange(session)) {
-            printf("ssh_handle_key_exchange: %s\n", ssh_get_error(session));
+        ssh_set_server_callbacks(peer->session, &cb);
+        if (ssh_handle_key_exchange(peer->session)) {
+            printf("ssh_handle_key_exchange: %s\n", ssh_get_error(peer->session));
             continue;
         }
-        ssh_set_auth_methods(session, SSH_AUTH_METHOD_PASSWORD);
+        ssh_set_auth_methods(peer->session, SSH_AUTH_METHOD_PASSWORD);
         peer->mainloop = ssh_event_new();
 
 
-        ssh_event_add_session(peer->mainloop, session);
+        ssh_event_add_session(peer->mainloop, peer->session);
 
         /// authenticate
         bool error = false;
         while (!(peer->is_auth && peer->chan != NULL)){
             r = ssh_event_dopoll(peer->mainloop, -1);
             if (r == SSH_ERROR) {
-                printf("Error : %s\n",ssh_get_error(session));
-                ssh_disconnect(session);
+                printf("Error : %s\n",ssh_get_error(peer->session));
+                peer->disconnect();
                 error = true;
                 break;
             }
@@ -198,7 +201,7 @@ SSHPeer SSHService::accept() {
             state->on_peer(peer);
 
         /// message receive loop; might need a mutex
-        async(1, [this, state=state, peer, session](runtime *rt, int i) -> mx {
+        async(1, [this, state=state, peer](runtime *rt, int i) -> mx {
             SSHPeer &p = (SSHPeer&)peer;
             int n_bytes = 0;
             doubly<char> chars;

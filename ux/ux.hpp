@@ -518,6 +518,7 @@ struct Element:node {
             callback            focus;
             callback            blur;
             callback            cursor;
+            callback            text;
         } ev;
 
         /// padding does not seem needed with this set of members and enumerable drawing types
@@ -578,6 +579,7 @@ struct Element:node {
                 prop { "on-focus",       ev.focus  },
                 prop { "on-blur",        ev.blur   },
                 prop { "on-cursor",      ev.cursor },
+                prop { "on-text",        ev.text   },
                 prop { "on-hover",       ev.hover  },
 
                 prop { "editable",       editable  },
@@ -843,16 +845,32 @@ struct Button:Element {
 struct Edit:Element {
     ///
     struct props {
-        callback on_key;
+        struct events {
+            callback change;
+        } ev;
 
         type_register(props);
 
         doubly<prop> meta() {
             return {
-                prop { "on-key", on_key }
+                prop { "on-change", ev.change }, // this happens after our element is set 
             };
         }
     };
+
+    void mounted() {
+        printf("mounted Edit\n");
+        int test = 0;
+        test++;
+        /// 
+        Element::data->ev.text = [=](event e) {
+            /// insert text 
+            str &text = e->text;
+            if (state->ev.change) {
+                state->ev.change(e);
+            }
+        };
+    }
 
     component(Edit, Element, props);
 };

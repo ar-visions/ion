@@ -40,8 +40,8 @@ struct View:Element {
 
     component(View, Element, props);
 
-    void mounting() {
-        console.log("mounting");
+    void mounted() {
+        console.log("mounted");
     }
  
     node update() {
@@ -57,36 +57,12 @@ struct test11 {
     int a = 1;
     test11() { }
     int method(int v) {
-        printf("a = %d\n", a);
+        printf("a + v = %d\n", a + v);
         return 1;
     }
 };
 
 int main(int argc, char *argv[]) {
-
-    test11 t1;
-    t1.a = 5;
-    lambda<int(int)> test = lambda<int(int)>(&t1, &test11::method);
-
-    test(1); // should print a = 6
-
-    /*
-    using ltype = lambda<int(int, short, protocol)>;
-
-    ltype test = [](int a, short b, protocol c) -> int {
-        printf("a = %d\n", (int)a);
-        printf("b = %d\n", (int)b);
-        printf("c = %s\n", str(c).cs());
-        return 4;
-    };
-
-    array<str> args = {"1", "2", "ssh"};
-    mx result       = call(test, args);
-
-    int ires = int(result);
-    */
-
-
     map<mx> defs { { "debug", uri { "ssh://ar-visions.com:1022" } } };
     map<mx> config { args::parse(argc, argv, defs) };
     if    (!config) return args::defaults(defs);

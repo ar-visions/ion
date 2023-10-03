@@ -85,6 +85,17 @@ static void key_callback(mx &user, int key, int scancode, int action, int mods) 
 
 static void char_callback (mx &user, uint32_t c) {
     App app = app_data(user);
+    Element* root  = (Element*)app.composer::data->instances; /// for ux this is always single
+    Element* focus = root->Element::data->focused;
+    if (focus) {
+        /// handle paste and character insertions with the same lambda
+        /// we want to handle filtering this text with a callback
+        if (focus->data->ev.text) {
+            event e;
+            e->text = str::from_code(c); // kind of dumb how 'events' are just a mix of every possible field; its dumb for w3c and its dumb here too
+            focus->data->ev.text(e);
+        }
+    }
 }
 
 static void mouse_move_callback(mx &user, double x, double y) {
@@ -113,7 +124,7 @@ static void mouse_button_callback(mx &user, int button, int state, int mods) {
 
     app->buttons[button] = bool(state);
     Element* root = (Element*)app.composer::data->instances; /// for ux this is always single
-
+    
     for (Element* n: app->active)
         n->Element::data->active = false;
     
@@ -226,10 +237,11 @@ int App::run() {
     vk_engine_t *e = data->e;
     Canvas *canvas = data->canvas = new Canvas(e->renderer);
 
-    vkengine_key_callback    (e, key_callback);
+    vkengine_key_callback    (e,          key_callback);
 	vkengine_button_callback (e, mouse_button_callback);
-	vkengine_move_callback   (e, mouse_move_callback);
-	vkengine_scroll_callback (e, scroll_callback);
+	vkengine_move_callback   (e,   mouse_move_callback);
+    vkengine_char_callback   (e,         char_callback);
+	vkengine_scroll_callback (e,       scroll_callback);
 	vkengine_set_title       (e, "ux");
 
     /// works on macOS currently (needs to present, and update a canvas)
@@ -385,7 +397,8 @@ void Element::draw_text(Canvas& canvas, rectd& rect) {
 
         /// get more accurate placement rectangle
         canvas.color(text.color);
-        canvas.text(line.data, line.bounds, text.align, {0.0, 0.0}, true, &line.placement);
+        alignment t_align = { text.align.x, 0.5 };
+        canvas.text(line.data, line.bounds, t_align, {0.0, 0.0}, true, &line.placement);
 
         if (in_sel) {
             rectd sel_rect = line.bounds;
@@ -444,14 +457,16 @@ void Element::draw_text(Canvas& canvas, rectd& rect) {
 void Element::draw(Canvas& canvas) {
     type_t type = mem->type;
     node::edata *edata       = ((node*)this)->data;
-    rect<r64>       bounds   = edata->parent ? data->bounds : rect<r64> { 
-        0, 0, r64(canvas.get_virtual_width()), r64(canvas.get_virtual_height()) };
+    Element *eparent         = (Element*)edata->parent;
+    rect<r64>       bounds   = eparent ? eparent->data->bounds :
+        rect<r64> { 0, 0, r64(canvas.get_virtual_width()), r64(canvas.get_virtual_height()) };
     props::drawing &fill     = data->drawings[operation::fill];
     props::drawing &image    = data->drawings[operation::image];
     props::drawing &text     = data->drawings[operation::text];
     props::drawing &outline  = data->drawings[operation::outline]; /// outline is more AR than border.  and border is a bad idea, badly defined and badly understood. outline is on the 0 pt.  just offset it if you want.
     props::drawing &children = data->drawings[operation::child]; /// outline is more AR than border.  and border is a bad idea, badly defined and badly understood. outline is on the 0 pt.  just offset it if you want.
     
+
     canvas.save();
     data->fill_bounds = fill.area.rect(bounds); /// use this bounds if we do not have specific areas defined
     

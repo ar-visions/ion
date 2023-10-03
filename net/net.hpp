@@ -36,6 +36,7 @@ struct uri:mx {
     ///
     method & mtype() { return data->mtype;    }
     str &     host() { return data->host;     }
+    str       addr();
     protocol&proto() { return data->proto;    }
     int       port();
     str &   string() { return data->query;    }
@@ -212,6 +213,8 @@ struct uri:mx {
         return str(v.data, int(v.len()));
     }
 };
+
+str dns(str hostname);
 
 struct isock;
 
