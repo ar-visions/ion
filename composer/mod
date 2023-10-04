@@ -1,1 +1,1 @@
-dep(mx:mx mx:math)
+dep(mx:mx mx:math mx:watch)

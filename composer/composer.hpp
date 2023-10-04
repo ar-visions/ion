@@ -2,6 +2,7 @@
 
 #include <mx/mx.hpp>
 #include <math/math.hpp>
+#include <watch/watch.hpp>
 
 namespace ion {
 /// style can go in composer if we are good at separating functionality
@@ -12,7 +13,6 @@ enums(duration, ms,
 /// needs more distance units.  pc = parsec
 enums(distance, px,
      px, m, cm, in, ft, pc, percent); /// needs % -> percent generic
-
 
 template <typename U>
 struct unit {
@@ -315,9 +315,12 @@ struct style:mx {
     using style_map = map<array<entry*>>;
 
     struct impl {
+        mutex               mtx;
         array<block*>       root;
         map<array<block*>>  members;
-        bool                loaded;
+        watch               reloader;
+        bool                reloaded;
+        bool                loaded; /// composer user will need to lock to use; clear root and members for
         style_map        compute(node *dst);
         entry        *best_match(node *n, prop *member, array<entry*> &entries);
         bool          applicable(node *n, prop *member, array<entry*> &all);

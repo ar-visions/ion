@@ -1,4 +1,5 @@
 #include <composer/composer.hpp>
+#include <watch/watch.hpp>
 
 using namespace ion;
 
@@ -26,6 +27,7 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
     bool     is_new = false;
     size_t args_len = e->args.len();
     i64         now = millis();
+    bool style_reload = composer->style->reloaded;
 
     /// recursion here
     if (e.type() == typeof(node) && e->children) {
@@ -62,7 +64,7 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
             }
         }
     }
-    if (diff) {
+    if (diff || style_reload) {
         /// if we get this far, its expected that we are a class with schema, and have data associated
         assert(e->type->schema);
         assert(e->type->schema->bind && e->type->schema->bind->data);
@@ -77,8 +79,12 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
             (*instance)->parent = parent;
             (*instance)->id     = id.grab();
             (*instance)->composer = composer;
-            (*instance)->style_avail = composer->style->compute(instance);
+            
             /// compute available properties for this Element given its type, placement, and props styled 
+        }
+
+        if (style_reload || is_new) {
+            (*instance)->style_avail = composer->style->compute(instance);
         }
 
         /// arg set cache
@@ -294,8 +300,10 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
 void composer::update_all(node e) {
     if (!data->instances)
         data->style = style::init();
-    
-    update(data, null, data->instances, e);
+    data->style->mtx.lock();
+    update(data, null, data->instances, e); /// 'reloaded' is checked inside the update
+    data->style->reloaded = false;
+    data->style->mtx.unlock();
 }
 
 
@@ -615,18 +623,29 @@ style style::init() {
         static std::mutex mx; /// more checks, less locks, less time? [ssh server ends up calling this in another thread]
         mx.lock();
         if (!st->loaded) {
-            path base_path = "style";
-            path p2 = base_path;
-            /// there could be sub-dirs here with an argument
-            base_path.resources({".css"}, {},
-                [&](path css_file) -> void {
-                    str style_str = css_file.read<str>();
-                    st->load(style_str);
-                });
+            /// if there are no files it doesnt load, or reload.. thats kind of not a bug
+            watch::fn reload = [st](bool first, array<path_op> &ops) {
+                style &s = (style&)st;
+                path base_path = "style";
+                s->mtx.lock();
+                s->root = {};
+                s->members = {size_t(32)};
+                base_path.resources({".css"}, {},
+                    [&](path css_file) -> void {
+                        str style_str = css_file.read<str>();
+                        s->load(style_str);
+                    });
 
-            /// store blocks by member, the interface into all style: style::members[name]
-            st->cache_members();
-            st->loaded = true;
+                /// store blocks by member, the interface into all style: style::members[name]
+                s->cache_members();
+                s->loaded = true;
+                s->reloaded = true; /// signal to composer user
+                s->mtx.unlock();
+            };
+            /// spawn watcher (this syncs once before returning)
+            st->reloader = watch::spawn({"./style"}, {".css"}, {}, reload);
+            int test = 0;
+            test++;
         }
         mx.unlock();
     }

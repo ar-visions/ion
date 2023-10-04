@@ -27,11 +27,12 @@ Button:active {
 }
 
 Edit {
-    fill-color:    #24fa, 200ms quad;
+    fill-color:    #f4fa, 200ms quad;
     fill-radius:     16;
     text-align:      0.0 0.0;
     text-color:    #fff;
-    fill-area:       l0 t0 r0 b0, 200ms quad;
+    fill-area:       l20 t20 r-20 b-20, 200ms quad;
+    text-area:       l40 t30 r-40 b-30;
     editable:        true;
     multiline:       true;
     tab-index:       0;
