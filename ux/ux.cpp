@@ -71,30 +71,46 @@ inline App app_data(mx &user) {
 }
 
 static void key_callback(mx &user, int key, int scancode, int action, int mods) {
-    App app = app_data(user);
+    App      app   = app_data(user);
+    Element* root  = (Element*)app.composer::data->instances; /// for ux this is always single
+    Element* focus = root->Element::data->focused;
+
 	if (action != GLFW_PRESS)
 		return;
+    
+    int code = 0;
 	switch (key) {
-	case GLFW_KEY_SPACE:
-		break;
-	case GLFW_KEY_ESCAPE:
-        vkengine_close(app->e);
-		break;
+        case GLFW_KEY_ENTER: {
+            code = 13;
+            break;
+        }
+        case GLFW_KEY_SPACE: {
+            code = 10;
+            break;
+        }
+        case GLFW_KEY_BACKSPACE: {
+            code = 8;
+            break;
+        }
+        case GLFW_KEY_ESCAPE:
+            vkengine_close(app->e);
+            break;
 	}
+    if (code && focus) {
+        event e;
+        e->text = str::from_code(code);
+        focus->on_text(e);
+    }
 }
 
 static void char_callback (mx &user, uint32_t c) {
     App app = app_data(user);
-    Element* root  = (Element*)app.composer::data->instances; /// for ux this is always single
+    Element* root  = (Element*)app.composer::data->instances;
     Element* focus = root->Element::data->focused;
     if (focus) {
-        /// handle paste and character insertions with the same lambda
-        /// we want to handle filtering this text with a callback
-        if (focus->data->ev.text) {
-            event e;
-            e->text = str::from_code(c); // kind of dumb how 'events' are just a mix of every possible field; its dumb for w3c and its dumb here too
-            focus->data->ev.text(e);
-        }
+        event e;
+        e->text = str::from_code(c);
+        focus->on_text(e);
     }
 }
 
@@ -314,23 +330,34 @@ int App::run() {
 void Element::focused()   { }
 void Element::unfocused() { }
 
-array<LineInfo> &Element::get_lines(Canvas *p_canvas) {
+doubly<LineInfo> &Element::get_lines(Canvas *p_canvas) {
     bool  is_cache = data->cache_source.mem == data->content.mem;
     ///
     if (!is_cache) {
-        str        s_content = data->content.grab();
-        array<str> line_strs = s_content.split("\n");
-        size_t    line_count = line_strs.len();
+        str         s_content = data->content.grab();
+        array<str>  line_strs = s_content.split("\n");
+        int        line_count = (int)line_strs.len();
         ///
-        data->lines = array<LineInfo>(line_count, line_count);
+        data->lines = doubly<LineInfo>();
         ///
         size_t i = 0;
-        for (LineInfo &l: data->lines) {
+        for (int i = 0; i < line_count; i++) {
+            LineInfo &l = data->lines->push();
             l.bounds = {}; /// falsey rects have not been computed yet
             l.data   = line_strs[i];
             l.len    = l.data.len();
             l.adv    = data->font.advances(*p_canvas, l.data);
             l.bounds.w = l.adv[l.len - 1];
+        }
+        data->cache_source = s_content.grab(); /// lines are maintained independently from here
+    } else {
+        /// this must be done after an update; could set a flag for it too..
+        for (LineInfo &l: data->lines) {
+            if (l.len && !l.adv) {
+                l.bounds = {};
+                l.adv = data->font.advances(*p_canvas, l.data);
+                l.bounds.w = l.adv[l.len - 1];
+            }
         }
     }
     return data->lines;
@@ -359,11 +386,11 @@ void Element::draw_text(Canvas& canvas, rectd& rect) {
     const double line_height_basis = 2.0;
     double       lh = tm.line_height * (Element::data->text_spacing.y * line_height_basis); /// this stuff can all transition, best to live update the bounds
     ///
-    array<LineInfo> &lines = get_lines(&canvas);
+    doubly<LineInfo> &lines = get_lines(&canvas);
 
     /// iterate through lines
     int i = 0;
-    int n = lines.len();
+    int n = lines->len();
 
     /// if in center, the first line is going to be offset by half the height of all the lines n * (lh / 2)
     /// if bottom, the first is going to be offset by total height of lines n * lh

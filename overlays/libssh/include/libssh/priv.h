@@ -34,7 +34,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#ifdef __APPLE__
 #include <termios.h>
+#endif
 
 #if !defined(HAVE_STRTOULL)
 # if defined(HAVE___STRTOULL)

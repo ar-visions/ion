@@ -486,6 +486,63 @@ struct TextSel:mx {
 
         type_register(Data);
     };
+
+    /// common function for TextSel used in 2 parts; updates the sel_start and sel_end
+    static void replace(doubly<LineInfo> &lines, TextSel &sel_start, TextSel &sel_end, doubly<LineInfo> &text) {
+        assert(sel_start->row <= sel_end->row);
+        assert(sel_start->row != sel_end->row || sel_start->column <= sel_end->column);
+        LineInfo &ls = lines[sel_start->row];
+        LineInfo &le = lines[sel_end  ->row]; /// this is fine to do before, because its a doubly
+        bool line_insert = text->len() > 1;
+
+        /// a buffer with \n is len == 2.  make sense because you start at 1 line, and a new line gives you 2.
+        str left   = str(&ls.data[0], sel_start->column);
+        str right  = str(&le.data[sel_end->column]);
+
+        /// delete LineInfo's inbetween start and end
+        for (int i = sel_start->row + 1; i <= sel_end->row; i++)
+            lines->remove(sel_start->row + 1);
+
+        /// manage lines when inserting new ones
+        if (line_insert) {
+            /// first line is set to text to left of sel + first line of sel
+            ls.data = left + text[0].data;
+            ls.len  = ls.data.len();
+
+            /// recompute advances by clearing
+            ls.adv.clear();
+
+            /// insert lines[1] and above
+            int index = 0;
+            int last  = text->len();
+
+            for (LineInfo &l: text) {
+                item<LineInfo> *item;
+                if (index) {
+                    item = lines->insert(sel_start->row + index, l);
+                    /// this function insert before, unless index == count then its a new tail
+                    /// always runs as final op, this merges last line with the data we read on right side prior
+                    if (index + 1 == last) {
+                        LineInfo &n = item->data;
+                        n.data = l.data + right;
+                        n.len  = n.data.len();
+                        sel_start->column = l.data.len();
+                        break;
+                    }
+                    sel_start->row++; /// we set both of these
+                }
+                index++;
+            }
+        } else {
+            /// result is lines removed from ls+1 to le, ls.data = ls[left] + data + le[right]
+            ls.data    = left + text[0].data + right;
+            ls.len     = ls.data.len();
+            ls.adv.clear();
+        }
+        sel_end->row    = sel_start->row;
+        sel_end->column = sel_start->column;
+    }
+
     ///
     mx_object(TextSel, mx, Data);
     ///
@@ -563,7 +620,7 @@ struct Element:node {
         ion::font           font;
         mx                  cache_source;   /// cache of content when lines are made
         array<str>          cache_split;    
-        array<LineInfo>     lines;          /// in sync with cache
+        doubly<LineInfo>    lines;          /// in sync with cache
         bool                editable   = false;
         bool                selectable = true;
         bool                multiline  = false;
@@ -684,6 +741,81 @@ struct Element:node {
         return res;
     }
 
+    /// Element-based generic text handler; dispatches text event
+    void on_text(event e) {
+        /// insert text 
+        TextSel &ss = data->sel_start;
+        TextSel &se = data->sel_end;
+        array<str> text = e->text.split("\n");
+        int    tlen = text.len();
+        bool  enter = false;
+        bool   back = false;
+        if (tlen == 1 && text[0].len() == 0) {
+            text.push(str()); /// two lines is one inserting line; we are overlapping
+            enter = true;
+        }
+        /// handle backspace
+        else if (tlen == 1 && text[0][0] == 8) {
+            text[0] = str();
+            back    = true;
+        }
+        
+        doubly<LineInfo> add;
+        for (str &line: text) {
+            LineInfo &l = add->push();
+            l.data = line;
+            l.len  = line.len();
+        }
+
+        /// handle backspace
+        if (back) {
+            ss->column--;
+            //se->column--; 
+            if (ss->column < 0) {
+                if (ss->row > 0) {
+                    ss->row--;
+                    ss->column = data->lines[ss->row].len;
+                    se->row    = ss->row;
+                    se->column = ss->column;
+                } else {
+                    se->column = 0;
+                    ss->column = 0;
+                }
+            }
+        }
+
+        /// replace and update text sels (all done in TextSel::replace)
+        TextSel::replace(data->lines, ss, se, add);
+
+        if (!back) {
+            if (enter) {
+                se->row++;
+                ss->row++;
+                se->column = 0;
+                ss->column = 0;
+            } else {
+                se->column++;
+                ss->column++;
+            }
+        }
+
+        /// turn off for very large text boxes
+        size_t len = 0;
+        for (LineInfo &li: data->lines)
+            len += li.len;
+        str content { len };
+        for (LineInfo &li: data->lines)
+            content += li.data;
+        data->content = content;
+        data->cache_source = content.grab(); /// update cache without invoking the initial split (we may change this)
+
+        /// avoid updating content otherwise
+        if (data->ev.text) {
+            e->text = content;
+            data->ev.text(e);
+        }
+    }
+
     rgba8 color_with_opacity(rgba8 &input) {
         rgba8 result = input;
         Element  *n = (Element*)node::data->parent;
@@ -706,7 +838,7 @@ struct Element:node {
         return o;
     }
 
-    array<LineInfo> &get_lines(Canvas*);
+    doubly<LineInfo> &get_lines(Canvas*);
 
     virtual void focused();
     virtual void unfocused();
@@ -836,12 +968,6 @@ struct Button:Element {
     }
 };
 
-/// make a good edit box, then focus on rendering a good selection effect!
-/// it must be Rich in nature.  makes no sense to split the two.  best primitives
-/// placement is an ideal idea to get right here so we dont have to have multiple edits
-/// so we have char color and placement on column (default = advance)
-/// edit should be a node with some defaults set, something that has a name and can be styled
-/// tag names should be the last thing you style.  we want to style props and not tags that go along with them
 struct Edit:Element {
     ///
     struct props {
@@ -853,24 +979,10 @@ struct Edit:Element {
 
         doubly<prop> meta() {
             return {
-                prop { "on-change", ev.change }, // this happens after our element is set 
+                prop { "on-change", ev.change },
             };
         }
     };
-
-    void mounted() {
-        printf("mounted Edit\n");
-        int test = 0;
-        test++;
-        /// 
-        Element::data->ev.text = [=](event e) {
-            /// insert text 
-            str &text = e->text;
-            if (state->ev.change) {
-                state->ev.change(e);
-            }
-        };
-    }
 
     component(Edit, Element, props);
 };

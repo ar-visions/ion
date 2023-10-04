@@ -1,14 +1,4 @@
-struct abc1 { int abc; };
-
-static abc1 *abc = new abc1 { };
-
-#include <mx/mx.hpp>
-#include <async/async.hpp>
-#include <net/net.hpp>
-#include <image/image.hpp>
-#include <media/media.hpp>
 #include <ux/ux.hpp>
-#include <camera/camera.hpp>
 
 using namespace ion;
 
@@ -30,35 +20,14 @@ struct View:Element {
         type_register(props);
     };
 
-    int context_var;
-
-    doubly<prop> meta() {
-        return {
-            prop { "context_var", context_var }
-        };
-    }
-
     component(View, Element, props);
 
-    void mounted() {
-        console.log("mounted");
-    }
- 
     node update() {
         return array<node> {
             Edit {
                 { "content", "Multiline edit test\nAnother line" }
             }
         };
-    }
-};
-
-struct test11 {
-    int a = 1;
-    test11() { }
-    int method(int v) {
-        printf("a + v = %d\n", a + v);
-        return 1;
     }
 };
 
