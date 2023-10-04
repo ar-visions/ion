@@ -182,7 +182,7 @@ void Element::draw_text(Canvas& canvas, rectd& rect) {
                 canvas.color(data->sel_background);
                 canvas.fill(sel_rect);
                 canvas.color(data->sel_color);
-                canvas.text(sel, sel_rect, { text.align.x, 0.5 }, vec2d { 0, 0 }, true);
+                canvas.text(sel, sel_rect, { text.align.x, 0.5 }, vec2d { 0, 0 }, false); /// use ellipsis on Element
             } else {
                 sel_rect.x -= 1;
                 sel_rect.w  = 2;
@@ -330,21 +330,23 @@ void Element::draw(Canvas& canvas) {
         return res;
     }
 
-    /// Element-based generic text handler; dispatches text event
+    /// Element-based generic text handler; dispatches text
     void Element::on_text(event e) {
-        /// insert text 
-        bool swap = data->sel_start > data->sel_end;
-        TextSel &ss = swap ? data->sel_end : data->sel_start;
-        TextSel &se = swap ? data->sel_start : data->sel_end;
+        /// just for Elements which allow text editing
+        if (!data->editable)
+            return;
+
+        /// order the selection, and split the lines (enter retains info of initial line insertion by user)
+        bool       swap = data->sel_start > data->sel_end;
+        TextSel     &ss = swap ? data->sel_end : data->sel_start;
+        TextSel     &se = swap ? data->sel_start : data->sel_end;
         array<str> text = e->text.split("\n");
-        int    tlen = text.len();
-        bool  enter = e->text == "\n";
-        bool   back = e->text == "\b";
+        bool      enter = e->text == "\n";
+        bool       back = e->text == "\b";
 
         /// do not insert control characters
-        if (back) {
+        if (back)
             text = array<str> {""};
-        }
 
         doubly<LineInfo> add;
         for (str &line: text) {
