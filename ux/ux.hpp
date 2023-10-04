@@ -476,32 +476,25 @@ struct LineInfo {
     rectd          placement;  /// effective bounds of the aligned text, with y and h same as bounds
 };
 
-struct TextSel:mx {
-    struct Data {
-        num     column;
-        num     row;
-        ///
-        bool operator<= (const Data &b) { return column <= b.column || row <= b.row; }
-        bool operator>  (const Data &b) { return column >  b.column || row >  b.row; }
-
-        type_register(Data);
-    };
+struct TextSel {
+    num     column = 0;
+    num     row = 0;
 
     /// common function for TextSel used in 2 parts; updates the sel_start and sel_end
     static void replace(doubly<LineInfo> &lines, TextSel &sel_start, TextSel &sel_end, doubly<LineInfo> &text) {
-        assert(sel_start->row <= sel_end->row);
-        assert(sel_start->row != sel_end->row || sel_start->column <= sel_end->column);
-        LineInfo &ls = lines[sel_start->row];
-        LineInfo &le = lines[sel_end  ->row]; /// this is fine to do before, because its a doubly
+        assert(sel_start.row <= sel_end.row);
+        assert(sel_start.row != sel_end.row || sel_start.column <= sel_end.column);
+        LineInfo &ls = lines[sel_start.row];
+        LineInfo &le = lines[sel_end  .row]; /// this is fine to do before, because its a doubly
         bool line_insert = text->len() > 1;
 
         /// a buffer with \n is len == 2.  make sense because you start at 1 line, and a new line gives you 2.
-        str left   = str(&ls.data[0], sel_start->column);
-        str right  = str(&le.data[sel_end->column]);
+        str left   = str(&ls.data[0], sel_start.column);
+        str right  = str(&le.data[sel_end.column]);
 
         /// delete LineInfo's inbetween start and end
-        for (int i = sel_start->row + 1; i <= sel_end->row; i++)
-            lines->remove(sel_start->row + 1);
+        for (int i = sel_start.row + 1; i <= sel_end.row; i++)
+            lines->remove(sel_start.row + 1);
 
         /// manage lines when inserting new ones
         if (line_insert) {
@@ -519,17 +512,17 @@ struct TextSel:mx {
             for (LineInfo &l: text) {
                 item<LineInfo> *item;
                 if (index) {
-                    item = lines->insert(sel_start->row + index, l);
+                    item = lines->insert(sel_start.row + index, l);
                     /// this function insert before, unless index == count then its a new tail
                     /// always runs as final op, this merges last line with the data we read on right side prior
                     if (index + 1 == last) {
                         LineInfo &n = item->data;
                         n.data = l.data + right;
                         n.len  = n.data.len();
-                        sel_start->column = l.data.len();
+                        sel_start.column = l.data.len();
                         break;
                     }
-                    sel_start->row++; /// we set both of these
+                    sel_start.row++; /// we set both of these
                 }
                 index++;
             }
@@ -539,15 +532,12 @@ struct TextSel:mx {
             ls.len     = ls.data.len();
             ls.adv.clear();
         }
-        sel_end->row    = sel_start->row;
-        sel_end->column = sel_start->column;
+        sel_end.row    = sel_start.row;
+        sel_end.column = sel_start.column;
     }
-
     ///
-    mx_object(TextSel, mx, Data);
-    ///
-    bool operator<= (const TextSel &b) { return *data <= *b.data; }
-    bool operator>  (const TextSel &b) { return *data >  *b.data; }
+    bool operator<= (const TextSel &b) { return !operator>(b); }
+    bool operator>  (const TextSel &b) { return row > b.row || column > b.column; }
 };
 
 struct Canvas;
@@ -624,7 +614,7 @@ struct Element:node {
         bool                editable   = false;
         bool                selectable = true;
         bool                multiline  = false;
-        TextSel             sel_start, sel_end, sel_prev;
+        TextSel             sel_start, sel_end;
 
         doubly<prop> meta() const {
             return {
@@ -696,6 +686,9 @@ struct Element:node {
         test++;
     }
 
+    void order_selection() {
+    }
+
     TextSel get_selection(vec2d pos, bool is_down) {
         rectd r = data->bounds;
         Element *n = this;
@@ -713,11 +706,11 @@ struct Element:node {
         ///
         for (LineInfo &line: data->lines) {
             if (pos.y >= y && pos.y <= (y + line.bounds.h)) {
-                res->row = row;
+                res.row = row;
                 if (pos.x < line.placement.x)
-                    res->column = 0;
+                    res.column = 0;
                 else if (pos.x > line.placement.x + line.placement.w)
-                    res->column = line.len;
+                    res.column = line.len;
                 else {
                     bool col_set = false;
                     for (num i = 1; i <= line.len; i++) {
@@ -725,14 +718,14 @@ struct Element:node {
                         real adv1 = line.adv[i];
                         real med  = (adv0 + adv1) / 2.0;
                         if ((pos.x - line.placement.x) < med) {
-                            res->column = i - 1;
+                            res.column = i - 1;
                             col_set = true;
                             break;
                         }
                     }
                     /// set end-of-last character
                     if (!col_set)
-                        res->column = line.len;
+                        res.column = line.len;
                 }
             }
             y += line.bounds.h;
@@ -769,17 +762,17 @@ struct Element:node {
 
         /// handle backspace
         if (back) {
-            ss->column--;
-            //se->column--; 
-            if (ss->column < 0) {
-                if (ss->row > 0) {
-                    ss->row--;
-                    ss->column = data->lines[ss->row].len;
-                    se->row    = ss->row;
-                    se->column = ss->column;
+            ss.column--;
+            //se.column--; 
+            if (ss.column < 0) {
+                if (ss.row > 0) {
+                    ss.row--;
+                    ss.column = data->lines[ss.row].len;
+                    se.row    = ss.row;
+                    se.column = ss.column;
                 } else {
-                    se->column = 0;
-                    ss->column = 0;
+                    se.column = 0;
+                    ss.column = 0;
                 }
             }
         }
@@ -789,13 +782,13 @@ struct Element:node {
 
         if (!back) {
             if (enter) {
-                se->row++;
-                ss->row++;
-                se->column = 0;
-                ss->column = 0;
+                se.row++;
+                ss.row++;
+                se.column = 0;
+                ss.column = 0;
             } else {
-                se->column++;
-                ss->column++;
+                se.column++;
+                ss.column++;
             }
         }
 

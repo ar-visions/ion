@@ -127,6 +127,14 @@ static void mouse_move_callback(mx &user, double x, double y) {
         n->Element::data->hover  = true;
         //n->Element::data->cursor = app->data->cursor; /// this type could be bool true when the point is in bounds
         last = n;
+        if (last->data->selectable || last->data->editable) {
+            /// compute sel start on mouse click down
+            bool is_down = app->active[0];
+            if (is_down) {
+                last->data->sel_end = last->get_selection(app->cursor, is_down);
+                last->order_selection();
+            }
+        }
     }
 }
 
@@ -175,25 +183,15 @@ static void mouse_button_callback(mx &user, int button, int state, int mods) {
             /// we are either setting the sel_start, or sel_end (with a swap potential for out of sync selection)
             if (is_down) {
                 /// if shift key, you alter between swapping start and end based on if its before or after
-                if (shift) {
-                    if (last->data->sel_prev == last->data->sel_end)
-                        last->data->sel_end = last->data->sel_start;
-                }
                 last->data->sel_start = s;
                 if (!shift)
-                    last->data->sel_end = TextSel(s.copy());
-                last->data->sel_prev  = last->data->sel_start;
-
+                    last->data->sel_end = s;
             } else {
-                if (shift) {
-                    if (last->data->sel_prev == last->data->sel_start)
-                        last->data->sel_start = last->data->sel_end;
-                }
                 last->data->sel_end   = s;
                 if (!shift)
-                    last->data->sel_start = TextSel(s.copy());
-                last->data->sel_prev  = last->data->sel_end;
+                    last->data->sel_start = s;
             }
+            last->order_selection();
         }
     }
 }
@@ -409,6 +407,7 @@ void Element::draw_text(Canvas& canvas, rectd& rect) {
         TextSel t = sel_start;
         sel_start = sel_end;
         sel_end   = t;
+        printf("swapping....\n");
     }
 
     bool in_sel = false;
@@ -419,7 +418,7 @@ void Element::draw_text(Canvas& canvas, rectd& rect) {
         line.bounds.w = data->text_bounds.w; /// these are set prior
         line.bounds.h = lh;
 
-        if (!in_sel && sel_start->row == i)
+        if (!in_sel && sel_start.row == i)
             in_sel = true;
 
         /// get more accurate placement rectangle
@@ -433,26 +432,26 @@ void Element::draw_text(Canvas& canvas, rectd& rect) {
             num start = 0;
 
             sel_rect.w = 0;
-            if (sel_start->row == i) {
-                start      = sel_start->column;
-                sel_rect.x = line.placement.x + line.adv[sel_start->column];
+            if (sel_start.row == i) {
+                start      = sel_start.column;
+                sel_rect.x = line.placement.x + line.adv[sel_start.column];
             } else {
                 sel_rect.x = line.bounds.x;
             }
 
-            if (sel_end->row == i) {
-                num st = sel_start->row == i ? sel_start->column : 0;
-                if (sel_start->row == i) {
-                    sel_rect.x = line.placement.x + line.adv[sel_start->column];
-                    if (sel_end->column == line.len)
+            if (sel_end.row == i) {
+                num st = sel_start.row == i ? sel_start.column : 0;
+                if (sel_start.row == i) {
+                    sel_rect.x = line.placement.x + line.adv[sel_start.column];
+                    if (sel_end.column == line.len)
                         sel_rect.w = (line.bounds.x + line.bounds.w) - sel_rect.x;
                 } else {
-                    if (sel_end->column == line.len)
+                    if (sel_end.column == line.len)
                         sel_rect.w = (line.bounds.x + line.bounds.w) - sel_rect.x;
                     else
-                        sel_rect.w = line.adv[sel_end->column];
+                        sel_rect.w = line.adv[sel_end.column];
                 }
-                sel = line.data.mid(start, sel_end->column - start);
+                sel = line.data.mid(start, sel_end.column - start);
             } else {
                 sel_rect.w = line.bounds.w - sel_rect.x;
                 sel = line.data;
@@ -470,7 +469,7 @@ void Element::draw_text(Canvas& canvas, rectd& rect) {
             }
         }
 
-        if (in_sel && sel_end->row == i)
+        if (in_sel && sel_end.row == i)
             in_sel = false;
 
         /// correct these for line-height selectability
