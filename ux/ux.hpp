@@ -537,7 +537,7 @@ struct TextSel {
     }
     ///
     bool operator<= (const TextSel &b) { return !operator>(b); }
-    bool operator>  (const TextSel &b) { return row > b.row || column > b.column; }
+    bool operator>  (const TextSel &b) { return row > b.row || ((row == b.row) && column > b.column); }
 };
 
 struct Canvas;
@@ -600,17 +600,18 @@ struct Element:node {
         rgbad               sel_color;
         rgbad               sel_background;
         vec2d               scroll = {0,0};
-        std::queue<fn_t>    queue;      /// this is an animation queue
+        std::queue<fn_t>    queue;
+
+        /// kerning not yet supported by skia for some odd reason; we need to add this
         vec2d               text_spacing = { 1.0, 1.0 }; /// kerning & line-height scales here
-        mx                  content;
+
+        mx                  content; /// lines could be an 'attachment' to content; thus when teh user sets content explicitly, it will then be recomputed
+        doubly<LineInfo>    lines;
         double              opacity = 1.0;
         rectd               bounds;     /// local coordinates of this control, so x and y are 0 based
         rectd               fill_bounds;
         rectd               text_bounds;
-        ion::font           font;
-        mx                  cache_source;   /// cache of content when lines are made
-        array<str>          cache_split;    
-        doubly<LineInfo>    lines;          /// in sync with cache
+        ion::font           font;  
         bool                editable   = false;
         bool                selectable = true;
         bool                multiline  = false;
@@ -737,23 +738,19 @@ struct Element:node {
     /// Element-based generic text handler; dispatches text event
     void on_text(event e) {
         /// insert text 
-        TextSel &ss = data->sel_start;
-        TextSel &se = data->sel_end;
+        bool swap = data->sel_start > data->sel_end;
+        TextSel &ss = swap ? data->sel_end : data->sel_start;
+        TextSel &se = swap ? data->sel_start : data->sel_end;
         array<str> text = e->text.split("\n");
         int    tlen = text.len();
-        bool  enter = false;
-        bool   back = false;
-        if (tlen == 1 && text[0].len() == 0) {
-            str def;
-            text.push(def); /// two lines is one inserting line; we are overlapping
-            enter = true;
+        bool  enter = e->text == "\n";
+        bool   back = e->text == "\b";
+
+        /// do not insert control characters
+        if (back) {
+            text = array<str> {""};
         }
-        /// handle backspace
-        else if (tlen == 1 && text[0][0] == 8) {
-            text[0] = str();
-            back    = true;
-        }
-        
+
         doubly<LineInfo> add;
         for (str &line: text) {
             LineInfo &l = add->push();
@@ -763,10 +760,14 @@ struct Element:node {
 
         /// handle backspace
         if (back) {
-            ss.column--;
-            //se.column--; 
+            /// shift start back 1 when our len is 0
+            if (ss.row == se.row && ss.column == se.column)
+                ss.column--;
+            
+            /// handle line deletion
             if (ss.column < 0) {
                 if (ss.row > 0) {
+                    /// signal line deletion
                     ss.row--;
                     ss.column = data->lines[ss.row].len;
                     se.row    = ss.row;
@@ -801,8 +802,7 @@ struct Element:node {
         for (LineInfo &li: data->lines)
             content += li.data;
         data->content = content;
-        data->cache_source = content.grab(); /// update cache without invoking the initial split (we may change this)
-
+ 
         /// avoid updating content otherwise
         if (data->ev.text) {
             e->text = content;

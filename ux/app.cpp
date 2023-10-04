@@ -40,11 +40,12 @@ static void key_callback(mx &user, int key, int scancode, int action, int mods) 
     int code = 0;
 	switch (key) {
         case GLFW_KEY_ENTER: {
-            code = 13;
+            code = 10;
             break;
         }
         case GLFW_KEY_SPACE: {
-            code = 10;
+            // this is given as 'char' in glfw
+            //code = 32
             break;
         }
         case GLFW_KEY_BACKSPACE: {

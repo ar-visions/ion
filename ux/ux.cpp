@@ -51,9 +51,8 @@ void Element::focused()   { }
 void Element::unfocused() { }
 
 doubly<LineInfo> &Element::get_lines(Canvas *p_canvas) {
-    bool  is_cache = data->cache_source.mem == data->content.mem;
-    ///
-    if (!is_cache) {
+
+    if (data->content && !data->lines) {
         str         s_content = data->content.grab();
         array<str>  line_strs = s_content.split("\n");
         int        line_count = (int)line_strs.len();
@@ -69,7 +68,6 @@ doubly<LineInfo> &Element::get_lines(Canvas *p_canvas) {
             l.adv    = data->font.advances(*p_canvas, l.data);
             l.bounds.w = l.adv[l.len - 1];
         }
-        data->cache_source = s_content.grab(); /// lines are maintained independently from here
     } else {
         /// this must be done after an update; could set a flag for it too..
         for (LineInfo &l: data->lines) {
@@ -129,7 +127,6 @@ void Element::draw_text(Canvas& canvas, rectd& rect) {
         TextSel t = sel_start;
         sel_start = sel_end;
         sel_end   = t;
-        printf("swapping....\n");
     }
 
     bool in_sel = false;
@@ -165,8 +162,7 @@ void Element::draw_text(Canvas& canvas, rectd& rect) {
                 num st = sel_start.row == i ? sel_start.column : 0;
                 if (sel_start.row == i) {
                     sel_rect.x = line.placement.x + line.adv[sel_start.column];
-                    if (sel_end.column == line.len)
-                        sel_rect.w = (line.bounds.x + line.bounds.w) - sel_rect.x;
+                    sel_rect.w = line.adv[sel_end.column] - line.adv[sel_start.column];
                 } else {
                     if (sel_end.column == line.len)
                         sel_rect.w = (line.bounds.x + line.bounds.w) - sel_rect.x;
@@ -175,14 +171,18 @@ void Element::draw_text(Canvas& canvas, rectd& rect) {
                 }
                 sel = line.data.mid(start, sel_end.column - start);
             } else {
-                sel_rect.w = line.bounds.w - sel_rect.x;
-                sel = line.data;
+                sel_rect.w = (line.bounds.x + line.bounds.w) - sel_rect.x;
+                if (sel_start.row == i) {
+                    sel = &line.data[sel_start.column];
+                } else {
+                    sel = line.data;
+                }
             }
             if (sel_rect.w) {
                 canvas.color(data->sel_background);
                 canvas.fill(sel_rect);
                 canvas.color(data->sel_color);
-                canvas.text(sel, sel_rect, alignment { 0, 0 }, { 0.0, text.align.y }, true);
+                canvas.text(sel, sel_rect, { text.align.x, 0.5 }, vec2d { 0, 0 }, true);
             } else {
                 sel_rect.x -= 1;
                 sel_rect.w  = 2;
