@@ -70,7 +70,6 @@
                 "group": "",
                 "order": 1,
             },
-            "preLaunchTask": "build-ux-app",
             "windows":{
                 "type": "cppvsdbg",
                 "program": "${workspaceFolder}/../ion/build/Debug/ux-app",

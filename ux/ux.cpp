@@ -362,11 +362,8 @@ void Element::draw(Canvas& canvas) {
             /// handle line deletion
             if (ss.column < 0) {
                 if (ss.row > 0) {
-                    /// signal line deletion
                     ss.row--;
                     ss.column = data->lines[ss.row].len;
-                    se.row    = ss.row;
-                    se.column = ss.column;
                 } else {
                     se.column = 0;
                     ss.column = 0;

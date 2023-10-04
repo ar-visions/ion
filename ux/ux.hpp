@@ -512,7 +512,7 @@ struct TextSel {
             for (LineInfo &l: text) {
                 item<LineInfo> *item;
                 if (index) {
-                    item = lines->insert(sel_start.row + index, l);
+                    item = lines->insert(sel_start.row + index, l); // this should insert on end, it doesnt with a 1 item list with index = 1
                     /// this function insert before, unless index == count then its a new tail
                     /// always runs as final op, this merges last line with the data we read on right side prior
                     if (index + 1 == last) {
