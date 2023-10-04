@@ -45,7 +45,7 @@ struct View:Element {
     node update() {
         return ion::array<node> {
             Edit {
-                { "content", "Multiline edit test\nAnother line" }
+                { "content", "Multiline edit test" }
             }
         };
     }

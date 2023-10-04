@@ -1,5 +1,12 @@
 #import "apple.h"
 
+extern "C" void AllowKeyRepeats(void)
+{
+    @autoreleasepool {
+        [[NSUserDefaults standardUserDefaults] setBool: NO forKey: @"ApplePressAndHoldEnabled"];
+    }
+}
+
 @implementation AppleCapture
 
 - (AVCaptureDeviceFormat *)filterDevice:(AVCaptureDevice *)device format:(FourCharCode)f {

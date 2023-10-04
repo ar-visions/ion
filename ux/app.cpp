@@ -7,6 +7,10 @@
 //#include <vkg/vkg.hpp>
 #include <camera/camera.hpp>
 
+#ifdef __APPLE__
+extern "C" void AllowKeyRepeats(void);
+#endif
+
 using namespace ion;
 
 static cstr cstr_copy(cstr s) {
@@ -34,7 +38,7 @@ static void key_callback(mx &user, int key, int scancode, int action, int mods) 
     Element* root  = (Element*)app.composer::data->instances; /// for ux this is always single
     Element* focus = root->Element::data->focused;
 
-	if (action != GLFW_PRESS)
+	if (action != GLFW_PRESS && action != GLFW_REPEAT)
 		return;
     
     int code = 0;
@@ -92,7 +96,6 @@ static void mouse_move_callback(mx &user, double x, double y) {
             bool is_down = app->active[0];
             if (is_down) {
                 last->data->sel_end = last->get_selection(app->cursor, is_down);
-                last->order_selection();
             }
         }
     }
@@ -151,7 +154,6 @@ static void mouse_button_callback(mx &user, int button, int state, int mods) {
                 if (!shift)
                     last->data->sel_start = s;
             }
-            last->order_selection();
         }
     }
 }
@@ -210,6 +212,12 @@ int App::run() {
     
     vk_engine_t *e = data->e;
     Canvas *canvas = data->canvas = new Canvas(e->renderer);
+
+    /// allows keys to repeat on OSX, and thus allow glfw to function normally for UX
+    /// todo: we still need backspace to repeat
+    #ifdef __APPLE__
+    AllowKeyRepeats();
+    #endif
 
     vkengine_key_callback    (e,          key_callback);
 	vkengine_button_callback (e, mouse_button_callback);

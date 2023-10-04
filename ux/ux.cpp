@@ -285,4 +285,186 @@ void Element::draw(Canvas& canvas) {
     canvas.restore();
 }
 
+    TextSel Element::get_selection(vec2d pos, bool is_down) {
+        rectd r = data->bounds;
+        Element *n = this;
+        /// localize mouse pos input to this control (should be done by the caller; why would we repeat this differently)
+        while (n) {
+            pos.x -= n->data->bounds.x + n->data->scroll.x;
+            pos.y -= n->data->bounds.y + n->data->scroll.y;
+            n      = (Element*)((node*)n)->data->parent;
+        }
+        ///
+        TextSel res;
+        real    y = data->text_bounds.y;
+        num     row = 0;
+
+        ///
+        for (LineInfo &line: data->lines) {
+            if (pos.y >= y && pos.y <= (y + line.bounds.h)) {
+                res.row = row;
+                if (pos.x < line.placement.x)
+                    res.column = 0;
+                else if (pos.x > line.placement.x + line.placement.w)
+                    res.column = line.len;
+                else {
+                    bool col_set = false;
+                    for (num i = 1; i <= line.len; i++) {
+                        real adv0 = line.adv[i - 1];
+                        real adv1 = line.adv[i];
+                        real med  = (adv0 + adv1) / 2.0;
+                        if ((pos.x - line.placement.x) < med) {
+                            res.column = i - 1;
+                            col_set = true;
+                            break;
+                        }
+                    }
+                    /// set end-of-last character
+                    if (!col_set)
+                        res.column = line.len;
+                }
+            }
+            y += line.bounds.h;
+            row++;
+        }
+        return res;
+    }
+
+    /// Element-based generic text handler; dispatches text event
+    void Element::on_text(event e) {
+        /// insert text 
+        bool swap = data->sel_start > data->sel_end;
+        TextSel &ss = swap ? data->sel_end : data->sel_start;
+        TextSel &se = swap ? data->sel_start : data->sel_end;
+        array<str> text = e->text.split("\n");
+        int    tlen = text.len();
+        bool  enter = e->text == "\n";
+        bool   back = e->text == "\b";
+
+        /// do not insert control characters
+        if (back) {
+            text = array<str> {""};
+        }
+
+        doubly<LineInfo> add;
+        for (str &line: text) {
+            LineInfo &l = add->push();
+            l.data = line;
+            l.len  = line.len();
+        }
+
+        /// handle backspace
+        if (back) {
+            /// shift start back 1 when our len is 0
+            if (ss.row == se.row && ss.column == se.column)
+                ss.column--;
+            
+            /// handle line deletion
+            if (ss.column < 0) {
+                if (ss.row > 0) {
+                    /// signal line deletion
+                    ss.row--;
+                    ss.column = data->lines[ss.row].len;
+                    se.row    = ss.row;
+                    se.column = ss.column;
+                } else {
+                    se.column = 0;
+                    ss.column = 0;
+                }
+            }
+        }
+
+        /// replace and update text sels (all done in TextSel::replace)
+        TextSel::replace(data->lines, ss, se, add);
+
+        if (!back) {
+            if (enter) {
+                se.row++;
+                ss.row++;
+                se.column = 0;
+                ss.column = 0;
+            } else {
+                se.column++;
+                ss.column++;
+            }
+        }
+
+        /// turn off for very large text boxes
+        size_t len = 0;
+        for (LineInfo &li: data->lines)
+            len += li.len;
+        str content { len };
+        for (LineInfo &li: data->lines)
+            content += li.data;
+        data->content = content;
+ 
+        /// avoid updating content otherwise
+        if (data->ev.text) {
+            e->text = content;
+            data->ev.text(e);
+        }
+    }
+
+    rgba8 Element::color_with_opacity(rgba8 &input) {
+        rgba8 result = input;
+        Element  *n = (Element*)node::data->parent;
+        double o = 1.0;
+        while (n) {
+            o *= n->data->opacity;
+            n  = (Element*)n->node::data->parent;
+        }
+        result.a = math::round(result.a * o);
+        return result;
+    }
+
+    double Element::effective_opacity() {
+        Element  *n = this;
+        double o = 1.0;
+        while (n) {
+            o *= n->data->opacity;
+            n  = (Element*)n->node::data->parent;
+        }
+        return o;
+    }
+
+    vec2d Element::offset() {
+        Element *n = (Element*)node::data->parent;
+        vec2d  o = { 0, 0 };
+        while (n) {
+            props::drawing &draw = n->data->drawings[operation::child];
+            rectd &rect = draw.shape.bounds();
+            o  +=  rect.xy();
+            o  -= n->Element::data->scroll;
+            n   = (Element*)n->node::data->parent;
+        }
+        return o;
+    }
+
+    array<Element*> Element::select(lambda<Element*(Element*)> fn) {
+        array<Element*> result;
+        lambda<Element *(Element *)> recur;
+        recur = [&](Element* n) -> Element* {
+            Element* r = fn(n);
+            if   (r) result += r;
+            /// go through mount fields mx(symbol) -> Element*
+            for (field<node*> &f:n->node::data->mounts)
+                if (f.value) recur((Element*)f.value);
+            return null;
+        };
+        recur(this);
+        return result;
+    }
+
+    void Element::exec(lambda<void(node*)> fn) {
+        lambda<node*(node*)> recur;
+        recur = [&](node* n) -> node* {
+            fn(n);
+            for (field<node*> &f: n->node::data->mounts)
+                if (f.value) recur(f.value);
+            return null;
+        };
+        recur(this);
+    }
+
+
 }

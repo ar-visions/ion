@@ -13,6 +13,8 @@ typedef void (*CaptureCallback)(void*, void*, int);
 @property (nonatomic, assign) void *user;
 @property (nonatomic, assign) CaptureCallback callback;
 
+extern "C" void AllowKeyRepeats(void);
+
 //- (AVCaptureDeviceFormat *) selectMJPEGFormatForDevice:(AVCaptureDevice *)device;
 - (AVCaptureDeviceFormat *)filterDevice:(AVCaptureDevice *)device format:(FourCharCode)format;
 - (void)start:(int)index width:(int)width height:(int)height user:(void*)user callback:(CaptureCallback)callback;

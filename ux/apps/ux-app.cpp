@@ -25,7 +25,7 @@ struct View:Element {
     node update() {
         return array<node> {
             Edit {
-                { "content", "Multiline edit test\nAnother line" }
+                { "content", "Multiline edit test" }
             }
         };
     }

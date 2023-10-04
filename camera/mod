@@ -5,7 +5,7 @@ src(-apple.mm)
 
 if(APPLE)
     dep(IOSurface QuartzCore Metal CoreMedia CoreFoundation Cocoa IOKit AVFoundation)
-    cflags(+-fobjc-arc)
+    cflags(+-fobjc-arc +-Wno-deprecated-declarations)
     src(apple.mm)
 elseif(WIN32)
     #dep(mf mfplat mfreadwrite mfuuid strmiids quartz ole32 oleaut32 uuid)
