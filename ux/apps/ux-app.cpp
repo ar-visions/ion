@@ -8,7 +8,6 @@ using namespace ion;
 
 
 extern "C" {
-int test_1234();
 int onig_new(regex_t** reg, const UChar* pattern, const UChar* pattern_end,
          OnigOptionType option, OnigEncoding enc, OnigSyntaxType* syntax,
          OnigErrorInfo* einfo);
@@ -18,6 +17,7 @@ int onig_new(regex_t** reg, const UChar* pattern, const UChar* pattern_end,
 struct Rule {
     OnigRegex match;  // Oniguruma regex
     var captures;     // Your captures data structure
+    type_register(Rule);
 };
 
 array<Rule> read_grammar(path filePath) {
@@ -27,13 +27,12 @@ array<Rule> read_grammar(path filePath) {
     auto read_patterns = [&](var& patterns) {
         for (var pattern: patterns.list()) {
             if (pattern.get("match")) {
-                Rule rule;
-                var match = pattern["match"];
-                std::string m = std::string(match);
-
-                // Create an Oniguruma regex
-                OnigRegex regex;
+                Rule          rule;
+                var           match = pattern["match"];
+                std::string   m = std::string(match);
+                OnigRegex     regex;
                 OnigErrorInfo einfo;
+                ///
                 int r = onig_new(&regex, (OnigUChar*)m.c_str(), (OnigUChar*)m.c_str() + m.length(),
                                  ONIG_OPTION_DEFAULT, ONIG_ENCODING_UTF8, ONIG_SYNTAX_DEFAULT, &einfo);
                 if (r != ONIG_NORMAL) {
@@ -44,15 +43,12 @@ array<Rule> read_grammar(path filePath) {
                 }
 
                 rule.match = regex;
-
                 if (pattern.get("captures")) {
                     for (field<mx>& f : pattern["captures"].items()) {
-                        int index = str(f.key).integer_value();
                         var value = f.value;
-                        rule.captures[index] = value["name"];
+                        rule.captures[f.key] = value["name"];
                     }
                 }
-
                 rules.push(rule);
             }
         }
@@ -83,10 +79,11 @@ array<str> apply_rules(str code, array<Rule>& rules) {
         while (onig_search(rule.match, cp, end, start, end, region, ONIG_OPTION_NONE) >= 0) {
 
             for (field<mx> &capture : rule.captures.items()) {
-                int ikey = int(capture.key);
+                str skey = capture.key.grab();
+                assert(skey.mem->type == typeof(char));
+                int ikey = skey.integer_value();
 
-                if (ikey < region->num_regs && region->beg[ikey] != ONIG_REGION_NOTPOS
-                    && region->end[ikey] != ONIG_REGION_NOTPOS) {
+                if (ikey < region->num_regs && region->beg[ikey] != ONIG_REGION_NOTPOS) {
                     // The capture key was matched
                     const OnigUChar* subMatchStart = cp + region->beg[ikey];
                     const OnigUChar* subMatchEnd = cp + region->end[ikey];
@@ -140,9 +137,7 @@ struct View:Element {
 };
 
 int main(int argc, char *argv[]) {
-
-    test_1234();
-
+    usleep(1000000);
     OnigRegex regex;
     OnigErrorInfo einfo;
     int r = onig_new(&regex, (OnigUChar*)"", (OnigUChar*)"",
@@ -154,7 +149,8 @@ int main(int argc, char *argv[]) {
     array<str>  categories  = apply_rules(src, rules);
 
     for (size_t i = 0; i < src.len(); ++i) {
-        std::cout << src[i] << ": " << categories[i] << std::endl;
+        str cat = categories[i];
+        std::cout << src[i] << ": " << cat << std::endl;
     }
 
     map<mx> defs { { "debug", uri { "ssh://ar-visions.com:1022" } } };

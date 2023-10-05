@@ -551,7 +551,7 @@ struct Element:node {
         bool                    capture;
         bool                    hover;
         bool                    active;
-        bool                    focus = true;
+        bool                    focus;
         int                     tab_index;
         vec2d                   cursor;
 
