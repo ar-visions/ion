@@ -1,0 +1,27 @@
+cpp(17)
+dep(mx:mx)
+
+includes(${module_path}
+         ${EXTERN_DIR}/oniguruma/src)
+
+defines(ONIG_STATIC)
+
+set(dir ${EXTERN_DIR}/oniguruma/src)
+
+src(
+    ${dir}/regint.h         ${dir}/regparse.h   ${dir}/regenc.h     ${dir}/st.h
+    ${dir}/regerror.c       ${dir}/regparse.c   ${dir}/regext.c     ${dir}/regcomp.c    ${dir}/regexec.c
+    ${dir}/reggnu.c         ${dir}/regenc.c     ${dir}/regsyntax.c  ${dir}/regtrav.c    ${dir}/regversion.c
+    ${dir}/st.c             ${dir}/onig_init.c
+    ${dir}/unicode.c        ${dir}/ascii.c      ${dir}/utf8.c       ${dir}/utf16_be.c   ${dir}/utf16_le.c
+    ${dir}/utf32_be.c       ${dir}/utf32_le.c   ${dir}/euc_jp.c     ${dir}/sjis.c       ${dir}/iso8859_1.c
+    ${dir}/iso8859_2.c      ${dir}/iso8859_3.c  ${dir}/iso8859_4.c  ${dir}/iso8859_5.c
+    ${dir}/iso8859_6.c      ${dir}/iso8859_7.c  ${dir}/iso8859_8.c  ${dir}/iso8859_9.c
+    ${dir}/iso8859_10.c     ${dir}/iso8859_11.c ${dir}/iso8859_13.c ${dir}/iso8859_14.c
+    ${dir}/iso8859_15.c     ${dir}/iso8859_16.c ${dir}/euc_tw.c     ${dir}/euc_kr.c     ${dir}/big5.c
+    ${dir}/gb18030.c        ${dir}/koi8_r.c     ${dir}/cp1251.c
+    ${dir}/euc_jp_prop.c    ${dir}/sjis_prop.c
+    ${dir}/unicode_unfold_key.c
+    ${dir}/unicode_fold1_key.c
+    ${dir}/unicode_fold2_key.c
+    ${dir}/unicode_fold3_key.c)

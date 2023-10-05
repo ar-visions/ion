@@ -182,7 +182,7 @@ void Element::draw_text(Canvas& canvas, rectd& rect) {
                 canvas.color(data->sel_background);
                 canvas.fill(sel_rect);
                 canvas.color(data->sel_color);
-                canvas.text(sel, sel_rect, { text.align.x, 0.5 }, vec2d { 0, 0 }, false); /// use ellipsis on Element
+                canvas.text(sel, sel_rect, { text.align.x, 0.5 }, vec2d { 0, 0 }, false);
             } else {
                 sel_rect.x -= 1;
                 sel_rect.w  = 2;

@@ -5,6 +5,16 @@
         "mx",
         "vulkan",
         {
+            "name":     "oniguruma",
+            "version":  "6.9.8",
+            "url":      "https://github.com/kkos/oniguruma",
+            "commit":   "08d3611",
+            "resource": true,
+            "cmake": {
+                "args": ["-DMSVC_STATIC_RUNTIME=1", "-DBUILD_SHARED_LIBS=0", "-DINSTALL_DOCUMENTATION=0"]
+            }
+        },
+        {
             "name":     "gsl",
             "version":  "2.7",
             "url":      "https://github.com/ampl/gsl",
