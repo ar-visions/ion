@@ -4,6 +4,8 @@ using namespace ion;
 
 #include <stdio.h>
 #include <string>
+
+#define ONIG_STATIC 1
 #include <oniguruma.h> // Include the Oniguruma header
 
 
@@ -29,7 +31,7 @@ array<Rule> read_grammar(path filePath) {
             if (pattern.get("match")) {
                 Rule          rule;
                 var           match = pattern["match"];
-                std::string   m = std::string(match);
+                std::string   m = "[a-zA-Z0-9]+";//std::string(match);
                 OnigRegex     regex;
                 OnigErrorInfo einfo;
                 ///
@@ -43,10 +45,15 @@ array<Rule> read_grammar(path filePath) {
                 }
 
                 rule.match = regex;
+                rule.captures = map<mx>();
                 if (pattern.get("captures")) {
                     for (field<mx>& f : pattern["captures"].items()) {
                         var value = f.value;
-                        rule.captures[f.key] = value["name"];
+                        if (value.get("name")) {
+                            str name = value["name"];
+                            rule.captures[f.key] = name;
+                            assert(name);
+                        }
                     }
                 }
                 rules.push(rule);
@@ -58,8 +65,10 @@ array<Rule> read_grammar(path filePath) {
     if (js.get("repository")) {
         for (field<mx>& f : js["repository"].items()) {
             var item = f.value;
-            if (item.get("patterns"))
-                read_patterns(item["patterns"]);
+            if (item.get("patterns")) {
+                var vpatterns = item["patterns"];
+                read_patterns(vpatterns);
+            }
         }
     }
 
@@ -68,7 +77,11 @@ array<Rule> read_grammar(path filePath) {
 
 
 array<str> apply_rules(str code, array<Rule>& rules) {
-    array<str> categories { code.len(), code.len(), "unknown" };
+    array<str> categories;
+    str u = "unknown";
+    for (int i = 0; i < code.len(); i++)
+        categories.push(u);
+    str cat = categories[0];
     UChar* cp = (UChar*)code.cs();
 
     for (Rule& rule: rules) {
@@ -78,18 +91,19 @@ array<str> apply_rules(str code, array<Rule>& rules) {
 
         while (onig_search(rule.match, cp, end, start, end, region, ONIG_OPTION_NONE) >= 0) {
 
-            for (field<mx> &capture : rule.captures.items()) {
+            for (field<mx> &capture : rule.captures.items()) { /// check against the values going into this i dont think the file contains "0": null or anything.
                 str skey = capture.key.grab();
                 assert(skey.mem->type == typeof(char));
                 int ikey = skey.integer_value();
 
-                if (ikey < region->num_regs && region->beg[ikey] != ONIG_REGION_NOTPOS) {
+                if (ikey < region->num_regs && region->beg[ikey] != ONIG_REGION_NOTPOS &&
+                                               region->end[ikey] != ONIG_REGION_NOTPOS) {
                     // The capture key was matched
                     const OnigUChar* subMatchStart = cp + region->beg[ikey];
                     const OnigUChar* subMatchEnd = cp + region->end[ikey];
 
                     // Your logic here to determine the category for this capture
-                    str category = capture.value.grab();
+                    str category = capture.value.grab(); // this is null
 
                     // Update the category for the matched portion
                     size_t s = subMatchStart - cp;
@@ -136,21 +150,23 @@ struct View:Element {
     }
 };
 
+extern "C" {
+    int oni_init_utf8();
+}
+
 int main(int argc, char *argv[]) {
     usleep(1000000);
-    OnigRegex regex;
-    OnigErrorInfo einfo;
-    int r = onig_new(&regex, (OnigUChar*)"", (OnigUChar*)"",
-                        ONIG_OPTION_DEFAULT, ONIG_ENCODING_UTF8, ONIG_SYNTAX_DEFAULT, &einfo);
 
-    ion::path   grammarFile = "style/cpp.json";
-    array<Rule> rules       = read_grammar(grammarFile);
+    onig_init();
+    oni_init_utf8();
+    
+    array<Rule> rules       = read_grammar("style/cpp.json");
     str         src         = "#include <stdio.h>\n\nint main() {\n\treturn 0;\n}\n";
     array<str>  categories  = apply_rules(src, rules);
 
     for (size_t i = 0; i < src.len(); ++i) {
         str cat = categories[i];
-        std::cout << src[i] << ": " << cat << std::endl;
+        std::cout << int(src[i]) << ": " << cat << std::endl;
     }
 
     map<mx> defs { { "debug", uri { "ssh://ar-visions.com:1022" } } };

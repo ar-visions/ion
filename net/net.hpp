@@ -158,8 +158,7 @@ struct uri:mx {
 
     ///
     static str encode(str s) {
-        static const char *s_chars = " -._~:/?#[]@!$&'()*+;%=";
-        static array<char>   chars { (char*)s_chars, strlen(s_chars) };
+        static str chars = " -._~:/?#[]@!$&'()*+;%=";
 
         /// A-Z, a-z, 0-9, -, ., _, ~, :, /, ?, #, [, ], @, !, $, &, ', (, ), *, +, ,, ;, %, and =
         size_t  len = s.len();

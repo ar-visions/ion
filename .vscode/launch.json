@@ -65,6 +65,7 @@
             "cwd": "${workspaceFolder}/../ion/build",
             "environment": [],
             "MIMode": "gdb",
+            "preLaunchTask": "build-ux-app",
             "presentation": {
                 "hidden": false,
                 "group": "",
