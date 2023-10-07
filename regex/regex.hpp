@@ -4,15 +4,17 @@
 #ifdef REGEX_IMPL
 #define ONIG_STATIC 1
 #include <oniguruma.h>
-typedef OnigRegexType  regex_t;
 #endif
 struct iRegEx;
 
 namespace ion {
 
 struct RegEx:mx {
+    enums(Behaviour, none, none, global, sticky);
+
     RegEx(str pattern);
-    array<str> exec(str input);
+    RegEx(symbol pattern);
+    array<str> exec(str input, Behaviour b = Behaviour::sticky);
     mx_declare(RegEx, mx, iRegEx)
 };
 

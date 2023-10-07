@@ -27,6 +27,8 @@ struct iRegEx {
     register(iRegEx);
 };
 
+RegEx::RegEx(symbol pattern) : RegEx(str(pattern)) { }
+
 RegEx::RegEx(str pattern) : RegEx() {
     OnigErrorInfo err;
     int r = onig_new(
@@ -40,7 +42,7 @@ RegEx::RegEx(str pattern) : RegEx() {
     }
 }
 
-array<str> RegEx::exec(str input) {
+array<str> RegEx::exec(str input, Behaviour b) {
     array<str> result;
     if (input.mem != data->last_mem) {
         data->left = 0;
@@ -69,7 +71,9 @@ array<str> RegEx::exec(str input) {
                 result      += match;
                 data->left   = end + 1;
                 data->bytes_left = std::distance(data->left, e);
-            } else
+            }
+            
+            if (b != Behaviour::global || r < 0)
                 break;
         }
         onig_region_free(region, 1);

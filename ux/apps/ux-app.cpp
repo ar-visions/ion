@@ -91,23 +91,12 @@ export function createMatchers<T>(selector: string, matchesName: (names: string[
 function isIdentifier(token: string | null): token is string {
 	return !!token && !!token.match(/[\w\.:]+/);
 }
-
-Tokenizer newTokenizer(input: string) {
-	let regex = /([LR]:|[\w\.:][\w\.:\-]*|[\,\|\-\(\)])/g;
-	let match = regex.exec(input);
-	return {
-		next: () => {
-			if (!match) {
-				return null;
-			}
-			const res = match[0];
-			match = regex.exec(input);
-			return res;
-		}
-	};
-}
-
 */
+
+bool isIdentifier(str token) {
+	RegEx regex("[\\w\\.:]+/");
+	return token && regex.exec(token);
+}
 
 struct Tokenizer:mx {
     struct state {
@@ -126,7 +115,7 @@ struct Tokenizer:mx {
     mx_object(Tokenizer, mx, state);
 
     Tokenizer(str input) : Tokenizer() {
-        data->regex = str("([LR]:|[\\w\.:][\\w\.:\\-]*|[\\,\\|\\-\\(\\)])");
+        data->regex = str("([LR]:|[\\w\\.:][\\w\\.:\\-]*|[\\,\\|\\-\\(\\)])");
 	    data->match = data->regex.exec(input);
     }
 };
@@ -161,9 +150,8 @@ struct View:Element {
 };
 
 int main(int argc, char *argv[]) {
-	str     pattern = "\\w+";
-	RegEx 	regex(pattern);
-    array<str> matches = regex.exec("Hello, World!");
+	RegEx 	regex("\\w+");
+    array<str> matches = regex.exec("Hello, World!", true);
 
 	if (matches)
 		console.log("match: {0}", {matches[0]});
