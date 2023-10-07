@@ -2,9 +2,43 @@
 
 using namespace ion;
 
+
+bool isIdentifier(str token) {
+	RegEx regex("[\\w\\.:]+/");
+	return token && regex.exec(token);
+}
+
+struct Tokenizer:mx {
+    struct state {
+		str			  input;
+		RegEx		  regex;
+		array<str>    match;
+		str next() {
+			if (!match)
+				return {};
+			str prev = match[0];
+			match = regex.exec(input); /// regex has a marker for its last match stored, so one can call it again if you give it the same input.  if its a different input it will reset
+			return prev;
+		}
+    };
+
+    mx_object(Tokenizer, mx, state);
+
+    Tokenizer(str input) : Tokenizer() {
+        data->regex = str("([LR]:|[\\w\\.:][\\w\\.:\\-]*|[\\,\\|\\-\\(\\)])");
+	    data->match = data->regex.exec(input);
+    }
+};
+
+struct Matcher:mx {
+	struct vars {
+		mx matcherInput;
+	};
+	mx_object(Matcher, mx, vars);
+}
 /*
 
-export interface MatcherWithPriority<T> {
+interface MatcherWithPriority<T> {
 	matcher: Matcher<T>;
 	priority: -1 | 0 | 1;
 }
@@ -88,37 +122,8 @@ export function createMatchers<T>(selector: string, matchesName: (names: string[
 	}
 }
 
-function isIdentifier(token: string | null): token is string {
-	return !!token && !!token.match(/[\w\.:]+/);
-}
+
 */
-
-bool isIdentifier(str token) {
-	RegEx regex("[\\w\\.:]+/");
-	return token && regex.exec(token);
-}
-
-struct Tokenizer:mx {
-    struct state {
-		str			  input;
-		RegEx		  regex;
-		array<str>    match;
-		str next() {
-			if (!match)
-				return {};
-			str prev = match[0];
-			match = regex.exec(input); /// regex has a marker for its last match stored, so one can call it again if you give it the same input.  if its a different input it will reset
-			return prev;
-		}
-    };
-
-    mx_object(Tokenizer, mx, state);
-
-    Tokenizer(str input) : Tokenizer() {
-        data->regex = str("([LR]:|[\\w\\.:][\\w\\.:\\-]*|[\\,\\|\\-\\(\\)])");
-	    data->match = data->regex.exec(input);
-    }
-};
 
 struct View:Element {
     struct props {
@@ -151,7 +156,7 @@ struct View:Element {
 
 int main(int argc, char *argv[]) {
 	RegEx 	regex("\\w+");
-    array<str> matches = regex.exec("Hello, World!", true);
+    array<str> matches = regex.exec("Hello, World!", RegEx::Behaviour::global);
 
 	if (matches)
 		console.log("match: {0}", {matches[0]});
@@ -162,7 +167,6 @@ int main(int argc, char *argv[]) {
 	num  m1  	 = millis();
 
 	console.log("millis = {0}", {m1-m0});
-
     
     map<mx> defs { { "debug", uri { "ssh://ar-visions.com:1022" } } };
     map<mx> config { args::parse(argc, argv, defs) };

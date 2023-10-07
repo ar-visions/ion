@@ -10,7 +10,7 @@ struct iRegEx;
 namespace ion {
 
 struct RegEx:mx {
-    enums(Behaviour, none, none, global, sticky);
+    enums(Behaviour, none, none, global, sticky, global_sticky);
 
     RegEx(str pattern);
     RegEx(symbol pattern);

@@ -7,7 +7,7 @@ mx_implement(RegEx, mx)
 
 struct iRegEx {
     regex_t *regex;
-    cstr     left;
+    num      last_index;
     num      bytes_left;
     memory*  last_mem;
     
@@ -44,19 +44,23 @@ RegEx::RegEx(str pattern) : RegEx() {
 
 array<str> RegEx::exec(str input, Behaviour b) {
     array<str> result;
-    if (input.mem != data->last_mem) {
-        data->left = 0;
+    if (input.mem != data->last_mem || b == Behaviour::none) {
+        ::drop(data->last_mem);
+        data->last_index = 0;
         data->bytes_left = 0;
         data->last_mem = input.grab();
     }
-    if (data->regex && (!data->left || data->bytes_left)) {
+    if (data->regex && (!data->last_index || data->bytes_left)) {
         OnigRegion* region = onig_region_new();
         size_t      ilen   = input.len();
-        size_t      len    = data->left ? data->bytes_left : ilen;
-        cstr        i      = data->left ? data->left       : input.cs();
-        cstr        e      = input.cs() + ilen;
+        cstr        origin = input.cs();
+        cstr        i      = &origin[data->last_index];
+        cstr        e      = &origin[ilen];
         ///
         for (size_t cursor = 0; ; cursor += region->end[0] + 1) {
+            if (cursor == ilen)
+                break;
+
             cstr s = &i[cursor];
             int  r = onig_search(
                 data->regex,
@@ -69,12 +73,14 @@ array<str> RegEx::exec(str input, Behaviour b) {
                 cstr end     = s + region->end[0];
                 str  match   = str(start, std::distance(start, end));
                 result      += match;
-                data->left   = end + 1;
-                data->bytes_left = std::distance(data->left, e);
+                data->last_index = std::distance(i, end + 1);
+                data->bytes_left = std::distance(origin + data->last_index, e);
+                continue;
+            } else if (b == Behaviour::sticky || b == Behaviour::global_sticky) {
+                data->last_index = 0;
+                data->bytes_left = 0;
             }
-            
-            if (b != Behaviour::global || r < 0)
-                break;
+            break;
         }
         onig_region_free(region, 1);
     }
