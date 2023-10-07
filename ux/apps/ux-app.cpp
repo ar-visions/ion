@@ -2,124 +2,134 @@
 
 using namespace ion;
 
-#include <stdio.h>
-#include <string>
+/*
 
-#define ONIG_STATIC 1
-#include <oniguruma.h> // Include the Oniguruma header
-
-
-extern "C" {
-int onig_new(regex_t** reg, const UChar* pattern, const UChar* pattern_end,
-         OnigOptionType option, OnigEncoding enc, OnigSyntaxType* syntax,
-         OnigErrorInfo* einfo);
+export interface MatcherWithPriority<T> {
+	matcher: Matcher<T>;
+	priority: -1 | 0 | 1;
 }
 
-// Define the Rule structure to hold the Oniguruma regex and captures
-struct Rule {
-    OnigRegex match;  // Oniguruma regex
-    var captures;     // Your captures data structure
-    type_register(Rule);
-};
+export interface Matcher<T> {
+	(matcherInput: T): boolean;
+}
 
-array<Rule> read_grammar(path filePath) {
-    array<Rule> rules;
-    var js { filePath.read<var>() };
+export function createMatchers<T>(selector: string, matchesName: (names: string[], matcherInput: T) => boolean): MatcherWithPriority<T>[] {
+	const results = <MatcherWithPriority<T>[]>[];
+	const tokenizer = newTokenizer(selector);
+	let token = tokenizer.next();
+	while (token !== null) {
+		let priority: -1 | 0 | 1 = 0;
+		if (token.length === 2 && token.charAt(1) === ':') {
+			switch (token.charAt(0)) {
+				case 'R': priority = 1; break;
+				case 'L': priority = -1; break;
+				default:
+					console.log(`Unknown priority ${token} in scope selector`);
+			}
+			token = tokenizer.next();
+		}
+		let matcher = parseConjunction();
+		results.push({ matcher, priority });
+		if (token !== ',') {
+			break;
+		}
+		token = tokenizer.next();
+	}
+	return results;
 
-    auto read_patterns = [&](var& patterns) {
-        for (var pattern: patterns.list()) {
-            if (pattern.get("match")) {
-                Rule          rule;
-                var           match = pattern["match"];
-                std::string   m = "[a-zA-Z0-9]+";//std::string(match);
-                OnigRegex     regex;
-                OnigErrorInfo einfo;
-                ///
-                int r = onig_new(&regex, (OnigUChar*)m.c_str(), (OnigUChar*)m.c_str() + m.length(),
-                                 ONIG_OPTION_DEFAULT, ONIG_ENCODING_UTF8, ONIG_SYNTAX_DEFAULT, &einfo);
-                if (r != ONIG_NORMAL) {
-                    UChar s[ONIG_MAX_ERROR_MESSAGE_LEN];
-                    onig_error_code_to_str(s, r, &einfo);
-                    fprintf(stderr, "Regex compilation failed: %s\n", s);
-                    // Handle the error here as needed
-                }
+	function parseOperand(): Matcher<T> | null {
+		if (token === '-') {
+			token = tokenizer.next();
+			const expressionToNegate = parseOperand();
+			return matcherInput => !!expressionToNegate && !expressionToNegate(matcherInput);
+		}
+		if (token === '(') {
+			token = tokenizer.next();
+			const expressionInParents = parseInnerExpression();
+			if (token === ')') {
+				token = tokenizer.next();
+			}
+			return expressionInParents;
+		}
+		if (isIdentifier(token)) {
+			const identifiers: string[] = [];
+			do {
+				identifiers.push(token);
+				token = tokenizer.next();
+			} while (isIdentifier(token));
+			return matcherInput => matchesName(identifiers, matcherInput);
+		}
+		return null;
+	}
+	function parseConjunction(): Matcher<T> {
+		const matchers: Matcher<T>[] = [];
+		let matcher = parseOperand();
+		while (matcher) {
+			matchers.push(matcher);
+			matcher = parseOperand();
+		}
+		return matcherInput => matchers.every(matcher => matcher(matcherInput)); // and
+	}
+	function parseInnerExpression(): Matcher<T> {
+		const matchers: Matcher<T>[] = [];
+		let matcher = parseConjunction();
+		while (matcher) {
+			matchers.push(matcher);
+			if (token === '|' || token === ',') {
+				do {
+					token = tokenizer.next();
+				} while (token === '|' || token === ','); // ignore subsequent commas
+			} else {
+				break;
+			}
+			matcher = parseConjunction();
+		}
+		return matcherInput => matchers.some(matcher => matcher(matcherInput)); // or
+	}
+}
 
-                rule.match = regex;
-                rule.captures = map<mx>();
-                if (pattern.get("captures")) {
-                    for (field<mx>& f : pattern["captures"].items()) {
-                        var value = f.value;
-                        if (value.get("name")) {
-                            str name = value["name"];
-                            rule.captures[f.key] = name;
-                            assert(name);
-                        }
-                    }
-                }
-                rules.push(rule);
-            }
-        }
+function isIdentifier(token: string | null): token is string {
+	return !!token && !!token.match(/[\w\.:]+/);
+}
+
+Tokenizer newTokenizer(input: string) {
+	let regex = /([LR]:|[\w\.:][\w\.:\-]*|[\,\|\-\(\)])/g;
+	let match = regex.exec(input);
+	return {
+		next: () => {
+			if (!match) {
+				return null;
+			}
+			const res = match[0];
+			match = regex.exec(input);
+			return res;
+		}
+	};
+}
+
+*/
+
+struct Tokenizer:mx {
+    struct state {
+		str			  input;
+		RegEx		  regex;
+		array<str>    match;
+		str next() {
+			if (!match)
+				return {};
+			str prev = match[0];
+			match = regex.exec(input); /// regex has a marker for its last match stored, so one can call it again if you give it the same input.  if its a different input it will reset
+			return prev;
+		}
     };
 
-    read_patterns(js["patterns"]);
-    if (js.get("repository")) {
-        for (field<mx>& f : js["repository"].items()) {
-            var item = f.value;
-            if (item.get("patterns")) {
-                var vpatterns = item["patterns"];
-                read_patterns(vpatterns);
-            }
-        }
+    mx_object(Tokenizer, mx, state);
+
+    Tokenizer(str input) : Tokenizer() {
+        data->regex = str("([LR]:|[\\w\.:][\\w\.:\\-]*|[\\,\\|\\-\\(\\)])");
+	    data->match = data->regex.exec(input);
     }
-
-    return rules;
-}
-
-
-array<str> apply_rules(str code, array<Rule>& rules) {
-    array<str> categories;
-    str u = "unknown";
-    for (int i = 0; i < code.len(); i++)
-        categories.push(u);
-    str cat = categories[0];
-    UChar* cp = (UChar*)code.cs();
-
-    for (Rule& rule: rules) {
-        OnigRegion* region  = onig_region_new();
-        OnigUChar*  start   = cp;
-        OnigUChar*  end     = cp + strlen((char*)cp);
-
-        while (onig_search(rule.match, cp, end, start, end, region, ONIG_OPTION_NONE) >= 0) {
-
-            for (field<mx> &capture : rule.captures.items()) { /// check against the values going into this i dont think the file contains "0": null or anything.
-                str skey = capture.key.grab();
-                assert(skey.mem->type == typeof(char));
-                int ikey = skey.integer_value();
-
-                if (ikey < region->num_regs && region->beg[ikey] != ONIG_REGION_NOTPOS &&
-                                               region->end[ikey] != ONIG_REGION_NOTPOS) {
-                    // The capture key was matched
-                    const OnigUChar* subMatchStart = cp + region->beg[ikey];
-                    const OnigUChar* subMatchEnd = cp + region->end[ikey];
-
-                    // Your logic here to determine the category for this capture
-                    str category = capture.value.grab(); // this is null
-
-                    // Update the category for the matched portion
-                    size_t s = subMatchStart - cp;
-                    size_t count = subMatchEnd - subMatchStart;
-                    for (int i = s, e = s + count; i < e; i++)
-                        categories[i] = category;
-                }
-            }
-            start = cp + region->end[0]; // Move to the end of the matched portion
-        }
-
-        onig_region_free(region, 1);
-    }
-
-    return categories;
-}
+};
 
 struct View:Element {
     struct props {
@@ -150,25 +160,23 @@ struct View:Element {
     }
 };
 
-extern "C" {
-    int oni_init_utf8();
-}
-
 int main(int argc, char *argv[]) {
-    usleep(1000000);
+	usleep(100000);
+	str     pattern = "\\w+";
+	RegEx 	regex(pattern);
+    array<str> matches = regex.exec("Hello, World!");
 
-    onig_init();
-    oni_init_utf8();
+	if (matches)
+		console.log("match: {0}", {matches[0]});
+
+	path js 	 = "style/js.json";
+	num  m0 	 = millis();
+	var  grammar = js.read<var>();
+	num  m1  	 = millis();
+
+	console.log("millis = {0}", {m1-m0});
+
     
-    array<Rule> rules       = read_grammar("style/cpp.json");
-    str         src         = "#include <stdio.h>\n\nint main() {\n\treturn 0;\n}\n";
-    array<str>  categories  = apply_rules(src, rules);
-
-    for (size_t i = 0; i < src.len(); ++i) {
-        str cat = categories[i];
-        std::cout << int(src[i]) << ": " << cat << std::endl;
-    }
-
     map<mx> defs { { "debug", uri { "ssh://ar-visions.com:1022" } } };
     map<mx> config { args::parse(argc, argv, defs) };
     if    (!config) return args::defaults(defs);

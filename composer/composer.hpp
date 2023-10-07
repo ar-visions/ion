@@ -3,6 +3,7 @@
 #include <mx/mx.hpp>
 #include <math/math.hpp>
 #include <watch/watch.hpp>
+#include <regex/regex.hpp>
 
 namespace ion {
 /// style can go in composer if we are good at separating functionality
