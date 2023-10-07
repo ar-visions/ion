@@ -76,10 +76,3 @@ array<str> RegEx::exec(str input) {
     }
     return result;
 }
-
-int test() {
-    RegEx regex(str("\\w+")); // Create an instance with a pattern
-    str match = regex.exec("Hello, World!")[0];
-    std::cout << "Match: " << match << std::endl; // Output: Match: Hello
-    return 0;
-}

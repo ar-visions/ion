@@ -161,7 +161,6 @@ struct View:Element {
 };
 
 int main(int argc, char *argv[]) {
-	usleep(100000);
 	str     pattern = "\\w+";
 	RegEx 	regex(pattern);
     array<str> matches = regex.exec("Hello, World!");
