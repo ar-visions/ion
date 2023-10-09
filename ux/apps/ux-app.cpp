@@ -2,6 +2,302 @@
 
 using namespace ion;
 
+struct StateStack:mx {
+	void _stackElementBrand;
+	num depth;
+
+	/// implement the same
+	virtual StateStack clone() = 0;
+	virtual bool equals(StateStack other) = 0;
+};
+
+class StateStackImpl:mx {
+	_stackElementBrand: void = undefined;
+
+	// TODO remove me
+	public static NULL = new StateStackImpl(
+		null,
+		0 as any,
+		0,
+		0,
+		false,
+		null,
+		null,
+		null
+	);
+
+	/**
+	 * The position on the current line where this state was pushed.
+	 * This is relevant only while tokenizing a line, to detect endless loops.
+	 * Its value is meaningless across lines.
+	 */
+	private _enterPos: number;
+
+	/**
+	 * The captured anchor position when this stack element was pushed.
+	 * This is relevant only while tokenizing a line, to restore the anchor position when popping.
+	 * Its value is meaningless across lines.
+	 */
+	private _anchorPos: number;
+
+
+	/**
+	 * The depth of the stack.
+	 */
+	public readonly depth: number;
+
+
+	/**
+	 * Invariant:
+	 * ```
+	 * if (contentNameScopesList !== nameScopesList && contentNameScopesList?.parent !== nameScopesList) {
+	 * 	throw new Error();
+	 * }
+	 * if (this.parent && !nameScopesList.extends(this.parent.contentNameScopesList)) {
+	 * 	throw new Error();
+	 * }
+	 * ```
+	 */
+	constructor(
+		/**
+		 * The previous state on the stack (or null for the root state).
+		 */
+		public readonly parent: StateStackImpl | null,
+
+		/**
+		 * The state (rule) that this element represents.
+		 */
+		private readonly ruleId: RuleId,
+
+		enterPos: number,
+		anchorPos: number,
+
+		/**
+		 * The state has entered and captured \n. This means that the next line should have an anchorPosition of 0.
+		 */
+		public readonly beginRuleCapturedEOL: boolean,
+
+		/**
+		 * The "pop" (end) condition for this state in case that it was dynamically generated through captured text.
+		 */
+		public readonly endRule: string | null,
+
+		/**
+		 * The list of scopes containing the "name" for this state.
+		 */
+		public readonly nameScopesList: AttributedScopeStack | null,
+
+		/**
+		 * The list of scopes containing the "contentName" (besides "name") for this state.
+		 * This list **must** contain as an element `scopeName`.
+		 */
+		public readonly contentNameScopesList: AttributedScopeStack | null,
+	) {
+		this.depth = this.parent ? this.parent.depth + 1 : 1;
+		this._enterPos = enterPos;
+		this._anchorPos = anchorPos;
+	}
+
+	bool equals(StateStackImpl &other) {
+		if (other == null) {
+			return false;
+		}
+		return StateStackImpl._equals(this, other);
+	}
+
+	bool static _equals(a: StateStackImpl, b: StateStackImpl) {
+		if (a == b) {
+			return true;
+		}
+		if (!this._structuralEquals(a, b)) {
+			return false;
+		}
+		return AttributedScopeStack.equals(a.contentNameScopesList, b.contentNameScopesList);
+	}
+
+	/**
+	 * A structural equals check. Does not take into account `scopes`.
+	 */
+	private static _structuralEquals(
+		a: StateStackImpl | null,
+		b: StateStackImpl | null
+	): boolean {
+		do {
+			if (a === b) {
+				return true;
+			}
+
+			if (!a && !b) {
+				// End of list reached for both
+				return true;
+			}
+
+			if (!a || !b) {
+				// End of list reached only for one
+				return false;
+			}
+
+			if (
+				a.depth !== b.depth ||
+				a.ruleId !== b.ruleId ||
+				a.endRule !== b.endRule
+			) {
+				return false;
+			}
+
+			// Go to previous pair
+			a = a.parent;
+			b = b.parent;
+		} while (true);
+	}
+
+	bool clone() {
+		return this;
+	}
+
+	private static _reset(el: StateStackImpl | null): void {
+		while (el) {
+			el._enterPos = -1;
+			el._anchorPos = -1;
+			el = el.parent;
+		}
+	}
+
+	public reset(): void {
+		StateStackImpl._reset(this);
+	}
+
+	public pop(): StateStackImpl | null {
+		return this.parent;
+	}
+
+	public safePop(): StateStackImpl {
+		if (this.parent) {
+			return this.parent;
+		}
+		return this;
+	}
+
+	public push(
+		ruleId: RuleId,
+		enterPos: number,
+		anchorPos: number,
+		beginRuleCapturedEOL: boolean,
+		endRule: string | null,
+		nameScopesList: AttributedScopeStack | null,
+		contentNameScopesList: AttributedScopeStack | null,
+	): StateStackImpl {
+		return new StateStackImpl(
+			this,
+			ruleId,
+			enterPos,
+			anchorPos,
+			beginRuleCapturedEOL,
+			endRule,
+			nameScopesList,
+			contentNameScopesList
+		);
+	}
+
+	public getEnterPos(): number {
+		return this._enterPos;
+	}
+
+	public getAnchorPos(): number {
+		return this._anchorPos;
+	}
+
+	public getRule(grammar: IRuleRegistry): Rule {
+		return grammar.getRule(this.ruleId);
+	}
+
+	public toString(): string {
+		const r: string[] = [];
+		this._writeString(r, 0);
+		return "[" + r.join(",") + "]";
+	}
+
+	private _writeString(res: string[], outIndex: number): number {
+		if (this.parent) {
+			outIndex = this.parent._writeString(res, outIndex);
+		}
+
+		res[
+			outIndex++
+		] = `(${this.ruleId}, ${this.nameScopesList?.toString()}, ${this.contentNameScopesList?.toString()})`;
+
+		return outIndex;
+	}
+
+	public withContentNameScopesList(
+		contentNameScopeStack: AttributedScopeStack
+	): StateStackImpl {
+		if (this.contentNameScopesList === contentNameScopeStack) {
+			return this;
+		}
+		return this.parent!.push(
+			this.ruleId,
+			this._enterPos,
+			this._anchorPos,
+			this.beginRuleCapturedEOL,
+			this.endRule,
+			this.nameScopesList,
+			contentNameScopeStack
+		);
+	}
+
+	public withEndRule(endRule: string): StateStackImpl {
+		if (this.endRule === endRule) {
+			return this;
+		}
+		return new StateStackImpl(
+			this.parent,
+			this.ruleId,
+			this._enterPos,
+			this._anchorPos,
+			this.beginRuleCapturedEOL,
+			endRule,
+			this.nameScopesList,
+			this.contentNameScopesList
+		);
+	}
+
+	// Used to warn of endless loops
+	public hasSameRuleAs(other: StateStackImpl): boolean {
+		let el: StateStackImpl | null = this;
+		while (el && el._enterPos === other._enterPos) {
+			if (el.ruleId === other.ruleId) {
+				return true;
+			}
+			el = el.parent;
+		}
+		return false;
+	}
+
+	public toStateStackFrame(): StateStackFrame {
+		return {
+			ruleId: ruleIdToNumber(this.ruleId),
+			beginRuleCapturedEOL: this.beginRuleCapturedEOL,
+			endRule: this.endRule,
+			nameScopesList: this.nameScopesList?.getExtensionIfDefined(this.parent?.nameScopesList ?? null)! ?? [],
+			contentNameScopesList: this.contentNameScopesList?.getExtensionIfDefined(this.nameScopesList)! ?? [],
+		};
+	}
+
+	public static pushFrame(self: StateStackImpl | null, frame: StateStackFrame): StateStackImpl {
+		const namesScopeList = AttributedScopeStack.fromExtension(self?.nameScopesList ?? null, frame.nameScopesList)!;
+		return new StateStackImpl(
+			self,
+			ruleIdFromNumber(frame.ruleId),
+			frame.enterPos ?? -1,
+			frame.anchorPos ?? -1,
+			frame.beginRuleCapturedEOL,
+			frame.endRule,
+			namesScopeList,
+			AttributedScopeStack.fromExtension(namesScopeList, frame.contentNameScopesList)!
+		);
+	}
+}
 
 bool isIdentifier(str token) {
 	RegEx regex("[\\w\\.:]+/");
