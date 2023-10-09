@@ -29,7 +29,7 @@ struct iRegEx {
 
 RegEx::RegEx(symbol pattern) : RegEx(str(pattern)) { }
 
-RegEx::RegEx(str pattern) : RegEx() {
+RegEx::RegEx(str pattern, RegEx::Behaviour b) : RegEx() {
     OnigErrorInfo err;
     int r = onig_new(
         &data->regex, (OnigUChar*)pattern.cs(),
@@ -42,8 +42,15 @@ RegEx::RegEx(str pattern) : RegEx() {
     }
 }
 
-array<str> RegEx::exec(str input, Behaviour b) {
+/// escape regex characters with '\'
+str RegEx::escape(str value) {
+    return value.escape("\\{}*+?|^$.,[]()# ");
+}
+
+array<str> RegEx::exec(str input) {
+    Behaviour b = data->b;
     array<str> result;
+
     if (input.mem != data->last_mem || b == Behaviour::none) {
         ::drop(data->last_mem);
         data->last_index = 0;

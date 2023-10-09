@@ -14,6 +14,7 @@ struct RegEx:mx {
 
     RegEx(str pattern);
     RegEx(symbol pattern);
+    static str escape(str input);
     array<str> exec(str input, Behaviour b = Behaviour::sticky);
     mx_declare(RegEx, mx, iRegEx)
 };
