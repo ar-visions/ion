@@ -17,6 +17,162 @@ using ScopeName = str;
 using ScopePath = str;
 using ScopePattern = str;
 
+
+
+
+
+struct Registry:mx {
+	struct members {
+		RegistryOptions _options;
+		SyncRegistry _syncRegistry;
+		map<future> _ensureGrammarCache;
+	};
+
+	mx_object(Registry, mx, members);
+
+	Registry(RegistryOptions options) {
+		data->_options = options;
+		data->_syncRegistry = SyncRegistry(Theme.createFromRawTheme(options.theme, options.colorMap));
+		data->_ensureGrammarCache = new Map<string, Promise<void>>();
+	}
+
+	void dispose() {
+		data->_syncRegistry.dispose();
+	}
+
+	/**
+	 * Change the theme. Once called, no previous `ruleStack` should be used anymore.
+	 */
+	void setTheme(theme: IRawTheme, colorMap?: string[]) {
+		data->_syncRegistry.setTheme(Theme.createFromRawTheme(theme, colorMap));
+	}
+
+	/**
+	 * Returns a lookup array for color ids.
+	 */
+	array<str> getColorMap() {
+		return data->_syncRegistry.getColorMap();
+	}
+
+	/**
+	 * Load the grammar for `scopeName` and all referenced included grammars asynchronously.
+	 * Please do not use language id 0.
+	 */
+	future loadGrammarWithEmbeddedLanguages(
+		ScopeName initialScopeName,
+		num initialLanguage,
+		IEmbeddedLanguagesMap &embeddedLanguages // never pass the structs
+	) {
+		return data->loadGrammarWithConfiguration(initialScopeName, initialLanguage, { embeddedLanguages });
+	}
+
+	/**
+	 * Load the grammar for `scopeName` and all referenced included grammars asynchronously.
+	 * Please do not use language id 0.
+	 */
+	future loadGrammarWithConfiguration(
+		ScopeName initialScopeName,
+		num initialLanguage,
+		IGrammarConfiguration &configuration
+	) {
+		return data->_loadGrammar(
+			initialScopeName,
+			initialLanguage,
+			configuration.embeddedLanguages,
+			configuration.tokenTypes,
+			new BalancedBracketSelectors(
+				configuration.balancedBracketSelectors,
+				configuration.unbalancedBracketSelectors
+			)
+		);
+	}
+
+	/**
+	 * Load the grammar for `scopeName` and all referenced included grammars asynchronously.
+	 */
+	future loadGrammar(initialScopeName: ScopeName) {
+		return data->_loadGrammar(initialScopeName, 0, null, null, null);
+	}
+
+	future _loadGrammar(
+		ScopeName 					initialScopeName,
+		num 						initialLanguage,
+		IEmbeddedLanguagesMap 		embeddedLanguages,
+		ITokenTypeMap 				tokenTypes,
+		BalancedBracketSelectors 	balancedBracketSelectors
+	) {
+		const dependencyProcessor = new ScopeDependencyProcessor(data->_syncRegistry, initialScopeName);
+		while (dependencyProcessor.Q.length > 0) {
+			await Promise.all(dependencyProcessor.Q.map((request) => data->_loadSingleGrammar(request.scopeName)));
+			dependencyProcessor.processQueue();
+		}
+
+		return data->_grammarForScopeName(
+			initialScopeName,
+			initialLanguage,
+			embeddedLanguages,
+			tokenTypes,
+			balancedBracketSelectors
+		);
+	}
+
+	private async _loadSingleGrammar(scopeName: ScopeName): Promise<void> {
+		if (!data->_ensureGrammarCache.has(scopeName)) {
+			data->_ensureGrammarCache.set(scopeName, data->_doLoadSingleGrammar(scopeName));
+		}
+		return data->_ensureGrammarCache.get(scopeName);
+	}
+
+	private async _doLoadSingleGrammar(scopeName: ScopeName): Promise<void> {
+		const grammar = await data->_options.loadGrammar(scopeName);
+		if (grammar) {
+			const injections =
+				typeof data->_options.getInjections === "function" ? data->_options.getInjections(scopeName) : undefined;
+			data->_syncRegistry.addGrammar(grammar, injections);
+		}
+	}
+
+	/**
+	 * Adds a rawGrammar.
+	 */
+	public async addGrammar(
+		rawGrammar: IRawGrammar,
+		injections: string[] = [],
+		initialLanguage: number = 0,
+		embeddedLanguages: IEmbeddedLanguagesMap | null = null
+	): Promise<IGrammar> {
+		data->_syncRegistry.addGrammar(rawGrammar, injections);
+		return (await data->_grammarForScopeName(rawGrammar.scopeName, initialLanguage, embeddedLanguages))!;
+	}
+
+	/**
+	 * Get the grammar for `scopeName`. The grammar must first be created via `loadGrammar` or `addGrammar`.
+	 */
+	private _grammarForScopeName(
+		scopeName: string,
+		initialLanguage: number = 0,
+		embeddedLanguages: IEmbeddedLanguagesMap | null = null,
+		tokenTypes: ITokenTypeMap | null = null,
+		balancedBracketSelectors: BalancedBracketSelectors | null = null
+	): Promise<IGrammar | null> {
+		return data->_syncRegistry.grammarForScopeName(
+			scopeName,
+			initialLanguage,
+			embeddedLanguages,
+			tokenTypes,
+			balancedBracketSelectors
+		);
+	}
+}
+
+
+
+
+
+
+
+
+
 struct IGrammarRepository {
 	virtual IRawGrammar 	 lookup(ScopeName scopeName) = 0;
 	virtual array<ScopeName> injections(ScopeName scopeName) = 0;
@@ -45,7 +201,7 @@ struct ScopeStack:mx {
 		ScopeName scopeName;
 	};
 
-	static push(ScopeStack path, array<ScopeName> scopeNames): ScopeStack | null {
+	static push(ScopeStack path, array<ScopeName> scopeNames): ScopeStack {
 		for (const name of scopeNames) {
 			path = new ScopeStack(path, name);
 		}
@@ -54,11 +210,11 @@ struct ScopeStack:mx {
 
 	//public static from(first: ScopeName, ...segments: ScopeName[]): ScopeStack;
 
-	//public static from(...segments: ScopeName[]): ScopeStack | null;
+	//public static from(...segments: ScopeName[]): ScopeStack;
 
-	//public static from(...segments: ScopeName[]): ScopeStack | null {
-	//	let result: ScopeStack | null = null;
-	//	for (let i = 0; i < segments.length; i++) {
+	//public static from(...segments: ScopeName[]): ScopeStack {
+	//	let result: ScopeStack = null;
+	//	for (let i = 0; i < segments.len(); i++) {
 	//		result = new ScopeStack(result, segments[i]);
 	//	}
 	//	return result;
@@ -87,24 +243,24 @@ struct ScopeStack:mx {
 		return result;
 	}
 
-	public toString() {
-		return this.getSegments().join(' ');
+	str toString() {
+		return data->getSegments().join(' ');
 	}
 
-	boolean extends(ScopeStack other) {
-		if (this === other) {
+	bool extends(ScopeStack other) {
+		if (this == other) {
 			return true;
 		}
-		if (this.parent === null) {
+		if (data->parent == null) {
 			return false;
 		}
-		return this.parent.extends(other);
+		return data->parent.extends(other);
 	}
 
 	array<str> getExtensionIfDefined(ScopeStack base) {
 		const array<str> result;
 		ScopeStack item = this;
-		while (item && item !== base) {
+		while (item && item != base) {
 			result.push(item.scopeName);
 			item = item.parent;
 		}
@@ -112,18 +268,18 @@ struct ScopeStack:mx {
 	}
 }
 
-boolean _scopePathMatchesParentScopes(ScopeStack scopePath, array<ScopeName> parentScopes) {
-	if (parentScopes === null) {
+bool _scopePathMatchesParentScopes(ScopeStack scopePath, array<ScopeName> parentScopes) {
+	if (parentScopes == null) {
 		return true;
 	}
 
-	let index = 0;
-	let scopePattern = parentScopes[index];
+	num index = 0;
+	str scopePattern = parentScopes[index];
 
 	while (scopePath) {
 		if (_matchesScope(scopePath.scopeName, scopePattern)) {
 			index++;
-			if (index === parentScopes.length) {
+			if (index == parentScopes.len()) {
 				return true;
 			}
 			scopePattern = parentScopes[index];
@@ -134,8 +290,8 @@ boolean _scopePathMatchesParentScopes(ScopeStack scopePath, array<ScopeName> par
 	return false;
 }
 
-boolean _matchesScope(ScopeName scopeName, ScopeName scopePattern) {
-	return scopePattern === scopeName || (scopeName.startsWith(scopePattern) && scopeName[scopePattern.length] === '.');
+bool _matchesScope(ScopeName scopeName, ScopeName scopePattern) {
+	return scopePattern == scopeName || (scopeName.startsWith(scopePattern) && scopeName[scopePattern.len()] == '.');
 }
 
 struct StyleAttributes:mx {
@@ -156,26 +312,36 @@ struct StyleAttributes:mx {
 /**
  * Parse a raw theme into rules.
  */
+
+struct ParsedThemeRule {
+	ScopeName scope;
+	array<ScopeName> parentScopes;
+	num index;
+	states<FontStyle> fontStyle;
+	str foreground;
+	str background;
+};
+
 array<ParsedThemeRule> parseTheme(IRawTheme source) {
 	if (!source) {
 		return {};
 	}
-	if (!source.settings || !Array.isArray(source.settings)) {
+	if (!source.settings || !(source.settings.type()->traits & traits::array)) {
 		return {};
 	}
-	let settings = source.settings;
+	IRawThemeSettings &settings = source.settings;
 	array<ParsedThemeRule> result;
 	num resultLen = 0;
-	for (let i = 0, len = settings.len(); i < len; i++) {
+	for (num i = 0, len = settings.len(); i < len; i++) {
 		auto &entry = settings[i];
 
 		if (!entry.settings) {
 			continue;
 		}
 
-		let scopes: string[];
-		if (typeof entry.scope === 'string') {
-			let _scope = entry.scope;
+		array<str> scopes;
+		if (entry.scope.type() == typeof(str)) {
+			str _scope = entry.scope;
 
 			// remove leading commas
 			_scope = _scope.replace(/^[,]+/, '');
@@ -184,18 +350,18 @@ array<ParsedThemeRule> parseTheme(IRawTheme source) {
 			_scope = _scope.replace(/[,]+$/, '');
 
 			scopes = _scope.split(',');
-		} else if (Array.isArray(entry.scope)) {
+		} else if (entry.scope.type()->traits & traits::array) {
 			scopes = entry.scope;
 		} else {
 			scopes = [''];
 		}
 
-		let fontStyle: OrMask<FontStyle> = FontStyle.NotSet;
-		if (typeof entry.settings.fontStyle === 'string') {
+		states<FontStyle> fontStyle = FontStyle.NotSet;
+		if (entry.settings.fontStyle) {
 			fontStyle = FontStyle.None;
 
 			let segments = entry.settings.fontStyle.split(' ');
-			for (let j = 0, lenJ = segments.length; j < lenJ; j++) {
+			for (let j = 0, lenJ = segments.len(); j < lenJ; j++) {
 				let segment = segments[j];
 				switch (segment) {
 					case 'italic':
@@ -214,29 +380,29 @@ array<ParsedThemeRule> parseTheme(IRawTheme source) {
 			}
 		}
 
-		let foreground: string | null = null;
-		if (typeof entry.settings.foreground === 'string' && isValidHexColor(entry.settings.foreground)) {
+		str foreground = null;
+		if (typeof entry.settings.foreground == 'string' && isValidHexColor(entry.settings.foreground)) {
 			foreground = entry.settings.foreground;
 		}
 
-		let background: string | null = null;
-		if (typeof entry.settings.background === 'string' && isValidHexColor(entry.settings.background)) {
+		str background = null;
+		if (typeof entry.settings.background == 'string' && isValidHexColor(entry.settings.background)) {
 			background = entry.settings.background;
 		}
 
-		for (let j = 0, lenJ = scopes.length; j < lenJ; j++) {
-			let _scope = scopes[j].trim();
+		for (num j = 0, lenJ = scopes.len(); j < lenJ; j++) {
+			str _scope = scopes[j].trim();
 
-			let segments = _scope.split(' ');
+			array<str> segments = _scope.split(' ');
 
-			let scope = segments[segments.length - 1];
-			let parentScopes: string[] | null = null;
-			if (segments.length > 1) {
-				parentScopes = segments.slice(0, segments.length - 1);
+			str scope = segments[segments.len() - 1];
+			array<str> parentScopes;
+			if (segments.len() > 1) {
+				parentScopes = segments.slice(0, segments.len() - 1);
 				parentScopes.reverse();
 			}
 
-			result[resultLen++] = new ParsedThemeRule(
+			result[resultLen++] = ParsedThemeRule(
 				scope,
 				parentScopes,
 				i,
@@ -250,18 +416,6 @@ array<ParsedThemeRule> parseTheme(IRawTheme source) {
 	return result;
 }
 
-export class ParsedThemeRule {
-	constructor(
-		public readonly scope: ScopeName,
-		public readonly parentScopes: ScopeName[] | null,
-		public readonly index: number,
-		public readonly fontStyle: OrMask<FontStyle>,
-		public readonly foreground: string | null,
-		public readonly background: string | null,
-	) {
-	}
-}
-
 export const enum FontStyle {
 	NotSet = -1,
 	None = 0,
@@ -271,12 +425,12 @@ export const enum FontStyle {
 	Strikethrough = 8
 }
 
-export function fontStyleToString(fontStyle: OrMask<FontStyle>) {
-	if (fontStyle === FontStyle.NotSet) {
+str fontStyleToString(states<FontStyle> fontStyle) {
+	if (fontStyle == FontStyle.NotSet) {
 		return 'not set';
 	}
 
-	let style = '';
+	str style = '';
 	if (fontStyle & FontStyle.Italic) {
 		style += 'italic ';
 	}
@@ -289,7 +443,7 @@ export function fontStyleToString(fontStyle: OrMask<FontStyle>) {
 	if (fontStyle & FontStyle.Strikethrough) {
 		style += 'strikethrough ';
 	}
-	if (style === '') {
+	if (style == '') {
 		style = 'none';
 	}
 	return style.trim();
@@ -298,42 +452,42 @@ export function fontStyleToString(fontStyle: OrMask<FontStyle>) {
 /**
  * Resolve rules (i.e. inheritance).
  */
-function resolveParsedThemeRules(parsedThemeRules: ParsedThemeRule[], _colorMap: string[] | undefined): Theme {
+Theme resolveParsedThemeRules(doubly<ParsedThemeRule> parsedThemeRules, array<str> _colorMap) {
 
 	// Sort rules lexicographically, and then by index if necessary
 	parsedThemeRules.sort((a, b) => {
-		let r = strcmp(a.scope, b.scope);
-		if (r !== 0) {
+		num r = strcmp(a.scope, b.scope);
+		if (r != 0) {
 			return r;
 		}
 		r = strArrCmp(a.parentScopes, b.parentScopes);
-		if (r !== 0) {
+		if (r != 0) {
 			return r;
 		}
 		return a.index - b.index;
 	});
 
 	// Determine defaults
-	let defaultFontStyle = FontStyle.None;
-	let defaultForeground = '#000000';
-	let defaultBackground = '#ffffff';
-	while (parsedThemeRules.length >= 1 && parsedThemeRules[0].scope === '') {
-		let incomingDefaults = parsedThemeRules.shift()!;
-		if (incomingDefaults.fontStyle !== FontStyle.NotSet) {
+	states<FontStyle> defaultFontStyle = FontStyle.None;
+	str defaultForeground = '#000000';
+	str defaultBackground = '#ffffff';
+	while (parsedThemeRules.len() >= 1 && parsedThemeRules[0].scope == '') {
+		ParsedThemeRule incomingDefaults = parsedThemeRules.shift()
+		if (incomingDefaults.fontStyle != FontStyle.NotSet) {
 			defaultFontStyle = incomingDefaults.fontStyle;
 		}
-		if (incomingDefaults.foreground !== null) {
+		if (incomingDefaults.foreground != null) {
 			defaultForeground = incomingDefaults.foreground;
 		}
-		if (incomingDefaults.background !== null) {
+		if (incomingDefaults.background != null) {
 			defaultBackground = incomingDefaults.background;
 		}
 	}
-	let colorMap = new ColorMap(_colorMap);
-	let defaults = new StyleAttributes(defaultFontStyle, colorMap.getId(defaultForeground), colorMap.getId(defaultBackground));
+	ColorMap 		colorMap = ColorMap(_colorMap);
+	StyleAttributes defaults = StyleAttributes(defaultFontStyle, colorMap.getId(defaultForeground), colorMap.getId(defaultBackground));
 
-	let root = new ThemeTrieElement(new ThemeTrieElementRule(0, null, FontStyle.NotSet, 0, 0), []);
-	for (let i = 0, len = parsedThemeRules.length; i < len; i++) {
+	ThemeTrieElement root    = ThemeTrieElement(new ThemeTrieElementRule(0, null, FontStyle.NotSet, 0, 0), []);
+	for (num i = 0, len = parsedThemeRules.len(); i < len; i++) {
 		let rule = parsedThemeRules[i];
 		root.insert(0, rule.scope, rule.parentScopes, rule.fontStyle, colorMap.getId(rule.foreground), colorMap.getId(rule.background));
 	}
@@ -342,93 +496,91 @@ function resolveParsedThemeRules(parsedThemeRules: ParsedThemeRule[], _colorMap:
 }
 
 export class ColorMap {
-	private readonly _isFrozen: boolean;
-	private _lastColorId: number;
-	private _id2color: string[];
-	private _color2id: { [color: string]: number; };
+	bool _isFrozen;
+	num _lastColorId;
+	array<str> _id2color;
+	map<mx> _color2id;
 
-	constructor(_colorMap?: string[]) {
-		this._lastColorId = 0;
-		this._id2color = [];
-		this._color2id = Object.create(null);
+	constructor(array<str> _colorMap) {
+		data->_lastColorId = 0;
 
-		if (Array.isArray(_colorMap)) {
-			this._isFrozen = true;
-			for (let i = 0, len = _colorMap.length; i < len; i++) {
-				this._color2id[_colorMap[i]] = i;
-				this._id2color[i] = _colorMap[i];
+		if (_colorMap) {
+			data->_isFrozen = true;
+			for (let i = 0, len = _colorMap.len(); i < len; i++) {
+				data->_color2id[_colorMap[i]] = i;
+				data->_id2color.push(_colorMap[i]);
 			}
 		} else {
-			this._isFrozen = false;
+			data->_isFrozen = false;
 		}
 	}
 
-	public getId(color: string | null): number {
-		if (color === null) {
+	num getId(str color) {
+		if (color == null) {
 			return 0;
 		}
 		color = color.toUpperCase();
-		let value = this._color2id[color];
+		let value = data->_color2id[color];
 		if (value) {
 			return value;
 		}
-		if (this._isFrozen) {
+		if (data->_isFrozen) {
 			throw new Error(`Missing color in color map - ${color}`);
 		}
-		value = ++this._lastColorId;
-		this._color2id[color] = value;
-		this._id2color[value] = color;
+		value = ++data->_lastColorId;
+		data->_color2id[color] = value;
+		data->_id2color[value] = color;
 		return value;
 	}
 
 	array<str> getColorMap() {
-		return this._id2color.slice(0);
+		return data->_id2color.slice(0);
 	}
 }
 
 export class ThemeTrieElementRule {
 
-	scopeDepth: number;
-	parentScopes: ScopeName[] | null;
-	fontStyle: number;
-	foreground: number;
-	background: number;
+	num scopeDepth;
+	array<ScopeName> parentScopes;
+	num fontStyle;
+	num foreground;
+	num background;
 
-	constructor(scopeDepth: number, parentScopes: ScopeName[] | null, fontStyle: number, foreground: number, background: number) {
-		this.scopeDepth = scopeDepth;
-		this.parentScopes = parentScopes;
-		this.fontStyle = fontStyle;
-		this.foreground = foreground;
-		this.background = background;
+	ThemeTrieElementRule(num scopeDepth, array<ScopeName> parentScopes, num fontStyle, num foreground, num background) {
+		data->scopeDepth = scopeDepth;
+		data->parentScopes = parentScopes;
+		data->fontStyle = fontStyle;
+		data->foreground = foreground;
+		data->background = background;
 	}
 
 	ThemeTrieElementRule clone() {
-		return new ThemeTrieElementRule(this.scopeDepth, this.parentScopes, this.fontStyle, this.foreground, this.background);
+		return new ThemeTrieElementRule(data->scopeDepth, data->parentScopes, data->fontStyle, data->foreground, data->background);
 	}
 
-	public static cloneArr(arr:ThemeTrieElementRule[]): ThemeTrieElementRule[] {
-		let r: ThemeTrieElementRule[] = [];
-		for (let i = 0, len = arr.length; i < len; i++) {
+	static array<ThemeTrieElementRule> cloneArr(array<ThemeTrieElementRule> arr) {
+		let array<ThemeTrieElementRule> r;
+		for (let i = 0, len = arr.len(); i < len; i++) {
 			r[i] = arr[i].clone();
 		}
 		return r;
 	}
 
-	void acceptOverwrite(scopeDepth: number, fontStyle: number, foreground: number, background: number) {
-		if (this.scopeDepth > scopeDepth) {
+	void acceptOverwrite(num scopeDepth, num fontStyle, num foreground, num background) {
+		if (data->scopeDepth > scopeDepth) {
 			console.log('how did this happen?');
 		} else {
-			this.scopeDepth = scopeDepth;
+			data->scopeDepth = scopeDepth;
 		}
-		// console.log('TODO -> my depth: ' + this.scopeDepth + ', overwriting depth: ' + scopeDepth);
-		if (fontStyle !== FontStyle.NotSet) {
-			this.fontStyle = fontStyle;
+		// console.log('TODO -> my depth: ' + data->scopeDepth + ', overwriting depth: ' + scopeDepth);
+		if (fontStyle != FontStyle.NotSet) {
+			data->fontStyle = fontStyle;
 		}
-		if (foreground !== 0) {
-			this.foreground = foreground;
+		if (foreground != 0) {
+			data->foreground = foreground;
 		}
-		if (background !== 0) {
-			this.background = background;
+		if (background != 0) {
+			data->background = background;
 		}
 	}
 }
@@ -436,35 +588,41 @@ export class ThemeTrieElementRule {
 struct ThemeTrieElement:mx {
 	using ITrieChildrenMap = map<ThemeTrieElement>;
 
-	private readonly _rulesWithParentScopes: ThemeTrieElementRule[];
+	struct members {
+		ThemeTrieElementRule 		_mainRule;
+		array<ThemeTrieElementRule> _rulesWithParentScopes;
+		ITrieChildrenMap 			_children;
+	};
 
-	constructor(
-		private readonly _mainRule: ThemeTrieElementRule,
-		rulesWithParentScopes: ThemeTrieElementRule[] = [],
-		private readonly _children: ITrieChildrenMap = {}
-	) {
-		this._rulesWithParentScopes = rulesWithParentScopes;
+	ThemeTrieElement(
+		ThemeTrieElementRule _mainRule,
+		array<ThemeTrieElementRule> rulesWithParentScopes = {},
+		ITrieChildrenMap _children = {}
+	) : ThemeTrieElement() {
+		data->_mainRule = _mainRule;
+		data->_rulesWithParentScopes = rulesWithParentScopes;
+		data->_children = _children;
 	}
 
-	private static _sortBySpecificity(arr: ThemeTrieElementRule[]): ThemeTrieElementRule[] {
-		if (arr.length === 1) {
+	static array<ThemeTrieElementRule> _sortBySpecificity(array<ThemeTrieElementRule> arr) {
+		if (arr.len() == 1) {
 			return arr;
 		}
-		arr.sort(this._cmpBySpecificity);
+		arr.sort(data->_cmpBySpecificity);
 		return arr;
 	}
 
-	private static _cmpBySpecificity(a: ThemeTrieElementRule, b: ThemeTrieElementRule): number {
-		if (a.scopeDepth === b.scopeDepth) {
+	static num _cmpBySpecificity(ThemeTrieElementRule a, ThemeTrieElementRule b) {
+		if (a.scopeDepth == b.scopeDepth) {
 			const aParentScopes = a.parentScopes;
 			const bParentScopes = b.parentScopes;
-			let aParentScopesLen = aParentScopes === null ? 0 : aParentScopes.length;
-			let bParentScopesLen = bParentScopes === null ? 0 : bParentScopes.length;
-			if (aParentScopesLen === bParentScopesLen) {
+			let aParentScopesLen = aParentScopes == null ? 0 : aParentScopes.len();
+			let bParentScopesLen = bParentScopes == null ? 0 : bParentScopes.len();
+			if (aParentScopesLen == bParentScopesLen) {
 				for (let i = 0; i < aParentScopesLen; i++) {
-					const aLen = aParentScopes![i].length;
-					const bLen = bParentScopes![i].length;
-					if (aLen !== bLen) {
+					const aLen = aParentScopes![i].len();
+					const bLen = bParentScopes![i].len();
+					if (aLen != bLen) {
 						return bLen - aLen;
 					}
 				}
@@ -474,15 +632,15 @@ struct ThemeTrieElement:mx {
 		return b.scopeDepth - a.scopeDepth;
 	}
 
-	array<ThemeTrieElementRule> match(scope: ScopeName) {
-		if (scope === '') {
-			return ThemeTrieElement._sortBySpecificity((<ThemeTrieElementRule[]>[]).concat(this._mainRule).concat(this._rulesWithParentScopes));
+	array<ThemeTrieElementRule> match(ScopeName scope) {
+		if (scope == '') {
+			return ThemeTrieElement._sortBySpecificity((<ThemeTrieElementRule[]>[]).concat(data->_mainRule).concat(data->_rulesWithParentScopes));
 		}
 
 		let dotIndex = scope.indexOf('.');
-		let head: string;
-		let tail: string;
-		if (dotIndex === -1) {
+		let str head;
+		let str tail;
+		if (dotIndex == -1) {
 			head = scope;
 			tail = '';
 		} else {
@@ -490,23 +648,23 @@ struct ThemeTrieElement:mx {
 			tail = scope.substring(dotIndex + 1);
 		}
 
-		if (this._children.hasOwnProperty(head)) {
-			return this._children[head].match(tail);
+		if (data->_children.hasOwnProperty(head)) {
+			return data->_children[head].match(tail);
 		}
 
-		return ThemeTrieElement._sortBySpecificity((<ThemeTrieElementRule[]>[]).concat(this._mainRule).concat(this._rulesWithParentScopes));
+		return ThemeTrieElement._sortBySpecificity((<ThemeTrieElementRule[]>[]).concat(data->_mainRule).concat(data->_rulesWithParentScopes));
 	}
 
-	public insert(scopeDepth: number, scope: ScopeName, parentScopes: ScopeName[] | null, fontStyle: number, foreground: number, background: number): void {
-		if (scope === '') {
-			this._doInsertHere(scopeDepth, parentScopes, fontStyle, foreground, background);
+	void insert(num scopeDepth, ScopeName scope, array<ScopeName> parentScopes, num fontStyle, num foreground, num background) {
+		if (scope == '') {
+			data->_doInsertHere(scopeDepth, parentScopes, fontStyle, foreground, background);
 			return;
 		}
 
 		let dotIndex = scope.indexOf('.');
-		let head: string;
-		let tail: string;
-		if (dotIndex === -1) {
+		let str head;
+		let str tail;
+		if (dotIndex == -1) {
 			head = scope;
 			tail = '';
 		} else {
@@ -514,30 +672,30 @@ struct ThemeTrieElement:mx {
 			tail = scope.substring(dotIndex + 1);
 		}
 
-		let child: ThemeTrieElement;
-		if (this._children.hasOwnProperty(head)) {
-			child = this._children[head];
+		let ThemeTrieElement child;
+		if (data->_children.hasOwnProperty(head)) {
+			child = data->_children[head];
 		} else {
-			child = new ThemeTrieElement(this._mainRule.clone(), ThemeTrieElementRule.cloneArr(this._rulesWithParentScopes));
-			this._children[head] = child;
+			child = new ThemeTrieElement(data->_mainRule.clone(), ThemeTrieElementRule.cloneArr(data->_rulesWithParentScopes));
+			data->_children[head] = child;
 		}
 
 		child.insert(scopeDepth + 1, tail, parentScopes, fontStyle, foreground, background);
 	}
 
-	private _doInsertHere(scopeDepth: number, parentScopes: ScopeName[] | null, fontStyle: number, foreground: number, background: number): void {
+	void _doInsertHere(num scopeDepth, array<ScopeName> parentScopes, num fontStyle, num foreground, num background) {
 
-		if (parentScopes === null) {
+		if (parentScopes == null) {
 			// Merge into the main rule
-			this._mainRule.acceptOverwrite(scopeDepth, fontStyle, foreground, background);
+			data->_mainRule.acceptOverwrite(scopeDepth, fontStyle, foreground, background);
 			return;
 		}
 
 		// Try to merge into existing rule
-		for (let i = 0, len = this._rulesWithParentScopes.length; i < len; i++) {
-			let rule = this._rulesWithParentScopes[i];
+		for (let i = 0, len = data->_rulesWithParentScopes.len(); i < len; i++) {
+			let rule = data->_rulesWithParentScopes[i];
 
-			if (strArrCmp(rule.parentScopes, parentScopes) === 0) {
+			if (strArrCmp(rule.parentScopes, parentScopes) == 0) {
 				// bingo! => we get to merge this into an existing one
 				rule.acceptOverwrite(scopeDepth, fontStyle, foreground, background);
 				return;
@@ -547,17 +705,17 @@ struct ThemeTrieElement:mx {
 		// Must add a new rule
 
 		// Inherit from main rule
-		if (fontStyle === FontStyle.NotSet) {
-			fontStyle = this._mainRule.fontStyle;
+		if (fontStyle == FontStyle.NotSet) {
+			fontStyle = data->_mainRule.fontStyle;
 		}
-		if (foreground === 0) {
-			foreground = this._mainRule.foreground;
+		if (foreground == 0) {
+			foreground = data->_mainRule.foreground;
 		}
-		if (background === 0) {
-			background = this._mainRule.background;
+		if (background == 0) {
+			background = data->_mainRule.background;
 		}
 
-		this._rulesWithParentScopes.push(new ThemeTrieElementRule(scopeDepth, parentScopes, fontStyle, foreground, background));
+		data->_rulesWithParentScopes.push(new ThemeTrieElementRule(scopeDepth, parentScopes, fontStyle, foreground, background));
 	}
 };
 
@@ -571,44 +729,38 @@ struct Theme:mx {
 	};
 	mx_object(Theme, mx, members);
 
-	public static createFromRawTheme(
-		source: IRawTheme | undefined,
-		colorMap?: string[]
-	): Theme {
-		return this.createFromParsedTheme(parseTheme(source), colorMap);
+	static Theme createFromRawTheme(
+		IRawTheme source,
+		array<str> colorMap
+	)  {
+		return data->createFromParsedTheme(parseTheme(source), colorMap);
 	}
 
-	public static createFromParsedTheme(
-		source: ParsedThemeRule[],
-		colorMap?: string[]
-	): Theme {
+	static Theme createFromParsedTheme(
+		array<ParsedThemeRule> source,
+		array<str> colorMap
+	) {
 		return resolveParsedThemeRules(source, colorMap);
 	}
 
 	private readonly _cachedMatchRoot = new CachedFn<ScopeName, ThemeTrieElementRule[]>(
-		(scopeName) => this._root.match(scopeName)
+		(scopeName) => data->_root.match(scopeName)
 	);
 
-	constructor(
-		private readonly _colorMap: ColorMap,
-		private readonly _defaults: StyleAttributes,
-		private readonly _root: ThemeTrieElement
-	) {}
-
 	array<str> getColorMap() {
-		return this._colorMap.getColorMap();
+		return data->_colorMap.getColorMap();
 	}
 
 	StyleAttributes getDefaults() {
-		return this._defaults;
+		return data->_defaults;
 	}
 
-	public match(scopePath: ScopeStack | null): StyleAttributes | null {
-		if (scopePath === null) {
-			return this._defaults;
+	StyleAttributes match(ScopeStack scopePath) {
+		if (scopePath == null) {
+			return data->_defaults;
 		}
 		const scopeName = scopePath.scopeName;
-		const matchingTrieElements = this._cachedMatchRoot.get(scopeName);
+		const matchingTrieElements = data->_cachedMatchRoot.get(scopeName);
 
 		const effectiveRule = matchingTrieElements.find((v) =>
 			_scopePathMatchesParentScopes(scopePath.parent, v.parentScopes)
@@ -617,7 +769,7 @@ struct Theme:mx {
 			return null;
 		}
 
-		return new StyleAttributes(
+		return StyleAttributes(
 			effectiveRule.fontStyle,
 			effectiveRule.foreground,
 			effectiveRule.background
@@ -631,81 +783,81 @@ struct SyncRegistry : IGrammarRepository, IThemeProvider {
 	ion::map<IRawGrammar> _rawGrammars;
 	ion::map<array<ScopeName>> _injectionGrammars;
 
-	private _theme: Theme;
+	Theme _theme;
 
-	constructor(theme: Theme, private readonly _onigLibPromise: Promise<IOnigLib>) {
-		this._theme = theme;
+	constructor(Theme theme) {
+		data->_theme = theme;
 	}
 
 	void dispose() {
-		for (const grammar of this._grammars.values()) {
+		for (const grammar of data->_grammars.values()) {
 			grammar.dispose();
 		}
 	}
 
-	void setTheme(theme: Theme) {
-		this._theme = theme;
+	void setTheme(Theme theme) {
+		data->_theme = theme;
 	}
 
 	array<str> getColorMap() {
-		return this._theme.getColorMap();
+		return data->_theme.getColorMap();
 	}
 
 	/**
 	 * Add `grammar` to registry and return a list of referenced scope names
 	 */
-	public addGrammar(grammar: IRawGrammar, injectionScopeNames?: ScopeName[]): void {
-		this._rawGrammars.set(grammar.scopeName, grammar);
+	void addGrammar(IRawGrammar grammar, injectionScopeNames?: ScopeName[]) {
+		data->_rawGrammars.set(grammar.scopeName, grammar);
 
 		if (injectionScopeNames) {
-			this._injectionGrammars.set(grammar.scopeName, injectionScopeNames);
+			data->_injectionGrammars.set(grammar.scopeName, injectionScopeNames);
 		}
 	}
 
 	/**
 	 * Lookup a raw grammar.
 	 */
-	IRawGrammar lookup(scopeName: ScopeName) {
-		return this._rawGrammars.get(scopeName)!;
+	IRawGrammar lookup(ScopeName scopeName) {
+		return data->_rawGrammars.get(scopeName)!;
 	}
 
 	/**
 	 * Returns the injections for the given grammar
 	 */
-	array<ScopeName> injections(targetScope: ScopeName) {
-		return this._injectionGrammars.get(targetScope)!;
+	array<ScopeName> injections(ScopeName targetScope) {
+		return data->_injectionGrammars.get(targetScope)!;
 	}
 
 	/**
 	 * Get the default theme settings
 	 */
 	StyleAttributes getDefaults() {
-		return this._theme.getDefaults();
+		return data->_theme.getDefaults();
 	}
 
 	/**
 	 * Match a scope in the theme.
 	 */
-	StyleAttributes themeMatch(scopePath: ScopeStack) {
-		return this._theme.match(scopePath);
+	StyleAttributes themeMatch(ScopeStack scopePath) {
+		return data->_theme.match(scopePath);
 	}
 
 	/**
 	 * Lookup a grammar.
 	 */
 	public async grammarForScopeName(
-		scopeName: ScopeName,
-		initialLanguage: number,
-		embeddedLanguages: IEmbeddedLanguagesMap | null,
-		tokenTypes: ITokenTypeMap | null,
-		balancedBracketSelectors: BalancedBracketSelectors | null
-	): Promise<IGrammar | null> {
-		if (!this._grammars.has(scopeName)) {
-			let rawGrammar = this._rawGrammars.get(scopeName)!;
+		ScopeName scopeName,
+		num initialLanguage,
+		IEmbeddedLanguagesMap embeddedLanguages,
+		ITokenTypeMap tokenTypes,
+		BalancedBracketSelectors balancedBracketSelectors
+	): Promise<IGrammar> {
+		if (!data->_grammars.has(scopeName)) {
+			let rawGrammar = data->_rawGrammars.get(scopeName)!;
 			if (!rawGrammar) {
 				return null;
 			}
-			this._grammars.set(scopeName, createGrammar(
+			data->_grammars.set(scopeName, createGrammar(
 				scopeName,
 				rawGrammar,
 				initialLanguage,
@@ -713,10 +865,10 @@ struct SyncRegistry : IGrammarRepository, IThemeProvider {
 				tokenTypes,
 				balancedBracketSelectors,
 				this,
-				await this._onigLibPromise
+				await data->_onigLibPromise
 			));
 		}
-		return this._grammars.get(scopeName)!;
+		return data->_grammars.get(scopeName)!;
 	}
 }
 
@@ -806,6 +958,221 @@ struct IRawRepositoryMap {
 	IRawRule 		_base;
 };
 
+
+
+
+
+
+
+
+
+struct ExternalReferenceCollector:mx {
+	private readonly _references: AbsoluteRuleReference[] = [];
+	private readonly _seenReferenceKeys = new Set<string>();
+
+	public get references(): readonly AbsoluteRuleReference[] {
+		return this._references;
+	}
+
+	public readonly visitedRule = new Set<IRawRule>();
+
+	public add(reference: AbsoluteRuleReference): void {
+		const key = reference.toKey();
+		if (this._seenReferenceKeys.has(key)) {
+			return;
+		}
+		this._seenReferenceKeys.add(key);
+		this._references.push(reference);
+	}
+}
+
+export class ScopeDependencyProcessor {
+	public readonly seenFullScopeRequests = new Set<ScopeName>();
+	public readonly seenPartialScopeRequests = new Set<string>();
+	public Q: AbsoluteRuleReference[];
+
+	constructor(
+		public readonly repo: IGrammarRepository,
+		public readonly initialScopeName: ScopeName
+	) {
+		this.seenFullScopeRequests.add(this.initialScopeName);
+		this.Q = [new TopLevelRuleReference(this.initialScopeName)];
+	}
+
+	public processQueue(): void {
+		const q = this.Q;
+		this.Q = [];
+
+		const deps = new ExternalReferenceCollector();
+		for (const dep of q) {
+			collectReferencesOfReference(dep, this.initialScopeName, this.repo, deps);
+		}
+
+		for (const dep of deps.references) {
+			if (dep instanceof TopLevelRuleReference) {
+				if (this.seenFullScopeRequests.has(dep.scopeName)) {
+					// already processed
+					continue;
+				}
+				this.seenFullScopeRequests.add(dep.scopeName);
+				this.Q.push(dep);
+			} else {
+				if (this.seenFullScopeRequests.has(dep.scopeName)) {
+					// already processed in full
+					continue;
+				}
+				if (this.seenPartialScopeRequests.has(dep.toKey())) {
+					// already processed
+					continue;
+				}
+				this.seenPartialScopeRequests.add(dep.toKey());
+				this.Q.push(dep);
+			}
+		}
+	}
+}
+
+function collectReferencesOfReference(
+	reference: TopLevelRuleReference | TopLevelRepositoryRuleReference,
+	baseGrammarScopeName: ScopeName,
+	repo: IGrammarRepository,
+	result: ExternalReferenceCollector,
+) {
+	const selfGrammar = repo.lookup(reference.scopeName);
+	if (!selfGrammar) {
+		if (reference.scopeName === baseGrammarScopeName) {
+			throw new Error(`No grammar provided for <${baseGrammarScopeName}>`);
+		}
+		return;
+	}
+
+	const baseGrammar = repo.lookup(baseGrammarScopeName)!;
+
+	if (reference instanceof TopLevelRuleReference) {
+		collectExternalReferencesInTopLevelRule({ baseGrammar, selfGrammar }, result);
+	} else {
+		collectExternalReferencesInTopLevelRepositoryRule(
+			reference.ruleName,
+			{ baseGrammar, selfGrammar, repository: selfGrammar.repository },
+			result
+		);
+	}
+
+	const injections = repo.injections(reference.scopeName);
+	if (injections) {
+		for (const injection of injections) {
+			result.add(new TopLevelRuleReference(injection));
+		}
+	}
+}
+
+/// the interfaces we use multiple inheritence on the data member; thus isolating diamonds.
+struct Context {
+	IRawGrammar baseGrammar;
+	IRawGrammar selfGrammar;
+};
+
+struct ContextWithRepository {
+	IRawGrammar   baseGrammar;
+	IRawGrammar   selfGrammar;
+	map<IRawRule> repository;
+};
+
+void collectExternalReferencesInTopLevelRepositoryRule(
+	str ruleName,
+	ContextWithRepository context,
+	ExternalReferenceCollector result
+) {
+	if (context.repository && context.repository[ruleName]) {
+		const rule = context.repository[ruleName];
+		collectExternalReferencesInRules([rule], context, result);
+	}
+}
+
+void collectExternalReferencesInTopLevelRule(Context context, ExternalReferenceCollector result) {
+	if (context.selfGrammar.patterns && Array.isArray(context.selfGrammar.patterns)) {
+		collectExternalReferencesInRules(
+			context.selfGrammar.patterns,
+			{ ...context, repository: context.selfGrammar.repository },
+			result
+		);
+	}
+	if (context.selfGrammar.injections) {
+		collectExternalReferencesInRules(
+			Object.values(context.selfGrammar.injections),
+			{ ...context, repository: context.selfGrammar.repository },
+			result
+		);
+	}
+}
+
+void collectExternalReferencesInRules(
+	array<IRawRule> rules,
+	ContextWithRepository context,
+	ExternalReferenceCollector result,
+) {
+	for (const rule of rules) {
+		if (result.visitedRule.has(rule)) {
+			continue;
+		}
+		result.visitedRule.add(rule);
+
+		const patternRepository = rule.repository ? mergeObjects({}, context.repository, rule.repository) : context.repository;
+
+		if (Array.isArray(rule.patterns)) {
+			collectExternalReferencesInRules(rule.patterns, { ...context, repository: patternRepository }, result);
+		}
+
+		const include = rule.include;
+
+		if (!include) {
+			continue;
+		}
+
+		const reference = parseInclude(include);
+
+		switch (reference.kind) {
+			case IncludeReferenceKind.Base:
+				collectExternalReferencesInTopLevelRule({ ...context, selfGrammar: context.baseGrammar }, result);
+				break;
+			case IncludeReferenceKind.Self:
+				collectExternalReferencesInTopLevelRule(context, result);
+				break;
+			case IncludeReferenceKind.RelativeReference:
+				collectExternalReferencesInTopLevelRepositoryRule(reference.ruleName, { ...context, repository: patternRepository }, result);
+				break;
+			case IncludeReferenceKind.TopLevelReference:
+			case IncludeReferenceKind.TopLevelRepositoryReference:
+				const selfGrammar =
+					reference.scopeName === context.selfGrammar.scopeName
+						? context.selfGrammar
+						: reference.scopeName === context.baseGrammar.scopeName
+						? context.baseGrammar
+						: undefined;
+				if (selfGrammar) {
+					const newContext: ContextWithRepository = { baseGrammar: context.baseGrammar, selfGrammar, repository: patternRepository };
+					if (reference.kind === IncludeReferenceKind.TopLevelRepositoryReference) {
+						collectExternalReferencesInTopLevelRepositoryRule(reference.ruleName, newContext, result);
+					} else {
+						collectExternalReferencesInTopLevelRule(newContext, result);
+					}
+				} else {
+					if (reference.kind === IncludeReferenceKind.TopLevelRepositoryReference) {
+						result.add(new TopLevelRepositoryRuleReference(reference.scopeName, reference.ruleName));
+					} else {
+						result.add(new TopLevelRuleReference(reference.scopeName));
+					}
+				}
+				break;
+		}
+	}
+}
+
+
+
+
+
+
 /// I can be both Implement type and Interface, in mx use-case
 /// if a context type implements it, it will contain the type
 /// you can also use it internal to implement
@@ -874,10 +1241,10 @@ struct IRuleRegistry {
 };
 
 //struct IGrammarRegistry {
-//	IRawGrammar getExternalGrammar(scopeName: sr, repository: IRawRepository);
+//	IRawGrammar getExternalGrammar(sr scopeName, IRawRepository repository);
 //}
 
-//struct IRuleFactoryHelper: IRuleRegistry, IGrammarRegistry {
+//struct IRuleRegistry IRuleFactoryHelper, IGrammarRegistry {
 //}
 
 using IRuleFactoryHelper = IRuleRegistry;
@@ -997,7 +1364,7 @@ struct MatchRule:Rule {
 		}
 	}
 
-	public get debugMatchRegExp(): utf16 {
+	utf16 get debugMatchRegExp() {
 		return `${data->_match.source}`;
 	}
 
@@ -1096,11 +1463,11 @@ struct BeginEndRule:Rule {
 		}
 	}
 
-	public get debugBeginRegExp(): utf16 {
+	utf16 get debugBeginRegExp() {
 		return `${data->_begin.source}`;
 	}
 
-	public get debugEndRegExp(): utf16 {
+	utf16 get debugEndRegExp() {
 		return `${data->_end.source}`;
 	}
 
@@ -1155,7 +1522,7 @@ struct BeginWhileRule : Rule {
 	bool hasMissingPatterns;
 	RuleId patterns[];
 	private RegExpSourceList _cachedCompiledPatterns;
-	private RegExpSourceList _cachedCompiledWhilePatterns<RuleId> | null;
+	private RegExpSourceList _cachedCompiledWhilePatterns<RuleId>;
 
 	BeginWhileRule(
 			ILocation _location, RuleId id, utf16 name, utf16 contentName, 
@@ -1241,13 +1608,13 @@ struct BeginWhileRule : Rule {
 
 struct RuleFactory {
 
-	public static createCaptureRule(IRuleFactoryHelper helper, ILocation _location, utf16 name, utf16 contentName, RuleId retokenizeCapturedWithRuleId): CaptureRule {
+	static CaptureRule createCaptureRule(IRuleFactoryHelper helper, ILocation _location, utf16 name, utf16 contentName, RuleId retokenizeCapturedWithRuleId) {
 		return helper.registerRule((id) => {
 			return new CaptureRule(_location, id, name, contentName, retokenizeCapturedWithRuleId);
 		});
 	}
 
-	public static getCompiledRuleId(IRawRule desc, IRuleFactoryHelper helper, IRawRepository repository): RuleId {
+	static RuleId getCompiledRuleId(IRawRule desc, IRuleFactoryHelper helper, IRawRepository repository) {
 		if (!desc.id) {
 			helper.registerRule((id) => {
 				desc.id = id;
@@ -1307,8 +1674,8 @@ struct RuleFactory {
 		return desc.id!;
 	}
 
-	private static _compileCaptures(IRawCaptures captures, IRuleFactoryHelper helper, IRawRepository repository): CaptureRule[] {
-		let CaptureRule r[] = [];
+	static CaptureRule _compileCaptures(IRawCaptures captures, IRuleFactoryHelper helper, IRawRepository repository)[] {
+		array<CaptureRule> r;
 
 		if (captures) {
 			// Find the maximum capture id
@@ -1603,7 +1970,7 @@ interface IRegExpSourceListAnchorCache<TRuleId> {
 	CompiledRule A1_G1;
 }
 
-struct RegExpSourceList<TRuleId = RuleId | typeof endRuleId> {
+struct RegExpSourceList<TRuleId = RuleId> {
 
 	array<RegExpSource> _items;
 	private bool _hasAnchors;
@@ -1611,7 +1978,6 @@ struct RegExpSourceList<TRuleId = RuleId | typeof endRuleId> {
 	private IRegExpSourceListAnchorCache _anchorCache;
 
 	constructor() {
-		data->_items = [];
 		data->_hasAnchors = false;
 		data->_cached = null;
 		data->_anchorCache = {
@@ -1755,7 +2121,7 @@ struct CompiledRule {
 	}
 }
 
-export interface IFindNextMatchResult<TRuleId = RuleId | typeof endRuleId> {
+export interface IFindNextMatchResult<TRuleId = RuleId> {
 	TRuleId ruleId;
 	IOnigCaptureIndex captureIndices[];
 }
@@ -1794,7 +2160,7 @@ export class AttributedScopeStack {
 	};
 	mx_object(AttributedScopeStack, mx, members);
 
-	static fromExtension(namesScopeList: AttributedScopeStack | null, contentNameScopesList: AttributedScopeStackFrame[]): AttributedScopeStack | null {
+	static fromExtension(AttributedScopeStack namesScopeList, array<AttributedScopeStackFrame> contentNameScopesList): AttributedScopeStack {
 		let current = namesScopeList;
 		let scopeNames = namesScopeList?.scopePath ?? null;
 		for (const frame of contentNameScopesList) {
@@ -1804,11 +2170,11 @@ export class AttributedScopeStack {
 		return current;
 	}
 
-	public static createRoot(scopeName: ScopeName, tokenAttributes: EncodedTokenAttributes): AttributedScopeStack {
+	static AttributedScopeStackcreateRoot(ScopeName scopeName, EncodedTokenAttributes tokenAttributes) {
 		return new AttributedScopeStack(null, new ScopeStack(null, scopeName), tokenAttributes);
 	}
 
-	public static createRootAndLookUpScopeName(scopeName: ScopeName, tokenAttributes: EncodedTokenAttributes, grammar: Grammar): AttributedScopeStack {
+	static AttributedScopeStack createRootAndLookUpScopeName(ScopeName scopeName, EncodedTokenAttributes tokenAttributes, Grammar grammar) {
 		const rawRootMetadata = grammar.getMetadataForScope(scopeName);
 		const scopePath = new ScopeStack(null, scopeName);
 		const rootStyle = grammar.themeProvider.themeMatch(scopePath);
@@ -1822,7 +2188,7 @@ export class AttributedScopeStack {
 		return new AttributedScopeStack(null, scopePath, resolvedTokenAttributes);
 	}
 
-	public get scopeName(): ScopeName { return this.scopePath.scopeName; }
+	ScopeName get scopeName() { return data->scopePath.scopeName; }
 
 	/**
 	 * Invariant:
@@ -1833,26 +2199,26 @@ export class AttributedScopeStack {
 	 * ```
 	 */
 	private constructor(
-		public readonly parent: AttributedScopeStack | null,
-		public readonly scopePath: ScopeStack,
-		public readonly tokenAttributes: EncodedTokenAttributes
+		public readonly AttributedScopeStack parent,
+		public readonly ScopeStack scopePath,
+		public readonly EncodedTokenAttributes tokenAttributes
 	) {
 	}
 
 	public toString() {
-		return this.getScopeNames().join(' ');
+		return data->getScopeNames().join(' ');
 	}
 
-	boolean equals(other: AttributedScopeStack) {
+	bool equals(AttributedScopeStack other) {
 		return AttributedScopeStack.equals(this, other);
 	}
 
-	public static equals(
-		a: AttributedScopeStack | null,
-		b: AttributedScopeStack | null
-	): boolean {
+	static bool equals(
+		AttributedScopeStack a,
+		AttributedScopeStack b
+	) {
 		do {
-			if (a === b) {
+			if (a == b) {
 				return true;
 			}
 
@@ -1866,7 +2232,7 @@ export class AttributedScopeStack {
 				return false;
 			}
 
-			if (a.scopeName !== b.scopeName || a.tokenAttributes !== b.tokenAttributes) {
+			if (a.scopeName != b.scopeName || a.tokenAttributes != b.tokenAttributes) {
 				return false;
 			}
 
@@ -1876,16 +2242,16 @@ export class AttributedScopeStack {
 		} while (true);
 	}
 
-	private static mergeAttributes(
-		existingTokenAttributes: EncodedTokenAttributes,
-		basicScopeAttributes: BasicScopeAttributes,
-		styleAttributes: StyleAttributes | null
-	): EncodedTokenAttributes {
+	static EncodedTokenAttributes mergeAttributes(
+		EncodedTokenAttributes existingTokenAttributes,
+		BasicScopeAttributes basicScopeAttributes,
+		StyleAttributes styleAttributes
+	) {
 		let fontStyle = FontStyle.NotSet;
 		let foreground = 0;
 		let background = 0;
 
-		if (styleAttributes !== null) {
+		if (styleAttributes != null) {
 			fontStyle = styleAttributes.fontStyle;
 			foreground = styleAttributes.foregroundId;
 			background = styleAttributes.backgroundId;
@@ -1902,19 +2268,19 @@ export class AttributedScopeStack {
 		);
 	}
 
-	public pushAttributed(scopePath: ScopePath | null, grammar: Grammar): AttributedScopeStack {
-		if (scopePath === null) {
+	AttributedScopeStack pushAttributed(ScopePath scopePath, Grammar grammar) {
+		if (scopePath == null) {
 			return this;
 		}
 
-		if (scopePath.indexOf(' ') === -1) {
+		if (scopePath.indexOf(' ') == -1) {
 			// This is the common case and much faster
 
 			return AttributedScopeStack._pushAttributed(this, scopePath, grammar);
 		}
 
 		const scopes = scopePath.split(/ /g);
-		let result: AttributedScopeStack = this;
+		let AttributedScopeStack result = this;
 		for (const scope of scopes) {
 			result = AttributedScopeStack._pushAttributed(result, scope, grammar);
 		}
@@ -1941,21 +2307,21 @@ export class AttributedScopeStack {
 	}
 
 	array<str> getScopeNames() {
-		return this.scopePath.getSegments();
+		return data->scopePath.getSegments();
 	}
 
-	array<AttributedScopeStackFrame> getExtensionIfDefined(base: AttributedScopeStack | null) {
-		const result: AttributedScopeStackFrame[] = [];
-		let self: AttributedScopeStack | null = this;
+	array<AttributedScopeStackFrame> getExtensionIfDefined(AttributedScopeStack base) {
+		const array<AttributedScopeStackFrame> result;
+		let AttributedScopeStack self = this;
 
-		while (self && self !== base) {
+		while (self && self != base) {
 			result.push({
 				encodedTokenAttributes: self.tokenAttributes,
 				scopeNames: self.scopePath.getExtensionIfDefined(self.parent?.scopePath ?? null)!,
 			});
 			self = self.parent;
 		}
-		return self === base ? result.reverse() : undefined;
+		return self == base ? result.reverse() : undefined;
 	}
 }
 
@@ -1963,10 +2329,6 @@ struct AttributedScopeStackFrame {
 	num encodedTokenAttributes;
 	array<str> scopeNames;
 };
-
-
-
-
 
 class StateStackImpl:mx {
 	struct members {
@@ -2015,7 +2377,7 @@ class StateStackImpl:mx {
 		return StateStackImpl._equals(this, other);
 	}
 
-	bool static _equals(StateStackImpl a, StateStackImpl b) {
+	static bool _equals(StateStackImpl a, StateStackImpl b) {
 		if (a == b) {
 			return true;
 		}
@@ -2114,7 +2476,7 @@ class StateStackImpl:mx {
 	}
 
 	utf16 toString() {
-		const utf16 r[] = [];
+		const array<utf16> r;
 		data->_writeString(r, 0);
 		return "[" + r.join(",") + "]";
 	}
@@ -2256,9 +2618,6 @@ struct LineTokens {
 		} else {
 			data->_lineText = null;
 		}
-		data->_tokens = [];
-		data->_binaryTokens = [];
-		data->_lastTokenEndIndex = 0;
 	}
 
 	void produce(StateStackImpl stack, num endIndex) {
@@ -2353,7 +2712,7 @@ struct LineTokens {
 		data->_lastTokenEndIndex = endIndex;
 	}
 
-	IToken[] getResult(StateStackImpl stack, num lineLength) {
+	array<IToken> getResult(StateStackImpl stack, num lineLength) {
 		if (data->_tokens.len() > 0 && data->_tokens[data->_tokens.len() - 1].startIndex == lineLength - 1) {
 			// pop produced token for newline
 			data->_tokens.pop();
@@ -2421,8 +2780,6 @@ struct Grammar:mx { // implements IGrammar, IRuleFactoryHelper, IOnigLib
 		data->_ruleId2desc = [null];
 		data->_includedGrammars = {};
 		data->_grammar = grammar;
-
-		data->_tokenTypeMatchers = [];
 		if (tokenTypes) {
 			for (const selector of Object.keys(tokenTypes)) {
 				const matchers = createMatchers(selector, nameMatcher);
@@ -2436,7 +2793,7 @@ struct Grammar:mx { // implements IGrammar, IRuleFactoryHelper, IOnigLib
 		}
 	}
 
-	BasicScopeAttributes getMetadataForScope(scope: string) {
+	BasicScopeAttributes getMetadataForScope(str scope) {
 		return data->_basicScopeAttributesProvider.getBasicScopeAttributes(scope);
 	}
 
