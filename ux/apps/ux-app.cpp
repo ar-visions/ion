@@ -10,167 +10,54 @@ import { IOnigLib, OnigScanner, IOnigCaptureIndex, FindOption, IOnigMatch, OnigS
 import { ILocation, IRawGrammar, IRawRepository, IRawRule, IRawCaptures } from './rawGrammar';
 import { IncludeReferenceKind, parseInclude } from './grammar/grammarDependencies';
 
-const RegEx16 HAS_BACK_REFERENCES  = RegEx16(R("\\(\d+)"), RegEx::Behaviour::none);
-const RegEx16 BACK_REFERENCING_END = RegEx16(R("\\(\d+)"), RegEx::Behaviour::global);
+const RegEx HAS_BACK_REFERENCES  = RegEx(utf16(R("\\(\d+)")), RegEx::Behaviour::none);
+const RegEx BACK_REFERENCING_END = RegEx(utf16(R("\\(\d+)")), RegEx::Behaviour::global);
 
 using ScopeName = str;
 using ScopePath = str;
 using ScopePattern = str;
+using Uint32Array  = array<uint32_t>;
 
+struct RegistryOptions {
+	IRawTheme theme;
+	array<str> colorMap;
+	future loadGrammar(ScopeName scopeName);
+	lambda<array<ScopeName>(ScopeName)> getInjections;
+};
 
+/**
+ * A map from scope name to a language id. Please do not use language id 0.
+ */
+using IEmbeddedLanguagesMap = map<num>;
 
+using ITokenTypeMap = map<str>;
 
+struct ILocation {
+	str 			filename;
+	num 			line;
+	num 			chr;
+};
 
-struct Registry:mx {
-	struct members {
-		RegistryOptions _options;
-		SyncRegistry _syncRegistry;
-		map<future> _ensureGrammarCache;
-	};
+struct ILocatable {
+	ILocation 		_vscodeTextmateLocation;
+};
 
-	mx_object(Registry, mx, members);
+struct IRawGrammar : ILocatable {
+	IRawRepository 		repository;
+	ScopeName 			scopeName;
+	array<IRawRule> 	patterns;
+	map<IRawRule> 		injections;
+	str 				injectionSelector;
+	array<str> 			fileTypes;
+	str 				name;
+	str 				firstLineMatch;
+};
 
-	Registry(RegistryOptions options) {
-		data->_options = options;
-		data->_syncRegistry = SyncRegistry(Theme.createFromRawTheme(options.theme, options.colorMap));
-		data->_ensureGrammarCache = new Map<string, Promise<void>>();
-	}
-
-	void dispose() {
-		data->_syncRegistry.dispose();
-	}
-
-	/**
-	 * Change the theme. Once called, no previous `ruleStack` should be used anymore.
-	 */
-	void setTheme(theme: IRawTheme, colorMap?: string[]) {
-		data->_syncRegistry.setTheme(Theme.createFromRawTheme(theme, colorMap));
-	}
-
-	/**
-	 * Returns a lookup array for color ids.
-	 */
-	array<str> getColorMap() {
-		return data->_syncRegistry.getColorMap();
-	}
-
-	/**
-	 * Load the grammar for `scopeName` and all referenced included grammars asynchronously.
-	 * Please do not use language id 0.
-	 */
-	future loadGrammarWithEmbeddedLanguages(
-		ScopeName initialScopeName,
-		num initialLanguage,
-		IEmbeddedLanguagesMap &embeddedLanguages // never pass the structs
-	) {
-		return data->loadGrammarWithConfiguration(initialScopeName, initialLanguage, { embeddedLanguages });
-	}
-
-	/**
-	 * Load the grammar for `scopeName` and all referenced included grammars asynchronously.
-	 * Please do not use language id 0.
-	 */
-	future loadGrammarWithConfiguration(
-		ScopeName initialScopeName,
-		num initialLanguage,
-		IGrammarConfiguration &configuration
-	) {
-		return data->_loadGrammar(
-			initialScopeName,
-			initialLanguage,
-			configuration.embeddedLanguages,
-			configuration.tokenTypes,
-			new BalancedBracketSelectors(
-				configuration.balancedBracketSelectors,
-				configuration.unbalancedBracketSelectors
-			)
-		);
-	}
-
-	/**
-	 * Load the grammar for `scopeName` and all referenced included grammars asynchronously.
-	 */
-	future loadGrammar(initialScopeName: ScopeName) {
-		return data->_loadGrammar(initialScopeName, 0, null, null, null);
-	}
-
-	future _loadGrammar(
-		ScopeName 					initialScopeName,
-		num 						initialLanguage,
-		IEmbeddedLanguagesMap 		embeddedLanguages,
-		ITokenTypeMap 				tokenTypes,
-		BalancedBracketSelectors 	balancedBracketSelectors
-	) {
-		const dependencyProcessor = new ScopeDependencyProcessor(data->_syncRegistry, initialScopeName);
-		while (dependencyProcessor.Q.length > 0) {
-			await Promise.all(dependencyProcessor.Q.map((request) => data->_loadSingleGrammar(request.scopeName)));
-			dependencyProcessor.processQueue();
-		}
-
-		return data->_grammarForScopeName(
-			initialScopeName,
-			initialLanguage,
-			embeddedLanguages,
-			tokenTypes,
-			balancedBracketSelectors
-		);
-	}
-
-	private async _loadSingleGrammar(scopeName: ScopeName): Promise<void> {
-		if (!data->_ensureGrammarCache.has(scopeName)) {
-			data->_ensureGrammarCache.set(scopeName, data->_doLoadSingleGrammar(scopeName));
-		}
-		return data->_ensureGrammarCache.get(scopeName);
-	}
-
-	private async _doLoadSingleGrammar(scopeName: ScopeName): Promise<void> {
-		const grammar = await data->_options.loadGrammar(scopeName);
-		if (grammar) {
-			const injections =
-				typeof data->_options.getInjections === "function" ? data->_options.getInjections(scopeName) : undefined;
-			data->_syncRegistry.addGrammar(grammar, injections);
-		}
-	}
-
-	/**
-	 * Adds a rawGrammar.
-	 */
-	public async addGrammar(
-		rawGrammar: IRawGrammar,
-		injections: string[] = [],
-		initialLanguage: number = 0,
-		embeddedLanguages: IEmbeddedLanguagesMap | null = null
-	): Promise<IGrammar> {
-		data->_syncRegistry.addGrammar(rawGrammar, injections);
-		return (await data->_grammarForScopeName(rawGrammar.scopeName, initialLanguage, embeddedLanguages))!;
-	}
-
-	/**
-	 * Get the grammar for `scopeName`. The grammar must first be created via `loadGrammar` or `addGrammar`.
-	 */
-	private _grammarForScopeName(
-		scopeName: string,
-		initialLanguage: number = 0,
-		embeddedLanguages: IEmbeddedLanguagesMap | null = null,
-		tokenTypes: ITokenTypeMap | null = null,
-		balancedBracketSelectors: BalancedBracketSelectors | null = null
-	): Promise<IGrammar | null> {
-		return data->_syncRegistry.grammarForScopeName(
-			scopeName,
-			initialLanguage,
-			embeddedLanguages,
-			tokenTypes,
-			balancedBracketSelectors
-		);
-	}
-}
-
-
-
-
-
-
-
+struct IRawRepositoryMap {
+	map<mx> 		props; /// of type IRawRule
+	IRawRule 		_self;
+	IRawRule 		_base;
+};
 
 
 struct IGrammarRepository {
@@ -223,7 +110,7 @@ struct ScopeStack:mx {
 	ScopeStack(
 		ScopeStack parent,
 		ScopeName scopeName
-	) {
+	):ScopeStack() {
 		data->parent = parent;
 		data->scopeName = scopeName;
 	}
@@ -258,7 +145,7 @@ struct ScopeStack:mx {
 	}
 
 	array<str> getExtensionIfDefined(ScopeStack base) {
-		const array<str> result;
+		array<str> result;
 		ScopeStack item = this;
 		while (item && item != base) {
 			result.push(item.scopeName);
@@ -344,10 +231,10 @@ array<ParsedThemeRule> parseTheme(IRawTheme source) {
 			str _scope = entry.scope;
 
 			// remove leading commas
-			_scope = _scope.replace(/^[,]+/, '');
+			_scope = _scope.replace(R("^[,]+"), "");
 
 			// remove trailing commans
-			_scope = _scope.replace(/[,]+$/, '');
+			_scope = _scope.replace(R("[,]+$"), "");
 
 			scopes = _scope.split(',');
 		} else if (entry.scope.type()->traits & traits::array) {
@@ -778,14 +665,17 @@ struct Theme:mx {
 }
 
 
-struct SyncRegistry : IGrammarRepository, IThemeProvider {
-	ion::map<Grammar> _grammars;
-	ion::map<IRawGrammar> _rawGrammars;
-	ion::map<array<ScopeName>> _injectionGrammars;
+struct SyncRegistry : mx {
+	struct members: IGrammaryRepository, IThemeProvider {
+		ion::map<Grammar> _grammars;
+		ion::map<IRawGrammar> _rawGrammars;
+		ion::map<array<ScopeName>> _injectionGrammars;
+		Theme _theme;
+	};
 
-	Theme _theme;
+	mx_object(SyncRegistry, mx, members);
 
-	constructor(Theme theme) {
+	SyncRegistry(Theme theme):SyncRegistry() {
 		data->_theme = theme;
 	}
 
@@ -806,11 +696,11 @@ struct SyncRegistry : IGrammarRepository, IThemeProvider {
 	/**
 	 * Add `grammar` to registry and return a list of referenced scope names
 	 */
-	void addGrammar(IRawGrammar grammar, injectionScopeNames?: ScopeName[]) {
-		data->_rawGrammars.set(grammar.scopeName, grammar);
+	void addGrammar(IRawGrammar &grammar, array<ScopeName> injectionScopeNames) {
+		data->_rawGrammars[grammar.scopeName] = grammar; /// is a copy ok?
 
 		if (injectionScopeNames) {
-			data->_injectionGrammars.set(grammar.scopeName, injectionScopeNames);
+			data->_injectionGrammars[grammar.scopeName] = injectionScopeNames;
 		}
 	}
 
@@ -942,30 +832,6 @@ IncludeReference parseInclude(utf8 include) {
 	}
 }
 
-struct ILocation {
-	str 			filename;
-	num 			line;
-	num 			chr;
-};
-
-struct ILocatable {
-	ILocation 		_vscodeTextmateLocation;
-};
-
-struct IRawRepositoryMap {
-	map<mx> 		props; /// of type IRawRule
-	IRawRule 		_self;
-	IRawRule 		_base;
-};
-
-
-
-
-
-
-
-
-
 struct ExternalReferenceCollector:mx {
 	private readonly _references: AbsoluteRuleReference[] = [];
 	private readonly _seenReferenceKeys = new Set<string>();
@@ -983,52 +849,6 @@ struct ExternalReferenceCollector:mx {
 		}
 		this._seenReferenceKeys.add(key);
 		this._references.push(reference);
-	}
-}
-
-export class ScopeDependencyProcessor {
-	public readonly seenFullScopeRequests = new Set<ScopeName>();
-	public readonly seenPartialScopeRequests = new Set<string>();
-	public Q: AbsoluteRuleReference[];
-
-	constructor(
-		public readonly repo: IGrammarRepository,
-		public readonly initialScopeName: ScopeName
-	) {
-		this.seenFullScopeRequests.add(this.initialScopeName);
-		this.Q = [new TopLevelRuleReference(this.initialScopeName)];
-	}
-
-	public processQueue(): void {
-		const q = this.Q;
-		this.Q = [];
-
-		const deps = new ExternalReferenceCollector();
-		for (const dep of q) {
-			collectReferencesOfReference(dep, this.initialScopeName, this.repo, deps);
-		}
-
-		for (const dep of deps.references) {
-			if (dep instanceof TopLevelRuleReference) {
-				if (this.seenFullScopeRequests.has(dep.scopeName)) {
-					// already processed
-					continue;
-				}
-				this.seenFullScopeRequests.add(dep.scopeName);
-				this.Q.push(dep);
-			} else {
-				if (this.seenFullScopeRequests.has(dep.scopeName)) {
-					// already processed in full
-					continue;
-				}
-				if (this.seenPartialScopeRequests.has(dep.toKey())) {
-					// already processed
-					continue;
-				}
-				this.seenPartialScopeRequests.add(dep.toKey());
-				this.Q.push(dep);
-			}
-		}
 	}
 }
 
@@ -1172,6 +992,57 @@ void collectExternalReferencesInRules(
 
 
 
+struct ScopeDependencyProcessor:mx {
+	struct members {
+		IGrammarRepository repo,
+		ScopeName initialScopeName
+		array<ScopeName> seenFullScopeRequests;
+		array<str> seenPartialScopeRequests;
+		array<AbsoluteRuleReference> Q;
+	};
+
+	ScopeDependencyProcessor(
+		IGrammarRepository repo,
+		public readonly initialScopeName
+	) {
+		this.seenFullScopeRequests.add(this.initialScopeName);
+		this.Q = [new TopLevelRuleReference(this.initialScopeName)];
+	}
+
+	void processQueue() {
+		const q = this.Q;
+		this.Q = [];
+
+		const deps = new ExternalReferenceCollector();
+		for (const dep of q) {
+			collectReferencesOfReference(dep, this.initialScopeName, this.repo, deps);
+		}
+
+		for (auto &dep: deps.references) {
+			if (dep instanceof TopLevelRuleReference) {
+				if (this.seenFullScopeRequests.has(dep.scopeName)) {
+					// already processed
+					continue;
+				}
+				this.seenFullScopeRequests.add(dep.scopeName);
+				this.Q.push(dep);
+			} else {
+				if (this.seenFullScopeRequests.has(dep.scopeName)) {
+					// already processed in full
+					continue;
+				}
+				if (this.seenPartialScopeRequests.has(dep.toKey())) {
+					// already processed
+					continue;
+				}
+				this.seenPartialScopeRequests.add(dep.toKey());
+				this.Q.push(dep);
+			}
+		}
+	}
+};
+
+
 
 /// I can be both Implement type and Interface, in mx use-case
 /// if a context type implements it, it will contain the type
@@ -1200,6 +1071,10 @@ struct IRawRule:mx {
 	mx_object(IRawRule, mx, members);
 };
 
+struct OnigString {
+	str content;
+};
+
 struct IOnigCaptureIndex {
 	num start;
 	num end;
@@ -1209,6 +1084,12 @@ struct IOnigCaptureIndex {
 struct IOnigMatch {
 	num index;
 	array<IOnigCaptureIndex> captureIndices;
+};
+
+/// renamed to IOnigScanner
+struct OnigScanner {
+	virtual IOnigMatch findNextMatchSync(str string, num startPosition, states<FindOption> options) = 0;
+	//virtual void dispose() = 0; /// dispose of dispose i think; they only do that because they dont have implicit memory refs with this lib
 };
 
 enums(FindOption, None,
@@ -1246,26 +1127,6 @@ struct IRuleRegistry {
 
 //struct IRuleRegistry IRuleFactoryHelper, IGrammarRegistry {
 //}
-
-using IRuleFactoryHelper = IRuleRegistry;
-
-struct com {
-	com() {
-
-	}
-};
-
-struct IData {
-	int test;
-};
-
-struct IData2 {
-	str test2;
-};
-
-struct test:com<IData, IData2> {
-	/// i need the template var-arg for this; just something to go through those IStruct composition members
-};
 
 /// abstract
 struct Rule:mx {
@@ -1312,7 +1173,18 @@ struct Rule:mx {
 	virtual void collectPatterns(IRuleRegistry grammar, RegExpSourceList &out) = 0;
 	virtual CompiledRule compile(IRuleRegistry grammar, utf16 endRegexSource) = 0;
 	virtual CompiledRule compileAG(IRuleRegistry grammar, utf16 endRegexSource, bool allowA, bool allowG) = 0;
+};
+
+struct IRuleRegistry {
+	virtual Rule getRule(ruleId: RuleId) = 0;
+	virtual Rule registerRule(factory: (id: RuleId) => Rule) = 0;
+};
+
+struct IGrammarRegistry {
+	getExternalGrammar(scopeName: string, repository: IRawRepository): IRawGrammar | null | undefined;
 }
+
+struct IRuleFactoryHelper : IRuleRegistry, IGrammarRegistry { };
 
 struct ICompilePatternsResult {
 	array<RuleId> patterns;
@@ -1885,9 +1757,8 @@ struct RegExpSource:mx {
 		let capturedValues = captureIndices.map((capture) => {
 			return lineText.mid(capture.start, capture.end);
 		});
-		BACK_REFERENCING_END.lastIndex = 0;
-		return data->source.replace(BACK_REFERENCING_END, (match, g1) => {
-			
+		BACK_REFERENCING_END.last_index = 0; // support this!
+		return BACK_REFERENCING_END.replace(data->source, (match, g1) => {
 			return escapeRegExpCharacters(capturedValues[parseInt(g1, 10)] || '');
 		});
 	}
@@ -2121,14 +1992,10 @@ struct CompiledRule {
 	}
 }
 
-export interface IFindNextMatchResult<TRuleId = RuleId> {
-	TRuleId ruleId;
-	IOnigCaptureIndex captureIndices[];
-}
-
-
-
-
+struct IFindNextMatchResult {
+	RuleId ruleId;
+	array<IOnigCaptureIndex> captureIndices;
+};
 
 struct StateStack:mx {
 	num depth;
@@ -2138,7 +2005,7 @@ struct StateStack:mx {
 	virtual bool equals(StateStack other) = 0;
 };
 
-struct StateStackFrame {
+struct StateStackFrame:mx {
 	num 	ruleId;
 	num 	enterPos;
 	num 	anchorPos;
@@ -2148,11 +2015,7 @@ struct StateStackFrame {
 	array<AttributedScopeStackFrame> contentNameScopesList;
 }
 
-
-
-
-
-export class AttributedScopeStack {
+struct AttributedScopeStack:mx {
 	struct members {
 		AttributedScopeStack parent;
 		ScopeStack scopePath;
@@ -2189,21 +2052,6 @@ export class AttributedScopeStack {
 	}
 
 	ScopeName get scopeName() { return data->scopePath.scopeName; }
-
-	/**
-	 * Invariant:
-	 * ```
-	 * if (parent && !scopePath.extends(parent.scopePath)) {
-	 * 	throw new Error();
-	 * }
-	 * ```
-	 */
-	private constructor(
-		public readonly AttributedScopeStack parent,
-		public readonly ScopeStack scopePath,
-		public readonly EncodedTokenAttributes tokenAttributes
-	) {
-	}
 
 	public toString() {
 		return data->getScopeNames().join(' ');
@@ -2538,7 +2386,7 @@ class StateStackImpl:mx {
 	}
 
 	StateStackFrame toStateStackFrame() {
-		return StateStackFrame {
+		return StateStackFrame::members {
 			ruleId = ruleIdToNumber(data->ruleId),
 			beginRuleCapturedEOL = data->beginRuleCapturedEOL,
 			endRule = data->endRule,
@@ -2560,6 +2408,47 @@ class StateStackImpl:mx {
 			AttributedScopeStack.fromExtension(namesScopeList, frame.contentNameScopesList)!
 		);
 	}
+}
+
+struct StackDiff {
+	num pops;
+	array<StateStackFrame> newFrames;
+};
+
+StackDiff diffStateStacksRefEq(StateStack first, StateStack second) {
+	num pops = 0;
+	array<StateStackFrame> newFrames;
+
+	StateStackImpl curFirst  = first;
+	StateStackImpl curSecond = second;
+
+	while (curFirst != curSecond) {
+		if (curFirst && (!curSecond || curFirst.depth >= curSecond.depth)) {
+			// curFirst is certainly not contained in curSecond
+			pops++;
+			curFirst = curFirst.parent;
+		} else {
+			// curSecond is certainly not contained in curFirst.
+			// Also, curSecond must be defined, as otherwise a previous case would match
+			newFrames.push(curSecond!.toStateStackFrame());
+			curSecond = curSecond!.parent;
+		}
+	}
+	return {
+		pops,
+		newFrames.reverse(),
+	};
+}
+
+StateStackImpl applyStateStackDiff(StateStack stack, StackDiff diff) {
+	StateStackImpl curStack = stack;
+	for (let i = 0; i < diff.pops; i++) {
+		curStack = curStack->parent;
+	}
+	for (const frame of diff.newFrames) {
+		curStack = StateStackImpl.pushFrame(curStack, frame);
+	}
+	return curStack;
 }
 
 bool isIdentifier(utf16 token) {
@@ -2597,20 +2486,23 @@ struct ILineTokensResult {
 	bool stoppedEarly;
 };
 
-struct LineTokens {
-	bool 		_emitBinaryTokens;
-	utf16 			_lineText;
-	array<IToken> 	_tokens;
-	array<num> 		_binaryTokens;
-	num 			_lastTokenEndIndex;
-	array<TokenTypeMatcher> _tokenTypeOverrides;
+struct LineTokens:mx {
+	struct members {
+		bool 		_emitBinaryTokens;
+		utf16 			_lineText;
+		array<IToken> 	_tokens;
+		array<num> 		_binaryTokens;
+		num 			_lastTokenEndIndex;
+		array<TokenTypeMatcher> _tokenTypeOverrides;
+	};
+	
+	mx_object(LineTokens, mx, members);
 
-	constructor(
-		bool emitBinaryTokens,
-		utf16 lineText,
+	LineTokens(
+		bool emitBinaryTokens, utf16 lineText,
 		array<TokenTypeMatcher> tokenTypeOverrides,
-		array<BalancedBracketSelectors> balancedBracketSelectors,
-	) {
+		array<BalancedBracketSelectors> balancedBracketSelectors)
+	{
 		data->_emitBinaryTokens = emitBinaryTokens;
 		data->_tokenTypeOverrides = tokenTypeOverrides;
 		if (DebugFlags.InDebugMode) {
@@ -2680,7 +2572,9 @@ struct LineTokens {
 
 			if (DebugFlags.InDebugMode) {
 				const scopes = scopesList?.getScopeNames() ?? [];
-				console.log('  token: |' + data->_lineText!.mid(data->_lastTokenEndIndex, endIndex).replace(/\n$/, '\\n') + '|');
+				RegEx regex = RegEx(R("\n$"));
+				utf16 txt = data->_lineText.mid(data->_lastTokenEndIndex, endIndex);
+				console.log('  token: |' + regex.replace(txt, "\\n") + '|');
 				for (let k = 0; k < scopes.len(); k++) {
 					console.log('      * ' + scopes[k]);
 				}
@@ -2696,7 +2590,9 @@ struct LineTokens {
 		const scopes = scopesList?.getScopeNames() ?? [];
 
 		if (DebugFlags.InDebugMode) {
-			console.log('  token: |' + data->_lineText!.mid(data->_lastTokenEndIndex, endIndex).replace(/\n$/, '\\n') + '|');
+			RegEx regex = RegEx(R("\n$"));
+			utf16 txt = data->_lineText!.mid(data->_lastTokenEndIndex, endIndex);
+			console.log('  token: |' + regex.replace(txt, "\\n") + '|');
 			for (let k = 0; k < scopes.len(); k++) {
 				console.log('      * ' + scopes[k]);
 			}
@@ -2756,7 +2652,6 @@ TokenizeStringResult _tokenizeString(
 );
 
 struct Grammar:mx { // implements IGrammar, IRuleFactoryHelper, IOnigLib
-
 	struct members {
 		RuleId 					_rootId = -1;
 		num 					_lastRuleId;
@@ -2765,7 +2660,6 @@ struct Grammar:mx { // implements IGrammar, IRuleFactoryHelper, IOnigLib
 		array<TokenTypeMatcher> _tokenTypeMatchers;
 		//BasicScopeAttributesProvider _basicScopeAttributesProvider;
 	};
-
 	mx_object(Grammar, mx, members);
 
 	/// remove Repository
@@ -2796,6 +2690,85 @@ struct Grammar:mx { // implements IGrammar, IRuleFactoryHelper, IOnigLib
 	BasicScopeAttributes getMetadataForScope(str scope) {
 		return data->_basicScopeAttributesProvider.getBasicScopeAttributes(scope);
 	}
+
+
+	private _collectInjections(): Injection[] {
+		const grammarRepository: IGrammarRepository = {
+			lookup: (scopeName: string): IRawGrammar | undefined => {
+				if (scopeName === this._rootScopeName) {
+					return this._grammar;
+				}
+				return this.getExternalGrammar(scopeName);
+			},
+			injections: (scopeName: string): string[] => {
+				return this._grammarRepository.injections(scopeName);
+			},
+		};
+
+		const result: Injection[] = [];
+
+		const scopeName = this._rootScopeName;
+
+		const grammar = grammarRepository.lookup(scopeName);
+		if (grammar) {
+			// add injections from the current grammar
+			const rawInjections = grammar.injections;
+			if (rawInjections) {
+				for (let expression in rawInjections) {
+					collectInjections(
+						result,
+						expression,
+						rawInjections[expression],
+						this,
+						grammar
+					);
+				}
+			}
+
+			// add injection grammars contributed for the current scope
+
+			const injectionScopeNames = this._grammarRepository.injections(scopeName);
+			if (injectionScopeNames) {
+				injectionScopeNames.forEach((injectionScopeName) => {
+					const injectionGrammar =
+						this.getExternalGrammar(injectionScopeName);
+					if (injectionGrammar) {
+						const selector = injectionGrammar.injectionSelector;
+						if (selector) {
+							collectInjections(
+								result,
+								selector,
+								injectionGrammar,
+								this,
+								injectionGrammar
+							);
+						}
+					}
+				});
+			}
+		}
+
+		result.sort((i1, i2) => i1.priority - i2.priority); // sort by priority
+
+		return result;
+	}
+
+	array<Injection> getInjections() {
+		if (this._injections === null) {
+			this._injections = this._collectInjections();
+
+			if (DebugFlags.InDebugMode && this._injections.length > 0) {
+				console.log(
+					"Grammar {0} contains the following injections:"
+				, { this._rootScopeName });
+				for (Injection &injection: this._injections) {
+					console.log("  - {0}", { injection.debugSelector });
+				}
+			}
+		}
+		return this._injections;
+	}
+
 
 	void dispose() {
 		for (auto &rule: data->_ruleId2desc) {
@@ -3432,6 +3405,150 @@ array<MatcherWithPriority> createMatchers(utf16 selector, NameMatcher matchesNam
 	}
 	return results;
 }
+
+struct Registry:mx {
+	struct members {
+		RegistryOptions _options;
+		SyncRegistry _syncRegistry;
+		map<future> _ensureGrammarCache;
+	};
+
+	mx_object(Registry, mx, members);
+
+	Registry(RegistryOptions options) {
+		data->_options = options;
+		data->_syncRegistry = SyncRegistry(Theme.createFromRawTheme(options.theme, options.colorMap));
+	}
+
+	void dispose() {
+		data->_syncRegistry.dispose();
+	}
+
+	/**
+	 * Change the theme. Once called, no previous `ruleStack` should be used anymore.
+	 */
+	void setTheme(IRawTheme &theme, array<str> colorMap = {}) {
+		data->_syncRegistry.setTheme(Theme.createFromRawTheme(theme, colorMap));
+	}
+
+	/**
+	 * Returns a lookup array for color ids.
+	 */
+	array<str> getColorMap() {
+		return data->_syncRegistry.getColorMap();
+	}
+
+	/**
+	 * Load the grammar for `scopeName` and all referenced included grammars asynchronously.
+	 * Please do not use language id 0.
+	 */
+	future loadGrammarWithEmbeddedLanguages(
+		ScopeName initialScopeName,
+		num initialLanguage,
+		IEmbeddedLanguagesMap &embeddedLanguages // never pass the structs
+	) {
+		return data->loadGrammarWithConfiguration(initialScopeName, initialLanguage, { embeddedLanguages });
+	}
+
+	/**
+	 * Load the grammar for `scopeName` and all referenced included grammars asynchronously.
+	 * Please do not use language id 0.
+	 */
+	future loadGrammarWithConfiguration(
+		ScopeName initialScopeName,
+		num initialLanguage,
+		IGrammarConfiguration &configuration
+	) {
+		return data->_loadGrammar(
+			initialScopeName,
+			initialLanguage,
+			configuration.embeddedLanguages,
+			configuration.tokenTypes,
+			new BalancedBracketSelectors(
+				configuration.balancedBracketSelectors,
+				configuration.unbalancedBracketSelectors
+			)
+		);
+	}
+
+	/**
+	 * Load the grammar for `scopeName` and all referenced included grammars asynchronously.
+	 */
+	future loadGrammar(ScopeName initialScopeName) {
+		return data->_loadGrammar(initialScopeName, 0, null, null, null);
+	}
+
+	future _loadGrammar(
+		ScopeName 					initialScopeName,
+		num 						initialLanguage,
+		IEmbeddedLanguagesMap 	   &embeddedLanguages,
+		ITokenTypeMap 			   &tokenTypes,
+		BalancedBracketSelectors 	balancedBracketSelectors
+	) {
+		const dependencyProcessor = new ScopeDependencyProcessor(data->_syncRegistry, initialScopeName);
+		while (dependencyProcessor.Q.length > 0) {
+			await Promise.all(dependencyProcessor.Q.map((request) => data->_loadSingleGrammar(request.scopeName)));
+			dependencyProcessor.processQueue();
+		}
+
+		return data->_grammarForScopeName(
+			initialScopeName,
+			initialLanguage,
+			embeddedLanguages,
+			tokenTypes,
+			balancedBracketSelectors
+		);
+	}
+
+	future _loadSingleGrammar(ScopeName scopeName) {
+		if (!data->_ensureGrammarCache.has(scopeName)) {
+			data->_ensureGrammarCache.set(scopeName, data->_doLoadSingleGrammar(scopeName));
+		}
+		return data->_ensureGrammarCache.get(scopeName);
+	}
+
+	future _doLoadSingleGrammar(ScopeName scopeName) {
+		const grammar = await data->_options.loadGrammar(scopeName);
+		if (grammar) {
+			const injections =
+				typeof data->_options.getInjections === "function" ? data->_options.getInjections(scopeName) : undefined;
+			data->_syncRegistry.addGrammar(grammar, injections);
+		}
+	}
+
+	/**
+	 * Adds a rawGrammar.
+	 */
+	future addGrammar(
+		IRawGrammar &rawGrammar,
+		array<str> injections = {},
+		num initialLanguage = 0,
+		IEmbeddedLanguagesMap embeddedLanguages = null)
+	{
+		data->_syncRegistry.addGrammar(rawGrammar, injections);
+		return (await data->_grammarForScopeName(rawGrammar.scopeName, initialLanguage, embeddedLanguages))!;
+	}
+
+	/**
+	 * Get the grammar for `scopeName`. The grammar must first be created via `loadGrammar` or `addGrammar`.
+	 */
+	future _grammarForScopeName(
+		str scopeName,
+		num initialLanguage = 0,
+		IEmbeddedLanguagesMap embeddedLanguages = null,
+		ITokenTypeMap tokenTypes = null,
+		BalancedBracketSelectors balancedBracketSelectors = null
+	) {
+		return data->_syncRegistry.grammarForScopeName(
+			scopeName,
+			initialLanguage,
+			embeddedLanguages,
+			tokenTypes,
+			balancedBracketSelectors
+		);
+	}
+}
+
 #endif
 
 

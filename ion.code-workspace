@@ -200,7 +200,9 @@
 			"resumable": "cpp",
 			"*.ipp": "cpp",
 			"barrier": "cpp",
-			"__assert": "cpp"
+			"__assert": "cpp",
+			"*.traits": "cpp",
+			"fft": "cpp"
 		},
 		"git.ignoreLimitWarning": true
 	}

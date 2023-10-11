@@ -58,6 +58,12 @@ RegEx::RegEx(utf16 pattern, Behaviour b) : RegEx() {
     }
 }
 
+/// replace with above when tested
+utf16 RegEx::replace(utf16 input, mx mx_replacement) {
+    utf16 result = input;
+    return result;
+}
+
 /// escape regex characters with '\'
 str RegEx::escape(str value) {
     return value.escape("\\{}*+?|^$.,[]()# ");
@@ -72,6 +78,9 @@ array<utf16> RegEx::exec(utf16 input) {
     Behaviour b = data->b;
     array<utf16> result;
 
+    if (data->last_index == 0) /// the user can set this as they can in js
+        data->bytes_left = 0;
+    
     if (input.mem != data->last_mem || b == Behaviour::none) {
         ::drop(data->last_mem);
         data->last_index = 0;
@@ -121,6 +130,9 @@ array<str> RegEx::exec(str input) {
     Behaviour b = data->b;
     array<str> result;
 
+    if (data->last_index == 0)
+        data->bytes_left = 0;
+    
     if (input.mem != data->last_mem || b == Behaviour::none) {
         ::drop(data->last_mem);
         data->last_index = 0;
