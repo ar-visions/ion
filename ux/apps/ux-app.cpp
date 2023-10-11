@@ -2,8 +2,7 @@
 
 using namespace ion;
 
-
-#if 0
+#if 1
 
 import { RegexSource, mergeObjects, basename, escapeRegExpCharacters, OrMask } from './utils';
 
@@ -13,6 +12,715 @@ import { IncludeReferenceKind, parseInclude } from './grammar/grammarDependencie
 
 const RegEx16 HAS_BACK_REFERENCES  = RegEx16(R("\\(\d+)"), RegEx::Behaviour::none);
 const RegEx16 BACK_REFERENCING_END = RegEx16(R("\\(\d+)"), RegEx::Behaviour::global);
+
+using ScopeName = str;
+using ScopePath = str;
+using ScopePattern = str;
+
+struct IGrammarRepository {
+	virtual IRawGrammar 	 lookup(ScopeName scopeName) = 0;
+	virtual array<ScopeName> injections(ScopeName scopeName) = 0;
+};
+
+struct IRawThemeFields {
+	str fontStyle;
+	str foreground;
+	str background;
+};
+
+struct IRawThemeSetting {
+	str name
+	mx scope; // can be ScopePattern or ScopePattern[] ! (so string or array of them)
+	sp<IRawThemeFields> settings;
+};
+
+struct IRawTheme {
+	str name;
+	array<IRawThemeSetting> settings;
+};
+
+struct ScopeStack:mx {
+	struct members {
+		ScopeStack parent;
+		ScopeName scopeName;
+	};
+
+	static push(ScopeStack path, array<ScopeName> scopeNames): ScopeStack | null {
+		for (const name of scopeNames) {
+			path = new ScopeStack(path, name);
+		}
+		return path;
+	}
+
+	//public static from(first: ScopeName, ...segments: ScopeName[]): ScopeStack;
+
+	//public static from(...segments: ScopeName[]): ScopeStack | null;
+
+	//public static from(...segments: ScopeName[]): ScopeStack | null {
+	//	let result: ScopeStack | null = null;
+	//	for (let i = 0; i < segments.length; i++) {
+	//		result = new ScopeStack(result, segments[i]);
+	//	}
+	//	return result;
+	//}
+
+	ScopeStack(
+		ScopeStack parent,
+		ScopeName scopeName
+	) {
+		data->parent = parent;
+		data->scopeName = scopeName;
+	}
+
+	ScopeStack push(ScopeName scopeName) {
+		return new ScopeStack(this, scopeName);
+	}
+
+	array<ScopeName> getSegments() {
+		ScopeStack item = this;
+		const array<ScopeName> result;
+		while (item) {
+			result.push(item.scopeName);
+			item = item.parent;
+		}
+		result.reverse();
+		return result;
+	}
+
+	public toString() {
+		return this.getSegments().join(' ');
+	}
+
+	boolean extends(ScopeStack other) {
+		if (this === other) {
+			return true;
+		}
+		if (this.parent === null) {
+			return false;
+		}
+		return this.parent.extends(other);
+	}
+
+	array<str> getExtensionIfDefined(ScopeStack base) {
+		const array<str> result;
+		ScopeStack item = this;
+		while (item && item !== base) {
+			result.push(item.scopeName);
+			item = item.parent;
+		}
+		return item == base ? result.reverse() : undefined;
+	}
+}
+
+boolean _scopePathMatchesParentScopes(ScopeStack scopePath, array<ScopeName> parentScopes) {
+	if (parentScopes === null) {
+		return true;
+	}
+
+	let index = 0;
+	let scopePattern = parentScopes[index];
+
+	while (scopePath) {
+		if (_matchesScope(scopePath.scopeName, scopePattern)) {
+			index++;
+			if (index === parentScopes.length) {
+				return true;
+			}
+			scopePattern = parentScopes[index];
+		}
+		scopePath = scopePath.parent;
+	}
+
+	return false;
+}
+
+boolean _matchesScope(ScopeName scopeName, ScopeName scopePattern) {
+	return scopePattern === scopeName || (scopeName.startsWith(scopePattern) && scopeName[scopePattern.length] === '.');
+}
+
+struct StyleAttributes:mx {
+	struct members {
+		states<FontStyle> fontStyle;
+		num foregroundId;
+		num backgroundId;
+	};
+	mx_object(StyleAttributes, mx, members);
+
+	StyleAttributes(states<FontStyle> fontStyle, num foregroundId, num backgroundId):StyleAttributes() {
+		data->fontStyle = fontStyle;
+		data->foregroundId = foregroundId;
+		data->backgroundId = backgroundId;
+	}
+};
+
+/**
+ * Parse a raw theme into rules.
+ */
+array<ParsedThemeRule> parseTheme(IRawTheme source) {
+	if (!source) {
+		return {};
+	}
+	if (!source.settings || !Array.isArray(source.settings)) {
+		return {};
+	}
+	let settings = source.settings;
+	array<ParsedThemeRule> result;
+	num resultLen = 0;
+	for (let i = 0, len = settings.len(); i < len; i++) {
+		auto &entry = settings[i];
+
+		if (!entry.settings) {
+			continue;
+		}
+
+		let scopes: string[];
+		if (typeof entry.scope === 'string') {
+			let _scope = entry.scope;
+
+			// remove leading commas
+			_scope = _scope.replace(/^[,]+/, '');
+
+			// remove trailing commans
+			_scope = _scope.replace(/[,]+$/, '');
+
+			scopes = _scope.split(',');
+		} else if (Array.isArray(entry.scope)) {
+			scopes = entry.scope;
+		} else {
+			scopes = [''];
+		}
+
+		let fontStyle: OrMask<FontStyle> = FontStyle.NotSet;
+		if (typeof entry.settings.fontStyle === 'string') {
+			fontStyle = FontStyle.None;
+
+			let segments = entry.settings.fontStyle.split(' ');
+			for (let j = 0, lenJ = segments.length; j < lenJ; j++) {
+				let segment = segments[j];
+				switch (segment) {
+					case 'italic':
+						fontStyle = fontStyle | FontStyle.Italic;
+						break;
+					case 'bold':
+						fontStyle = fontStyle | FontStyle.Bold;
+						break;
+					case 'underline':
+						fontStyle = fontStyle | FontStyle.Underline;
+						break;
+					case 'strikethrough':
+						fontStyle = fontStyle | FontStyle.Strikethrough;
+						break;
+				}
+			}
+		}
+
+		let foreground: string | null = null;
+		if (typeof entry.settings.foreground === 'string' && isValidHexColor(entry.settings.foreground)) {
+			foreground = entry.settings.foreground;
+		}
+
+		let background: string | null = null;
+		if (typeof entry.settings.background === 'string' && isValidHexColor(entry.settings.background)) {
+			background = entry.settings.background;
+		}
+
+		for (let j = 0, lenJ = scopes.length; j < lenJ; j++) {
+			let _scope = scopes[j].trim();
+
+			let segments = _scope.split(' ');
+
+			let scope = segments[segments.length - 1];
+			let parentScopes: string[] | null = null;
+			if (segments.length > 1) {
+				parentScopes = segments.slice(0, segments.length - 1);
+				parentScopes.reverse();
+			}
+
+			result[resultLen++] = new ParsedThemeRule(
+				scope,
+				parentScopes,
+				i,
+				fontStyle,
+				foreground,
+				background
+			);
+		}
+	}
+
+	return result;
+}
+
+export class ParsedThemeRule {
+	constructor(
+		public readonly scope: ScopeName,
+		public readonly parentScopes: ScopeName[] | null,
+		public readonly index: number,
+		public readonly fontStyle: OrMask<FontStyle>,
+		public readonly foreground: string | null,
+		public readonly background: string | null,
+	) {
+	}
+}
+
+export const enum FontStyle {
+	NotSet = -1,
+	None = 0,
+	Italic = 1,
+	Bold = 2,
+	Underline = 4,
+	Strikethrough = 8
+}
+
+export function fontStyleToString(fontStyle: OrMask<FontStyle>) {
+	if (fontStyle === FontStyle.NotSet) {
+		return 'not set';
+	}
+
+	let style = '';
+	if (fontStyle & FontStyle.Italic) {
+		style += 'italic ';
+	}
+	if (fontStyle & FontStyle.Bold) {
+		style += 'bold ';
+	}
+	if (fontStyle & FontStyle.Underline) {
+		style += 'underline ';
+	}
+	if (fontStyle & FontStyle.Strikethrough) {
+		style += 'strikethrough ';
+	}
+	if (style === '') {
+		style = 'none';
+	}
+	return style.trim();
+}
+
+/**
+ * Resolve rules (i.e. inheritance).
+ */
+function resolveParsedThemeRules(parsedThemeRules: ParsedThemeRule[], _colorMap: string[] | undefined): Theme {
+
+	// Sort rules lexicographically, and then by index if necessary
+	parsedThemeRules.sort((a, b) => {
+		let r = strcmp(a.scope, b.scope);
+		if (r !== 0) {
+			return r;
+		}
+		r = strArrCmp(a.parentScopes, b.parentScopes);
+		if (r !== 0) {
+			return r;
+		}
+		return a.index - b.index;
+	});
+
+	// Determine defaults
+	let defaultFontStyle = FontStyle.None;
+	let defaultForeground = '#000000';
+	let defaultBackground = '#ffffff';
+	while (parsedThemeRules.length >= 1 && parsedThemeRules[0].scope === '') {
+		let incomingDefaults = parsedThemeRules.shift()!;
+		if (incomingDefaults.fontStyle !== FontStyle.NotSet) {
+			defaultFontStyle = incomingDefaults.fontStyle;
+		}
+		if (incomingDefaults.foreground !== null) {
+			defaultForeground = incomingDefaults.foreground;
+		}
+		if (incomingDefaults.background !== null) {
+			defaultBackground = incomingDefaults.background;
+		}
+	}
+	let colorMap = new ColorMap(_colorMap);
+	let defaults = new StyleAttributes(defaultFontStyle, colorMap.getId(defaultForeground), colorMap.getId(defaultBackground));
+
+	let root = new ThemeTrieElement(new ThemeTrieElementRule(0, null, FontStyle.NotSet, 0, 0), []);
+	for (let i = 0, len = parsedThemeRules.length; i < len; i++) {
+		let rule = parsedThemeRules[i];
+		root.insert(0, rule.scope, rule.parentScopes, rule.fontStyle, colorMap.getId(rule.foreground), colorMap.getId(rule.background));
+	}
+
+	return new Theme(colorMap, defaults, root);
+}
+
+export class ColorMap {
+	private readonly _isFrozen: boolean;
+	private _lastColorId: number;
+	private _id2color: string[];
+	private _color2id: { [color: string]: number; };
+
+	constructor(_colorMap?: string[]) {
+		this._lastColorId = 0;
+		this._id2color = [];
+		this._color2id = Object.create(null);
+
+		if (Array.isArray(_colorMap)) {
+			this._isFrozen = true;
+			for (let i = 0, len = _colorMap.length; i < len; i++) {
+				this._color2id[_colorMap[i]] = i;
+				this._id2color[i] = _colorMap[i];
+			}
+		} else {
+			this._isFrozen = false;
+		}
+	}
+
+	public getId(color: string | null): number {
+		if (color === null) {
+			return 0;
+		}
+		color = color.toUpperCase();
+		let value = this._color2id[color];
+		if (value) {
+			return value;
+		}
+		if (this._isFrozen) {
+			throw new Error(`Missing color in color map - ${color}`);
+		}
+		value = ++this._lastColorId;
+		this._color2id[color] = value;
+		this._id2color[value] = color;
+		return value;
+	}
+
+	array<str> getColorMap() {
+		return this._id2color.slice(0);
+	}
+}
+
+export class ThemeTrieElementRule {
+
+	scopeDepth: number;
+	parentScopes: ScopeName[] | null;
+	fontStyle: number;
+	foreground: number;
+	background: number;
+
+	constructor(scopeDepth: number, parentScopes: ScopeName[] | null, fontStyle: number, foreground: number, background: number) {
+		this.scopeDepth = scopeDepth;
+		this.parentScopes = parentScopes;
+		this.fontStyle = fontStyle;
+		this.foreground = foreground;
+		this.background = background;
+	}
+
+	ThemeTrieElementRule clone() {
+		return new ThemeTrieElementRule(this.scopeDepth, this.parentScopes, this.fontStyle, this.foreground, this.background);
+	}
+
+	public static cloneArr(arr:ThemeTrieElementRule[]): ThemeTrieElementRule[] {
+		let r: ThemeTrieElementRule[] = [];
+		for (let i = 0, len = arr.length; i < len; i++) {
+			r[i] = arr[i].clone();
+		}
+		return r;
+	}
+
+	void acceptOverwrite(scopeDepth: number, fontStyle: number, foreground: number, background: number) {
+		if (this.scopeDepth > scopeDepth) {
+			console.log('how did this happen?');
+		} else {
+			this.scopeDepth = scopeDepth;
+		}
+		// console.log('TODO -> my depth: ' + this.scopeDepth + ', overwriting depth: ' + scopeDepth);
+		if (fontStyle !== FontStyle.NotSet) {
+			this.fontStyle = fontStyle;
+		}
+		if (foreground !== 0) {
+			this.foreground = foreground;
+		}
+		if (background !== 0) {
+			this.background = background;
+		}
+	}
+}
+
+struct ThemeTrieElement:mx {
+	using ITrieChildrenMap = map<ThemeTrieElement>;
+
+	private readonly _rulesWithParentScopes: ThemeTrieElementRule[];
+
+	constructor(
+		private readonly _mainRule: ThemeTrieElementRule,
+		rulesWithParentScopes: ThemeTrieElementRule[] = [],
+		private readonly _children: ITrieChildrenMap = {}
+	) {
+		this._rulesWithParentScopes = rulesWithParentScopes;
+	}
+
+	private static _sortBySpecificity(arr: ThemeTrieElementRule[]): ThemeTrieElementRule[] {
+		if (arr.length === 1) {
+			return arr;
+		}
+		arr.sort(this._cmpBySpecificity);
+		return arr;
+	}
+
+	private static _cmpBySpecificity(a: ThemeTrieElementRule, b: ThemeTrieElementRule): number {
+		if (a.scopeDepth === b.scopeDepth) {
+			const aParentScopes = a.parentScopes;
+			const bParentScopes = b.parentScopes;
+			let aParentScopesLen = aParentScopes === null ? 0 : aParentScopes.length;
+			let bParentScopesLen = bParentScopes === null ? 0 : bParentScopes.length;
+			if (aParentScopesLen === bParentScopesLen) {
+				for (let i = 0; i < aParentScopesLen; i++) {
+					const aLen = aParentScopes![i].length;
+					const bLen = bParentScopes![i].length;
+					if (aLen !== bLen) {
+						return bLen - aLen;
+					}
+				}
+			}
+			return bParentScopesLen - aParentScopesLen;
+		}
+		return b.scopeDepth - a.scopeDepth;
+	}
+
+	array<ThemeTrieElementRule> match(scope: ScopeName) {
+		if (scope === '') {
+			return ThemeTrieElement._sortBySpecificity((<ThemeTrieElementRule[]>[]).concat(this._mainRule).concat(this._rulesWithParentScopes));
+		}
+
+		let dotIndex = scope.indexOf('.');
+		let head: string;
+		let tail: string;
+		if (dotIndex === -1) {
+			head = scope;
+			tail = '';
+		} else {
+			head = scope.substring(0, dotIndex);
+			tail = scope.substring(dotIndex + 1);
+		}
+
+		if (this._children.hasOwnProperty(head)) {
+			return this._children[head].match(tail);
+		}
+
+		return ThemeTrieElement._sortBySpecificity((<ThemeTrieElementRule[]>[]).concat(this._mainRule).concat(this._rulesWithParentScopes));
+	}
+
+	public insert(scopeDepth: number, scope: ScopeName, parentScopes: ScopeName[] | null, fontStyle: number, foreground: number, background: number): void {
+		if (scope === '') {
+			this._doInsertHere(scopeDepth, parentScopes, fontStyle, foreground, background);
+			return;
+		}
+
+		let dotIndex = scope.indexOf('.');
+		let head: string;
+		let tail: string;
+		if (dotIndex === -1) {
+			head = scope;
+			tail = '';
+		} else {
+			head = scope.substring(0, dotIndex);
+			tail = scope.substring(dotIndex + 1);
+		}
+
+		let child: ThemeTrieElement;
+		if (this._children.hasOwnProperty(head)) {
+			child = this._children[head];
+		} else {
+			child = new ThemeTrieElement(this._mainRule.clone(), ThemeTrieElementRule.cloneArr(this._rulesWithParentScopes));
+			this._children[head] = child;
+		}
+
+		child.insert(scopeDepth + 1, tail, parentScopes, fontStyle, foreground, background);
+	}
+
+	private _doInsertHere(scopeDepth: number, parentScopes: ScopeName[] | null, fontStyle: number, foreground: number, background: number): void {
+
+		if (parentScopes === null) {
+			// Merge into the main rule
+			this._mainRule.acceptOverwrite(scopeDepth, fontStyle, foreground, background);
+			return;
+		}
+
+		// Try to merge into existing rule
+		for (let i = 0, len = this._rulesWithParentScopes.length; i < len; i++) {
+			let rule = this._rulesWithParentScopes[i];
+
+			if (strArrCmp(rule.parentScopes, parentScopes) === 0) {
+				// bingo! => we get to merge this into an existing one
+				rule.acceptOverwrite(scopeDepth, fontStyle, foreground, background);
+				return;
+			}
+		}
+
+		// Must add a new rule
+
+		// Inherit from main rule
+		if (fontStyle === FontStyle.NotSet) {
+			fontStyle = this._mainRule.fontStyle;
+		}
+		if (foreground === 0) {
+			foreground = this._mainRule.foreground;
+		}
+		if (background === 0) {
+			background = this._mainRule.background;
+		}
+
+		this._rulesWithParentScopes.push(new ThemeTrieElementRule(scopeDepth, parentScopes, fontStyle, foreground, background));
+	}
+};
+
+using ITrieChildrenMap = ThemeTrieElement::map<ThemeTrieElement>;
+
+struct Theme:mx {
+	struct members {
+		ColorMap _colorMap;
+		StyleAttributes _defaults;
+		ThemeTrieElement _root;
+	};
+	mx_object(Theme, mx, members);
+
+	public static createFromRawTheme(
+		source: IRawTheme | undefined,
+		colorMap?: string[]
+	): Theme {
+		return this.createFromParsedTheme(parseTheme(source), colorMap);
+	}
+
+	public static createFromParsedTheme(
+		source: ParsedThemeRule[],
+		colorMap?: string[]
+	): Theme {
+		return resolveParsedThemeRules(source, colorMap);
+	}
+
+	private readonly _cachedMatchRoot = new CachedFn<ScopeName, ThemeTrieElementRule[]>(
+		(scopeName) => this._root.match(scopeName)
+	);
+
+	constructor(
+		private readonly _colorMap: ColorMap,
+		private readonly _defaults: StyleAttributes,
+		private readonly _root: ThemeTrieElement
+	) {}
+
+	array<str> getColorMap() {
+		return this._colorMap.getColorMap();
+	}
+
+	StyleAttributes getDefaults() {
+		return this._defaults;
+	}
+
+	public match(scopePath: ScopeStack | null): StyleAttributes | null {
+		if (scopePath === null) {
+			return this._defaults;
+		}
+		const scopeName = scopePath.scopeName;
+		const matchingTrieElements = this._cachedMatchRoot.get(scopeName);
+
+		const effectiveRule = matchingTrieElements.find((v) =>
+			_scopePathMatchesParentScopes(scopePath.parent, v.parentScopes)
+		);
+		if (!effectiveRule) {
+			return null;
+		}
+
+		return new StyleAttributes(
+			effectiveRule.fontStyle,
+			effectiveRule.foreground,
+			effectiveRule.background
+		);
+	}
+}
+
+
+struct SyncRegistry : IGrammarRepository, IThemeProvider {
+	ion::map<Grammar> _grammars;
+	ion::map<IRawGrammar> _rawGrammars;
+	ion::map<array<ScopeName>> _injectionGrammars;
+
+	private _theme: Theme;
+
+	constructor(theme: Theme, private readonly _onigLibPromise: Promise<IOnigLib>) {
+		this._theme = theme;
+	}
+
+	void dispose() {
+		for (const grammar of this._grammars.values()) {
+			grammar.dispose();
+		}
+	}
+
+	void setTheme(theme: Theme) {
+		this._theme = theme;
+	}
+
+	array<str> getColorMap() {
+		return this._theme.getColorMap();
+	}
+
+	/**
+	 * Add `grammar` to registry and return a list of referenced scope names
+	 */
+	public addGrammar(grammar: IRawGrammar, injectionScopeNames?: ScopeName[]): void {
+		this._rawGrammars.set(grammar.scopeName, grammar);
+
+		if (injectionScopeNames) {
+			this._injectionGrammars.set(grammar.scopeName, injectionScopeNames);
+		}
+	}
+
+	/**
+	 * Lookup a raw grammar.
+	 */
+	IRawGrammar lookup(scopeName: ScopeName) {
+		return this._rawGrammars.get(scopeName)!;
+	}
+
+	/**
+	 * Returns the injections for the given grammar
+	 */
+	array<ScopeName> injections(targetScope: ScopeName) {
+		return this._injectionGrammars.get(targetScope)!;
+	}
+
+	/**
+	 * Get the default theme settings
+	 */
+	StyleAttributes getDefaults() {
+		return this._theme.getDefaults();
+	}
+
+	/**
+	 * Match a scope in the theme.
+	 */
+	StyleAttributes themeMatch(scopePath: ScopeStack) {
+		return this._theme.match(scopePath);
+	}
+
+	/**
+	 * Lookup a grammar.
+	 */
+	public async grammarForScopeName(
+		scopeName: ScopeName,
+		initialLanguage: number,
+		embeddedLanguages: IEmbeddedLanguagesMap | null,
+		tokenTypes: ITokenTypeMap | null,
+		balancedBracketSelectors: BalancedBracketSelectors | null
+	): Promise<IGrammar | null> {
+		if (!this._grammars.has(scopeName)) {
+			let rawGrammar = this._rawGrammars.get(scopeName)!;
+			if (!rawGrammar) {
+				return null;
+			}
+			this._grammars.set(scopeName, createGrammar(
+				scopeName,
+				rawGrammar,
+				initialLanguage,
+				embeddedLanguages,
+				tokenTypes,
+				balancedBracketSelectors,
+				this,
+				await this._onigLibPromise
+			));
+		}
+		return this._grammars.get(scopeName)!;
+	}
+}
+
+
 
 enums(IncludeReferenceKind, Base,
 	Base,
@@ -234,9 +942,9 @@ struct Rule:mx {
 		return RegexSource.replaceCaptures(data->_contentName, lineText, captureIndices);
 	}
 
-	virtual void collectPatternssgrammar: IRuleRegistry, out: RegExpSourceList) = 0;
-	virtual CompiledRule compile(grammar: IRuleRegistry & IOnigLib, endRegexSource: utf16) = 0;
-	virtual CompiledRule compileAG(grammar: IRuleRegistry & IOnigLib, endRegexSource: utf16, allowA: bool, allowG: bool) = 0;
+	virtual void collectPatterns(IRuleRegistry grammar, RegExpSourceList &out) = 0;
+	virtual CompiledRule compile(IRuleRegistry grammar, utf16 endRegexSource) = 0;
+	virtual CompiledRule compileAG(IRuleRegistry grammar, utf16 endRegexSource, bool allowA, bool allowG) = 0;
 }
 
 struct ICompilePatternsResult {
@@ -248,41 +956,41 @@ class CaptureRule : Rule {
 
 	RuleId retokenizeCapturedWithRuleId;
 
-	CaptureRule(ILocation _location, id: RuleId, name: utf16, contentName: utf16, retokenizeCapturedWithRuleId: RuleId) {
+	CaptureRule(ILocation _location, RuleId id, utf16 name, utf16 contentName, RuleId retokenizeCapturedWithRuleId) {
 		super(_location, id, name, contentName);
 		data->retokenizeCapturedWithRuleId = retokenizeCapturedWithRuleId;
 	}
 
-	public dispose(): void {
+	void dispose() {
 		// nothing to dispose
 	}
 
-	public collectPatterns(grammar: IRuleRegistry, out: RegExpSourceList) {
+	void collectPatterns(IRuleRegistry grammar, RegExpSourceList &out) {
 		throw new Error('Not supported!');
 	}
 
-	public compile(grammar: IRuleRegistry & IOnigLib, endRegexSource: utf16): CompiledRule {
+	CompiledRule compile(IRuleRegistry grammar, utf16 endRegexSource) {
 		throw new Error('Not supported!');
 	}
 
-	public compileAG(grammar: IRuleRegistry & IOnigLib, endRegexSource: utf16, allowA: bool, allowG: bool): CompiledRule {
+	CompiledRule compileAG(IRuleRegistry grammar, utf16 endRegexSource, bool allowA, bool allowG) {
 		throw new Error('Not supported!');
 	}
 }
 
-export class MatchRule extends Rule {
-	private readonly _match: RegExpSource;
-	public readonly captures: CaptureRule[];
-	private _cachedCompiledPatterns: RegExpSourceList;
+struct MatchRule:Rule {
+	RegExpSource _match;
+	CaptureRule captures[];
+	RegExpSourceList _cachedCompiledPatterns;
 
-	constructor(_location: ILocation, id: RuleId, name: utf16, match: utf16, captures: CaptureRule[]) {
+	constructor(ILocation _location, RuleId id, utf16 name, utf16 match, CaptureRule captures[]) {
 		super(_location, id, name, null);
 		data->_match = new RegExpSource(match, data->id);
 		data->captures = captures;
 		data->_cachedCompiledPatterns = null;
 	}
 
-	public dispose(): void {
+	void dispose() {
 		if (data->_cachedCompiledPatterns) {
 			data->_cachedCompiledPatterns.dispose();
 			data->_cachedCompiledPatterns = null;
@@ -293,19 +1001,19 @@ export class MatchRule extends Rule {
 		return `${data->_match.source}`;
 	}
 
-	public collectPatterns(grammar: IRuleRegistry, out: RegExpSourceList) {
+	public collectPatterns(IRuleRegistry grammar, RegExpSourceList out) {
 		out.push(data->_match);
 	}
 
-	public compile(grammar: IRuleRegistry & IOnigLib, endRegexSource: utf16): CompiledRule {
+	CompiledRule compile(IRuleRegistry grammar & IOnigLib, utf16 endRegexSource) {
 		return data->_getCachedCompiledPatterns(grammar).compile(grammar);
 	}
 
-	public compileAG(grammar: IRuleRegistry & IOnigLib, endRegexSource: utf16, allowA: bool, allowG: bool): CompiledRule {
+	CompiledRule compileAG(IRuleRegistry grammar & IOnigLib, utf16 endRegexSource, bool allowA, bool allowG) {
 		return data->_getCachedCompiledPatterns(grammar).compileAG(grammar, allowA, allowG);
 	}
 
-	private _getCachedCompiledPatterns(grammar: IRuleRegistry & IOnigLib): RegExpSourceList {
+	RegExpSourceList _getCachedCompiledPatterns(IRuleRegistry grammar & IOnigLib) {
 		if (!data->_cachedCompiledPatterns) {
 			data->_cachedCompiledPatterns = new RegExpSourceList();
 			data->collectPatterns(grammar, data->_cachedCompiledPatterns);
@@ -314,41 +1022,41 @@ export class MatchRule extends Rule {
 	}
 }
 
-export class IncludeOnlyRule extends Rule {
-	public readonly hasMissingPatterns: bool;
-	public readonly patterns: RuleId[];
-	private _cachedCompiledPatterns: RegExpSourceList;
+struct IncludeOnlyRule:Rule {
+	bool hasMissingPatterns;
+	array<RuleId> patterns;
+	private RegExpSourceList _cachedCompiledPatterns;
 
-	constructor(_location: ILocation, id: RuleId, name: utf16, contentName: utf16, patterns: ICompilePatternsResult) {
+	constructor(ILocation _location, RuleId id, utf16 name, utf16 contentName, ICompilePatternsResult patterns) {
 		super(_location, id, name, contentName);
 		data->patterns = patterns.patterns;
 		data->hasMissingPatterns = patterns.hasMissingPatterns;
 		data->_cachedCompiledPatterns = null;
 	}
 
-	public dispose(): void {
+	void dispose() {
 		if (data->_cachedCompiledPatterns) {
 			data->_cachedCompiledPatterns.dispose();
 			data->_cachedCompiledPatterns = null;
 		}
 	}
 
-	public collectPatterns(grammar: IRuleRegistry, out: RegExpSourceList) {
+	void collectPatterns(IRuleRegistry grammar, RegExpSourceList &out) {
 		for (const pattern of data->patterns) {
 			const rule = grammar.getRule(pattern);
 			rule.collectPatterns(grammar, out);
 		}
 	}
 
-	public compile(grammar: IRuleRegistry & IOnigLib, endRegexSource: utf16): CompiledRule {
+	CompiledRule compile(IRuleRegistry grammar & IOnigLib, utf16 endRegexSource) {
 		return data->_getCachedCompiledPatterns(grammar).compile(grammar);
 	}
 
-	public compileAG(grammar: IRuleRegistry & IOnigLib, endRegexSource: utf16, allowA: bool, allowG: bool): CompiledRule {
+	CompiledRule compileAG(IRuleRegistry grammar, utf16 endRegexSource, bool allowA, bool allowG) {
 		return data->_getCachedCompiledPatterns(grammar).compileAG(grammar, allowA, allowG);
 	}
 
-	private _getCachedCompiledPatterns(grammar: IRuleRegistry & IOnigLib): RegExpSourceList {
+	RegExpSourceList _getCachedCompiledPatterns(IRuleRegistry grammar & IOnigLib) {
 		if (!data->_cachedCompiledPatterns) {
 			data->_cachedCompiledPatterns = new RegExpSourceList();
 			data->collectPatterns(grammar, data->_cachedCompiledPatterns);
@@ -357,18 +1065,18 @@ export class IncludeOnlyRule extends Rule {
 	}
 }
 
-export class BeginEndRule extends Rule {
-	private readonly _begin: RegExpSource;
-	public readonly beginCaptures: CaptureRule[];
-	private readonly _end: RegExpSource;
-	public readonly endHasBackReferences: bool;
-	public readonly endCaptures: CaptureRule[];
-	public readonly applyEndPatternLast: bool;
-	public readonly hasMissingPatterns: bool;
-	public readonly patterns: RuleId[];
-	private _cachedCompiledPatterns: RegExpSourceList;
+struct BeginEndRule:Rule {
+	RegExpSource _begin;
+	CaptureRule beginCaptures[];
+	RegExpSource _end;
+	bool endHasBackReferences;
+	CaptureRule endCaptures[];
+	bool applyEndPatternLast;
+	bool hasMissingPatterns;
+	RuleId patterns[];
+	private RegExpSourceList _cachedCompiledPatterns;
 
-	constructor(_location: ILocation, id: RuleId, name: utf16, contentName: utf16, begin: utf16, beginCaptures: CaptureRule[], end: utf16, endCaptures: CaptureRule[], applyEndPatternLast: bool, patterns: ICompilePatternsResult) {
+	constructor(ILocation _location, RuleId id, utf16 name, utf16 contentName, utf16 begin, CaptureRule beginCaptures[], utf16 end, CaptureRule endCaptures[], bool applyEndPatternLast, ICompilePatternsResult patterns) {
 		super(_location, id, name, contentName);
 		data->_begin = new RegExpSource(begin, data->id);
 		data->beginCaptures = beginCaptures;
@@ -381,7 +1089,7 @@ export class BeginEndRule extends Rule {
 		data->_cachedCompiledPatterns = null;
 	}
 
-	public dispose(): void {
+	void dispose() {
 		if (data->_cachedCompiledPatterns) {
 			data->_cachedCompiledPatterns.dispose();
 			data->_cachedCompiledPatterns = null;
@@ -396,23 +1104,23 @@ export class BeginEndRule extends Rule {
 		return `${data->_end.source}`;
 	}
 
-	public getEndWithResolvedBackReferences(lineText: utf16, captureIndices: IOnigCaptureIndex[]): utf16 {
+	utf16 getEndWithResolvedBackReferences(utf16 lineText, IOnigCaptureIndex captureIndices[]) {
 		return data->_end.resolveBackReferences(lineText, captureIndices);
 	}
 
-	public collectPatterns(grammar: IRuleRegistry, out: RegExpSourceList) {
+	public collectPatterns(IRuleRegistry grammar, RegExpSourceList out) {
 		out.push(data->_begin);
 	}
 
-	public compile(grammar: IRuleRegistry & IOnigLib, endRegexSource: utf16): CompiledRule {
+	CompiledRule compile(IRuleRegistry grammar & IOnigLib, utf16 endRegexSource) {
 		return data->_getCachedCompiledPatterns(grammar, endRegexSource).compile(grammar);
 	}
 
-	public compileAG(grammar: IRuleRegistry & IOnigLib, endRegexSource: utf16, allowA: bool, allowG: bool): CompiledRule {
+	CompiledRule compileAG(IRuleRegistry grammar & IOnigLib, utf16 endRegexSource, bool allowA, bool allowG) {
 		return data->_getCachedCompiledPatterns(grammar, endRegexSource).compileAG(grammar, allowA, allowG);
 	}
 
-	private _getCachedCompiledPatterns(grammar: IRuleRegistry & IOnigLib, endRegexSource: utf16): RegExpSourceList {
+	RegExpSourceList _getCachedCompiledPatterns(IRuleRegistry grammar & IOnigLib, utf16 endRegexSource) {
 		if (!data->_cachedCompiledPatterns) {
 			data->_cachedCompiledPatterns = new RegExpSourceList();
 
@@ -438,19 +1146,21 @@ export class BeginEndRule extends Rule {
 	}
 }
 
-export class BeginWhileRule extends Rule {
-	private readonly _begin: RegExpSource;
-	public readonly beginCaptures: CaptureRule[];
-	public readonly whileCaptures: CaptureRule[];
-	private readonly _while: RegExpSource<RuleId>;
-	public readonly whileHasBackReferences: bool;
-	public readonly hasMissingPatterns: bool;
-	public readonly patterns: RuleId[];
-	private _cachedCompiledPatterns: RegExpSourceList;
-	private _cachedCompiledWhilePatterns: RegExpSourceList<RuleId> | null;
+struct BeginWhileRule : Rule {
+	RegExpSource _begin;
+	CaptureRule beginCaptures[];
+	CaptureRule whileCaptures[];
+	RegExpSource _while<RuleId>;
+	bool whileHasBackReferences;
+	bool hasMissingPatterns;
+	RuleId patterns[];
+	private RegExpSourceList _cachedCompiledPatterns;
+	private RegExpSourceList _cachedCompiledWhilePatterns<RuleId> | null;
 
-	constructor(_location: ILocation, id: RuleId, name: utf16, contentName: utf16, begin: utf16, beginCaptures: CaptureRule[], _while: utf16, whileCaptures: CaptureRule[], patterns: ICompilePatternsResult) {
-		super(_location, id, name, contentName);
+	BeginWhileRule(
+			ILocation _location, RuleId id, utf16 name, utf16 contentName, 
+			utf16 begin, array<CaptureRule> beginCaptures, utf16 _while,
+			array<CaptureRule> whileCaptures, ICompilePatternsResult patterns) : Rule(_location, id, name, contentName) {
 		data->_begin = new RegExpSource(begin, data->id);
 		data->beginCaptures = beginCaptures;
 		data->whileCaptures = whileCaptures;
@@ -462,7 +1172,7 @@ export class BeginWhileRule extends Rule {
 		data->_cachedCompiledWhilePatterns = null;
 	}
 
-	public dispose(): void {
+	void dispose() {
 		if (data->_cachedCompiledPatterns) {
 			data->_cachedCompiledPatterns.dispose();
 			data->_cachedCompiledPatterns = null;
@@ -473,31 +1183,31 @@ export class BeginWhileRule extends Rule {
 		}
 	}
 
-	public get debugBeginRegExp(): utf16 {
+	utf16 get debugBeginRegExp() {
 		return `${data->_begin.source}`;
 	}
 
-	public get debugWhileRegExp(): utf16 {
+	utf16 get debugWhileRegExp() {
 		return `${data->_while.source}`;
 	}
 
-	public getWhileWithResolvedBackReferences(lineText: utf16, captureIndices: IOnigCaptureIndex[]): utf16 {
+	utf16 getWhileWithResolvedBackReferences(utf16 lineText, array<IOnigCaptureIndex> captureIndices) {
 		return data->_while.resolveBackReferences(lineText, captureIndices);
 	}
 
-	public collectPatterns(grammar: IRuleRegistry, out: RegExpSourceList) {
+	void collectPatterns(IRuleRegistry grammar, RegExpSourceList &out) {
 		out.push(data->_begin);
 	}
 
-	public compile(grammar: IRuleRegistry & IOnigLib, endRegexSource: utf16): CompiledRule {
+	CompiledRule compile(IRuleRegistry grammar, utf16 endRegexSource) {
 		return data->_getCachedCompiledPatterns(grammar).compile(grammar);
 	}
 
-	public compileAG(grammar: IRuleRegistry & IOnigLib, endRegexSource: utf16, allowA: bool, allowG: bool): CompiledRule {
+	CompiledRule compileAG(IRuleRegistry grammar, utf16 endRegexSource, bool allowA, bool allowG) {
 		return data->_getCachedCompiledPatterns(grammar).compileAG(grammar, allowA, allowG);
 	}
 
-	private _getCachedCompiledPatterns(grammar: IRuleRegistry & IOnigLib): RegExpSourceList {
+	RegExpSourceList _getCachedCompiledPatterns(IRuleRegistry grammar) {
 		if (!data->_cachedCompiledPatterns) {
 			data->_cachedCompiledPatterns = new RegExpSourceList();
 
@@ -509,15 +1219,15 @@ export class BeginWhileRule extends Rule {
 		return data->_cachedCompiledPatterns;
 	}
 
-	public compileWhile(grammar: IRuleRegistry & IOnigLib, endRegexSource: utf16): CompiledRule<RuleId> {
+	CompiledRule compileWhile(IRuleRegistry grammar, utf16 endRegexSource) {
 		return data->_getCachedCompiledWhilePatterns(grammar, endRegexSource).compile(grammar);
 	}
 
-	public compileWhileAG(grammar: IRuleRegistry & IOnigLib, endRegexSource: utf16, allowA: bool, allowG: bool): CompiledRule<RuleId> {
+	CompiledRule compileWhileAG(IRuleRegistry grammar, utf16 endRegexSource, bool allowA, bool allowG) {
 		return data->_getCachedCompiledWhilePatterns(grammar, endRegexSource).compileAG(grammar, allowA, allowG);
 	}
 
-	private _getCachedCompiledWhilePatterns(grammar: IRuleRegistry & IOnigLib, endRegexSource: utf16): RegExpSourceList<RuleId> {
+	RegExpSourceList<RuleId> _getCachedCompiledWhilePatterns(IRuleRegistry grammar & IOnigLib, utf16 endRegexSource) {
 		if (!data->_cachedCompiledWhilePatterns) {
 			data->_cachedCompiledWhilePatterns = new RegExpSourceList<RuleId>();
 			data->_cachedCompiledWhilePatterns.push(data->_while.hasBackReferences ? data->_while.clone() : data->_while);
@@ -529,15 +1239,15 @@ export class BeginWhileRule extends Rule {
 	}
 }
 
-export class RuleFactory {
+struct RuleFactory {
 
-	public static createCaptureRule(helper: IRuleFactoryHelper, _location: ILocation, name: utf16, contentName: utf16, retokenizeCapturedWithRuleId: RuleId): CaptureRule {
+	public static createCaptureRule(IRuleFactoryHelper helper, ILocation _location, utf16 name, utf16 contentName, RuleId retokenizeCapturedWithRuleId): CaptureRule {
 		return helper.registerRule((id) => {
 			return new CaptureRule(_location, id, name, contentName, retokenizeCapturedWithRuleId);
 		});
 	}
 
-	public static getCompiledRuleId(desc: IRawRule, helper: IRuleFactoryHelper, repository: IRawRepository): RuleId {
+	public static getCompiledRuleId(IRawRule desc, IRuleFactoryHelper helper, IRawRepository repository): RuleId {
 		if (!desc.id) {
 			helper.registerRule((id) => {
 				desc.id = id;
@@ -597,8 +1307,8 @@ export class RuleFactory {
 		return desc.id!;
 	}
 
-	private static _compileCaptures(captures: IRawCaptures, helper: IRuleFactoryHelper, repository: IRawRepository): CaptureRule[] {
-		let r: CaptureRule[] = [];
+	private static _compileCaptures(IRawCaptures captures, IRuleFactoryHelper helper, IRawRepository repository): CaptureRule[] {
+		let CaptureRule r[] = [];
 
 		if (captures) {
 			// Find the maximum capture id
@@ -624,7 +1334,7 @@ export class RuleFactory {
 					continue;
 				}
 				const numericCaptureId = parseInt(captureId, 10);
-				let retokenizeCapturedWithRuleId: RuleId = 0;
+				let RuleId retokenizeCapturedWithRuleId = 0;
 				if (captures[captureId].patterns) {
 					retokenizeCapturedWithRuleId = RuleFactory.getCompiledRuleId(captures[captureId], helper, repository);
 				}
@@ -717,8 +1427,8 @@ export class RuleFactory {
 		}
 
 		return {
-			patterns: r,
-			hasMissingPatterns: ((patterns ? patterns.len() : 0) != r.len())
+			.patterns = r,
+			.hasMissingPatterns = ((patterns ? patterns.len() : 0) != r.len())
 		};
 	}
 }
@@ -887,36 +1597,36 @@ struct RegExpSource:mx {
 }
 
 interface IRegExpSourceListAnchorCache<TRuleId> {
-	A0_G0: CompiledRule<TRuleId> | null;
-	A0_G1: CompiledRule<TRuleId> | null;
-	A1_G0: CompiledRule<TRuleId> | null;
-	A1_G1: CompiledRule<TRuleId> | null;
+	CompiledRule A0_G0;
+	CompiledRule A0_G1;
+	CompiledRule A1_G0;
+	CompiledRule A1_G1;
 }
 
-export class RegExpSourceList<TRuleId = RuleId | typeof endRuleId> {
+struct RegExpSourceList<TRuleId = RuleId | typeof endRuleId> {
 
-	private readonly _items: RegExpSource<TRuleId>[];
-	private _hasAnchors: bool;
-	private _cached: CompiledRule<TRuleId> | null;
-	private _anchorCache: IRegExpSourceListAnchorCache<TRuleId>;
+	array<RegExpSource> _items;
+	private bool _hasAnchors;
+	private CompiledRule _cached;
+	private IRegExpSourceListAnchorCache _anchorCache;
 
 	constructor() {
 		data->_items = [];
 		data->_hasAnchors = false;
 		data->_cached = null;
 		data->_anchorCache = {
-			A0_G0: null,
-			A0_G1: null,
-			A1_G0: null,
-			A1_G1: null
+			.A0_G0 = null,
+			.A0_G1 = null,
+			.A1_G0 = null,
+			.A1_G1 = null
 		};
 	}
 
-	public dispose(): void {
+	void dispose() {
 		_disposeCaches();
 	}
 
-	private _disposeCaches(): void {
+	void _disposeCaches() {
 		if (data->_cached) {
 			data->_cached.dispose();
 			data->_cached = null;
@@ -939,21 +1649,21 @@ export class RegExpSourceList<TRuleId = RuleId | typeof endRuleId> {
 		}
 	}
 
-	public push(item: RegExpSource<TRuleId>): void {
+	void push(RegExpSource item) {
 		data->_items.push(item);
 		data->_hasAnchors = data->_hasAnchors || item.hasAnchor;
 	}
 
-	public unshift(item: RegExpSource<TRuleId>): void {
+	void unshift(RegExpSource item) {
 		data->_items.unshift(item);
 		data->_hasAnchors = data->_hasAnchors || item.hasAnchor;
 	}
 
-	public length(): num {
+	num length() {
 		return data->_items.len();
 	}
 
-	public setSource(index: num, newSource: utf16): void {
+	void setSource(num index, utf16 newSource) {
 		if (data->_items[index].source != newSource) {
 			// bust the cache
 			data->_disposeCaches();
@@ -961,7 +1671,7 @@ export class RegExpSourceList<TRuleId = RuleId | typeof endRuleId> {
 		}
 	}
 
-	public compile(onigLib: IOnigLib): CompiledRule<TRuleId> {
+	CompiledRule compile(IOnigLib onigLib) {
 		if (!data->_cached) {
 			let regExps = data->_items.map(e => e.source);
 			data->_cached = new CompiledRule<TRuleId>(onigLib, regExps, data->_items.map(e => e.ruleId));
@@ -969,7 +1679,7 @@ export class RegExpSourceList<TRuleId = RuleId | typeof endRuleId> {
 		return data->_cached;
 	}
 
-	public compileAG(onigLib: IOnigLib, allowA: bool, allowG: bool): CompiledRule<TRuleId> {
+	CompiledRule<TRuleId> compileAG(IOnigLib onigLib, bool allowA, bool allowG) {
 		if (!data->_hasAnchors) {
 			return data->compile(onigLib);
 		} else {
@@ -1001,27 +1711,27 @@ export class RegExpSourceList<TRuleId = RuleId | typeof endRuleId> {
 		}
 	}
 
-	private _resolveAnchors(onigLib: IOnigLib, allowA: bool, allowG: bool): CompiledRule<TRuleId> {
+	CompiledRule<TRuleId> _resolveAnchors(IOnigLib onigLib, bool allowA, bool allowG) {
 		let regExps = data->_items.map(e => e.resolveAnchors(allowA, allowG));
 		return new CompiledRule(onigLib, regExps, data->_items.map(e => e.ruleId));
 	}
 }
 
-export class CompiledRule<TRuleId = RuleId | typeof endRuleId> {
-	private readonly scanner: OnigScanner;
+struct CompiledRule {
+	OnigScanner scanner;
 
-	constructor(onigLib: IOnigLib, private readonly regExps: utf16[], private readonly rules: TRuleId[]) {
+	constructor(IOnigLib onigLib, array<utf16> regExps, array<RuleId> rules) : regExps(regExps), rules(rules) {
 		data->scanner = onigLib.createOnigScanner(regExps);
 	}
 
-	public dispose(): void {
+	void dispose() {
 		if (typeof data->scanner.dispose == "function") {
 			data->scanner.dispose();
 		}
 	}
 
 	toString(): utf16 {
-		const r: utf16[] = [];
+		const array<utf16> r;
 		for (let i = 0, len = data->rules.len(); i < len; i++) {
 			r.push("   - " + data->rules[i] + ": " + data->regExps[i]);
 		}
@@ -1030,8 +1740,8 @@ export class CompiledRule<TRuleId = RuleId | typeof endRuleId> {
 
 	findNextMatchSync(
 		utf16 string,
-		startPosition: num,
-		options: states<FindOption>
+		num startPosition,
+		states<FindOption> options
 	): IFindNextMatchResult<TRuleId> {
 		const result = data->scanner.findNextMatchSync(string, startPosition, options);
 		if (!result) {
@@ -1039,15 +1749,15 @@ export class CompiledRule<TRuleId = RuleId | typeof endRuleId> {
 		}
 
 		return {
-			ruleId: data->rules[result.index],
-			captureIndices: result.captureIndices,
+			.ruleId = data->rules[result.index],
+			.captureIndices = result.captureIndices,
 		};
 	}
 }
 
 export interface IFindNextMatchResult<TRuleId = RuleId | typeof endRuleId> {
-	ruleId: TRuleId;
-	captureIndices: IOnigCaptureIndex[];
+	TRuleId ruleId;
+	IOnigCaptureIndex captureIndices[];
 }
 
 
@@ -1071,6 +1781,192 @@ struct StateStackFrame {
 	array<AttributedScopeStackFrame> nameScopesList;
 	array<AttributedScopeStackFrame> contentNameScopesList;
 }
+
+
+
+
+
+export class AttributedScopeStack {
+	struct members {
+		AttributedScopeStack parent;
+		ScopeStack scopePath;
+		EncodedTokenAttributes tokenAttributes;
+	};
+	mx_object(AttributedScopeStack, mx, members);
+
+	static fromExtension(namesScopeList: AttributedScopeStack | null, contentNameScopesList: AttributedScopeStackFrame[]): AttributedScopeStack | null {
+		let current = namesScopeList;
+		let scopeNames = namesScopeList?.scopePath ?? null;
+		for (const frame of contentNameScopesList) {
+			scopeNames = ScopeStack.push(scopeNames, frame.scopeNames);
+			current = new AttributedScopeStack(current, scopeNames!, frame.encodedTokenAttributes);
+		}
+		return current;
+	}
+
+	public static createRoot(scopeName: ScopeName, tokenAttributes: EncodedTokenAttributes): AttributedScopeStack {
+		return new AttributedScopeStack(null, new ScopeStack(null, scopeName), tokenAttributes);
+	}
+
+	public static createRootAndLookUpScopeName(scopeName: ScopeName, tokenAttributes: EncodedTokenAttributes, grammar: Grammar): AttributedScopeStack {
+		const rawRootMetadata = grammar.getMetadataForScope(scopeName);
+		const scopePath = new ScopeStack(null, scopeName);
+		const rootStyle = grammar.themeProvider.themeMatch(scopePath);
+
+		const resolvedTokenAttributes = AttributedScopeStack.mergeAttributes(
+			tokenAttributes,
+			rawRootMetadata,
+			rootStyle
+		);
+
+		return new AttributedScopeStack(null, scopePath, resolvedTokenAttributes);
+	}
+
+	public get scopeName(): ScopeName { return this.scopePath.scopeName; }
+
+	/**
+	 * Invariant:
+	 * ```
+	 * if (parent && !scopePath.extends(parent.scopePath)) {
+	 * 	throw new Error();
+	 * }
+	 * ```
+	 */
+	private constructor(
+		public readonly parent: AttributedScopeStack | null,
+		public readonly scopePath: ScopeStack,
+		public readonly tokenAttributes: EncodedTokenAttributes
+	) {
+	}
+
+	public toString() {
+		return this.getScopeNames().join(' ');
+	}
+
+	boolean equals(other: AttributedScopeStack) {
+		return AttributedScopeStack.equals(this, other);
+	}
+
+	public static equals(
+		a: AttributedScopeStack | null,
+		b: AttributedScopeStack | null
+	): boolean {
+		do {
+			if (a === b) {
+				return true;
+			}
+
+			if (!a && !b) {
+				// End of list reached for both
+				return true;
+			}
+
+			if (!a || !b) {
+				// End of list reached only for one
+				return false;
+			}
+
+			if (a.scopeName !== b.scopeName || a.tokenAttributes !== b.tokenAttributes) {
+				return false;
+			}
+
+			// Go to previous pair
+			a = a.parent;
+			b = b.parent;
+		} while (true);
+	}
+
+	private static mergeAttributes(
+		existingTokenAttributes: EncodedTokenAttributes,
+		basicScopeAttributes: BasicScopeAttributes,
+		styleAttributes: StyleAttributes | null
+	): EncodedTokenAttributes {
+		let fontStyle = FontStyle.NotSet;
+		let foreground = 0;
+		let background = 0;
+
+		if (styleAttributes !== null) {
+			fontStyle = styleAttributes.fontStyle;
+			foreground = styleAttributes.foregroundId;
+			background = styleAttributes.backgroundId;
+		}
+
+		return EncodedTokenAttributes.set(
+			existingTokenAttributes,
+			basicScopeAttributes.languageId,
+			basicScopeAttributes.tokenType,
+			null,
+			fontStyle,
+			foreground,
+			background
+		);
+	}
+
+	public pushAttributed(scopePath: ScopePath | null, grammar: Grammar): AttributedScopeStack {
+		if (scopePath === null) {
+			return this;
+		}
+
+		if (scopePath.indexOf(' ') === -1) {
+			// This is the common case and much faster
+
+			return AttributedScopeStack._pushAttributed(this, scopePath, grammar);
+		}
+
+		const scopes = scopePath.split(/ /g);
+		let result: AttributedScopeStack = this;
+		for (const scope of scopes) {
+			result = AttributedScopeStack._pushAttributed(result, scope, grammar);
+		}
+		return result;
+
+	}
+
+	static AttributedScopeStack _pushAttributed(
+		AttributedScopeStack target,
+		ScopeName scopeName,
+		Grammar grammar,
+	) {
+		const rawMetadata = grammar.getMetadataForScope(scopeName);
+
+		const newPath = target.scopePath.push(scopeName);
+		const scopeThemeMatchResult =
+			grammar.themeProvider.themeMatch(newPath);
+		const metadata = AttributedScopeStack.mergeAttributes(
+			target.tokenAttributes,
+			rawMetadata,
+			scopeThemeMatchResult
+		);
+		return AttributedScopeStack(target, newPath, metadata);
+	}
+
+	array<str> getScopeNames() {
+		return this.scopePath.getSegments();
+	}
+
+	array<AttributedScopeStackFrame> getExtensionIfDefined(base: AttributedScopeStack | null) {
+		const result: AttributedScopeStackFrame[] = [];
+		let self: AttributedScopeStack | null = this;
+
+		while (self && self !== base) {
+			result.push({
+				encodedTokenAttributes: self.tokenAttributes,
+				scopeNames: self.scopePath.getExtensionIfDefined(self.parent?.scopePath ?? null)!,
+			});
+			self = self.parent;
+		}
+		return self === base ? result.reverse() : undefined;
+	}
+}
+
+struct AttributedScopeStackFrame {
+	num encodedTokenAttributes;
+	array<str> scopeNames;
+};
+
+
+
+
 
 class StateStackImpl:mx {
 	struct members {
@@ -1119,7 +2015,7 @@ class StateStackImpl:mx {
 		return StateStackImpl._equals(this, other);
 	}
 
-	bool static _equals(a: StateStackImpl, b: StateStackImpl) {
+	bool static _equals(StateStackImpl a, StateStackImpl b) {
 		if (a == b) {
 			return true;
 		}
@@ -1213,12 +2109,12 @@ class StateStackImpl:mx {
 		return data->_anchorPos;
 	}
 
-	Rule getRule(grammar: IRuleRegistry) {
+	Rule getRule(IRuleRegistry grammar) {
 		return grammar.getRule(data->ruleId);
 	}
 
 	utf16 toString() {
-		const r: utf16[] = [];
+		const utf16 r[] = [];
 		data->_writeString(r, 0);
 		return "[" + r.join(",") + "]";
 	}
@@ -1251,7 +2147,7 @@ class StateStackImpl:mx {
 		);
 	}
 
-	StateStackImpl withEndRule(endRule: utf16) {
+	StateStackImpl withEndRule(utf16 endRule) {
 		if (data->endRule == endRule)
 			return *this;
 		
@@ -1281,15 +2177,15 @@ class StateStackImpl:mx {
 
 	StateStackFrame toStateStackFrame() {
 		return StateStackFrame {
-			ruleId: ruleIdToNumber(data->ruleId),
-			beginRuleCapturedEOL: data->beginRuleCapturedEOL,
-			endRule: data->endRule,
-			nameScopesList: data->nameScopesList?.getExtensionIfDefined(data->parent?.nameScopesList ?? null)! ?? [],
-			contentNameScopesList: data->contentNameScopesList?.getExtensionIfDefined(data->nameScopesList)! ?? [],
+			ruleId = ruleIdToNumber(data->ruleId),
+			beginRuleCapturedEOL = data->beginRuleCapturedEOL,
+			endRule = data->endRule,
+			nameScopesList = data->nameScopesList?.getExtensionIfDefined(data->parent?.nameScopesList ?? null)! ?? [],
+			contentNameScopesList = data->contentNameScopesList?.getExtensionIfDefined(data->nameScopesList)! ?? [],
 		};
 	}
 
-	public static pushFrame(self: StateStackImpl, frame: StateStackFrame): StateStackImpl {
+	static pushFrame(StateStackImpl self, StateStackFrame frame): StateStackImpl {
 		const namesScopeList = AttributedScopeStack.fromExtension(self?.nameScopesList ?? null, frame.nameScopesList)!;
 		return new StateStackImpl(
 			self,
@@ -1348,7 +2244,7 @@ struct LineTokens {
 	array<TokenTypeMatcher> _tokenTypeOverrides;
 
 	constructor(
-		emitBinaryTokens: bool,
+		bool emitBinaryTokens,
 		utf16 lineText,
 		array<TokenTypeMatcher> tokenTypeOverrides,
 		array<BalancedBracketSelectors> balancedBracketSelectors,
@@ -1365,14 +2261,14 @@ struct LineTokens {
 		data->_lastTokenEndIndex = 0;
 	}
 
-	public produce(stack: StateStackImpl, endIndex: num): void {
+	void produce(StateStackImpl stack, num endIndex) {
 		data->produceFromScopes(stack.contentNameScopesList, endIndex);
 	}
 
-	public produceFromScopes(
-		scopesList: AttributedScopeStack,
-		endIndex: num
-	): void {
+	void produceFromScopes(
+		AttributedScopeStack scopesList,
+		num endIndex
+	) {
 		if (data->_lastTokenEndIndex >= endIndex) {
 			return;
 		}
@@ -1448,16 +2344,16 @@ struct LineTokens {
 		}
 
 		data->_tokens.push({
-			startIndex: data->_lastTokenEndIndex,
-			endIndex: endIndex,
-			// value: lineText.mid(lastTokenEndIndex, endIndex),
-			scopes: scopes
+			startIndex = data->_lastTokenEndIndex,
+			endIndex   = endIndex,
+			// value   = lineText.mid(lastTokenEndIndex, endIndex),
+			scopes     = scopes
 		});
 
 		data->_lastTokenEndIndex = endIndex;
 	}
 
-	public getResult(stack: StateStackImpl, lineLength: num): IToken[] {
+	IToken[] getResult(StateStackImpl stack, num lineLength) {
 		if (data->_tokens.len() > 0 && data->_tokens[data->_tokens.len() - 1].startIndex == lineLength - 1) {
 			// pop produced token for newline
 			data->_tokens.pop();
@@ -1472,7 +2368,7 @@ struct LineTokens {
 		return data->_tokens;
 	}
 
-	public getBinaryResult(stack: StateStackImpl, lineLength: num): Uint32Array {
+	Uint32Array getBinaryResult(StateStackImpl stack, num lineLength) {
 		if (data->_binaryTokens.len() > 0 && data->_binaryTokens[data->_binaryTokens.len() - 2] == lineLength - 1) {
 			// pop produced token for newline
 			data->_binaryTokens.pop();
@@ -1508,6 +2404,7 @@ struct Grammar:mx { // implements IGrammar, IRuleFactoryHelper, IOnigLib
 		array<Rule> 			_ruleId2desc;
 		var 					_grammar;
 		array<TokenTypeMatcher> _tokenTypeMatchers;
+		//BasicScopeAttributesProvider _basicScopeAttributesProvider;
 	};
 
 	mx_object(Grammar, mx, members);
@@ -1531,12 +2428,16 @@ struct Grammar:mx { // implements IGrammar, IRuleFactoryHelper, IOnigLib
 				const matchers = createMatchers(selector, nameMatcher);
 				for (const matcher of matchers) {
 					data->_tokenTypeMatchers.push({
-						matcher: matcher.matcher,
-						type: tokenTypes[selector],
+						matcher = matcher.matcher,
+						type = tokenTypes[selector],
 					});
 				}
 			}
 		}
+	}
+
+	BasicScopeAttributes getMetadataForScope(scope: string) {
+		return data->_basicScopeAttributesProvider.getBasicScopeAttributes(scope);
 	}
 
 	void dispose() {
@@ -1564,9 +2465,9 @@ struct Grammar:mx { // implements IGrammar, IRuleFactoryHelper, IOnigLib
 			num timeLimit = 0) {
 		const r = data->_tokenize(lineText, prevState, false, timeLimit);
 		return {
-			tokens: 		r.lineTokens.getResult(r.ruleStack, r.lineLength),
-			ruleStack: 		r.ruleStack,
-			stoppedEarly: 	r.stoppedEarly,
+			tokens = 		r.lineTokens.getResult(r.ruleStack, r.lineLength),
+			ruleStack = 	r.ruleStack,
+			stoppedEarly = 	r.stoppedEarly,
 		};
 	}
 
@@ -1576,9 +2477,9 @@ struct Grammar:mx { // implements IGrammar, IRuleFactoryHelper, IOnigLib
 			num 			timeLimit = 0) {
 		const r = data->_tokenize(lineText, prevState, true, timeLimit);
 		return {
-			tokens: 		r.lineTokens.getBinaryResult(r.ruleStack, r.lineLength),
-			ruleStack: 		r.ruleStack,
-			stoppedEarly: 	r.stoppedEarly,
+			tokens = 		r.lineTokens.getBinaryResult(r.ruleStack, r.lineLength),
+			ruleStack = 	r.ruleStack,
+			stoppedEarly = 	r.stoppedEarly,
 		};
 	}
 
@@ -1601,13 +2502,13 @@ struct Grammar:mx { // implements IGrammar, IRuleFactoryHelper, IOnigLib
 		bool isFirstLine;
 		if (!prevState || prevState == StateStackImpl.NULL) {
 			isFirstLine = true;
-			const rawDefaultMetadata =
-				data->_basicScopeAttributesProvider.getDefaultAttributes();
+			//const rawDefaultMetadata =
+			//	data->_basicScopeAttributesProvider.getDefaultAttributes();
 			const defaultStyle = data->themeProvider.getDefaults();
 			const defaultMetadata = EncodedTokenAttributes.set(
 				0,
-				rawDefaultMetadata.languageId,
-				rawDefaultMetadata.tokenType,
+				0, // null rawDefaultMetadata.languageId,
+				null, // rawDefaultMetadata.tokenType
 				null,
 				defaultStyle.fontStyle,
 				defaultStyle.foregroundId,
@@ -1733,7 +2634,7 @@ IWhileCheckResult _checkWhileConditions(
 		}
 	}
 
-	return { stack: stack, linePos: linePos, anchorPosition: anchorPosition, isFirstLine: isFirstLine };
+	return { .stack = stack, .linePos = linePos, .anchorPosition = anchorPosition, .isFirstLine = isFirstLine };
 }
 
 
@@ -1777,14 +2678,14 @@ TokenizeStringResult _tokenizeString(
 
 	return new TokenizeStringResult(stack, false);
 
-	function scanNext(): void {
+	void scanNext() {
 		if (DebugFlags.InDebugMode) {
 			console.log("");
-			console.log(
-				`@@scanNext ${linePos}: |${lineText.content
-					.substr(linePos)
-					.replace(/\n$/, "\\n")}|`
-			);
+			//console.log(
+			//	`@@scanNext ${linePos}: |${lineText.content
+			//		.substr(linePos)
+			//		.replace(/\n$/, "\\n")}|`
+			//);
 		}
 		const r = matchRuleOrInjections(
 			grammar,
@@ -1805,7 +2706,7 @@ TokenizeStringResult _tokenizeString(
 			return;
 		}
 
-		const captureIndices: IOnigCaptureIndex[] = r.captureIndices;
+		const IOnigCaptureIndex captureIndices[] = r.captureIndices;
 		const matchedRuleId = r.matchedRuleId;
 
 		const hasAdvanced =
@@ -1815,7 +2716,7 @@ TokenizeStringResult _tokenizeString(
 
 		if (matchedRuleId == endRuleId) {
 			// We matched the `end` for this rule => pop it
-			const poppedRule = <BeginEndRule>stack.getRule(grammar);
+			BeginEndRule poppedRule = stack.getRule(grammar);
 
 			if (DebugFlags.InDebugMode) {
 				console.log(
@@ -1869,7 +2770,7 @@ TokenizeStringResult _tokenizeString(
 			const beforePush = stack;
 			// push it on the stack rule
 			const scopeName = _rule.getName(lineText.content, captureIndices);
-			const nameScopesList = stack.contentNameScopesList!.pushAttributed(
+			const nameScopesList = stack.contentNameScopesList.pushAttributed(
 				scopeName,
 				grammar
 			);
@@ -2207,35 +3108,23 @@ struct View:Element {
     }
 };
 
+#if 0
+
 template <typename... Ts>
 struct com;
 
 template <typename T>
 using rr = std::reference_wrapper<T>;
 
-template <typename TT>
-TT *alloc(TT *src) {
-	static std::mutex mtx;
-	mtx.lock();
-	static const int bsize = 32;
-	static int cursor = bsize;
-	static TT* block = null;
-	if (cursor == bsize) {
-		cursor = 0;
-		block  = (TT*)calloc(bsize, sizeof(TT));
-	}
-	if (src) {
-		return new (&block[cursor++]) TT(src);
-	} else {
-		return new (&block[cursor++]) TT();
-	}
-	mtx.unlock();
-}
+/// the memory should all be reference counted the same
+/// so the idea of pushing lots of these refs per class is not ideal.  they are used at the same time
+/// there must be 1 memory!
+/// its a bit too much to change atm.
 
 template <typename T, typename... Ts>
 struct com<T, Ts...>: com<Ts...> {
 	static T default_v;
-	
+
 	std::tuple<T*, Ts*...> ptr;
 
 	template <typename TT, typename... TTs>
@@ -2245,6 +3134,52 @@ struct com<T, Ts...>: com<Ts...> {
 		else
 			return 1;
 	}
+
+	template <typename TT, typename... TTs>
+	memory *tsize() {
+		if (sizeof(TTs))
+			return 1 + tcount<TTs...>();
+		else
+			return sizeof(TTs);
+	}
+
+	/// we want this method to do all allocation for the types
+	template <typename TT, typename... TTs>
+	TT *alloc_next(TT *src, TTs *src_next...) {
+		if (sizeof(TTs))
+			return 1 + tcount<TTs...>();
+		else
+			return 1;
+	}
+
+	/// we want this method to do all allocation for the types
+	template <typename TT, typename... TTs>
+	TT *alloc(TT *src, TTs *src_next...) {
+		static std::mutex mtx;
+		mtx.lock();
+
+		static const int bsize = 32;
+		static int cursor = bsize;
+		static TT* block = null;
+		if (cursor == bsize) {
+			cursor = 0;
+			block  = (TT*)calloc(bsize, sizeof(TT));
+		}
+		if (src) {
+			return new (&block[cursor++]) TT(src);
+		} else {
+			return new (&block[cursor++]) TT();
+		}
+
+		if (sizeof(TTs))
+			return 1 + tcount<TTs...>();
+		else
+			return 1;
+
+		mtx.unlock();
+	}
+
+
 	/// perhaps use 
 	template <typename TT, typename... TTs>
 	memory *ralloc(TT* src) {
@@ -2284,7 +3219,7 @@ struct com<T, Ts...>: com<Ts...> {
 };
 
 template <> struct com <> : mx { };
-
+#endif
 
 
 int main(int argc, char *argv[]) {
