@@ -4,12 +4,6 @@ using namespace ion;
 
 #if 1
 
-import { RegexSource, mergeObjects, basename, escapeRegExpCharacters, OrMask } from './utils';
-
-import { IOnigLib, OnigScanner, IOnigCaptureIndex, FindOption, IOnigMatch, OnigString } from './onigLib';
-import { ILocation, IRawGrammar, IRawRepository, IRawRule, IRawCaptures } from './rawGrammar';
-import { IncludeReferenceKind, parseInclude } from './grammar/grammarDependencies';
-
 const RegEx HAS_BACK_REFERENCES  = RegEx(utf16(R("\\(\d+)")), RegEx::Behaviour::none);
 const RegEx BACK_REFERENCING_END = RegEx(utf16(R("\\(\d+)")), RegEx::Behaviour::global);
 
@@ -17,7 +11,6 @@ using ScopeName = str;
 using ScopePath = str;
 using ScopePattern = str;
 using Uint32Array  = array<uint32_t>;
-
 
 map<mx> mergeObjects(map<mx> dst, map<mx> src0, map<mx> src1) {
 	for (field<mx> &f: src0) {
@@ -67,6 +60,14 @@ struct ILocatable {
 	ILocation 		_vscodeTextmateLocation;
 };
 
+struct IRawRepositoryMap {
+	map<mx> 		props; /// of type IRawRule
+	IRawRule 		_self;
+	IRawRule 		_base;
+};
+
+struct IRawRepository : ILocatable, IRawRepositoryMap { }
+
 struct IRawGrammar : ILocatable {
 	IRawRepository 		repository;
 	ScopeName 			scopeName;
@@ -78,11 +79,6 @@ struct IRawGrammar : ILocatable {
 	str 				firstLineMatch;
 };
 
-struct IRawRepositoryMap {
-	map<mx> 		props; /// of type IRawRule
-	IRawRule 		_self;
-	IRawRule 		_base;
-};
 
 
 struct IGrammarRepository {
@@ -90,7 +86,7 @@ struct IGrammarRepository {
 	virtual array<ScopeName> injections(ScopeName scopeName) = 0;
 };
 
-struct IRawThemeFields {
+struct IRawThemeStyles {
 	str fontStyle;
 	str foreground;
 	str background;
@@ -99,7 +95,7 @@ struct IRawThemeFields {
 struct IRawThemeSetting {
 	str name
 	mx scope; // can be ScopePattern or ScopePattern[] ! (so string or array of them)
-	sp<IRawThemeFields> settings;
+	IRawThemeStyles styles;
 };
 
 struct IRawTheme {
@@ -113,9 +109,11 @@ struct ScopeStack:mx {
 		ScopeName scopeName;
 	};
 
+	mx_basic(ScopeStack);
+
 	static push(ScopeStack path, array<ScopeName> scopeNames): ScopeStack {
 		for (const name of scopeNames) {
-			path = new ScopeStack(path, name);
+			path = ScopeStack(path, name);
 		}
 		return path;
 	}
@@ -127,21 +125,18 @@ struct ScopeStack:mx {
 	//public static from(...segments: ScopeName[]): ScopeStack {
 	//	let result: ScopeStack = null;
 	//	for (let i = 0; i < segments.len(); i++) {
-	//		result = new ScopeStack(result, segments[i]);
+	//		result = ScopeStack(result, segments[i]);
 	//	}
 	//	return result;
 	//}
 
-	ScopeStack(
-		ScopeStack parent,
-		ScopeName scopeName
-	):ScopeStack() {
-		data->parent = parent;
+	ScopeStack(ScopeStack parent, ScopeName scopeName) : ScopeStack() {
+		data->parent    = parent;
 		data->scopeName = scopeName;
 	}
 
 	ScopeStack push(ScopeName scopeName) {
-		return new ScopeStack(this, scopeName);
+		return ScopeStack(this, scopeName);
 	}
 
 	array<ScopeName> getSegments() {
@@ -151,8 +146,7 @@ struct ScopeStack:mx {
 			result.push(item.scopeName);
 			item = item.parent;
 		}
-		result.reverse();
-		return result;
+		return result.reverse();
 	}
 
 	str toString() {
@@ -173,8 +167,8 @@ struct ScopeStack:mx {
 		array<str> result;
 		ScopeStack item = this;
 		while (item && item != base) {
-			result.push(item.scopeName);
-			item = item.parent;
+			result.push(item->scopeName);
+			item = item->parent;
 		}
 		return item == base ? result.reverse() : undefined;
 	}
@@ -189,21 +183,21 @@ bool _scopePathMatchesParentScopes(ScopeStack scopePath, array<ScopeName> parent
 	str scopePattern = parentScopes[index];
 
 	while (scopePath) {
-		if (_matchesScope(scopePath.scopeName, scopePattern)) {
+		if (_matchesScope(scopePath->scopeName, scopePattern)) {
 			index++;
 			if (index == parentScopes.len()) {
 				return true;
 			}
 			scopePattern = parentScopes[index];
 		}
-		scopePath = scopePath.parent;
+		scopePath = scopePath->parent;
 	}
 
 	return false;
 }
 
 bool _matchesScope(ScopeName scopeName, ScopeName scopePattern) {
-	return scopePattern == scopeName || (scopeName.startsWith(scopePattern) && scopeName[scopePattern.len()] == '.');
+	return scopePattern == scopeName || (scopeName.has_prefix(scopePattern) && scopeName[scopePattern.len()] == '.');
 }
 
 struct StyleAttributes:mx {
@@ -212,7 +206,7 @@ struct StyleAttributes:mx {
 		num foregroundId;
 		num backgroundId;
 	};
-	mx_object(StyleAttributes, mx, members);
+	mx_basic(StyleAttributes);
 
 	StyleAttributes(states<FontStyle> fontStyle, num foregroundId, num backgroundId):StyleAttributes() {
 		data->fontStyle = fontStyle;
@@ -234,17 +228,13 @@ struct ParsedThemeRule:mx {
 		str 				foreground;
 		str 				background;
 	};
-	mx_object(ParsedThemeRule, mx, members);
+	mx_basic(ParsedThemeRule);
 };
 
 array<ParsedThemeRule> parseTheme(IRawTheme &source) {
-	if (!source) {
+	if (!source.settings)
 		return {};
-	}
-	if (!source.settings || !(source.settings.type()->traits & traits::array)) {
-		return {};
-	}
-	IRawThemeSettings &settings = source.settings;
+	IRawThemeSetting &settings = source.settings;
 	array<ParsedThemeRule> result;
 
 	for (num i = 0, len = settings.len(); i < len; i++) {
@@ -265,16 +255,16 @@ array<ParsedThemeRule> parseTheme(IRawTheme &source) {
 			_scope = _scope.replace(R("[,]+$"), "");
 
 			scopes = _scope.split(',');
-		} else if (entry.scope.type()->traits & traits::array) {
-			scopes = entry.scope;
+		} else if (entry->scope.type()->traits & traits::array) {
+			scopes = entry->scope;
 		} else {
-			scopes = [''];
+			scopes = array<str> { "" };
 		}
 
 		states<FontStyle> fontStyle;
-		if (entry.settings.fontStyle) {
-			fontStyle = FontStyle.None;
-			array<str> segments = entry.settings.fontStyle.split(" ");
+		if (entry.styles.fontStyle) {
+			fontStyle = FontStyle::None;
+			array<str> segments = entry.styles.fontStyle.split(" ");
 			for (int j = 0, lenJ = segments.len(); j < lenJ; j++) {
 				str &segment = segments[j];
 				fontStyle[segment] = true;
@@ -282,13 +272,13 @@ array<ParsedThemeRule> parseTheme(IRawTheme &source) {
 		}
 
 		str foreground = null;
-		if (isValidHexColor(entry.settings.foreground)) {
-			foreground = entry.settings.foreground;
+		if (isValidHexColor(entry->styles.foreground)) {
+			foreground = entry->styles.foreground;
 		}
 
 		str background = null;
-		if (isValidHexColor(entry.settings.background)) {
-			background = entry.settings.background;
+		if (isValidHexColor(entry->styles.background)) {
+			background = entry->styles.background;
 		}
 
 		for (num j = 0, lenJ = scopes.len(); j < lenJ; j++) {
@@ -327,21 +317,21 @@ export const enum FontStyle {
 }
 
 str fontStyleToString(states<FontStyle> fontStyle) {
-	if (fontStyle == FontStyle.NotSet) {
+	if (fontStyle == FontStyle::NotSet) {
 		return "not set";
 	}
 
 	str style = "";
-	if (fontStyle & FontStyle.Italic) {
+	if (fontStyle & FontStyle::Italic) {
 		style += "italic ";
 	}
-	if (fontStyle & FontStyle.Bold) {
+	if (fontStyle & FontStyle::Bold) {
 		style += "bold ";
 	}
-	if (fontStyle & FontStyle.Underline) {
+	if (fontStyle & FontStyle::Underline) {
 		style += "underline ";
 	}
-	if (fontStyle & FontStyle.Strikethrough) {
+	if (fontStyle & FontStyle::Strikethrough) {
 		style += "strikethrough ";
 	}
 	if (style == "") {
@@ -356,53 +346,55 @@ str fontStyleToString(states<FontStyle> fontStyle) {
 Theme resolveParsedThemeRules(doubly<ParsedThemeRule> parsedThemeRules, array<str> _colorMap) {
 
 	// Sort rules lexicographically, and then by index if necessary
-	parsedThemeRules.sort((a, b) => {
-		num r = strcmp(a.scope, b.scope);
+	parsedThemeRules.sort([](ParsedThemeRule &a, ParsedThemeRule &b) -> int {
+		num r = strcmp(a->scope, b->scope);
 		if (r != 0) {
 			return r;
 		}
-		r = strArrCmp(a.parentScopes, b.parentScopes);
+		r = strArrCmp(a->parentScopes, b->parentScopes);
 		if (r != 0) {
 			return r;
 		}
-		return a.index - b.index;
+		return a->index - b->index;
 	});
 
 	// Determine defaults
-	states<FontStyle> defaultFontStyle = FontStyle.None;
+	states<FontStyle> defaultFontStyle = FontStyle::None;
 	str defaultForeground = "#000000";
 	str defaultBackground = "#ffffff";
 	while (parsedThemeRules.len() >= 1 && parsedThemeRules[0].scope == "") {
 		ParsedThemeRule incomingDefaults = parsedThemeRules.shift()
-		if (incomingDefaults.fontStyle != FontStyle.NotSet) {
-			defaultFontStyle = incomingDefaults.fontStyle;
+		if (incomingDefaults.fontStyle != FontStyle::NotSet) {
+			defaultFontStyle = incomingDefaults->fontStyle;
 		}
 		if (incomingDefaults.foreground != null) {
-			defaultForeground = incomingDefaults.foreground;
+			defaultForeground = incomingDefaults->foreground;
 		}
 		if (incomingDefaults.background != null) {
-			defaultBackground = incomingDefaults.background;
+			defaultBackground = incomingDefaults->background;
 		}
 	}
 	ColorMap 		colorMap = ColorMap(_colorMap);
 	StyleAttributes defaults = StyleAttributes(defaultFontStyle, colorMap.getId(defaultForeground), colorMap.getId(defaultBackground));
 
-	ThemeTrieElement root    = ThemeTrieElement(new ThemeTrieElementRule(0, null, FontStyle.NotSet, 0, 0), []);
+	ThemeTrieElement root    = ThemeTrieElement(ThemeTrieElementRule::members { 0, null, FontStyle::NotSet, 0, 0 }, {});
 	for (num i = 0, len = parsedThemeRules.len(); i < len; i++) {
 		let rule = parsedThemeRules[i];
 		root.insert(0, rule.scope, rule.parentScopes, rule.fontStyle, colorMap.getId(rule.foreground), colorMap.getId(rule.background));
 	}
 
-	return new Theme(colorMap, defaults, root);
+	return Theme(colorMap, defaults, root);
 }
 
-export class ColorMap {
-	bool _isFrozen;
-	num _lastColorId;
-	array<str> _id2color;
-	map<mx> _color2id;
+struct ColorMap:mx {
+	struct member {
+		bool 		_isFrozen;
+		num 		_lastColorId;
+		array<str> 	_id2color;
+		map<mx> 	_color2id;
+	};
 
-	constructor(array<str> _colorMap) {
+	ColorMap(array<str> _colorMap) {
 		data->_lastColorId = 0;
 
 		if (_colorMap) {
@@ -439,24 +431,18 @@ export class ColorMap {
 	}
 }
 
-export class ThemeTrieElementRule {
-
-	num scopeDepth;
-	array<ScopeName> parentScopes;
-	num fontStyle;
-	num foreground;
-	num background;
-
-	ThemeTrieElementRule(num scopeDepth, array<ScopeName> parentScopes, num fontStyle, num foreground, num background) {
-		data->scopeDepth = scopeDepth;
-		data->parentScopes = parentScopes;
-		data->fontStyle = fontStyle;
-		data->foreground = foreground;
-		data->background = background;
-	}
+struct ThemeTrieElementRule:mx {
+	struct members {
+		num scopeDepth;
+		array<ScopeName> parentScopes;
+		num fontStyle;
+		num foreground;
+		num background;
+	};
+	mx_basic(ThemeTrieElementRule);
 
 	ThemeTrieElementRule clone() {
-		return new ThemeTrieElementRule(data->scopeDepth, data->parentScopes, data->fontStyle, data->foreground, data->background);
+		return ThemeTrieElementRule(data->scopeDepth, data->parentScopes, data->fontStyle, data->foreground, data->background);
 	}
 
 	static array<ThemeTrieElementRule> cloneArr(array<ThemeTrieElementRule> arr) {
@@ -474,7 +460,7 @@ export class ThemeTrieElementRule {
 			data->scopeDepth = scopeDepth;
 		}
 		// console.log("TODO -> my depth: " + data->scopeDepth + ", overwriting depth: " + scopeDepth);
-		if (fontStyle != FontStyle.NotSet) {
+		if (fontStyle != FontStyle::NotSet) {
 			data->fontStyle = fontStyle;
 		}
 		if (foreground != 0) {
@@ -514,9 +500,9 @@ struct ThemeTrieElement:mx {
 	}
 
 	static num _cmpBySpecificity(ThemeTrieElementRule a, ThemeTrieElementRule b) {
-		if (a.scopeDepth == b.scopeDepth) {
-			const aParentScopes = a.parentScopes;
-			const bParentScopes = b.parentScopes;
+		if (a->scopeDepth == b->scopeDepth) {
+			const aParentScopes = a->parentScopes;
+			const bParentScopes = b->parentScopes;
 			let aParentScopesLen = aParentScopes == null ? 0 : aParentScopes.len();
 			let bParentScopesLen = bParentScopes == null ? 0 : bParentScopes.len();
 			if (aParentScopesLen == bParentScopesLen) {
@@ -530,30 +516,26 @@ struct ThemeTrieElement:mx {
 			}
 			return bParentScopesLen - aParentScopesLen;
 		}
-		return b.scopeDepth - a.scopeDepth;
+		return b->scopeDepth - a->scopeDepth;
+	}
+
+	array<ThemeTrieElementRule> default_result() {
+		array<ThemeTrieElementRule> a;
+		a.push(data->_mainRule);
+		for (ThemeTrieElementRule &r: data->_rulesWithParentScope)
+			a.push(r);
+		return ThemeTrieElement._sortBySpecificity(a);
 	}
 
 	array<ThemeTrieElementRule> match(ScopeName scope) {
-		if (scope == "") {
-			return ThemeTrieElement._sortBySpecificity((<ThemeTrieElementRule[]>[]).concat(data->_mainRule).concat(data->_rulesWithParentScopes));
-		}
-
-		let dotIndex = scope.indexOf(".");
-		let str head;
-		let str tail;
-		if (dotIndex == -1) {
-			head = scope;
-			tail = "";
-		} else {
-			head = scope.substring(0, dotIndex);
-			tail = scope.substring(dotIndex + 1);
-		}
-
-		if (data->_children.hasOwnProperty(head)) {
+		if (scope == "")
+			return default_result();
+		int dotIndex = scope.indexOf(".");
+		str head     = (dotIndex == -1) ? scope : scope.mid(0, dotIndex);
+		str tail     = (dotIndex == -1) ? ""    : scope.mid(dotIndex + 1);
+		if (data->_children.count(head))
 			return data->_children[head].match(tail);
-		}
-
-		return ThemeTrieElement._sortBySpecificity((<ThemeTrieElementRule[]>[]).concat(data->_mainRule).concat(data->_rulesWithParentScopes));
+		return default_result();
 	}
 
 	void insert(num scopeDepth, ScopeName scope, array<ScopeName> parentScopes, num fontStyle, num foreground, num background) {
@@ -561,23 +543,16 @@ struct ThemeTrieElement:mx {
 			data->_doInsertHere(scopeDepth, parentScopes, fontStyle, foreground, background);
 			return;
 		}
-
-		let dotIndex = scope.indexOf(".");
-		let str head;
-		let str tail;
-		if (dotIndex == -1) {
-			head = scope;
-			tail = "";
-		} else {
-			head = scope.substring(0, dotIndex);
-			tail = scope.substring(dotIndex + 1);
-		}
-
-		let ThemeTrieElement child;
-		if (data->_children.hasOwnProperty(head)) {
+		int dotIndex = scope.indexOf(".");
+		str head = (dotIndex == -1) ? scope : scope.mid(0, dotIndex);
+		str tail = (dotIndex == -1) ? ""    : scope.mid(dotIndex + 1);
+		ThemeTrieElement child;
+		if (data->_children.count(head)) {
 			child = data->_children[head];
 		} else {
-			child = new ThemeTrieElement(data->_mainRule.clone(), ThemeTrieElementRule.cloneArr(data->_rulesWithParentScopes));
+			child = ThemeTrieElement(
+				data->_mainRule.clone(),
+				ThemeTrieElementRule::cloneArr(data->_rulesWithParentScopes));
 			data->_children[head] = child;
 		}
 
@@ -606,29 +581,37 @@ struct ThemeTrieElement:mx {
 		// Must add a new rule
 
 		// Inherit from main rule
-		if (fontStyle == FontStyle.NotSet) {
+		if (fontStyle == FontStyle::NotSet) {
 			fontStyle = data->_mainRule.fontStyle;
 		}
 		if (foreground == 0) {
-			foreground = data->_mainRule.foreground;
+			foreground = data->_mainRule->foreground;
 		}
 		if (background == 0) {
-			background = data->_mainRule.background;
+			background = data->_mainRule->background;
 		}
 
-		data->_rulesWithParentScopes.push(new ThemeTrieElementRule(scopeDepth, parentScopes, fontStyle, foreground, background));
+		data->_rulesWithParentScopes.push(
+			ThemeTrieElementRule::members {
+				scopeDepth, parentScopes, fontStyle, foreground, background
+			}
+		);
 	}
 };
 
-using ITrieChildrenMap = ThemeTrieElement::map<ThemeTrieElement>;
+using ITrieChildrenMap = map<ThemeTrieElement>;
 
 struct Theme:mx {
 	struct members {
-		ColorMap _colorMap;
-		StyleAttributes _defaults;
-		ThemeTrieElement _root;
+		ColorMap 			_colorMap;
+		StyleAttributes	 	_defaults;
+		ThemeTrieElement 	_root;
+		lambda<ThemeTriElementRule(ScopeName)> _cachedMatchRoot;
+		members() {
+			_cachedMatchRoot = [&](ScopeName scopeName) -> ThemeTriElementRule { return _root.match(scopeName); };
+		}
 	};
-	mx_object(Theme, mx, members);
+	mx_basic(Theme);
 
 	static Theme createFromRawTheme(
 		IRawTheme source,
@@ -644,9 +627,7 @@ struct Theme:mx {
 		return resolveParsedThemeRules(source, colorMap);
 	}
 
-	private readonly _cachedMatchRoot = new CachedFn<ScopeName, ThemeTrieElementRule[]>(
-		(scopeName) => data->_root.match(scopeName)
-	);
+
 
 	array<str> getColorMap() {
 		return data->_colorMap.getColorMap();
@@ -663,118 +644,19 @@ struct Theme:mx {
 		const scopeName = scopePath.scopeName;
 		const matchingTrieElements = data->_cachedMatchRoot.get(scopeName);
 
-		const effectiveRule = matchingTrieElements.find((v) =>
-			_scopePathMatchesParentScopes(scopePath.parent, v.parentScopes)
+		const effectiveRule = matchingTrieElements.select_first([&](ThemeTrieElement &v) -> bool
+			_scopePathMatchesParentScopes(scopePath->parent, v->parentScopes)
 		);
 		if (!effectiveRule) {
 			return null;
 		}
-
 		return StyleAttributes(
 			effectiveRule.fontStyle,
 			effectiveRule.foreground,
 			effectiveRule.background
 		);
 	}
-}
-
-
-struct SyncRegistry : mx {
-	struct members: IGrammaryRepository, IThemeProvider {
-		ion::map<Grammar> _grammars;
-		ion::map<IRawGrammar> _rawGrammars;
-		ion::map<array<ScopeName>> _injectionGrammars;
-		Theme _theme;
-	};
-
-	mx_object(SyncRegistry, mx, members);
-
-	SyncRegistry(Theme theme):SyncRegistry() {
-		data->_theme = theme;
-	}
-
-	void dispose() {
-		for (const grammar of data->_grammars.values()) {
-			grammar.dispose();
-		}
-	}
-
-	void setTheme(Theme theme) {
-		data->_theme = theme;
-	}
-
-	array<str> getColorMap() {
-		return data->_theme.getColorMap();
-	}
-
-	/**
-	 * Add `grammar` to registry and return a list of referenced scope names
-	 */
-	void addGrammar(IRawGrammar &grammar, array<ScopeName> injectionScopeNames) {
-		data->_rawGrammars[grammar.scopeName] = grammar; /// is a copy ok?
-
-		if (injectionScopeNames) {
-			data->_injectionGrammars[grammar.scopeName] = injectionScopeNames;
-		}
-	}
-
-	/**
-	 * Lookup a raw grammar.
-	 */
-	IRawGrammar lookup(ScopeName scopeName) {
-		return data->_rawGrammars.get(scopeName)!;
-	}
-
-	/**
-	 * Returns the injections for the given grammar
-	 */
-	array<ScopeName> injections(ScopeName targetScope) {
-		return data->_injectionGrammars.get(targetScope)!;
-	}
-
-	/**
-	 * Get the default theme settings
-	 */
-	StyleAttributes getDefaults() {
-		return data->_theme.getDefaults();
-	}
-
-	/**
-	 * Match a scope in the theme.
-	 */
-	StyleAttributes themeMatch(ScopeStack scopePath) {
-		return data->_theme.match(scopePath);
-	}
-
-	/**
-	 * Lookup a grammar.
-	 */
-	public async grammarForScopeName(
-		ScopeName scopeName,
-		num initialLanguage,
-		IEmbeddedLanguagesMap embeddedLanguages,
-		ITokenTypeMap tokenTypes,
-		BalancedBracketSelectors balancedBracketSelectors
-	): Promise<IGrammar> {
-		if (!data->_grammars.has(scopeName)) {
-			let rawGrammar = data->_rawGrammars.get(scopeName)!;
-			if (!rawGrammar) {
-				return null;
-			}
-			data->_grammars.set(scopeName, createGrammar(
-				scopeName,
-				rawGrammar,
-				initialLanguage,
-				embeddedLanguages,
-				tokenTypes,
-				balancedBracketSelectors,
-				this,
-				await data->_onigLibPromise
-			));
-		}
-		return data->_grammars.get(scopeName)!;
-	}
-}
+};
 
 
 
@@ -794,7 +676,7 @@ struct IncludeReference:mx {
 	IncludeReference(IncludeReferenceKind kind) : IncludeReference() {
 		data->kind = kind;
 	}
-	mx_object(IncludeReference, mx, members);
+	mx_basic(IncludeReference);
 };
 
 struct BaseReference:IncludeReference {
@@ -848,14 +730,14 @@ IncludeReference parseInclude(utf8 include) {
 
 struct ExternalReferenceCollector:mx {
 	struct members {
-		array<AbsoluteRuleReference> references;
+		array<TopLevelRuleReference> references;
 		array<str>					_seenReferenceKeys;
 		array<IRawRule> 			 visitedRule;
 	};
 
 	mx_basic(ExternalReferenceCollector)
 
-	void add(AbsoluteRuleReference reference) {
+	void add(TopLevelRuleReference reference) {
 		const key = reference.toKey();
 		if (this._seenReferenceKeys.index_of(key) >= 0) {
 			return;
@@ -865,7 +747,7 @@ struct ExternalReferenceCollector:mx {
 	}
 }
 
-struct TopLevelRuleReference {
+struct TopLevelRuleReference:mx {
 	struct members {
 		ScopeName scopeName;
 	};
@@ -884,26 +766,36 @@ struct TopLevelRuleReference {
  * References a rule of a grammar in the top level repository section with the given name.
 */
 struct TopLevelRepositoryRuleReference:TopLevelRuleReference {
+	struct members {
+		string ruleName;
+	};
+
 	TopLevelRepositoryRuleReference(
-		public readonly scopeName: ScopeName,
-		public readonly ruleName: string
-	) { }
+		ScopeName 	scopeName,
+		str 		ruleName) : TopLevelRepositoryRuleReference() {
+		TopLevelRuleReference::data->scopeName = scopeName;
+		data->ruleName = ruleName;
+	}
+	
+	mx_object(TopLevelRepositoryRuleReference, TopLevelRuleReference)
 
 	str toKey() {
-		return fmt { "{0}#{1}", {data->scopeName, data->ruleName} };
+		return fmt { "{0}#{1}", {
+			TopLevelRuleReference::data->scopeName,
+			TopLevelRepositoryRuleReference::data->ruleName} };
 	}
 }
 
 
-function collectReferencesOfReference(
-	TopLevelRuleReference reference,
-	ScopeName baseGrammarScopeName,
-	IGrammarRepository repo,
-	ExternalReferenceCollector result)
+void collectReferencesOfReference(
+	TopLevelRuleReference 		reference,
+	ScopeName 					baseGrammarScopeName,
+	IGrammarRepository 			repo,
+	ExternalReferenceCollector 	result)
 {
 	const selfGrammar = repo.lookup(reference->scopeName);
 	if (!selfGrammar) {
-		if (reference.scopeName === baseGrammarScopeName) {
+		if (reference.scopeName == baseGrammarScopeName) {
 			console.fault("No grammar provided for <{0}>", {baseGrammarScopeName});
 		}
 		return;
@@ -923,7 +815,7 @@ function collectReferencesOfReference(
 	const injections = repo.injections(reference.scopeName);
 	if (injections) {
 		for (const injection of injections) {
-			result.add(new TopLevelRuleReference(injection));
+			result.add(TopLevelRuleReference(injection));
 		}
 	}
 }
@@ -1019,20 +911,20 @@ void collectExternalReferencesInRules(
 			case IncludeReferenceKind.TopLevelReference:
 			case IncludeReferenceKind.TopLevelRepositoryReference:
 				const selfGrammar =
-					reference.scopeName === context.selfGrammar.scopeName
+					reference.scopeName == context.selfGrammar.scopeName
 						? context.selfGrammar
-						: reference.scopeName === context.baseGrammar.scopeName
+						: reference.scopeName == context.baseGrammar.scopeName
 						? context.baseGrammar
 						: undefined;
 				if (selfGrammar) {
-					if (reference.kind === IncludeReferenceKind.TopLevelRepositoryReference) {
+					if (reference.kind == IncludeReferenceKind.TopLevelRepositoryReference) {
 						collectExternalReferencesInTopLevelRepositoryRule(
 							reference.ruleName, baseGrammar, selfGrammar, patternRepository, result);
 					} else {
 						collectExternalReferencesInTopLevelRule(baseGrammar, selfGrammar, patternRepository, result);
 					}
 				} else {
-					if (reference.kind === IncludeReferenceKind.TopLevelRepositoryReference) {
+					if (reference.kind == IncludeReferenceKind.TopLevelRepositoryReference) {
 						result.add(TopLevelRepositoryRuleReference(reference.scopeName, reference.ruleName));
 					} else {
 						result.add(TopLevelRuleReference(reference.scopeName));
@@ -1053,20 +945,20 @@ struct ScopeDependencyProcessor:mx {
 		ScopeName initialScopeName
 		array<ScopeName> seenFullScopeRequests;
 		array<str> seenPartialScopeRequests;
-		array<AbsoluteRuleReference> Q;
+		array<TopLevelRuleReference> Q;
 	};
 
 	ScopeDependencyProcessor(
 		IGrammarRepository repo,
-		public readonly initialScopeName
+		ScopeName initialScopeName
 	) {
 		this.seenFullScopeRequests.add(this.initialScopeName);
-		this.Q = [new TopLevelRuleReference(this.initialScopeName)];
+		this.Q = array<TopLevelRuleReference> { TopLevelRuleReference(this.initialScopeName) };
 	}
 
 	void processQueue() {
 		const q = this.Q;
-		this.Q = [];
+		this.Q = {};
 
 		ExternalReferenceCollector deps;
 		for (const dep of q) {
@@ -1105,25 +997,22 @@ struct ScopeDependencyProcessor:mx {
 
 export type IRawCaptures = IRawCapturesMap & ILocatable;
 
-struct IRawRule:mx {
-	struct members {
-		RuleId 				id; // This is not part of the spec only used internally
-		str 				include;
-		utf16 				name;
-		utf16 				contentName;
-		utf16 				match;
-		IRawCaptures 		captures;
-		utf16 				begin;
-		IRawCaptures	 	beginCaptures;
-		utf16 				end;
-		IRawCaptures 		endCaptures;
-		utf16 				_while;
-		IRawCaptures 		whileCaptures;
-		array<IRawRule>	 	patterns;
-	  //IRawRepository 		repository;
-		bool 				applyEndPatternLast;
-	};
-	mx_object(IRawRule, mx, members);
+struct IRawRule {
+	RuleId 				id; // This is not part of the spec only used internally
+	str 				include;
+	utf16 				name;
+	utf16 				contentName;
+	utf16 				match;
+	IRawCaptures 		captures;
+	utf16 				begin;
+	IRawCaptures	 	beginCaptures;
+	utf16 				end;
+	IRawCaptures 		endCaptures;
+	utf16 				_while;
+	IRawCaptures 		whileCaptures;
+	array<IRawRule>	 	patterns;
+	//IRawRepository 		repository;
+	bool 				applyEndPatternLast;
 };
 
 struct OnigString {
@@ -1152,7 +1041,7 @@ struct OnigScanner {
 		RegEx regex;
 	};
 
-	mx_object(OnigScanner)
+	mx_basic(OnigScanner)
 
 	IOnigMatch findNextMatchSync(str string, num startPosition, states<FindOption> options) {
 		regex.set_cursor(startPosition);
@@ -2077,7 +1966,7 @@ struct AttributedScopeStack:mx {
 		ScopeStack scopePath;
 		EncodedTokenAttributes tokenAttributes;
 	};
-	mx_object(AttributedScopeStack, mx, members);
+	mx_basic(AttributedScopeStack);
 
 	static fromExtension(AttributedScopeStack namesScopeList, array<AttributedScopeStackFrame> contentNameScopesList): AttributedScopeStack {
 		let current = namesScopeList;
@@ -2151,7 +2040,7 @@ struct AttributedScopeStack:mx {
 		BasicScopeAttributes basicScopeAttributes,
 		StyleAttributes styleAttributes
 	) {
-		let fontStyle = FontStyle.NotSet;
+		let fontStyle = FontStyle::NotSet;
 		let foreground = 0;
 		let background = 0;
 
@@ -2552,7 +2441,7 @@ struct LineTokens:mx {
 		array<TokenTypeMatcher> _tokenTypeOverrides;
 	};
 	
-	mx_object(LineTokens, mx, members);
+	mx_basic(LineTokens);
 
 	LineTokens(
 		bool emitBinaryTokens, utf16 lineText,
@@ -2597,7 +2486,7 @@ struct LineTokens:mx {
 							0,
 							toOptionalTokenType(tokenType.type),
 							null,
-							FontStyle.NotSet,
+							FontStyle::NotSet,
 							0,
 							0
 						);
@@ -2614,7 +2503,7 @@ struct LineTokens:mx {
 					0,
 					OptionalStandardTokenType.NotSet,
 					containsBalancedBrackets,
-					FontStyle.NotSet,
+					FontStyle::NotSet,
 					0,
 					0
 				);
@@ -2723,7 +2612,7 @@ struct Grammar:mx { // implements IGrammar, IRuleFactoryHelper, IOnigLib
 
 		//BasicScopeAttributesProvider _basicScopeAttributesProvider;
 	};
-	mx_object(Grammar, mx, members);
+	mx_basic(Grammar);
 
 	/// remove Repository
 	/// remove Scope/Theme
@@ -2759,7 +2648,7 @@ struct Grammar:mx { // implements IGrammar, IRuleFactoryHelper, IOnigLib
 	private _collectInjections(): Injection[] {
 		const grammarRepository: IGrammarRepository = {
 			lookup: (scopeName: string): IRawGrammar | undefined => {
-				if (scopeName === this._rootScopeName) {
+				if (scopeName == this._rootScopeName) {
 					return this._grammar;
 				}
 				return this.getExternalGrammar(scopeName);
@@ -2818,7 +2707,7 @@ struct Grammar:mx { // implements IGrammar, IRuleFactoryHelper, IOnigLib
 	}
 
 	array<Injection> getInjections() {
-		if (this._injections === null) {
+		if (this._injections == null) {
 			this._injections = this._collectInjections();
 
 			if (DebugFlags.InDebugMode && this._injections.length > 0) {
@@ -2971,7 +2860,117 @@ struct Grammar:mx { // implements IGrammar, IRuleFactoryHelper, IOnigLib
 };
 
 
+export function createGrammar(
+	scopeName: ScopeName,
+	grammar: IRawGrammar,
+	initialLanguage: number,
+	embeddedLanguages: IEmbeddedLanguagesMap | null,
+	tokenTypes: ITokenTypeMap | null,
+	balancedBracketSelectors: BalancedBracketSelectors | null,
+	grammarRepository: 	IGrammarRepository & IThemeProvider,
+	onigLib: IOnigLib
+): Grammar {
+	return new Grammar(
+		scopeName,
+		grammar,
+		initialLanguage,
+		embeddedLanguages,
+		tokenTypes,
+		balancedBracketSelectors,
+		grammarRepository,
+		onigLib
+	); //TODO
+}
 
+struct SyncRegistry : mx {
+	struct members: IGrammaryRepository, IThemeProvider {
+		ion::map<Grammar> _grammars;
+		ion::map<IRawGrammar> _rawGrammars;
+		ion::map<array<ScopeName>> _injectionGrammars;
+		Theme _theme;
+	};
+
+	mx_basic(SyncRegistry);
+
+	SyncRegistry(Theme theme):SyncRegistry() {
+		data->_theme = theme;
+	}
+
+	void setTheme(Theme theme) {
+		data->_theme = theme;
+	}
+
+	array<str> getColorMap() {
+		return data->_theme.getColorMap();
+	}
+
+	/**
+	 * Add `grammar` to registry and return a list of referenced scope names
+	 */
+	void addGrammar(IRawGrammar &grammar, array<ScopeName> injectionScopeNames) {
+		data->_rawGrammars[grammar.scopeName] = grammar; /// is a copy ok?
+
+		if (injectionScopeNames) {
+			data->_injectionGrammars[grammar.scopeName] = injectionScopeNames;
+		}
+	}
+
+	/**
+	 * Lookup a raw grammar.
+	 */
+	IRawGrammar lookup(ScopeName scopeName) {
+		return data->_rawGrammars.get(scopeName)!;
+	}
+
+	/**
+	 * Returns the injections for the given grammar
+	 */
+	array<ScopeName> injections(ScopeName targetScope) {
+		return data->_injectionGrammars.get(targetScope)!;
+	}
+
+	/**
+	 * Get the default theme settings
+	 */
+	StyleAttributes getDefaults() {
+		return data->_theme.getDefaults();
+	}
+
+	/**
+	 * Match a scope in the theme.
+	 */
+	StyleAttributes themeMatch(ScopeStack scopePath) {
+		return data->_theme.match(scopePath);
+	}
+
+	/**
+	 * Lookup a grammar.
+	 */
+	future grammarForScopeName(
+		ScopeName 					scopeName,
+		num 						initialLanguage,
+		IEmbeddedLanguagesMap 		embeddedLanguages,
+		ITokenTypeMap 				tokenTypes,
+		BalancedBracketSelectors 	balancedBracketSelectors
+	) {
+		if (!data->_grammars.has(scopeName)) {
+			let rawGrammar = data->_rawGrammars.get(scopeName)!;
+			if (!rawGrammar) {
+				return null;
+			}
+			data->_grammars.set(scopeName, createGrammar(
+				scopeName,
+				rawGrammar,
+				initialLanguage,
+				embeddedLanguages,
+				tokenTypes,
+				balancedBracketSelectors,
+				this
+			));
+		}
+		return data->_grammars.get(scopeName)!;
+	}
+}
 
 IWhileCheckResult _checkWhileConditions(
 		Grammar &grammar, utf16 &lineText, bool isFirstLine,
@@ -3343,7 +3342,7 @@ struct Tokenizer:mx {
 		}
     };
 
-    mx_object(Tokenizer, mx, state);
+    mx_basic(Tokenizer);
 
     Tokenizer(utf16 input) : Tokenizer() {
         data->regex = utf16("([LR]:|[\\w\\.:][\\w\\.:\\-]*|[\\,\\|\\-\\(\\)])");
@@ -3354,11 +3353,11 @@ struct Tokenizer:mx {
 using Matcher = lambda<bool(mx)>;
 
 struct MatcherWithPriority:mx {
-	struct vars {
+	struct members {
 		Matcher matcher;
 		num 	priority; // -1, 0, 1
 	};
-	mx_object(MatcherWithPriority, mx, vars);
+	mx_basic(MatcherWithPriority);
 	MatcherWithPriority(Matcher &matcher, num priority) : MatcherWithPriority() {
 		data->matcher  = matcher;
 		data->priority = priority;
@@ -3477,7 +3476,7 @@ struct Registry:mx {
 		map<future> _ensureGrammarCache;
 	};
 
-	mx_object(Registry, mx, members);
+	mx_basic(Registry);
 
 	Registry(RegistryOptions options) {
 		data->_options = options;
@@ -3528,7 +3527,7 @@ struct Registry:mx {
 			initialLanguage,
 			configuration.embeddedLanguages,
 			configuration.tokenTypes,
-			new BalancedBracketSelectors(
+			BalancedBracketSelectors(
 				configuration.balancedBracketSelectors,
 				configuration.unbalancedBracketSelectors
 			)
@@ -3572,10 +3571,10 @@ struct Registry:mx {
 	}
 
 	future _doLoadSingleGrammar(ScopeName scopeName) {
-		const grammar = await data->_options.loadGrammar(scopeName);
+		const grammar = await data->_options.loadGrammar(scopeName).then((Grammar g))
 		if (grammar) {
 			const injections =
-				typeof data->_options.getInjections === "function" ? data->_options.getInjections(scopeName) : undefined;
+				typeof data->_options.getInjections == "function" ? data->_options.getInjections(scopeName) : undefined;
 			data->_syncRegistry.addGrammar(grammar, injections);
 		}
 	}
