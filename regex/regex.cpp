@@ -73,6 +73,25 @@ utf16 RegEx::escape(utf16 value) {
     return value.escape("\\{}*+?|^$.,[]()# ");
 }
 
+void RegEx::set_cursor(num from, num to) {
+    if (data->last_mem) {
+        memory *m = data->last_mem;
+        if (m->type == typeof(str)) {
+            str input = m->grab();
+            data->last_index = from;
+            data->bytes_left = to + (num)input.len() - from;
+            assert(data->bytes_left >= 0);
+        } else if (m->type == typeof(utf16)) {
+            utf16 input = m->grab();
+            data->last_index = from;
+            data->bytes_left = to + input.len() - from;
+            assert(data->bytes_left >= 0);
+        }
+    } else {
+        assert(false);
+    }
+}
+
 /// 
 array<utf16> RegEx::exec(utf16 input) {
     Behaviour b = data->b;

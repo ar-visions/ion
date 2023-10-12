@@ -20,7 +20,14 @@ struct RegEx:mx {
     static utf16 escape(utf16 input);
     array<str>     exec(str input);
     array<utf16>   exec(utf16 input);
+
+    void set_cursor(num from, num to = -1);
     
+    template <typename T>
+    bool test(T input) {
+        return exec(input);
+    }
+
     template <typename T>
     T replace(T input, mx mx_replacement) {
         array<T> matches = exec(input);

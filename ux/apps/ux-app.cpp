@@ -18,12 +18,37 @@ using ScopePath = str;
 using ScopePattern = str;
 using Uint32Array  = array<uint32_t>;
 
+
+map<mx> mergeObjects(map<mx> dst, map<mx> src0, map<mx> src1) {
+	for (field<mx> &f: src0) {
+		dst[f.key] = f.value;
+	}
+	for (field<mx> &f: src1) {
+		dst[f.key] = f.value;
+	}
+	return dst;
+}
+
 struct RegistryOptions {
 	IRawTheme theme;
 	array<str> colorMap;
 	future loadGrammar(ScopeName scopeName);
 	lambda<array<ScopeName>(ScopeName)> getInjections;
 };
+
+
+bool isValidHexColor(str hex) {
+	if (!hex) return false;
+    RegEx rgbRegex     ("^#[0-9a-fA-F]{3}$");
+    RegEx rgbaRegex    ("^#[0-9a-fA-F]{4}$");
+    RegEx rrggbbRegex  ("^#[0-9a-fA-F]{6}$");
+    RegEx rrggbbaaRegex("^#[0-9a-fA-F]{8}$");
+
+    return rgbRegex.match(hex)    || 
+           rgbaRegex.match(hex)   ||
+           rrggbbRegex.match(hex) ||
+           rrggbbaaRegex.match(hex);
+}
 
 /**
  * A map from scope name to a language id. Please do not use language id 0.
@@ -200,16 +225,19 @@ struct StyleAttributes:mx {
  * Parse a raw theme into rules.
  */
 
-struct ParsedThemeRule {
-	ScopeName scope;
-	array<ScopeName> parentScopes;
-	num index;
-	states<FontStyle> fontStyle;
-	str foreground;
-	str background;
+struct ParsedThemeRule:mx {
+	struct members {
+		ScopeName 			scope;
+		array<ScopeName> 	parentScopes;
+		num 				index;
+		states<FontStyle> 	fontStyle;
+		str 				foreground;
+		str 				background;
+	};
+	mx_object(ParsedThemeRule, mx, members);
 };
 
-array<ParsedThemeRule> parseTheme(IRawTheme source) {
+array<ParsedThemeRule> parseTheme(IRawTheme &source) {
 	if (!source) {
 		return {};
 	}
@@ -218,7 +246,7 @@ array<ParsedThemeRule> parseTheme(IRawTheme source) {
 	}
 	IRawThemeSettings &settings = source.settings;
 	array<ParsedThemeRule> result;
-	num resultLen = 0;
+
 	for (num i = 0, len = settings.len(); i < len; i++) {
 		auto &entry = settings[i];
 
@@ -243,44 +271,30 @@ array<ParsedThemeRule> parseTheme(IRawTheme source) {
 			scopes = [''];
 		}
 
-		states<FontStyle> fontStyle = FontStyle.NotSet;
+		states<FontStyle> fontStyle;
 		if (entry.settings.fontStyle) {
 			fontStyle = FontStyle.None;
-
-			let segments = entry.settings.fontStyle.split(' ');
-			for (let j = 0, lenJ = segments.len(); j < lenJ; j++) {
-				let segment = segments[j];
-				switch (segment) {
-					case 'italic':
-						fontStyle = fontStyle | FontStyle.Italic;
-						break;
-					case 'bold':
-						fontStyle = fontStyle | FontStyle.Bold;
-						break;
-					case 'underline':
-						fontStyle = fontStyle | FontStyle.Underline;
-						break;
-					case 'strikethrough':
-						fontStyle = fontStyle | FontStyle.Strikethrough;
-						break;
-				}
+			array<str> segments = entry.settings.fontStyle.split(" ");
+			for (int j = 0, lenJ = segments.len(); j < lenJ; j++) {
+				str &segment = segments[j];
+				fontStyle[segment] = true;
 			}
 		}
 
 		str foreground = null;
-		if (typeof entry.settings.foreground == 'string' && isValidHexColor(entry.settings.foreground)) {
+		if (isValidHexColor(entry.settings.foreground)) {
 			foreground = entry.settings.foreground;
 		}
 
 		str background = null;
-		if (typeof entry.settings.background == 'string' && isValidHexColor(entry.settings.background)) {
+		if (isValidHexColor(entry.settings.background)) {
 			background = entry.settings.background;
 		}
 
 		for (num j = 0, lenJ = scopes.len(); j < lenJ; j++) {
 			str _scope = scopes[j].trim();
 
-			array<str> segments = _scope.split(' ');
+			array<str> segments = _scope.split(" ");
 
 			str scope = segments[segments.len() - 1];
 			array<str> parentScopes;
@@ -289,14 +303,14 @@ array<ParsedThemeRule> parseTheme(IRawTheme source) {
 				parentScopes.reverse();
 			}
 
-			result[resultLen++] = ParsedThemeRule(
+			result.push(ParsedThemeRule(
 				scope,
 				parentScopes,
 				i,
 				fontStyle,
 				foreground,
 				background
-			);
+			));
 		}
 	}
 
@@ -314,24 +328,24 @@ export const enum FontStyle {
 
 str fontStyleToString(states<FontStyle> fontStyle) {
 	if (fontStyle == FontStyle.NotSet) {
-		return 'not set';
+		return "not set";
 	}
 
-	str style = '';
+	str style = "";
 	if (fontStyle & FontStyle.Italic) {
-		style += 'italic ';
+		style += "italic ";
 	}
 	if (fontStyle & FontStyle.Bold) {
-		style += 'bold ';
+		style += "bold ";
 	}
 	if (fontStyle & FontStyle.Underline) {
-		style += 'underline ';
+		style += "underline ";
 	}
 	if (fontStyle & FontStyle.Strikethrough) {
-		style += 'strikethrough ';
+		style += "strikethrough ";
 	}
-	if (style == '') {
-		style = 'none';
+	if (style == "") {
+		style = "none";
 	}
 	return style.trim();
 }
@@ -356,9 +370,9 @@ Theme resolveParsedThemeRules(doubly<ParsedThemeRule> parsedThemeRules, array<st
 
 	// Determine defaults
 	states<FontStyle> defaultFontStyle = FontStyle.None;
-	str defaultForeground = '#000000';
-	str defaultBackground = '#ffffff';
-	while (parsedThemeRules.len() >= 1 && parsedThemeRules[0].scope == '') {
+	str defaultForeground = "#000000";
+	str defaultBackground = "#ffffff";
+	while (parsedThemeRules.len() >= 1 && parsedThemeRules[0].scope == "") {
 		ParsedThemeRule incomingDefaults = parsedThemeRules.shift()
 		if (incomingDefaults.fontStyle != FontStyle.NotSet) {
 			defaultFontStyle = incomingDefaults.fontStyle;
@@ -412,7 +426,7 @@ export class ColorMap {
 			return value;
 		}
 		if (data->_isFrozen) {
-			throw new Error(`Missing color in color map - ${color}`);
+			console.fault("Missing color in color map - {0}", {color});
 		}
 		value = ++data->_lastColorId;
 		data->_color2id[color] = value;
@@ -455,11 +469,11 @@ export class ThemeTrieElementRule {
 
 	void acceptOverwrite(num scopeDepth, num fontStyle, num foreground, num background) {
 		if (data->scopeDepth > scopeDepth) {
-			console.log('how did this happen?');
+			console.log("how did this happen?");
 		} else {
 			data->scopeDepth = scopeDepth;
 		}
-		// console.log('TODO -> my depth: ' + data->scopeDepth + ', overwriting depth: ' + scopeDepth);
+		// console.log("TODO -> my depth: " + data->scopeDepth + ", overwriting depth: " + scopeDepth);
 		if (fontStyle != FontStyle.NotSet) {
 			data->fontStyle = fontStyle;
 		}
@@ -520,16 +534,16 @@ struct ThemeTrieElement:mx {
 	}
 
 	array<ThemeTrieElementRule> match(ScopeName scope) {
-		if (scope == '') {
+		if (scope == "") {
 			return ThemeTrieElement._sortBySpecificity((<ThemeTrieElementRule[]>[]).concat(data->_mainRule).concat(data->_rulesWithParentScopes));
 		}
 
-		let dotIndex = scope.indexOf('.');
+		let dotIndex = scope.indexOf(".");
 		let str head;
 		let str tail;
 		if (dotIndex == -1) {
 			head = scope;
-			tail = '';
+			tail = "";
 		} else {
 			head = scope.substring(0, dotIndex);
 			tail = scope.substring(dotIndex + 1);
@@ -543,17 +557,17 @@ struct ThemeTrieElement:mx {
 	}
 
 	void insert(num scopeDepth, ScopeName scope, array<ScopeName> parentScopes, num fontStyle, num foreground, num background) {
-		if (scope == '') {
+		if (scope == "") {
 			data->_doInsertHere(scopeDepth, parentScopes, fontStyle, foreground, background);
 			return;
 		}
 
-		let dotIndex = scope.indexOf('.');
+		let dotIndex = scope.indexOf(".");
 		let str head;
 		let str tail;
 		if (dotIndex == -1) {
 			head = scope;
-			tail = '';
+			tail = "";
 		} else {
 			head = scope.substring(0, dotIndex);
 			tail = scope.substring(dotIndex + 1);
@@ -833,18 +847,17 @@ IncludeReference parseInclude(utf8 include) {
 }
 
 struct ExternalReferenceCollector:mx {
-	private readonly _references: AbsoluteRuleReference[] = [];
-	private readonly _seenReferenceKeys = new Set<string>();
+	struct members {
+		array<AbsoluteRuleReference> references;
+		array<str>					_seenReferenceKeys;
+		array<IRawRule> 			 visitedRule;
+	};
 
-	public get references(): readonly AbsoluteRuleReference[] {
-		return this._references;
-	}
+	mx_basic(ExternalReferenceCollector)
 
-	public readonly visitedRule = new Set<IRawRule>();
-
-	public add(reference: AbsoluteRuleReference): void {
+	void add(AbsoluteRuleReference reference) {
 		const key = reference.toKey();
-		if (this._seenReferenceKeys.has(key)) {
+		if (this._seenReferenceKeys.index_of(key) >= 0) {
 			return;
 		}
 		this._seenReferenceKeys.add(key);
@@ -852,28 +865,57 @@ struct ExternalReferenceCollector:mx {
 	}
 }
 
+struct TopLevelRuleReference {
+	struct members {
+		ScopeName scopeName;
+	};
+	mx_basic(TopLevelRuleReference)
+	
+	TopLevelRuleReference(ScopeName scopeName) : TopLevelRuleReference() {
+		data->scopeName = scopeName;
+	}
+
+	str toKey() {
+		return data->scopeName;
+	}
+};
+
+/**
+ * References a rule of a grammar in the top level repository section with the given name.
+*/
+struct TopLevelRepositoryRuleReference:TopLevelRuleReference {
+	TopLevelRepositoryRuleReference(
+		public readonly scopeName: ScopeName,
+		public readonly ruleName: string
+	) { }
+
+	str toKey() {
+		return fmt { "{0}#{1}", {data->scopeName, data->ruleName} };
+	}
+}
+
+
 function collectReferencesOfReference(
-	reference: TopLevelRuleReference | TopLevelRepositoryRuleReference,
-	baseGrammarScopeName: ScopeName,
-	repo: IGrammarRepository,
-	result: ExternalReferenceCollector,
-) {
-	const selfGrammar = repo.lookup(reference.scopeName);
+	TopLevelRuleReference reference,
+	ScopeName baseGrammarScopeName,
+	IGrammarRepository repo,
+	ExternalReferenceCollector result)
+{
+	const selfGrammar = repo.lookup(reference->scopeName);
 	if (!selfGrammar) {
 		if (reference.scopeName === baseGrammarScopeName) {
-			throw new Error(`No grammar provided for <${baseGrammarScopeName}>`);
+			console.fault("No grammar provided for <{0}>", {baseGrammarScopeName});
 		}
 		return;
 	}
 
 	const baseGrammar = repo.lookup(baseGrammarScopeName)!;
 
-	if (reference instanceof TopLevelRuleReference) {
-		collectExternalReferencesInTopLevelRule({ baseGrammar, selfGrammar }, result);
+	if (reference.type() == typeof(TopLevelRuleReference)) {
+		collectExternalReferencesInTopLevelRule(baseGrammar, selfGrammar, result);
 	} else {
 		collectExternalReferencesInTopLevelRepositoryRule(
-			reference.ruleName,
-			{ baseGrammar, selfGrammar, repository: selfGrammar.repository },
+			reference.ruleName, baseGrammar, selfGrammar, selfGrammar.repository,
 			result
 		);
 	}
@@ -887,40 +929,50 @@ function collectReferencesOfReference(
 }
 
 /// the interfaces we use multiple inheritence on the data member; thus isolating diamonds.
-struct Context {
-	IRawGrammar baseGrammar;
-	IRawGrammar selfGrammar;
+struct Context:mx {
+	struct members {
+		IRawGrammar baseGrammar;
+		IRawGrammar selfGrammar;
+	};
+	mx_basic(Context);
 };
 
 struct ContextWithRepository {
-	IRawGrammar   baseGrammar;
-	IRawGrammar   selfGrammar;
-	map<IRawRule> repository;
+	IRawGrammar   	baseGrammar;
+	IRawGrammar   	selfGrammar;
+	map<IRawRule> 	repository;
 };
 
 void collectExternalReferencesInTopLevelRepositoryRule(
-	str ruleName,
-	ContextWithRepository context,
+	str 			ruleName,
+	IRawGrammar    &baseGrammar;	/// omitted 'ContextWithRepository' and added the args here
+	IRawGrammar    &selfGrammar;
+	map<IRawRule> 	repository;
 	ExternalReferenceCollector result
 ) {
-	if (context.repository && context.repository[ruleName]) {
-		const rule = context.repository[ruleName];
-		collectExternalReferencesInRules([rule], context, result);
+	if (repository && repository[ruleName]) {
+		array<IRawRule> rules { repository[ruleName] };
+		collectExternalReferencesInRules(rules, context, result);
 	}
 }
 
-void collectExternalReferencesInTopLevelRule(Context context, ExternalReferenceCollector result) {
-	if (context.selfGrammar.patterns && Array.isArray(context.selfGrammar.patterns)) {
+void collectExternalReferencesInTopLevelRule(IRawGrammar &baseGrammar, IRawGrammar &selfGrammar, ExternalReferenceCollector result) {
+	if (selfGrammar.patterns) { //&& Array.isArray(context.selfGrammar.patterns)) { [redundant check]
 		collectExternalReferencesInRules(
-			context.selfGrammar.patterns,
-			{ ...context, repository: context.selfGrammar.repository },
+			selfGrammar.patterns,
+			baseGrammar,
+			selfGrammar,
+			selfGrammar.repository,
 			result
 		);
 	}
-	if (context.selfGrammar.injections) {
+	if (selfGrammar.injections) {
+		array<IRawRule> values = selfGrammar.injections.values();
 		collectExternalReferencesInRules(
-			Object.values(context.selfGrammar.injections),
-			{ ...context, repository: context.selfGrammar.repository },
+			values,
+			baseGrammar,
+			selfGrammar,
+			selfGrammar.repository,
 			result
 		);
 	}
@@ -928,19 +980,22 @@ void collectExternalReferencesInTopLevelRule(Context context, ExternalReferenceC
 
 void collectExternalReferencesInRules(
 	array<IRawRule> rules,
-	ContextWithRepository context,
+	IRawGrammar    &baseGrammar;	/// omitted 'ContextWithRepository' and added the args here
+	IRawGrammar    &selfGrammar;
+	map<IRawRule> 	repository;
 	ExternalReferenceCollector result,
 ) {
 	for (const rule of rules) {
-		if (result.visitedRule.has(rule)) {
+		if (result.visitedRule.index_of(rule) >= 0) {
 			continue;
 		}
-		result.visitedRule.add(rule);
+		result.visitedRule.push(rule);
 
-		const patternRepository = rule.repository ? mergeObjects({}, context.repository, rule.repository) : context.repository;
+		// creates mutable map and i wonder if it needs to be that way
+		const patternRepository = rule.repository ? mergeObjects({}, repository, rule.repository) : repository;
 
-		if (Array.isArray(rule.patterns)) {
-			collectExternalReferencesInRules(rule.patterns, { ...context, repository: patternRepository }, result);
+		if (rule.patterns) {
+			collectExternalReferencesInRules(rule.patterns, baseGrammar, selfGrammar, patternRepository, result);
 		}
 
 		const include = rule.include;
@@ -953,13 +1008,13 @@ void collectExternalReferencesInRules(
 
 		switch (reference.kind) {
 			case IncludeReferenceKind.Base:
-				collectExternalReferencesInTopLevelRule({ ...context, selfGrammar: context.baseGrammar }, result);
+				collectExternalReferencesInTopLevelRule(baseGrammar, baseGrammar, result); // not a bug.
 				break;
 			case IncludeReferenceKind.Self:
-				collectExternalReferencesInTopLevelRule(context, result);
+				collectExternalReferencesInTopLevelRule(baseGrammar, selfGrammar, result);
 				break;
 			case IncludeReferenceKind.RelativeReference:
-				collectExternalReferencesInTopLevelRepositoryRule(reference.ruleName, { ...context, repository: patternRepository }, result);
+				collectExternalReferencesInTopLevelRepositoryRule(reference.ruleName, baseGrammar, selfGrammar, patternRepository, result);
 				break;
 			case IncludeReferenceKind.TopLevelReference:
 			case IncludeReferenceKind.TopLevelRepositoryReference:
@@ -970,17 +1025,17 @@ void collectExternalReferencesInRules(
 						? context.baseGrammar
 						: undefined;
 				if (selfGrammar) {
-					const newContext: ContextWithRepository = { baseGrammar: context.baseGrammar, selfGrammar, repository: patternRepository };
 					if (reference.kind === IncludeReferenceKind.TopLevelRepositoryReference) {
-						collectExternalReferencesInTopLevelRepositoryRule(reference.ruleName, newContext, result);
+						collectExternalReferencesInTopLevelRepositoryRule(
+							reference.ruleName, baseGrammar, selfGrammar, patternRepository, result);
 					} else {
-						collectExternalReferencesInTopLevelRule(newContext, result);
+						collectExternalReferencesInTopLevelRule(baseGrammar, selfGrammar, patternRepository, result);
 					}
 				} else {
 					if (reference.kind === IncludeReferenceKind.TopLevelRepositoryReference) {
-						result.add(new TopLevelRepositoryRuleReference(reference.scopeName, reference.ruleName));
+						result.add(TopLevelRepositoryRuleReference(reference.scopeName, reference.ruleName));
 					} else {
-						result.add(new TopLevelRuleReference(reference.scopeName));
+						result.add(TopLevelRuleReference(reference.scopeName));
 					}
 				}
 				break;
@@ -1013,7 +1068,7 @@ struct ScopeDependencyProcessor:mx {
 		const q = this.Q;
 		this.Q = [];
 
-		const deps = new ExternalReferenceCollector();
+		ExternalReferenceCollector deps;
 		for (const dep of q) {
 			collectReferencesOfReference(dep, this.initialScopeName, this.repo, deps);
 		}
@@ -1075,6 +1130,11 @@ struct OnigString {
 	str content;
 };
 
+struct IOnigLib {
+	virtual OnigScanner createOnigScanner(array<str> sources) = 0;
+	virtual OnigString  createOnigString(str string) = 0;
+};
+
 struct IOnigCaptureIndex {
 	num start;
 	num end;
@@ -1088,7 +1148,16 @@ struct IOnigMatch {
 
 /// renamed to IOnigScanner
 struct OnigScanner {
-	virtual IOnigMatch findNextMatchSync(str string, num startPosition, states<FindOption> options) = 0;
+	struct members {
+		RegEx regex;
+	};
+
+	mx_object(OnigScanner)
+
+	IOnigMatch findNextMatchSync(str string, num startPosition, states<FindOption> options) {
+		regex.set_cursor(startPosition);
+		return regex.match(string);
+	}
 	//virtual void dispose() = 0; /// dispose of dispose i think; they only do that because they dont have implicit memory refs with this lib
 };
 
@@ -1205,15 +1274,15 @@ class CaptureRule : Rule {
 	}
 
 	void collectPatterns(IRuleRegistry grammar, RegExpSourceList &out) {
-		throw new Error('Not supported!');
+		console.fault("Not supported!");
 	}
 
 	CompiledRule compile(IRuleRegistry grammar, utf16 endRegexSource) {
-		throw new Error('Not supported!');
+		console.fault("Not supported!");
 	}
 
 	CompiledRule compileAG(IRuleRegistry grammar, utf16 endRegexSource, bool allowA, bool allowG) {
-		throw new Error('Not supported!');
+		console.fault("Not supported!");
 	}
 }
 
@@ -1305,15 +1374,15 @@ struct IncludeOnlyRule:Rule {
 }
 
 struct BeginEndRule:Rule {
-	RegExpSource _begin;
-	CaptureRule beginCaptures[];
-	RegExpSource _end;
-	bool endHasBackReferences;
-	CaptureRule endCaptures[];
-	bool applyEndPatternLast;
-	bool hasMissingPatterns;
-	RuleId patterns[];
-	private RegExpSourceList _cachedCompiledPatterns;
+	RegExpSource 	_begin;
+	CaptureRule 	beginCaptures[];
+	RegExpSource 	_end;
+	bool 			endHasBackReferences;
+	CaptureRule 	endCaptures[];
+	bool 			applyEndPatternLast;
+	bool 			hasMissingPatterns;
+	RuleId 			patterns[];
+	RegExpSourceList _cachedCompiledPatterns;
 
 	constructor(ILocation _location, RuleId id, utf16 name, utf16 contentName, utf16 begin, CaptureRule beginCaptures[], utf16 end, CaptureRule endCaptures[], bool applyEndPatternLast, ICompilePatternsResult patterns) {
 		super(_location, id, name, contentName);
@@ -1754,11 +1823,12 @@ struct RegExpSource:mx {
 	}
 
 	utf16 resolveBackReferences(utf16 lineText, array<IOnigCaptureIndex> captureIndices) {
-		let capturedValues = captureIndices.map((capture) => {
-			return lineText.mid(capture.start, capture.end);
-		});
+		array<str> capturedValues = captureIndices.map<str>(
+			[](IOnigCaptureIndex &capture) -> str {
+				return lineText.mid(capture.start, capture.end);
+			});
 		BACK_REFERENCING_END.last_index = 0; // support this!
-		return BACK_REFERENCING_END.replace(data->source, (match, g1) => {
+		return BACK_REFERENCING_END.replace(data->source,[capturedValues] (match, g1) => {
 			return escapeRegExpCharacters(capturedValues[parseInt(g1, 10)] || '');
 		});
 	}
@@ -1785,14 +1855,14 @@ struct RegExpSource:mx {
 				if (pos + 1 < len) {
 					nextCh = data->source.charAt(pos + 1);
 					if (nextCh == 'A') {
-						A0_G0_result[pos + 1] = '\uFFFF';
-						A0_G1_result[pos + 1] = '\uFFFF';
+						A0_G0_result[pos + 1] = 0xFFFF;
+						A0_G1_result[pos + 1] = 0xFFFF;
 						A1_G0_result[pos + 1] = 'A';
 						A1_G1_result[pos + 1] = 'A';
 					} else if (nextCh == 'G') {
-						A0_G0_result[pos + 1] = '\uFFFF';
+						A0_G0_result[pos + 1] = 0xFFFF;
 						A0_G1_result[pos + 1] = 'G';
-						A1_G0_result[pos + 1] = '\uFFFF';
+						A1_G0_result[pos + 1] = 0xFFFF;
 						A1_G1_result[pos + 1] = 'G';
 					} else {
 						A0_G0_result[pos + 1] = nextCh;
@@ -1834,30 +1904,20 @@ struct RegExpSource:mx {
 	}
 }
 
-interface IRegExpSourceListAnchorCache<TRuleId> {
+struct IRegExpSourceListAnchorCache {
 	CompiledRule A0_G0;
 	CompiledRule A0_G1;
 	CompiledRule A1_G0;
 	CompiledRule A1_G1;
-}
+};
 
-struct RegExpSourceList<TRuleId = RuleId> {
-
-	array<RegExpSource> _items;
-	private bool _hasAnchors;
-	private CompiledRule _cached;
-	private IRegExpSourceListAnchorCache _anchorCache;
-
-	constructor() {
-		data->_hasAnchors = false;
-		data->_cached = null;
-		data->_anchorCache = {
-			.A0_G0 = null,
-			.A0_G1 = null,
-			.A1_G0 = null,
-			.A1_G1 = null
-		};
-	}
+struct RegExpSourceList:mx {
+	struct members {
+		array<RegExpSource> 			_items;
+		bool 							_hasAnchors;
+		CompiledRule 					_cached;
+		IRegExpSourceListAnchorCache 	_anchorCache;
+	};
 
 	void dispose() {
 		_disposeCaches();
@@ -1954,20 +2014,16 @@ struct RegExpSourceList<TRuleId = RuleId> {
 	}
 }
 
-struct CompiledRule {
-	OnigScanner scanner;
+struct CompiledRule:mx {
+	struct members {
+		OnigScanner scanner;
+	};
 
-	constructor(IOnigLib onigLib, array<utf16> regExps, array<RuleId> rules) : regExps(regExps), rules(rules) {
+	CompiledRule(IOnigLib onigLib, array<utf16> regExps, array<RuleId> rules) : regExps(regExps), rules(rules) {
 		data->scanner = onigLib.createOnigScanner(regExps);
 	}
 
-	void dispose() {
-		if (typeof data->scanner.dispose == "function") {
-			data->scanner.dispose();
-		}
-	}
-
-	toString(): utf16 {
+	utf16 toString() {
 		const array<utf16> r;
 		for (let i = 0, len = data->rules.len(); i < len; i++) {
 			r.push("   - " + data->rules[i] + ": " + data->regExps[i]);
@@ -2652,12 +2708,19 @@ TokenizeStringResult _tokenizeString(
 );
 
 struct Grammar:mx { // implements IGrammar, IRuleFactoryHelper, IOnigLib
-	struct members {
+	struct members : IGrammar, IRuleFactoryHelper, IOnigLib {
 		RuleId 					_rootId = -1;
 		num 					_lastRuleId;
 		array<Rule> 			_ruleId2desc;
 		var 					_grammar;
 		array<TokenTypeMatcher> _tokenTypeMatchers;
+
+		OnigScanner createOnigScanner(array<str> sources) {
+			return OnigScanner(sources);
+		}
+		OnigString  createOnigString(str string) = 0;
+
+
 		//BasicScopeAttributesProvider _basicScopeAttributesProvider;
 	};
 	mx_object(Grammar, mx, members);
@@ -2675,7 +2738,8 @@ struct Grammar:mx { // implements IGrammar, IRuleFactoryHelper, IOnigLib
 		data->_includedGrammars = {};
 		data->_grammar = grammar;
 		if (tokenTypes) {
-			for (const selector of Object.keys(tokenTypes)) {
+			array<str> keys = tokenTypes.keys<str>();
+			for (str &selector: keys) {
 				const matchers = createMatchers(selector, nameMatcher);
 				for (const matcher of matchers) {
 					data->_tokenTypeMatchers.push({
