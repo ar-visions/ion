@@ -1224,7 +1224,7 @@ struct IncludeOnlyRule:Rule {
 	array<RuleId> patterns;
 	private RegExpSourceList _cachedCompiledPatterns;
 
-	constructor(ILocation _location, RuleId id, utf16 name, utf16 contentName, ICompilePatternsResult patterns) {
+	IncludeOnlyRule(ILocation _location, RuleId id, utf16 name, utf16 contentName, ICompilePatternsResult patterns) {
 		super(_location, id, name, contentName);
 		data->patterns = patterns.patterns;
 		data->hasMissingPatterns = patterns.hasMissingPatterns;
