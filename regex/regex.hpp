@@ -18,11 +18,15 @@ struct RegEx:mx {
 
     static str   escape(str input);
     static utf16 escape(utf16 input);
+    
     array<str>     exec(str input);
     array<utf16>   exec(utf16 input);
 
     void set_cursor(num from, num to = -1);
     
+    void  load_patterns(utf16 *patterns, size_t len);
+    void  load_patterns(str   *patterns, size_t len);
+
     template <typename T>
     bool test(T input) {
         return exec(input);
@@ -63,6 +67,15 @@ struct RegEx:mx {
     }
 
     mx_declare(RegEx, mx, iRegEx)
+};
+
+/// interface that resembles OnigScanner
+struct Scanner:RegEx {
+    Scanner(array<utf16> patterns, Behaviour b = Behaviour::none) : {
+    }
+
+    Scanner(symbol pattern, Behaviour b = Behaviour::none) : Scanner(utf16(pattern)) { }
+
 };
 
 }
