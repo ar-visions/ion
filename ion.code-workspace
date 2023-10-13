@@ -202,7 +202,8 @@
 			"barrier": "cpp",
 			"__assert": "cpp",
 			"*.traits": "cpp",
-			"fft": "cpp"
+			"fft": "cpp",
+			"hash_map": "cpp"
 		},
 		"git.ignoreLimitWarning": true
 	}

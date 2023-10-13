@@ -7,127 +7,11 @@ using namespace ion;
 const RegEx HAS_BACK_REFERENCES  = RegEx(utf16(R"(\\(\d+))"), RegEx::Behaviour::none);
 const RegEx BACK_REFERENCING_END = RegEx(utf16(R"(\\(\d+))"), RegEx::Behaviour::global);
 
-using ScopeName = str;
-using ScopePath = str;
-using ScopePattern = str;
-using Uint32Array  = array<uint32_t>;
-
-
-
-export type EncodedTokenAttributes = number;
-
-namespace EncodedTokenAttributes {
-	str toBinaryStr(encodedTokenAttributes: EncodedTokenAttributes) {
-		return encodedTokenAttributes.toString(2).padStart(32, "0");
-	}
-
-	void print(encodedTokenAttributes: EncodedTokenAttributes) {
-		const languageId = EncodedTokenAttributes::getLanguageId(encodedTokenAttributes);
-		const tokenType = EncodedTokenAttributes::getTokenType(encodedTokenAttributes);
-		const fontStyle = EncodedTokenAttributes::getFontStyle(encodedTokenAttributes);
-		const foreground = EncodedTokenAttributes::getForeground(encodedTokenAttributes);
-		const background = EncodedTokenAttributes::getBackground(encodedTokenAttributes);
-
-		console.log({
-			languageId: languageId,
-			tokenType: tokenType,
-			fontStyle: fontStyle,
-			foreground: foreground,
-			background: background,
-		});
-	}
-
-	export function getLanguageId(encodedTokenAttributes: EncodedTokenAttributes): number {
-		return (
-			(encodedTokenAttributes & EncodedTokenDataConsts::LANGUAGEID_MASK) >>>
-			EncodedTokenDataConsts::LANGUAGEID_OFFSET
-		);
-	}
-
-	export function getTokenType(encodedTokenAttributes: EncodedTokenAttributes): StandardTokenType {
-		return (
-			(encodedTokenAttributes & EncodedTokenDataConsts::TOKEN_TYPE_MASK) >>>
-			EncodedTokenDataConsts::TOKEN_TYPE_OFFSET
-		);
-	}
-
-	export function containsBalancedBrackets(encodedTokenAttributes: EncodedTokenAttributes): boolean {
-		return (encodedTokenAttributes & EncodedTokenDataConsts::BALANCED_BRACKETS_MASK) !== 0;
-	}
-
-	export function getFontStyle(encodedTokenAttributes: EncodedTokenAttributes): number {
-		return (
-			(encodedTokenAttributes & EncodedTokenDataConsts::FONT_STYLE_MASK) >>>
-			EncodedTokenDataConsts::FONT_STYLE_OFFSET
-		);
-	}
-
-	export function getForeground(encodedTokenAttributes: EncodedTokenAttributes): number {
-		return (
-			(encodedTokenAttributes & EncodedTokenDataConsts::FOREGROUND_MASK) >>>
-			EncodedTokenDataConsts::FOREGROUND_OFFSET
-		);
-	}
-
-	export function getBackground(encodedTokenAttributes: EncodedTokenAttributes): number {
-		return (
-			(encodedTokenAttributes & EncodedTokenDataConsts::BACKGROUND_MASK) >>>
-			EncodedTokenDataConsts::BACKGROUND_OFFSET
-		);
-	}
-
-	/**
-	 * Updates the fields in `metadata`.
-	 * A value of `0`, `NotSet` or `null` indicates that the corresponding field should be left as is.
-	 */
-	export function set(
-		encodedTokenAttributes: EncodedTokenAttributes,
-		languageId: number | 0,
-		tokenType: OptionalStandardTokenType | OptionalStandardTokenType.NotSet,
-		containsBalancedBrackets: boolean | null,
-		fontStyle: FontStyle | FontStyle.NotSet,
-		foreground: number | 0,
-		background: number | 0
-	): number {
-		let _languageId = EncodedTokenAttributes::getLanguageId(encodedTokenAttributes);
-		let _tokenType = EncodedTokenAttributes::getTokenType(encodedTokenAttributes);
-		let _containsBalancedBracketsBit: 0 | 1 =
-			EncodedTokenAttributes::containsBalancedBrackets(encodedTokenAttributes) ? 1 : 0;
-		let _fontStyle = EncodedTokenAttributes::getFontStyle(encodedTokenAttributes);
-		let _foreground = EncodedTokenAttributes::getForeground(encodedTokenAttributes);
-		let _background = EncodedTokenAttributes::getBackground(encodedTokenAttributes);
-
-		if (languageId !== 0) {
-			_languageId = languageId;
-		}
-		if (tokenType !== OptionalStandardTokenType.NotSet) {
-			_tokenType = fromOptionalTokenType(tokenType);
-		}
-		if (containsBalancedBrackets !== null) {
-			_containsBalancedBracketsBit = containsBalancedBrackets ? 1 : 0;
-		}
-		if (fontStyle !== FontStyle.NotSet) {
-			_fontStyle = fontStyle;
-		}
-		if (foreground !== 0) {
-			_foreground = foreground;
-		}
-		if (background !== 0) {
-			_background = background;
-		}
-
-		return (
-			((_languageId << EncodedTokenDataConsts::LANGUAGEID_OFFSET) |
-				(_tokenType << EncodedTokenDataConsts::TOKEN_TYPE_OFFSET) |
-				(_containsBalancedBracketsBit <<
-					EncodedTokenDataConsts::BALANCED_BRACKETS_OFFSET) |
-				(_fontStyle << EncodedTokenDataConsts::FONT_STYLE_OFFSET) |
-				(_foreground << EncodedTokenDataConsts::FOREGROUND_OFFSET) |
-				(_background << EncodedTokenDataConsts::BACKGROUND_OFFSET)) >>>
-			0
-		);
-	}
-}
+using ScopeName 		= str;
+using ScopePath 		= str;
+using ScopePattern 		= str;
+using Uint32Array  		= array<uint32_t>;
+using EncodedTokenAttr 	= num;
 
 /**
  * Helpers to manage the "collapsed" metadata of an entire StackElement stack.
@@ -170,8 +54,28 @@ enum StandardTokenType {
 	Other = 0,
 	Comment = 1,
 	String = 2,
-	RegEx = 3
+	_RegEx = 3
 };
+
+// Must have the same values as `StandardTokenType`!
+enum OptionalStandardTokenType {
+	_Other = 0,
+	_Comment = 1,
+	_String = 2,
+	__RegEx = 3,
+	// Indicates that no token type is set.
+	NotSet = 8
+};
+
+enum FontStyle {
+	_NotSet = -1,
+	None = 0,
+	Italic = 1,
+	Bold = 2,
+	Underline = 4,
+	Strikethrough = 8
+};
+
 
 OptionalStandardTokenType toOptionalTokenType(StandardTokenType standardType) {
 	return (OptionalStandardTokenType)standardType;
@@ -181,19 +85,33 @@ StandardTokenType fromOptionalTokenType(OptionalStandardTokenType standardType) 
 	return (StandardTokenType)standardType;
 }
 
-// Must have the same values as `StandardTokenType`!
-enum OptionalStandardTokenType {
-	Other = 0,
-	Comment = 1,
-	String = 2,
-	RegEx = 3,
-	// Indicates that no token type is set.
-	NotSet = 8
+bool _matchesScope(ScopeName scopeName, ScopeName scopePattern) {
+	return scopePattern == scopeName || (scopeName.has_prefix(scopePattern) && scopeName[scopePattern.len()] == '.');
 }
 
 
-bool _matchesScope(ScopeName scopeName, ScopeName scopePattern) {
-	return scopePattern == scopeName || (scopeName.has_prefix(scopePattern) && scopeName[scopePattern.len()] == '.');
+num strArrCmp(array<str> a, array<str> b) {
+	if (!a && !b) {
+		return 0;
+	}
+	if (!a) {
+		return -1;
+	}
+	if (!b) {
+		return 1;
+	}
+	num len1 = a.len();
+	num len2 = b.len();
+	if (len1 == len2) {
+		for (num i = 0; i < len1; i++) {
+			int res = strcmp(a[i].cs(), b[i].cs());
+			if (res != 0) {
+				return res;
+			}
+		}
+		return 0;
+	}
+	return len1 - len2;
 }
 
 map<mx> mergeObjects(map<mx> dst, map<mx> src0, map<mx> src1) {
@@ -219,14 +137,119 @@ bool isValidHexColor(str hex) {
            rrggbbaaRegex.exec(hex);
 }
 
-enum FontStyle {
-	NotSet = -1,
-	None = 0,
-	Italic = 1,
-	Bold = 2,
-	Underline = 4,
-	Strikethrough = 8
-};
+namespace EncodedTokenAttributes {
+
+	num getBackground(EncodedTokenAttr encodedTokenAttributes) {
+		return (
+			(encodedTokenAttributes & EncodedTokenDataConsts::BACKGROUND_MASK) >>
+			EncodedTokenDataConsts::BACKGROUND_OFFSET
+		);
+	}
+
+	num getLanguageId(EncodedTokenAttr encodedTokenAttributes) {
+		return (
+			(encodedTokenAttributes & EncodedTokenDataConsts::LANGUAGEID_MASK) >>
+			EncodedTokenDataConsts::LANGUAGEID_OFFSET
+		);
+	}
+
+	num getForeground(EncodedTokenAttr encodedTokenAttributes) {
+		return (
+			(encodedTokenAttributes & EncodedTokenDataConsts::FOREGROUND_MASK) >>
+			EncodedTokenDataConsts::FOREGROUND_OFFSET
+		);
+	}
+
+	StandardTokenType getTokenType(EncodedTokenAttr encodedTokenAttributes) {
+		return StandardTokenType (
+			(encodedTokenAttributes & EncodedTokenDataConsts::TOKEN_TYPE_MASK) >>
+			EncodedTokenDataConsts::TOKEN_TYPE_OFFSET
+		);
+	}
+
+	num getFontStyle(EncodedTokenAttr encodedTokenAttributes) {
+		return (
+			(encodedTokenAttributes & EncodedTokenDataConsts::FONT_STYLE_MASK) >>
+			EncodedTokenDataConsts::FONT_STYLE_OFFSET
+		);
+	}
+
+	str toBinaryStr(EncodedTokenAttr encodedTokenAttributes) {
+		return str((i64)encodedTokenAttributes, 2, 32); /// generic base conversion in str
+	}
+
+	void print(EncodedTokenAttr encodedTokenAttributes) {
+		auto languageId = EncodedTokenAttributes::getLanguageId(encodedTokenAttributes);
+		auto tokenType  = EncodedTokenAttributes::getTokenType (encodedTokenAttributes);
+		auto fontStyle  = EncodedTokenAttributes::getFontStyle (encodedTokenAttributes);
+		auto foreground = EncodedTokenAttributes::getForeground(encodedTokenAttributes);
+		auto background = EncodedTokenAttributes::getBackground(encodedTokenAttributes);
+
+		//console.log({
+		//	languageId: languageId,
+		//	tokenType: tokenType,
+		//	fontStyle: fontStyle,
+		//	foreground: foreground,
+		//	background: background,
+		//});
+	}
+
+	bool containsBalancedBrackets(EncodedTokenAttr encodedTokenAttributes) {
+		return (encodedTokenAttributes & EncodedTokenDataConsts::BALANCED_BRACKETS_MASK) != 0;
+	}
+
+	/**
+	 * Updates the fields in `metadata`.
+	 * A value of `0`, `NotSet` or `null` indicates that the corresponding field should be left as is.
+	 */
+	num set(
+		EncodedTokenAttr encodedTokenAttributes,
+		num languageId,
+		OptionalStandardTokenType tokenType,
+		mx containsBalancedBrackets,
+		FontStyle fontStyle,
+		num foreground,
+		num background)
+	{
+		auto _languageId = EncodedTokenAttributes::getLanguageId(encodedTokenAttributes);
+		auto _tokenType = EncodedTokenAttributes::getTokenType(encodedTokenAttributes);
+		auto _containsBalancedBracketsBit =
+			EncodedTokenAttributes::containsBalancedBrackets(encodedTokenAttributes) ? 1 : 0;
+		auto _fontStyle = EncodedTokenAttributes::getFontStyle(encodedTokenAttributes);
+		auto _foreground = EncodedTokenAttributes::getForeground(encodedTokenAttributes);
+		auto _background = EncodedTokenAttributes::getBackground(encodedTokenAttributes);
+
+		if (languageId != 0) {
+			_languageId = languageId;
+		}
+		if (tokenType != OptionalStandardTokenType::NotSet) {
+			_tokenType = fromOptionalTokenType(tokenType);
+		}
+		if (containsBalancedBrackets.type() == typeof(bool)) {
+			_containsBalancedBracketsBit = containsBalancedBrackets ? 1 : 0;
+		}
+		if (fontStyle != FontStyle::_NotSet) {
+			_fontStyle = fontStyle;
+		}
+		if (foreground != 0) {
+			_foreground = foreground;
+		}
+		if (background != 0) {
+			_background = background;
+		}
+
+		return (
+			((_languageId << EncodedTokenDataConsts::LANGUAGEID_OFFSET) |
+				(_tokenType << EncodedTokenDataConsts::TOKEN_TYPE_OFFSET) |
+				(_containsBalancedBracketsBit <<
+					EncodedTokenDataConsts::BALANCED_BRACKETS_OFFSET) |
+				(_fontStyle << EncodedTokenDataConsts::FONT_STYLE_OFFSET) |
+				(_foreground << EncodedTokenDataConsts::FOREGROUND_OFFSET) |
+				(_background << EncodedTokenDataConsts::BACKGROUND_OFFSET)) >>
+			0
+		);
+	}
+}
 
 /**
  * A map from scope name to a language id. Please do not use language id 0.
@@ -529,21 +552,21 @@ array<ParsedThemeRule> parseTheme(IRawTheme &source) {
 }
 
 str fontStyleToString(states<FontStyle> fontStyle) {
-	if (fontStyle == FontStyle::NotSet) {
+	if (fontStyle[FontStyle::_NotSet]) {
 		return "not set";
 	}
 
 	str style = "";
-	if (fontStyle & FontStyle::Italic) {
+	if (fontStyle[FontStyle::Italic]) {
 		style += "italic ";
 	}
-	if (fontStyle & FontStyle::Bold) {
+	if (fontStyle[FontStyle::Bold]) {
 		style += "bold ";
 	}
-	if (fontStyle & FontStyle::Underline) {
+	if (fontStyle[FontStyle::Underline]) {
 		style += "underline ";
 	}
-	if (fontStyle & FontStyle::Strikethrough) {
+	if (fontStyle[FontStyle::Strikethrough]) {
 		style += "strikethrough ";
 	}
 	if (style == "") {
@@ -552,66 +575,23 @@ str fontStyleToString(states<FontStyle> fontStyle) {
 	return style.trim();
 };
 
-/**
- * Resolve rules (i.e. inheritance).
- */
-Theme resolveParsedThemeRules(array<ParsedThemeRule> parsedThemeRules, array<str> _colorMap) {
-
-	// Sort rules lexicographically, and then by index if necessary
-	parsedThemeRules.sort([](ParsedThemeRule &a, ParsedThemeRule &b) -> int {
-		num r = strcmp(a->scope, b->scope);
-		if (r != 0) {
-			return r;
-		}
-		r = strArrCmp(a->parentScopes, b->parentScopes);
-		if (r != 0) {
-			return r;
-		}
-		return a->index - b->index;
-	});
-
-	// Determine defaults
-	states<FontStyle> defaultFontStyle = FontStyle::None;
-	str defaultForeground = "#000000";
-	str defaultBackground = "#ffffff";
-	while (parsedThemeRules.len() >= 1 && parsedThemeRules[0].scope == "") {
-		ParsedThemeRule incomingDefaults = parsedThemeRules.shift()
-		if (incomingDefaults.fontStyle != FontStyle::NotSet) {
-			defaultFontStyle = incomingDefaults->fontStyle;
-		}
-		if (incomingDefaults.foreground != null) {
-			defaultForeground = incomingDefaults->foreground;
-		}
-		if (incomingDefaults.background != null) {
-			defaultBackground = incomingDefaults->background;
-		}
-	}
-	ColorMap 		colorMap = ColorMap(_colorMap);
-	StyleAttributes defaults = StyleAttributes(defaultFontStyle, colorMap.getId(defaultForeground), colorMap.getId(defaultBackground));
-
-	ThemeTrieElement root    = ThemeTrieElement(ThemeTrieElementRule::members { 0, null, FontStyle::NotSet, 0, 0 }, {});
-	for (num i = 0, len = parsedThemeRules.len(); i < len; i++) {
-		ParsedThemeRule rule = parsedThemeRules[i];
-		root.insert(0, rule.scope, rule.parentScopes, rule.fontStyle, colorMap.getId(rule.foreground), colorMap.getId(rule.background));
-	}
-
-	return Theme(colorMap, defaults, root);
-}
 
 struct ColorMap:mx {
-	struct member {
+	struct members {
 		bool 		_isFrozen;
 		num 		_lastColorId;
 		array<str> 	_id2color;
 		map<mx> 	_color2id;
 	};
 
-	ColorMap(array<str> _colorMap) {
+	mx_basic(ColorMap);
+
+	ColorMap(array<str> _colorMap):ColorMap() {
 		data->_lastColorId = 0;
 
 		if (_colorMap) {
 			data->_isFrozen = true;
-			for (size_t i = 0, len = _colorMap.len(); i < len; i++) {
+			for (num i = 0, len = _colorMap.len(); i < len; i++) {
 				data->_color2id[_colorMap[i]] = i;
 				data->_id2color.push(_colorMap[i]);
 			}
@@ -624,10 +604,10 @@ struct ColorMap:mx {
 		if (color == null) {
 			return 0;
 		}
-		color = color.toUpperCase();
+		color = color.ucase();
 		mx value = data->_color2id[color];
 		if (value) {
-			return value;
+			return num(value);
 		}
 		if (data->_isFrozen) {
 			console.fault("Missing color in color map - {0}", {color});
@@ -635,13 +615,14 @@ struct ColorMap:mx {
 		value = ++data->_lastColorId;
 		data->_color2id[color] = value;
 		data->_id2color[value] = color;
-		return value;
+		return num(value);
 	}
 
 	array<str> getColorMap() {
-		return data->_id2color.slice(0);
+		return data->_id2color.slice(0, data->_id2color.len());
 	}
-}
+};
+
 
 struct ThemeTrieElementRule:mx {
 	struct members {
@@ -654,7 +635,9 @@ struct ThemeTrieElementRule:mx {
 	mx_basic(ThemeTrieElementRule);
 
 	ThemeTrieElementRule clone() {
-		return ThemeTrieElementRule(data->scopeDepth, data->parentScopes, data->fontStyle, data->foreground, data->background);
+		return ThemeTrieElementRule::members {
+			data->scopeDepth, data->parentScopes, data->fontStyle, data->foreground, data->background
+		};
 	}
 
 	static array<ThemeTrieElementRule> cloneArr(array<ThemeTrieElementRule> arr) {
@@ -672,7 +655,7 @@ struct ThemeTrieElementRule:mx {
 			data->scopeDepth = scopeDepth;
 		}
 		// console.log("TODO -> my depth: " + data->scopeDepth + ", overwriting depth: " + scopeDepth);
-		if (fontStyle != FontStyle::NotSet) {
+		if (fontStyle != FontStyle::_NotSet) {
 			data->fontStyle = fontStyle;
 		}
 		if (foreground != 0) {
@@ -682,7 +665,9 @@ struct ThemeTrieElementRule:mx {
 			data->background = background;
 		}
 	}
-}
+
+};
+
 
 struct ThemeTrieElement:mx {
 	using ITrieChildrenMap = map<ThemeTrieElement>;
@@ -692,6 +677,8 @@ struct ThemeTrieElement:mx {
 		array<ThemeTrieElementRule> _rulesWithParentScopes;
 		ITrieChildrenMap 			_children;
 	};
+
+	mx_basic(ThemeTrieElement);
 
 	ThemeTrieElement(
 		ThemeTrieElementRule _mainRule,
@@ -707,59 +694,57 @@ struct ThemeTrieElement:mx {
 		if (arr.len() == 1) {
 			return arr;
 		}
-		arr.sort(data->_cmpBySpecificity);
-		return arr;
-	}
-
-	static num _cmpBySpecificity(ThemeTrieElementRule a, ThemeTrieElementRule b) {
-		if (a->scopeDepth == b->scopeDepth) {
-			const aParentScopes = a->parentScopes;
-			const bParentScopes = b->parentScopes;
-			num aParentScopesLen = aParentScopes == null ? 0 : aParentScopes.len();
-			num bParentScopesLen = bParentScopes == null ? 0 : bParentScopes.len();
-			if (aParentScopesLen == bParentScopesLen) {
-				for (num i = 0; i < aParentScopesLen; i++) {
-					const aLen = aParentScopes![i].len();
-					const bLen = bParentScopes![i].len();
-					if (aLen != bLen) {
-						return bLen - aLen;
+		arr.sort([](ThemeTrieElementRule a, ThemeTrieElementRule b) -> int {
+			if (a->scopeDepth == b->scopeDepth) {
+				auto &aParentScopes = a->parentScopes;
+				auto &bParentScopes = b->parentScopes;
+				num aParentScopesLen = aParentScopes == null ? 0 : aParentScopes.len();
+				num bParentScopesLen = bParentScopes == null ? 0 : bParentScopes.len();
+				if (aParentScopesLen == bParentScopesLen) {
+					for (num i = 0; i < aParentScopesLen; i++) {
+						num aLen = aParentScopes[i].len();
+						num bLen = bParentScopes[i].len();
+						if (aLen != bLen) {
+							return bLen - aLen;
+						}
 					}
 				}
+				return bParentScopesLen - aParentScopesLen;
 			}
-			return bParentScopesLen - aParentScopesLen;
-		}
-		return b->scopeDepth - a->scopeDepth;
+			return b->scopeDepth - a->scopeDepth;
+		});
+		return arr;
 	}
 
 	array<ThemeTrieElementRule> default_result() {
 		array<ThemeTrieElementRule> a;
 		a.push(data->_mainRule);
-		for (ThemeTrieElementRule &r: data->_rulesWithParentScope)
+		for (ThemeTrieElementRule &r: data->_rulesWithParentScopes)
 			a.push(r);
-		return ThemeTrieElement._sortBySpecificity(a);
+		return ThemeTrieElement::_sortBySpecificity(a);
 	}
 
 	array<ThemeTrieElementRule> match(ScopeName scope) {
 		if (scope == "")
 			return default_result();
-		int dotIndex = scope.indexOf(".");
+		int dotIndex = scope.index_of(".");
 		str head     = (dotIndex == -1) ? scope : scope.mid(0, dotIndex);
 		str tail     = (dotIndex == -1) ? ""    : scope.mid(dotIndex + 1);
-		if (data->_children.count(head))
+		if (data->_children(head))
 			return data->_children[head].match(tail);
 		return default_result();
 	}
 
 	void insert(num scopeDepth, ScopeName scope, array<ScopeName> parentScopes, num fontStyle, num foreground, num background) {
 		if (scope == "") {
-			data->_doInsertHere(scopeDepth, parentScopes, fontStyle, foreground, background);
+			_doInsertHere(scopeDepth, parentScopes, fontStyle, foreground, background);
 			return;
 		}
-		int dotIndex = scope.indexOf(".");
+		int dotIndex = scope.index_of(".");
 		str head = (dotIndex == -1) ? scope : scope.mid(0, dotIndex);
 		str tail = (dotIndex == -1) ? ""    : scope.mid(dotIndex + 1);
 		ThemeTrieElement child;
-		if (data->_children.count(head)) {
+		if (data->_children(head)) {
 			child = data->_children[head];
 		} else {
 			child = ThemeTrieElement(
@@ -783,7 +768,7 @@ struct ThemeTrieElement:mx {
 		for (num i = 0, len = data->_rulesWithParentScopes.len(); i < len; i++) {
 			ThemeTrieElementRule &rule = data->_rulesWithParentScopes[i];
 
-			if (strArrCmp(rule.parentScopes, parentScopes) == 0) {
+			if (strArrCmp(rule->parentScopes, parentScopes) == 0) {
 				// bingo! => we get to merge this into an existing one
 				rule.acceptOverwrite(scopeDepth, fontStyle, foreground, background);
 				return;
@@ -793,8 +778,8 @@ struct ThemeTrieElement:mx {
 		// Must add a new rule
 
 		// Inherit from main rule
-		if (fontStyle == FontStyle::NotSet) {
-			fontStyle = data->_mainRule.fontStyle;
+		if (fontStyle == FontStyle::_NotSet) {
+			fontStyle = data->_mainRule->fontStyle;
 		}
 		if (foreground == 0) {
 			foreground = data->_mainRule->foreground;
@@ -803,24 +788,22 @@ struct ThemeTrieElement:mx {
 			background = data->_mainRule->background;
 		}
 
-		data->_rulesWithParentScopes.push(
-			ThemeTrieElementRule::members {
-				scopeDepth, parentScopes, fontStyle, foreground, background
-			}
-		);
+		ThemeTrieElementRule tt = ThemeTrieElementRule::members {
+			scopeDepth, parentScopes, fontStyle, foreground, background
+		};
+		data->_rulesWithParentScopes.push(tt);
 	}
 };
 
-using ITrieChildrenMap = map<ThemeTrieElement>;
 
 struct Theme:mx {
 	struct members {
 		ColorMap 			_colorMap;
 		StyleAttributes	 	_defaults;
 		ThemeTrieElement 	_root;
-		lambda<ThemeTriElementRule(ScopeName)> _cachedMatchRoot;
+		lambda<ThemeTrieElementRule(ScopeName)> _cachedMatchRoot;
 		members() {
-			_cachedMatchRoot = [&](ScopeName scopeName) -> ThemeTriElementRule { return _root.match(scopeName); };
+			_cachedMatchRoot = [&](ScopeName scopeName) -> ThemeTrieElementRule { return _root.match(scopeName); };
 		}
 	};
 	mx_basic(Theme);
@@ -829,7 +812,7 @@ struct Theme:mx {
 		IRawTheme source,
 		array<str> colorMap
 	)  {
-		return data->createFromParsedTheme(parseTheme(source), colorMap);
+		return createFromParsedTheme(parseTheme(source), colorMap);
 	}
 
 	static Theme createFromParsedTheme(
@@ -839,8 +822,6 @@ struct Theme:mx {
 		return resolveParsedThemeRules(source, colorMap);
 	}
 
-
-
 	array<str> getColorMap() {
 		return data->_colorMap.getColorMap();
 	}
@@ -849,18 +830,65 @@ struct Theme:mx {
 		return data->_defaults;
 	}
 
+	/**
+	 * Resolve rules (i.e. inheritance).
+	 */
+	static Theme resolveParsedThemeRules(array<ParsedThemeRule> parsedThemeRules, array<str> _colorMap) {
+
+		// Sort rules lexicographically, and then by index if necessary
+		parsedThemeRules.sort([](ParsedThemeRule &a, ParsedThemeRule &b) -> int {
+			num r = strcmp(a->scope.cs(), b->scope.cs());
+			if (r != 0) {
+				return r;
+			}
+			r = strArrCmp(a->parentScopes, b->parentScopes);
+			if (r != 0) {
+				return r;
+			}
+			return a->index - b->index;
+		});
+
+		// Determine defaults
+		states<FontStyle> defaultFontStyle;
+		//FontStyle::None;
+		str defaultForeground = "#000000";
+		str defaultBackground = "#ffffff";
+		while (parsedThemeRules.len() >= 1 && parsedThemeRules[0]->scope == "") {
+			ParsedThemeRule incomingDefaults = parsedThemeRules.shift();
+			if (!incomingDefaults->fontStyle[FontStyle::_NotSet]) {
+				defaultFontStyle = incomingDefaults->fontStyle;
+			}
+			if (incomingDefaults->foreground != null) {
+				defaultForeground = incomingDefaults->foreground;
+			}
+			if (incomingDefaults->background != null) {
+				defaultBackground = incomingDefaults->background;
+			}
+		}
+		ColorMap 		colorMap = ColorMap(_colorMap);
+		StyleAttributes defaults = StyleAttributes(defaultFontStyle, colorMap.getId(defaultForeground), colorMap.getId(defaultBackground));
+
+		ThemeTrieElement root    = ThemeTrieElement(ThemeTrieElementRule::members { 0, null, FontStyle::_NotSet, 0, 0 }, {});
+		for (num i = 0, len = parsedThemeRules.len(); i < len; i++) {
+			ParsedThemeRule rule = parsedThemeRules[i];
+			root.insert(0, rule->scope, rule->parentScopes, rule->fontStyle, colorMap.getId(rule->foreground), colorMap.getId(rule->background));
+		}
+
+		return Theme(colorMap, defaults, root);
+	}
+
 	StyleAttributes match(ScopeStack scopePath) {
 		if (scopePath == null) {
 			return data->_defaults;
 		}
-		const scopeName = scopePath.scopeName;
-		const matchingTrieElements = data->_cachedMatchRoot.get(scopeName);
+		auto scopeName = scopePath.scopeName;
+		auto matchingTrieElements = data->_cachedMatchRoot.get(scopeName);
 
-		const effectiveRule = matchingTrieElements.select_first([&](ThemeTrieElement &v) -> bool
-			_scopePathMatchesParentScopes(scopePath->parent, v->parentScopes)
-		);
+		auto effectiveRule = matchingTrieElements.select_first([&](ThemeTrieElement &v) -> bool {
+			return _scopePathMatchesParentScopes(scopePath->parent, v->parentScopes);
+		});
 		if (!effectiveRule) {
-			return null;
+			return {};
 		}
 		return StyleAttributes(
 			effectiveRule.fontStyle,
@@ -871,6 +899,7 @@ struct Theme:mx {
 };
 
 
+using ITrieChildrenMap = map<ThemeTrieElement>;
 
 enums(IncludeReferenceKind, Base,
 	Base,
@@ -1147,10 +1176,6 @@ void collectExternalReferencesInRules(
 	}
 };
 
-
-
-
-
 struct ScopeDependencyProcessor:mx {
 	struct members {
 		IGrammarRepository repo;
@@ -1283,13 +1308,17 @@ struct Rule:mx {
 		utf16  	  _contentName;
 	}
 
-	Rule(ILocation _location, RuleId id, utf16 name, utf16 contentName) : Rule() {
+	void init(ILocation _location, RuleId id, utf16 name, utf16 contentName) {
 		data->_location = _location;
 		data->id = id;
 		data->_name = name || null;
 		data->_nameIsCapturing = RegexSource.hasCaptures(data->_name);
 		data->_contentName = contentName || null;
 		data->_contentNameIsCapturing = RegexSource.hasCaptures(data->_contentName);
+	}
+
+	Rule(ILocation _location, RuleId id, utf16 name, utf16 contentName) : Rule() {
+		init(_location, id, name, contentName);
 	}
 
 	virtual void dispose() = 0;
@@ -1335,12 +1364,17 @@ struct ICompilePatternsResult {
 	bool hasMissingPatterns;
 };
 
-class CaptureRule : Rule {
+struct CaptureRule : Rule {
+	struct members {
+		RuleId retokenizeCapturedWithRuleId;
+	};
+	mx_object(CaptureRule, Rule, members);
 
-	RuleId retokenizeCapturedWithRuleId;
-
-	CaptureRule(ILocation _location, RuleId id, utf16 name, utf16 contentName, RuleId retokenizeCapturedWithRuleId) {
-		super(_location, id, name, contentName);
+	CaptureRule(ILocation _location, RuleId id, utf16 name,
+			utf16 contentName, RuleId retokenizeCapturedWithRuleId) : CaptureRule() {
+		/// use this pattern when doing poly construction with mx
+		/// would be nice to define the args at macro level; enforces impl
+		Rule::init(_location, id, name, contentName);
 		data->retokenizeCapturedWithRuleId = retokenizeCapturedWithRuleId;
 	}
 
@@ -1359,7 +1393,7 @@ class CaptureRule : Rule {
 	CompiledRule compileAG(IRuleRegistry grammar, utf16 endRegexSource, bool allowA, bool allowG) {
 		console.fault("Not supported!");
 	}
-}
+};
 
 struct MatchRule:Rule {
 	RegExpSource _match;
@@ -1384,7 +1418,7 @@ struct MatchRule:Rule {
 		return `${data->_match.source}`;
 	}
 
-	public collectPatterns(IRuleRegistry grammar, RegExpSourceList out) {
+	void collectPatterns(IRuleRegistry grammar, RegExpSourceList out) {
 		out.push(data->_match);
 	}
 
@@ -1403,7 +1437,7 @@ struct MatchRule:Rule {
 		}
 		return data->_cachedCompiledPatterns;
 	}
-}
+};
 
 struct IncludeOnlyRule:Rule {
 	bool hasMissingPatterns;
@@ -1446,7 +1480,7 @@ struct IncludeOnlyRule:Rule {
 		}
 		return data->_cachedCompiledPatterns;
 	}
-}
+};
 
 struct BeginEndRule:Rule {
 	RegExpSource 	_begin;
@@ -1460,10 +1494,10 @@ struct BeginEndRule:Rule {
 	RegExpSourceList _cachedCompiledPatterns;
 
 	constructor(ILocation _location, RuleId id, utf16 name, utf16 contentName, utf16 begin, CaptureRule beginCaptures[], utf16 end, CaptureRule endCaptures[], bool applyEndPatternLast, ICompilePatternsResult patterns) {
-		super(_location, id, name, contentName);
-		data->_begin = new RegExpSource(begin, data->id);
+		Rule::init(_location, id, name, contentName);
+		data->_begin = RegExpSource(begin, data->id);
 		data->beginCaptures = beginCaptures;
-		data->_end = new RegExpSource(end ? end : '\uFFFF', -1);
+		data->_end = RegExpSource(end ? end : '\uFFFF', -1);
 		data->endHasBackReferences = data->_end.hasBackReferences;
 		data->endCaptures = endCaptures;
 		data->applyEndPatternLast = applyEndPatternLast || false;
@@ -2162,7 +2196,7 @@ struct AttributedScopeStack:mx {
 	struct members {
 		AttributedScopeStack parent;
 		ScopeStack scopePath;
-		EncodedTokenAttributes tokenAttributes;
+		EncodedTokenAttr tokenAttributes;
 	};
 	mx_basic(AttributedScopeStack);
 
@@ -2170,18 +2204,18 @@ struct AttributedScopeStack:mx {
 		AttributedScopeStack current = namesScopeList;
 		ScopeStack scopeNames = namesScopeList ?
 			namesScopeList.scopePath : {};
-		for (const frame of contentNameScopesList) {
-			scopeNames = ScopeStack.push(scopeNames, frame.scopeNames);
-			current  AttributedScopeStack(current, scopeNames!, frame.encodedTokenAttributes);
+		for (auto &frame: contentNameScopesList) {
+			scopeNames = ScopeStack.push(scopeNames, frame->scopeNames);
+			current  AttributedScopeStack(current, scopeNames, frame->encodedTokenAttributes);
 		}
 		return current;
 	}
 
-	static AttributedScopeStackcreateRoot(ScopeName scopeName, EncodedTokenAttributes tokenAttributes) {
+	static AttributedScopeStackcreateRoot(ScopeName scopeName, EncodedTokenAttr tokenAttributes) {
 		return AttributedScopeStack(null, ScopeStack(null, scopeName), tokenAttributes);
 	}
 
-	static AttributedScopeStack createRootAndLookUpScopeName(ScopeName scopeName, EncodedTokenAttributes tokenAttributes, Grammar grammar) {
+	static AttributedScopeStack createRootAndLookUpScopeName(ScopeName scopeName, EncodedTokenAttr tokenAttributes, Grammar grammar) {
 		const rawRootMetadata = grammar.getMetadataForScope(scopeName);
 		const scopePath = new ScopeStack(null, scopeName);
 		const rootStyle = grammar.themeProvider.themeMatch(scopePath);
@@ -2234,8 +2268,8 @@ struct AttributedScopeStack:mx {
 		} while (true);
 	}
 
-	static EncodedTokenAttributes mergeAttributes(
-		EncodedTokenAttributes existingTokenAttributes,
+	static EncodedTokenAttr mergeAttributes(
+		EncodedTokenAttr existingTokenAttributes,
 		BasicScopeAttributes basicScopeAttributes,
 		StyleAttributes styleAttributes
 	) {
@@ -2272,7 +2306,7 @@ struct AttributedScopeStack:mx {
 		}
 
 		const scopes = scopePath.split(/ /g);
-		let AttributedScopeStack result = this;
+		AttributedScopeStack result = *this;
 		for (const scope of scopes) {
 			result = AttributedScopeStack._pushAttributed(result, scope, grammar);
 		}
@@ -2304,14 +2338,16 @@ struct AttributedScopeStack:mx {
 
 	array<AttributedScopeStackFrame> getExtensionIfDefined(AttributedScopeStack base) {
 		const array<AttributedScopeStackFrame> result;
-		let AttributedScopeStack self = this;
+		AttributedScopeStack self = *this;
 
 		while (self && self != base) {
-			result.push({
-				encodedTokenAttributes: self.tokenAttributes,
-				scopeNames: self.scopePath.getExtensionIfDefined(self.parent?.scopePath ?? null)!,
-			});
-			self = self.parent;
+			AttributedScopeStackFrame f = AttributedScopeStackFrame::members {
+				encodedTokenAttributes = self.tokenAttributes,
+				scopeNames = self->scopePath.getExtensionIfDefined(
+					self.parent->scopePath ? self.parent->scopePath : null),
+			};
+			result.push(f);
+			self = self->parent;
 		}
 		return self == base ? result.reverse() : undefined;
 	}
@@ -2524,7 +2560,7 @@ class StateStackImpl:mx {
 			if (el.ruleId == other.ruleId) {
 				return true;
 			}
-			el = el->parent.grab();
+			el = el->parent->grab();
 		}
 		return false;
 	}
@@ -2574,8 +2610,8 @@ StackDiff diffStateStacksRefEq(StateStack first, StateStack second) {
 		} else {
 			// curSecond is certainly not contained in curFirst.
 			// Also, curSecond must be defined, as otherwise a previous case would match
-			newFrames.push(curSecond!.toStateStackFrame());
-			curSecond = curSecond!.parent;
+			newFrames.push(curSecond.toStateStackFrame());
+			curSecond = curSecond->parent;
 		}
 	}
 	return {
@@ -2586,17 +2622,17 @@ StackDiff diffStateStacksRefEq(StateStack first, StateStack second) {
 
 StateStackImpl applyStateStackDiff(StateStack stack, StackDiff diff) {
 	StateStackImpl curStack = stack;
-	for (let i = 0; i < diff.pops; i++) {
+	for (num i = 0; i < diff.pops; i++) {
 		curStack = curStack->parent;
 	}
-	for (const frame of diff.newFrames) {
+	for (const frame: diff.newFrames) {
 		curStack = StateStackImpl.pushFrame(curStack, frame);
 	}
 	return curStack;
 }
 
 bool isIdentifier(utf16 token) {
-	RegEx16 regex("[\\w\\.:]+/");
+	RegEx regex("[\\w\\.:]+/");
 	return token && regex.exec(token);
 }
 
@@ -2669,15 +2705,15 @@ struct LineTokens:mx {
 		}
 
 		if (data->_emitBinaryTokens) {
-			let metadata = scopesList?.tokenAttributes ?? 0;
-			let containsBalancedBrackets = false;
+			auto metadata = scopesList ? scopesList->tokenAttributes : 0;
+			bool containsBalancedBrackets = false;
 			if (data->balancedBracketSelectors?.matchesAlways) {
 				containsBalancedBrackets = true;
 			}
 
 			if (data->_tokenTypeOverrides.len() > 0 || (data->balancedBracketSelectors && !data->balancedBracketSelectors.matchesAlways && !data->balancedBracketSelectors.matchesNever)) {
 				// Only generate scope array when required to improve performance
-				const scopes = scopesList?.getScopeNames() ?? [];
+				array<ScopeName> scopes = scopesList ? scopesList.getScopeNames() : array<ScopeName>();
 				for (const tokenType of data->_tokenTypeOverrides) {
 					if (tokenType.matcher(scopes)) {
 						metadata = EncodedTokenAttributes::set(
@@ -2719,7 +2755,7 @@ struct LineTokens:mx {
 				RegEx regex = RegEx(R"(\n$)");
 				utf16 txt = data->_lineText.mid(data->_lastTokenEndIndex, endIndex);
 				console.log('  token: |' + regex.replace(txt, "\\n") + '|');
-				for (let k = 0; k < scopes.len(); k++) {
+				for (size_t k = 0; k < scopes.len(); k++) {
 					console.log('      * ' + scopes[k]);
 				}
 			}
@@ -2737,7 +2773,7 @@ struct LineTokens:mx {
 			RegEx regex = RegEx(R"(\n$)");
 			utf16 txt = data->_lineText!.mid(data->_lastTokenEndIndex, endIndex);
 			console.log('  token: |' + regex.replace(txt, "\\n") + '|');
-			for (let k = 0; k < scopes.len(); k++) {
+			for (size_t k = 0; k < scopes.len(); k++) {
 				console.log('      * ' + scopes[k]);
 			}
 		}
@@ -2780,9 +2816,9 @@ struct LineTokens:mx {
 			data->_binaryTokens[data->_binaryTokens.len() - 2] = 0;
 		}
 
-		const result = new Uint32Array(data->_binaryTokens.len());
-		for (let i = 0, len = data->_binaryTokens.len(); i < len; i++) {
-			result[i] = data->_binaryTokens[i];
+		auto result = Uint32Array(data->_binaryTokens.len());
+		for (size_t i = 0, len = data->_binaryTokens.len(); i < len; i++) {
+			result.push(data->_binaryTokens[i]);
 		}
 
 		return result;
@@ -2866,7 +2902,7 @@ struct Grammar:mx { // implements IGrammar, IRuleFactoryHelper, IOnigLib
 			// add injections from the current grammar
 			const rawInjections = grammar.injections;
 			if (rawInjections) {
-				for (let expression in rawInjections) {
+				for (auto &expression: rawInjections) {
 					collectInjections(
 						result,
 						expression,
@@ -3153,7 +3189,7 @@ struct SyncRegistry : mx {
 		BalancedBracketSelectors 	balancedBracketSelectors
 	) {
 		if (!data->_grammars.has(scopeName)) {
-			let rawGrammar = data->_rawGrammars.get(scopeName)!;
+			auto rawGrammar = data->_rawGrammars.get(scopeName)!;
 			if (!rawGrammar) {
 				return null;
 			}
