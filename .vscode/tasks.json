@@ -33,6 +33,37 @@
             }
         },
         {
+            "label": "build-textmate-test",
+            "type": "shell",
+			"options": {
+                "cwd": "${workspaceFolder}/../orbiter/build"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "group": "build0",
+                "clear": true
+            },
+			"isBackground": false,
+			"problemMatcher": ["$gcc"],
+            "windows": {
+                "command": "msbuild orbiter.sln /t:textmate-test"
+            },
+            "osx": {
+                "command": "make textmate-test -j16"
+            },
+            "linux": {
+                "command": "make textmate-test -j16",
+                "options":{
+                    "env":{"VERBOSE":"1"}
+                }
+            }
+        },
+        {
             "label": "build-ssh-server",
             "type": "shell",
 			"options": {

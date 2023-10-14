@@ -9,6 +9,16 @@ struct iRegEx;
 
 namespace ion {
 
+template <typename T>
+struct indexed {
+    T   value;
+    i64 index;
+    i64 length;
+    operator T&() {
+        return value;
+    }
+};
+
 /// support the multi-pattern pattern with different constructor inputs
 /// essentially the interface of vscode's oniguruma scanner, but looks more like JS
 struct RegEx:mx {
@@ -19,14 +29,16 @@ struct RegEx:mx {
     RegEx(symbol        pattern,  Behaviour b = Behaviour::none);
     RegEx(array<utf16>  patterns, Behaviour b = Behaviour::none);
 
-    static str   escape(str input);
-    static utf16 escape(utf16 input);
-    array<str>     exec(str input);
-    array<utf16>   exec(utf16 input);
-    void     set_cursor(num from, num to = -1);
-    void  load_patterns(utf16 *patterns, size_t len);
-    void  load_patterns(str   *patterns, size_t len);
+    static str    escape(str input);
+    static utf16  escape(utf16 input);
 
+    array<indexed<str>>     exec(str input);
+    array<indexed<utf16>>   exec(utf16 input);
+
+    void      set_cursor(num from, num to = -1);
+    void   load_patterns(utf16 *patterns, size_t len);
+    void   load_patterns(str   *patterns, size_t len);
+    void           reset();
     size_t pattern_index();
 
     template <typename T>

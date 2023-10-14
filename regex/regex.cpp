@@ -120,7 +120,7 @@ void RegEx::set_cursor(num from, num to) {
 }
 
 /// 
-array<utf16> RegEx::exec(utf16 input) {
+array<indexed<utf16>> RegEx::exec(utf16 input) {
     if (input.mem != data->last_mem || data->b == Behaviour::none) {
         ::drop(data->last_mem);
         data->last_index = 0;
@@ -128,7 +128,7 @@ array<utf16> RegEx::exec(utf16 input) {
         data->last_mem = input.grab();
     }
     for (size_t i = 0; i < data->regex_count; i++) {
-        array<utf16> result;
+        array<indexed<utf16>> result;
         oniguruma *state = &data->states[i];
 
         if (state->regex && (!data->last_index || data->bytes_left)) {
@@ -154,7 +154,8 @@ array<utf16> RegEx::exec(utf16 input) {
                     wstr start   = (utf16::char_t*)(s + region->beg[0]);
                     wstr end     = (utf16::char_t*)(s + region->end[0]);
                     utf16 match  = utf16(start, std::distance(start, end));
-                    result      += match;
+                    indexed<utf16> v = { match, std::distance(origin, start), std::distance(start, end) };
+                    result      += v;
                     data->last_index = std::distance(i, (cstr)end + sizeof(wchar_t));
                     data->bytes_left = std::distance((cstr)origin + data->last_index, (cstr)e);
                     continue;
@@ -176,6 +177,6 @@ array<utf16> RegEx::exec(utf16 input) {
 }
 
 /// debug above first
-array<str> RegEx::exec(str input) {
+array<indexed<str>> RegEx::exec(str input) {
     return {};
 }
