@@ -39,10 +39,10 @@ struct RegEx:mx {
     void   load_patterns(utf16 *patterns, size_t len);
     void   load_patterns(str   *patterns, size_t len);
     void           reset();
-    size_t pattern_index();
+    num    pattern_index();
 
     template <typename T>
-    bool test(T input) {
+    bool test(T input) const {
         return exec(input);
     }
 

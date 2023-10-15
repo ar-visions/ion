@@ -89,7 +89,7 @@ RegEx::RegEx(array<utf16> patterns, Behaviour b) : RegEx() {
 
 /// if there are multiple patterns this is used to query which specific one matched
 /// we must alter
-size_t RegEx::pattern_index() {
+num RegEx::pattern_index() {
     return data->pattern_index;
 }
 
