@@ -291,6 +291,4 @@ OnigEncodingType OnigEncodingUTF8 = {
 
 void oni_init_utf8() {
   OnigEncodingType *utf8 = &OnigEncodingUTF8;
-  int test = 0;
-  test++;
 }

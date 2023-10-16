@@ -29,15 +29,19 @@
 
 #include "regint.h"
 
+void oni_init_utf8();
+void oni_init_utf16le();
+
 /* onig_init(): bringing this back to 'touch' the memory in utf8 which seems to be tree-shook by msvc;
    if we dont observe it here (in lib) we lose its section from setting the encoding struct */
 extern int
 onig_init(void)
 {
   oni_init_utf8();
-  
+  oni_init_utf16le();
   OnigEncoding encs[] = {
-    ONIG_ENCODING_UTF8
+    ONIG_ENCODING_UTF8,
+    ONIG_ENCODING_UTF16_LE
   };
 
   return onig_initialize(encs, sizeof(encs)/sizeof(encs[0]));
