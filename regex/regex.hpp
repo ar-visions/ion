@@ -42,7 +42,7 @@ struct RegEx:mx {
     num    pattern_index();
 
     template <typename T>
-    bool test(T input) const {
+    bool test(T input) {
         return exec(input);
     }
 
