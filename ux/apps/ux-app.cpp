@@ -88,8 +88,8 @@ int main(int argc, char *argv[]) {
 
     str s0 = t1->str_value;
 
-    //path  p  = "test1.json";
-    //Test1 t1 = p.read<Test1>();
+    path  p  = "test1.json";
+    Test1 t11 = p.read<Test1>();
 
     map<mx> defs { { "debug", uri { "ssh://ar-visions.com:1022" } } };
     map<mx> config { args::parse(argc, argv, defs) };

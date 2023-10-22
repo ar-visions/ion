@@ -279,6 +279,6 @@ OnigEncodingType OnigEncodingUTF16_LE = {
 void oni_init_utf16le() {
   OnigEncodingType *utf16 = &OnigEncodingUTF16_LE;
   (void*)utf16;
-  printf("initializing utf16le\n");
+  //printf("initializing utf16le\n");
   return;
 }
