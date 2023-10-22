@@ -2,20 +2,95 @@
 
 using namespace ion;
 
+
+
+struct View:Element {
+    struct props {
+        int         sample;
+        int         sample2;
+        callback    clicked;
+        ///
+        doubly<prop> meta() {
+            return {
+                prop { "sample",  sample },
+                prop { "sample2", sample2 },
+                prop { "clicked", clicked}
+            };
+        }
+        type_register(props);
+    };
+
+    int context_var;
+
+    doubly<prop> meta() {
+        return {
+            prop { "context_var", context_var }
+        };
+    }
+
+    component(View, Element, props);
+
+    void mounted() {
+        console.log("mounted");
+    }
+ 
+    node update() {
+        return ion::array<node> {
+            Edit {
+                { "content", "Multiline edit test" }
+            }
+        };
+    }
+};
+
+struct Test3:mx {
+    struct members {
+        int t3_int;
+        register(members)
+    };
+    mx_basic(Test3);
+};
+
+struct Test2:mx {
+    struct members {
+        array<Test3> test3_values;
+        register(members)
+    };
+    mx_basic(Test2);
+};
+
+struct Test1:mx {
+    struct members {
+        str   str_value;
+        int   int_value;
+        short short_value;
+        bool  bool_value;
+        Test2 test2_value;
+        register(members)
+        doubly<prop> meta() {
+            return {
+                prop { "str_value",   str_value   },
+                prop { "int_value",   int_value   },
+                prop { "short_value", short_value },
+                prop { "bool_value",  bool_value  },
+                prop { "test2_value", test2_value }
+            };
+        }
+    };
+    mx_basic(Test1);
+};
+
 int main(int argc, char *argv[]) {
-	RegEx regex(utf16("\\w+"), RegEx::Behaviour::global);
-    array<utf16> matches = regex.exec(utf16("Hello, World!"));
+    array<int> i_array;
+    Test1 t1;
 
-	if (matches)
-		console.log("match: {0}", {matches[0]});
+    t1.set_meta("str_value", mx(str("test")));
 
-	path js 	 = "style/js.json";
-	num  m0 	 = millis();
-	var  grammar = js.read<var>();
-	num  m1  	 = millis();
+    str s0 = t1->str_value;
 
-	console.log("millis = {0}", {m1-m0});
-    
+    //path  p  = "test1.json";
+    //Test1 t1 = p.read<Test1>();
+
     map<mx> defs { { "debug", uri { "ssh://ar-visions.com:1022" } } };
     map<mx> config { args::parse(argc, argv, defs) };
     if    (!config) return args::defaults(defs);

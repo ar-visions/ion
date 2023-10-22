@@ -673,7 +673,7 @@ bool message::read_content(sock &sc) {
         /// read content
         size_t sz = rcv.byte_len();
         array<char> js { rcv };
-        var   obj = var::json(js);
+        var   obj = var::json(js, null);
         data->content = obj;
     }
     else if (ctype.starts_with("text/")) {
