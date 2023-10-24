@@ -47,14 +47,26 @@ struct Test3:mx {
     struct members {
         int t3_int;
         register(members)
+        doubly<prop> meta() {
+            return {
+                prop { "t3_int", t3_int }
+            };
+        }
     };
     mx_basic(Test3);
 };
 
 struct Test2:mx {
     struct members {
+        int test2_int;
         array<Test3> test3_values;
         register(members)
+        doubly<prop> meta() {
+            return {
+                prop { "test2_int",    test2_int    },
+                prop { "test3_values", test3_values }
+            };
+        }
     };
     mx_basic(Test2);
 };
@@ -89,7 +101,10 @@ int main(int argc, char *argv[]) {
     str s0 = t1->str_value;
 
     path  p  = "test1.json";
-    Test1 t11 = p.read<Test1>();
+    Test1 t11 = p.read<Test1>(); /// test2
+
+    Test2 t2a;
+    Test3 &t3v = t11->test2_value->test3_values[0];
 
     map<mx> defs { { "debug", uri { "ssh://ar-visions.com:1022" } } };
     map<mx> config { args::parse(argc, argv, defs) };
