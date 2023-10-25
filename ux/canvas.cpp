@@ -444,6 +444,7 @@ struct ICanvas {
         vec2d       blur;
         ion::font   font;
         SkPaint     ps;
+        glm::mat4   model, view, proj;
     };
 
     state *top = null;
@@ -825,11 +826,44 @@ struct ICanvas {
         assert(false);
     }
 
-    void outline() {
-        /// if there is a 3D point in the scene it should switch to a world mode?
-        /// problem with this is the units are different in scale in most cases;
-        /// it just cant be the same thing
-        
+    void outline(array<glm::vec2> &line) {
+        SkPaint ps = SkPaint(top->ps);
+        ps.setAntiAlias(true);
+        ps.setColor(sk_color(top->color));
+        ps.setStrokeWidth(top->outline_sz);
+        ps.setStroke(true);
+        glm::vec2 *a = null;
+        SkPath path;
+        for (glm::vec2 &b: line) {
+            SkPoint bp = { b.x, b.y };
+            if (a) {
+                path.lineTo(bp);
+            } else {
+                path.moveTo(bp);
+            }
+            a = &b;
+        }
+        sk_canvas->drawPath(path, ps);
+    }
+
+    void projection(glm::mat4 &m, glm::mat4 &v, glm::mat4 &p) {
+        top->model      = m;
+        top->view       = v;
+        top->proj       = p;
+    }
+
+    void outline(array<glm::vec3> &v3) {
+        glm::vec2 sz = { this->sz.x / this->dpi_scale.x, this->sz.y / this->dpi_scale.y };
+        array<glm::vec2> projected { v3.len() };
+        for (glm::vec3 &vertex: v3) {
+            glm::vec4 cs  = top->proj * top->view * top->model * glm::vec4(vertex, 1.0f);
+            glm::vec3 ndc = cs / cs.w;
+            float screenX = ((ndc.x + 1) / 2.0) * sz.x;
+            float screenY = ((1 - ndc.y) / 2.0) * sz.y;
+            glm::vec2  v2 = { screenX, screenY };
+            projected    += v2;
+        }
+        outline(projected);
     }
 
     void outline(rectd &rect) {
@@ -837,6 +871,7 @@ struct ICanvas {
         ///
         ps.setAntiAlias(true);
         ps.setColor(sk_color(top->color));
+        ps.setStrokeWidth(top->outline_sz);
         ps.setStroke(true);
         ///
         if (top->opacity != 1.0f)
@@ -851,6 +886,7 @@ struct ICanvas {
         ///
         ps.setAntiAlias(!shape.is_rect());
         ps.setColor(sk_color(top->color));
+        ps.setStrokeWidth(top->outline_sz);
         ps.setStroke(true);
         ///
         if (top->opacity != 1.0f)
@@ -1064,6 +1100,18 @@ void    Canvas::scale(vec2d sc) {
 
 void    Canvas::rotate(double degs) {
     return data->rotate(degs);
+}
+
+void    Canvas::outline(array<glm::vec3> v3) {
+    return data->outline(v3);
+}
+
+void    Canvas::outline(array<glm::vec2> line) {
+    return data->outline(line);
+}
+
+void  Canvas::projection(glm::mat4 &m, glm::mat4 &v, glm::mat4 &p) {
+    return data->projection(m, v, p);
 }
 
 void    Canvas::fill(rectd rect) {

@@ -24,12 +24,6 @@ struct View:Element {
     };
 
     component(View, Element, props);
-    
-    void draw(Canvas& canvas) {
-        canvas.move_to(vec3 { 0, 0, 0 });
-        canvas.line_to(vec3 { 1, 1, 1 });
-        canvas.stroke();
-    }
 };
 
 int main(int argc, char *argv[]) {
