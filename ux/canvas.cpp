@@ -825,6 +825,13 @@ struct ICanvas {
         assert(false);
     }
 
+    void outline() {
+        /// if there is a 3D point in the scene it should switch to a world mode?
+        /// problem with this is the units are different in scale in most cases;
+        /// it just cant be the same thing
+        
+    }
+
     void outline(rectd &rect) {
         SkPaint ps = SkPaint(top->ps);
         ///
