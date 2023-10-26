@@ -6,7 +6,7 @@
 #include <media/media.hpp>
 #include <vk/vk.hpp>
 #include <vkh/vkh.h>
-#include <camera/camera.hpp>
+//#include <camera/camera.hpp>
 #include <math.h>
 #include <composer/composer.hpp>
 

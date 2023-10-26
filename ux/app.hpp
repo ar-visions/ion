@@ -6,7 +6,7 @@ namespace ion {
 struct App:composer {
     struct adata {
         composer::cmdata*   cmdata;
-        array<Camera>       cameras;
+        //array<Camera>     cameras;
         //GPU               win;
         Canvas             *canvas;
         vec2d               cursor;

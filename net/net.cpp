@@ -688,23 +688,18 @@ bool message::read_content(sock &sc) {
 
 /// query/request construction
 message message::query(uri server, map<mx> headers, mx content) {
-    /// default state
     message m;
-    
-    /// acquire members, and set
-    message::members& q = m;
+    message::M& q = m;
     q.query   = { server, method::get };
     q.headers = headers;
     q.content = content;
-    
-    /// return state
     return m;
 }
 
 /// response construction, uri is not needed
 message message::response(uri query, mx code, mx content, map<mx> headers) {
     message rs;
-    message::members& r = rs;
+    message::M& r = rs;
     r.query    = { query, method::response };
     r.code     = code;
     r.headers  = headers;

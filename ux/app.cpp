@@ -5,7 +5,7 @@
 #include <vkh/vkh_image.h>
 #include <vkh/vkh_presenter.h>
 //#include <vkg/vkg.hpp>
-#include <camera/camera.hpp>
+//#include <camera/camera.hpp>
 
 #ifdef __APPLE__
 extern "C" void AllowKeyRepeats(void);

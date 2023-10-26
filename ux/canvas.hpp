@@ -32,6 +32,7 @@ struct Canvas:mx {
     void projection(glm::mat4 &m, glm::mat4 &v, glm::mat4 &p);
     void outline(array<glm::vec3> v3);
     void outline(array<glm::vec2> v2);
+    void line(glm::vec3 &a, glm::vec3 &b);
     void outline(rectd rect);
     void outline_sz(double sz);
     void cap(graphics::cap c);

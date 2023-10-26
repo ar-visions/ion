@@ -866,6 +866,13 @@ struct ICanvas {
         outline(projected);
     }
 
+    void line(glm::vec3 &a, glm::vec3 &b) {
+        array<glm::vec3> ab { size_t(2) };
+        ab.push(a);
+        ab.push(b);
+        outline(ab);
+    }
+
     void outline(rectd &rect) {
         SkPaint ps = SkPaint(top->ps);
         ///
@@ -1104,6 +1111,10 @@ void    Canvas::rotate(double degs) {
 
 void    Canvas::outline(array<glm::vec3> v3) {
     return data->outline(v3);
+}
+
+void Canvas::line(glm::vec3 &a, glm::vec3 &b) {
+    return data->line(a, b);
 }
 
 void    Canvas::outline(array<glm::vec2> line) {
