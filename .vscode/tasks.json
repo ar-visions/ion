@@ -33,37 +33,6 @@
             }
         },
         {
-            "label": "build-annotate",
-            "type": "shell",
-			"options": {
-                "cwd": "${workspaceFolder}/../hyperspace/build"
-            },
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            },
-            "presentation": {
-                "reveal": "always",
-                "panel": "shared",
-                "group": "build0",
-                "clear": true
-            },
-			"isBackground": false,
-			"problemMatcher": ["$gcc"],
-            "windows": {
-                "command": "msbuild hyperspace.sln /t:annotate"
-            },
-            "osx": {
-                "command": "make hyperspace -j16"
-            },
-            "linux": {
-                "command": "make hyperspace -j16",
-                "options":{
-                    "env":{"VERBOSE":"1"}
-                }
-            }
-        },
-        {
             "label": "build-textmate-test",
             "type": "shell",
 			"options": {

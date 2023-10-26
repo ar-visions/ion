@@ -250,19 +250,19 @@ struct sock:mx {
 };
 
 struct message:mx {
-    struct members {
+    struct M {
         uri     query;
         mx      code = int(0);
         map<mx> headers;
         mx      content; /// best to store as mx, so we can convert directly in lambda arg, functionally its nice to have delim access in var.
-        type_register(members);
+        type_register(M);
     };
 
     method method_type() {
         return data->query.mtype();
     }
 
-    mx_object(message, mx, members);
+    mx_object(message, mx, M);
 
     message(int server_code);
     message(symbol text);

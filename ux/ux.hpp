@@ -346,13 +346,13 @@ struct OBJ:mx {
         mx_object(group, mx, gdata);
     };
 
-    struct members {
+    struct M {
         array<V>   vbo;
         map<group> groups;
-        type_register(members);
+        type_register(M);
     };
 
-    mx_object(OBJ, mx, members);
+    mx_object(OBJ, mx, M);
 
     OBJ(path p, lambda<V(group&, vec3d*, vec2d*, vec3d*)> fn) : OBJ() {
         str g;

@@ -6,7 +6,7 @@ namespace ion {
 template <typename V>
 struct object:Element {
     /// our members
-    struct members {
+    struct M {
       //construction    plumbing;
         str             model     = "";
         str             skin      = "";
@@ -28,11 +28,11 @@ struct object:Element {
                 prop { "render",    render  }
             };
         }
-        type_register(members);
+        type_register(M);
     };
 
     /// make a node_constructors
-    mx_object(object, Element, members)
+    mx_object(object, Element, M)
     
     /// change management, we probably have to give prev values in a map.
     void changed(doubly<prop> list) {
