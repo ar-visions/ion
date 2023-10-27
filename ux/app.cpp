@@ -216,7 +216,7 @@ int App::run() {
     /// allows keys to repeat on OSX, and thus allow glfw to function normally for UX
     /// todo: we still need backspace to repeat
     #ifdef __APPLE__
-    AllowKeyRepeats();
+    //AllowKeyRepeats();
     #endif
 
     vkengine_key_callback    (e,          key_callback);
