@@ -16,7 +16,7 @@ bool image::save(path p) const {
     assert(mem->shape && mem->shape->dims() == 2);
     int w = int(width());
     int h = int(height());
-    FILE* file = fopen(p.cs(), "wb");
+    FILE* file = fopen(p.data->p.string().c_str(), "wb");
     if (!file) {
         return false; // Failed to open the file
     }
