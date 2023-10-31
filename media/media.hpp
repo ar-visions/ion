@@ -1,6 +1,6 @@
 #pragma once
 #include <mx/mx.hpp>
-#include <image/image.hpp>
+#include <media/image.hpp>
 #include <async/async.hpp>
 
 namespace ion {

@@ -1,0 +1,23 @@
+dep(ion:media mx:watch glm:glm_static glfw:glfw3 @Vulkan)
+cpp(20)
+
+if(APPLE)
+    dep(IOSurface QuartzCore Metal AppKit CoreGraphics CoreFoundation Cocoa IOKit)
+elseif(UNIX)
+    dep(X11 GLX)
+    #dep(X11-xcb)
+    dep(xcb-xkb xkbcommon xkbcommon-x11 nvcuvid nvidia-encode)
+endif()
+
+if(APPLE)
+    file(TO_CMAKE_PATH "$ENV{VULKAN_SDK}/macOS/include" VULKAN_INCLUDE)
+    includes(${VULKAN_INCLUDE})
+elseif(UNIX)
+    # this is installed with a package currently
+    #file(TO_CMAKE_PATH "$ENV{VULKAN_SDK}/include" VULKAN_INCLUDE)
+else()
+    file(TO_CMAKE_PATH "$ENV{VULKAN_SDK}/Include" VULKAN_INCLUDE)
+    includes(${VULKAN_INCLUDE})
+endif()
+
+defines(VKH_USE_VMA)

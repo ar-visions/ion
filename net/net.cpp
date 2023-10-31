@@ -26,7 +26,6 @@
 
 #include <async/async.hpp>
 #include <net/net.hpp>
-#include <image/image.hpp>
 #include <media/media.hpp>
 
 #ifndef WIN32

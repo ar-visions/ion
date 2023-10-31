@@ -1,6 +1,12 @@
-dep(mx:mx mx:async mx:image 
+dep(mx:async ion:media
     opusenc:opusenc opusfile:opusfile
     opus:opus ogg:ogg)
+
+if(WIN32)
+    dep(libpng:libpng16_static zlib:zlibstatic)
+else()
+    dep(libpng:png zlib:z)
+endif()
 
 dep(shine:shine)
 dep(speexdsp:speexdsp)
