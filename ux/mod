@@ -6,7 +6,7 @@ elseif(WIN32)
     dep(msvcrt)
 endif()
 
-dep(vulkan:vk @Vulkan vulkan:vkh mx:async ion:regex ion:net ion:ssh ion:media skia:skia)
+dep(ion:vk @Vulkan mx:async ion:regex ion:net ion:ssh ion:media skia:skia)
 
 includes(${INSTALL_PREFIX}/../../extern/skia)
 includes(${INSTALL_PREFIX}/include/skia)

@@ -1,14 +1,16 @@
-dep(mx:async ion:media
-    opusenc:opusenc opusfile:opusfile
-    opus:opus ogg:ogg)
+dep(mx:async
+    opusenc:opusenc
+    opusfile:opusfile
+    opus:opus
+    ogg:ogg
+    shine:shine
+    speexdsp:speexdsp)
 
 if(WIN32)
-    dep(libpng:libpng16_static zlib:zlibstatic)
+    dep(libpng:libpng16_static
+        zlib:zlibstatic)
 else()
     dep(libpng:png zlib:z)
 endif()
-
-dep(shine:shine)
-dep(speexdsp:speexdsp)
 
 includes(${INSTALL_PREFIX}/include/opus)

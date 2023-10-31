@@ -1,6 +1,12 @@
-dep(ion:media mx:watch glm:glm_static glfw:glfw3 @Vulkan)
 cpp(20)
-
+dep(ion:media mx:watch glm:glm_static glfw:glfw3 @Vulkan)
+##
+if(MSVC)
+    cflags(/wd4838 /wd4061 /wd4062 /wd4473 /wd4474 /wd4475)
+else()
+    cflags(+-Wno-c++11-narrowing +-Wno-switch +-Wno-format)
+endif()
+##
 if(APPLE)
     dep(IOSurface QuartzCore Metal AppKit CoreGraphics CoreFoundation Cocoa IOKit)
 elseif(UNIX)
@@ -8,7 +14,7 @@ elseif(UNIX)
     #dep(X11-xcb)
     dep(xcb-xkb xkbcommon xkbcommon-x11 nvcuvid nvidia-encode)
 endif()
-
+##
 if(APPLE)
     file(TO_CMAKE_PATH "$ENV{VULKAN_SDK}/macOS/include" VULKAN_INCLUDE)
     includes(${VULKAN_INCLUDE})
@@ -19,5 +25,5 @@ else()
     file(TO_CMAKE_PATH "$ENV{VULKAN_SDK}/Include" VULKAN_INCLUDE)
     includes(${VULKAN_INCLUDE})
 endif()
-
+##
 defines(VKH_USE_VMA)

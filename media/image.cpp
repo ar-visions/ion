@@ -1,5 +1,4 @@
-#include <mx/mx.hpp>
-#include <image/image.hpp>
+#include <media/image.hpp>
 #include <png.h>
 
 namespace ion {

@@ -87,7 +87,7 @@
 //#define VKVG_FENCE_TIMEOUT 10000
 
 #include "vkg.hpp"
-#include <vkh/vkh.h>
+#include <vk/vkh.h>
 #include "vectors.h"
 
 /*typedef struct {

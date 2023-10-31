@@ -40,9 +40,9 @@
 #include <ux/canvas.hpp>
 #include <media/media.hpp>
 #include <vk/vk.hpp>
-#include <vkh/vkh_device.h>
-#include <vkh/vkh_image.h>
-#include <vkh/vkh_presenter.h>
+#include <vk/vkh_device.h>
+#include <vk/vkh_image.h>
+#include <vk/vkh_presenter.h>
 
 using namespace ion;
 

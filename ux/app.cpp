@@ -1,9 +1,9 @@
 #include <ux/app.hpp>
 #include <ssh/ssh.hpp>
-#include <vkh/vkh.h>
-#include <vkh/vkh_device.h>
-#include <vkh/vkh_image.h>
-#include <vkh/vkh_presenter.h>
+#include <vk/vkh.h>
+#include <vk/vkh_device.h>
+#include <vk/vkh_image.h>
+#include <vk/vkh_presenter.h>
 //#include <vkg/vkg.hpp>
 //#include <camera/camera.hpp>
 

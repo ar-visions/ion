@@ -1,4 +1,4 @@
-#include "vkh/vkengine.h"
+#include "vk/vkengine.h"
 #include <stdio.h>
 #include <stdlib.h>
 #define _USE_MATH_DEFINES
@@ -8,9 +8,9 @@
 #include "vkg/rnd.h"
 #include "vkg/vkg.hpp"
 
-#include "vkh/vkh_device.h"
-#include "vkh/vkh_presenter.h"
-#include "vkh/vkh_phyinfo.h"
+#include "vk/vkh_device.h"
+#include "vk/vkh_presenter.h"
+#include "vk/vkh_phyinfo.h"
 
 #define M_PIF               3.14159265359f /* float pi */
 #define M_PIF_MULT_2        6.28318530718f

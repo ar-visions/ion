@@ -1,5 +1,5 @@
 
-dep(mx:mx ion:net ion:ux vulkan:vk juice:juice srtp:srtp2 usrsctp:usrsctp)
+dep(ion:net ion:ux juice:juice srtp:srtp2 usrsctp:usrsctp)
 
 if(APPLE)
     dep(AVFoundation VideoToolbox)

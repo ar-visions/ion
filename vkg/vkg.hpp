@@ -60,7 +60,7 @@
 
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_metal.h>
-#include <vkh/vkengine.h>
+#include <vk/vkengine.h>
 #include <math.h>
 #include <stdbool.h>
 

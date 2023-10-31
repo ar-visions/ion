@@ -24,7 +24,7 @@
 
 #include "vkvg_internal.h"
 #include "vkg.hpp"
-#include <vkh/vkh.h>
+#include <vk/vkh.h>
 
 /// surface needs to be dpi aware
 typedef struct _vkvg_surface_t {
