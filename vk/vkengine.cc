@@ -100,6 +100,7 @@ static void glfw_error_callback(int error, const char *description) {
 
 VkSampleCountFlagBits getMaxUsableSampleCount(VkSampleCountFlags counts)
 {
+	return VK_SAMPLE_COUNT_1_BIT;
 	if (counts & VK_SAMPLE_COUNT_64_BIT) { return VK_SAMPLE_COUNT_64_BIT; }
 	if (counts & VK_SAMPLE_COUNT_32_BIT) { return VK_SAMPLE_COUNT_32_BIT; }
 	if (counts & VK_SAMPLE_COUNT_16_BIT) { return VK_SAMPLE_COUNT_16_BIT; }

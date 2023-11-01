@@ -639,11 +639,11 @@ ion::image Device::impl::screenshot() {
     command_submit(commandBuffer);
 
     void* data;
-    transitionImageLayout(resolveImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL, 1);
+    transitionImageLayout(resolveImage, VK_FORMAT_B8G8R8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL, 1);
     vkMapMemory(device, resolveImageMemory, 0, VK_WHOLE_SIZE, 0, &data);
     memcpy(res.data, data, sizeof(rgba8) * height * width);
     vkUnmapMemory(device, resolveImageMemory);
-    transitionImageLayout(resolveImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1);
+    transitionImageLayout(resolveImage, VK_FORMAT_B8G8R8A8_SRGB, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1);
     return res;
 }
 
@@ -901,7 +901,7 @@ void Device::impl::copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t wi
 
 VkSurfaceFormatKHR Device::impl::chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats) {
     for (const auto& availableFormat : availableFormats) {
-        if (availableFormat.format     == VK_FORMAT_R8G8B8A8_SRGB && // was VK_FORMAT_B8G8R8A8_SRGB (incompatible with png/jpeg loader, internal rgba format)
+        if (availableFormat.format     == VK_FORMAT_B8G8R8A8_SRGB && // was VK_FORMAT_B8G8R8A8_SRGB (incompatible with png/jpeg loader, internal rgba format)
             availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
             return availableFormat;
         }
@@ -1123,7 +1123,7 @@ void Device::impl::createRenderPass() {
 Device Device::create(Window &gpu) {
     Device dev;
     dev->gpu = gpu;
-    dev->textureFormat = VK_FORMAT_R8G8B8A8_SRGB;//VK_FORMAT_B8G8R8A8_UNORM; /// i dont really wnat to make this an argument.  lots are unsupported and i want to support vkvg's generic
+    dev->textureFormat = VK_FORMAT_B8G8R8A8_SRGB;//VK_FORMAT_B8G8R8A8_UNORM; /// i dont really wnat to make this an argument.  lots are unsupported and i want to support vkvg's generic
     dev->createLogicalDevice();
     dev->createSwapChain();
     dev->createImageViews();
