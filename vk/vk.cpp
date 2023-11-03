@@ -603,13 +603,18 @@ void Device::impl::createColorResources() {
 
     colorImageView = createImageView(colorImage, colorFormat, VK_IMAGE_ASPECT_COLOR_BIT, 1);
 
+    createImage(swapChainExtent.width, swapChainExtent.height, 1, VK_SAMPLE_COUNT_1_BIT, colorFormat, VK_IMAGE_TILING_OPTIMAL,
+        VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        resolveImage, resolveImageMemory);
+    transitionImageLayout(resolveImage, colorFormat, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1);
+
     createImage(swapChainExtent.width, swapChainExtent.height, 1,
         VK_SAMPLE_COUNT_1_BIT, colorFormat, VK_IMAGE_TILING_LINEAR,
         VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        resolveImage, resolveImageMemory);
-
-    transitionImageLayout(resolveImage, colorFormat, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1);
+        transferImage, transferImageMemory);
+    transitionImageLayout(transferImage, colorFormat, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1);
 }
 
 ion::image Device::impl::screenshot() {
@@ -638,12 +643,55 @@ ion::image Device::impl::screenshot() {
 
     command_submit(commandBuffer);
 
+    transitionImageLayout(resolveImage, VK_FORMAT_B8G8R8A8_UNORM,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, 1);
+
+    commandBuffer = command_begin();
+
+    VkImageCopy reg = {};
+    reg.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    reg.srcSubresource.layerCount = 1;
+    reg.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    reg.dstSubresource.layerCount = 1;
+    reg.extent.width  = width;
+    reg.extent.height = height;
+    reg.extent.depth  = 1;
+
+    vkCmdCopyImage(
+        commandBuffer,
+        resolveImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        transferImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        1, &reg);
+
+    command_submit(commandBuffer);
+
     void* data;
-    transitionImageLayout(resolveImage, VK_FORMAT_B8G8R8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL, 1);
-    vkMapMemory(device, resolveImageMemory, 0, VK_WHOLE_SIZE, 0, &data);
-    memcpy(res.data, data, sizeof(rgba8) * height * width);
-    vkUnmapMemory(device, resolveImageMemory);
-    transitionImageLayout(resolveImage, VK_FORMAT_B8G8R8A8_SRGB, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1);
+    
+    vkMapMemory(device, transferImageMemory, 0, VK_WHOLE_SIZE, 0, &data);
+
+    // Check if you need a custom row pitch (stride) during the copy
+    VkSubresourceLayout layout;
+    VkImageSubresource subResource = {
+        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        .mipLevel = 0,
+        .arrayLayer = 0
+    };
+    vkGetImageSubresourceLayout(device, transferImage, &subResource, &layout);
+
+    if (layout.rowPitch == width * sizeof(rgba8)) {
+        memcpy(res.data, data, sizeof(rgba8) * height * width);
+    } else {
+        // If row pitch does not match, copy row by row
+        uint8_t* dst = reinterpret_cast<uint8_t*>(res.data);
+        uint8_t* src = reinterpret_cast<uint8_t*>(data);
+        for (uint32_t y = 0; y < height; y++) {
+            memcpy(dst + y * width * sizeof(rgba8), src + y * layout.rowPitch, width * sizeof(rgba8));
+        }
+    }
+    
+    vkUnmapMemory(device, transferImageMemory);
+    //transitionImageLayout(transferImage, VK_FORMAT_B8G8R8A8_UNORM, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1);
+    transitionImageLayout(resolveImage,  VK_FORMAT_B8G8R8A8_UNORM, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1);
     return res;
 }
 
@@ -869,6 +917,17 @@ void Device::impl::transitionImageLayout(VkImage image, VkFormat format, VkImage
 
         sourceStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
         destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    } else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) {
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT; // Waits for transfer writes to finish
+        barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT; // Transfer reads can be started
+
+        sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT; // The stage of the writes to wait on
+        destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT; // The stage where reads will be performed
+    } else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT; // Waits for transfer writes to finish
+        barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT; // Transfer reads can be started
+        sourceStage           = VK_PIPELINE_STAGE_TRANSFER_BIT; // The stage of the writes to wait on
+        destinationStage      = VK_PIPELINE_STAGE_TRANSFER_BIT; // The stage where reads will be performed
     } else {
         throw std::invalid_argument("unsupported layout transition!");
     }
@@ -901,7 +960,7 @@ void Device::impl::copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t wi
 
 VkSurfaceFormatKHR Device::impl::chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats) {
     for (const auto& availableFormat : availableFormats) {
-        if (availableFormat.format     == VK_FORMAT_B8G8R8A8_SRGB && // was VK_FORMAT_B8G8R8A8_SRGB (incompatible with png/jpeg loader, internal rgba format)
+        if (availableFormat.format     == VK_FORMAT_B8G8R8A8_UNORM && // was VK_FORMAT_B8G8R8A8_SRGB (incompatible with png/jpeg loader, internal rgba format)
             availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
             return availableFormat;
         }
@@ -1123,7 +1182,7 @@ void Device::impl::createRenderPass() {
 Device Device::create(Window &gpu) {
     Device dev;
     dev->gpu = gpu;
-    dev->textureFormat = VK_FORMAT_B8G8R8A8_SRGB;//VK_FORMAT_B8G8R8A8_UNORM; /// i dont really wnat to make this an argument.  lots are unsupported and i want to support vkvg's generic
+    dev->textureFormat = VK_FORMAT_B8G8R8A8_UNORM;
     dev->createLogicalDevice();
     dev->createSwapChain();
     dev->createImageViews();

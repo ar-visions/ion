@@ -199,7 +199,8 @@
 			"__assert": "cpp",
 			"*.traits": "cpp",
 			"fft": "cpp",
-			"hash_map": "cpp"
+			"hash_map": "cpp",
+			"*.glsl": "cpp"
 		},
 		"git.ignoreLimitWarning": true
 	}

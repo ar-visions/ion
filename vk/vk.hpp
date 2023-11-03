@@ -207,6 +207,8 @@ struct Device:mx {
         
         VkImage                     resolveImage; /// the resolve of colorImage, used for screenshots
         VkDeviceMemory              resolveImageMemory;
+        VkImage                     transferImage;
+        VkDeviceMemory              transferImageMemory;
 
         VkImage                     colorImage;
         VkDeviceMemory              colorImageMemory;
