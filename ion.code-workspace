@@ -200,7 +200,8 @@
 			"*.traits": "cpp",
 			"fft": "cpp",
 			"hash_map": "cpp",
-			"*.glsl": "cpp"
+			"*.glsl": "cpp",
+			"mprealsupport": "cpp"
 		},
 		"git.ignoreLimitWarning": true
 	}
