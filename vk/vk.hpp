@@ -356,11 +356,8 @@ struct GraphicsData {
     type_register(GraphicsData);
 };
 
-/// graphics model
 template <typename U, typename V>
-struct Graphics:mx { /// dont need to store generic data; this is used as an argument for specifying Uniform and Vertex as well as model, and shader; its model of graphics
-
-    ///
+struct Graphics:mx {
     Graphics(Device device, symbol model, symbol shader = "pbr") : Graphics() {
         data->device = device;
         data->shader = shader;
@@ -368,9 +365,16 @@ struct Graphics:mx { /// dont need to store generic data; this is used as an arg
         data->u_type = typeof(U);
         data->v_type = typeof(V);
     }
-
     mx_object(Graphics, mx, GraphicsData);
 };
+
+// Now, create a template that will derive from yes or no based on whether T has a member named "tangent"
+template <typename T, typename V = void>
+struct has_tangent : std::false_type {};
+
+// Specialize a version of the template that will only be used if T has a member named "tangent"
+template <typename T>
+struct has_tangent<T, decltype((void) T::tangent, void())> : std::true_type {};
 
 struct Pipeline:mx {
     struct impl {
@@ -413,6 +417,27 @@ struct Pipeline:mx {
         void updateDescriptorSets();
         void createGraphicsPipeline();
 
+        static void tangents(
+            glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, glm::vec2 uv0, glm::vec2 uv1, glm::vec2 uv2,
+            glm::vec3 &tangent, glm::vec3 &bitangent) {
+            // Calculate the edge vectors of the triangle.
+            glm::vec3 edge0 = v1 - v0;
+            glm::vec3 edge1 = v2 - v0;
+
+            // Calculate the UV delta vectors.
+            glm::vec2 deltaUV0 = uv1 - uv0;
+            glm::vec2 deltaUV1 = uv2 - uv0;
+
+            // Calculate the tangent and bitangent vectors.
+            float r   = 1.0f / (deltaUV0.x * deltaUV1.y - deltaUV0.y * deltaUV1.x);
+            tangent   = (edge0 * deltaUV1.y - edge1 * deltaUV0.y) * r;
+            bitangent = (edge1 * deltaUV0.x - edge0 * deltaUV1.x) * r;
+
+            // Normalize the tangent and bitangent vectors.
+            tangent   = glm::normalize(tangent);
+            bitangent = glm::normalize(bitangent);
+        }
+
         template <typename V>
         void loadModel(cstr obj) {
             tinyobj::attrib_t                   attrib;
@@ -444,6 +469,28 @@ struct Pipeline:mx {
                     indices.push_back(uniqueVertices[vertex]);
                 }
             }
+
+            if constexpr (has_tangent<V>::value)
+                for (size_t i = 0; i < indices.size(); i += 3) {
+                    V &v0 = vertices[indices[i + 0]];
+                    V &v1 = vertices[indices[i + 1]];
+                    V &v2 = vertices[indices[i + 2]];
+
+                    glm::vec3 tangent;
+                    glm::vec3 bitangent;
+                    tangents(v0.pos, v1.pos, v2.pos,
+                             v0.uv,  v1.uv,  v2.uv,
+                            tangent, bitangent);
+
+                    v0.tangent = tangent;
+                    v1.tangent = tangent;
+                    v2.tangent = tangent;
+                    
+                    v0.bitangent = bitangent;
+                    v1.bitangent = bitangent;
+                    v2.bitangent = bitangent;
+                }
+
             indicesSize = indices.size();
             createVertexBuffer(vertices);
             createIndexBuffer(indices);
