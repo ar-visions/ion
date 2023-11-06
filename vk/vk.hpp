@@ -439,6 +439,11 @@ struct Pipeline:mx {
         }
 
         template <typename V>
+        void loadGltf(cstr obj) {
+            
+        }
+
+        template <typename V>
         void loadModel(cstr obj) {
             tinyobj::attrib_t                   attrib;
             std::vector<tinyobj::shape_t>       shapes;
