@@ -3,52 +3,6 @@
 
 namespace ion {
 
-template <typename V>
-struct object:Element {
-    /// our members
-    struct M {
-      //construction    plumbing;
-        str             model     = "";
-        str             skin      = "";
-        states<Asset>   assets    = { }; /// if this is blank, it should load all; likewise with shader it should use default
-      //Shaders         shaders   = { "*=main" };
-      //UniformData     ubo;
-      //VAttribs        attr      = { VA::Position, VA::UV, VA::Normal };
-        Rendition       render    = { Rendition::shader };
-
-        /// our interface
-        doubly<prop> meta() {
-            return {
-                prop { "model",     model   },
-                prop { "skin",      skin    },
-                prop { "assets",    assets  },
-              //prop { "shaders",   shaders },
-              //prop { "ubo",       ubo     },
-              //prop { "attr",      attr    },
-                prop { "render",    render  }
-            };
-        }
-        type_register(M);
-    };
-
-    /// make a node_constructors
-    mx_object(object, Element, M)
-    
-    /// change management, we probably have to give prev values in a map.
-    void changed(doubly<prop> list) {
-        // needs new model interface through vkengine
-        //data->plumbing = Model<Vertex>(data->model, data->skin, data->ubo, data->attr, data->assets, data->shaders);
-    }
-
-    /// rendition of pipes
-    node update() {
-        //if (data->plumbing)
-        //    for (auto &[pipe, name]: data->plumbing.map())
-        //        push_pipeline(dev(), pipe);
-        return Element::update();
-    }
-};
-
 ///
 struct Button:Element {
     enums(Behavior, push,

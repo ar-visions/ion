@@ -1,15 +1,17 @@
 #pragma once
 #include <mx/mx.hpp>
 
+namespace ion {
+
 namespace gltf {
-    enums(ContentType, NONE,
+    enums(ComponentType, NONE,
         NONE = 0,
         BYTE  = 5120, UNSIGNED_BYTE  = 5121,
         SHORT = 5122, UNSIGNED_SHORT = 5123,
         UNSIGNED_INT = 5125, FLOAT = 5126
     );
 
-    enums(StructType, NONE,
+    enums(CompoundType, NONE,
         NONE   = 0,
         SCALAR = 1, VEC2 = 2, VEC3 = 3, VEC4 = 4,
         MAT2   = 5, MAT3 = 6, MAT4 = 7
@@ -28,13 +30,13 @@ namespace gltf {
 
     struct Accessor:mx {
         struct M {
-            size_t       bufferView;
-            ContentType  componentType;
-            StructType   type;
-            size_t       count;
-            array<float> min;
-            array<float> max;
-
+            size_t        bufferView;
+            ComponentType componentType;
+            CompoundType  type;
+            size_t        count;
+            array<float>  min;
+            array<float>  max;
+            ///
             doubly<prop> meta() {
                 return {
                     { "bufferView",     bufferView    },
@@ -56,7 +58,7 @@ namespace gltf {
             size_t      byteLength;
             size_t      byteOffset;
             TargetType  target;
-
+            ///
             doubly<prop> meta() {
                 return {
                     { "buffer",       buffer       },
@@ -74,13 +76,15 @@ namespace gltf {
         struct M {
             str             name;
             size_t          mesh; /// mesh index
+            array<float>    rotation;
             array<float>    scale;
             array<float>    translation;
-
+            ///
             doubly<prop> meta() {
                 return {
                     { "name",          name        },
                     { "mesh",          mesh        },
+                    { "rotation",      rotation    },
                     { "scale",         scale       },
                     { "translation",   translation }
                 };
@@ -97,7 +101,7 @@ namespace gltf {
             int              material = -1;
             Mode             mode;
             array<mx>        targets; /// (optional) accessor id for attribute name
-
+            ///
             doubly<prop> meta() {
                 return {
                     { "attributes",    attributes },
@@ -117,7 +121,7 @@ namespace gltf {
             str              name;
             array<Primitive> primitives;
             array<float>     weights;
-
+            ///
             doubly<prop> meta() {
                 return {
                     { "name",         name       },
@@ -134,6 +138,7 @@ namespace gltf {
         struct M {
             str              name;
             array<size_t>    nodes;
+            ///
             doubly<prop> meta() {
                 return {
                     { "name",   name  },
@@ -149,6 +154,7 @@ namespace gltf {
         struct M {
             str generator;
             str version;
+            ///
             doubly<prop> meta() {
                 return {
                     { "generator", generator },
@@ -207,4 +213,6 @@ namespace gltf {
             return p.read<Model>();
         }
     };
+};
+
 };
