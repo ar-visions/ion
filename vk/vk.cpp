@@ -3,8 +3,8 @@
 
 #include <vk/vk.hpp>
 
-#define TINYOBJLOADER_IMPLEMENTATION
-#include <vk/tiny_obj_loader.h>
+//#define TINYOBJLOADER_IMPLEMENTATION
+//#include <vk/tiny_obj_loader.h>
 
 using namespace ion;
 
@@ -31,7 +31,7 @@ void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& create
     createInfo.pfnUserCallback  = debugCallback;
 }
 
-std::vector<symbol> Vulkan::impl::getRequiredExtensions() {
+std::vector<symbol> Vulkan::M::getRequiredExtensions() {
     uint32_t glfwExtensionCount = 0;
     const char** glfwExtensions;
     glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
@@ -53,7 +53,7 @@ std::vector<symbol> Vulkan::impl::getRequiredExtensions() {
 
 mx_implement(Vulkan, mx);
 
-bool Vulkan::impl::check_validation() {
+bool Vulkan::M::check_validation() {
     uint32_t layerCount;
     vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
 
@@ -99,7 +99,7 @@ bool is_wayland() {
     return session_type && std::strcmp(session_type, "wayland") == 0;
 }
 
-void Vulkan::impl::init() {
+void Vulkan::M::init() {
     static bool init = false;
     if (init) return;
 
@@ -172,15 +172,15 @@ void Vulkan::impl::init() {
     }
 }
 
-VkInstance Vulkan::impl::inst() {
+VkInstance Vulkan::M::inst() {
     return instance;
 }
 
-Vulkan::impl::operator bool() {
+Vulkan::M::operator bool() {
     return instance != VK_NULL_HANDLE;
 }
 
-Vulkan::impl::~impl() {
+Vulkan::M::~M() {
     if (enable_validation) {
         DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
     }
@@ -192,7 +192,7 @@ Window::operator VkPhysicalDevice() {
     return data->phys;
 }
 
-VkSampleCountFlagBits Window::impl::getUsableSampling(VkSampleCountFlagBits max) {
+VkSampleCountFlagBits Window::M::getUsableSampling(VkSampleCountFlagBits max) {
     VkPhysicalDeviceProperties physicalDeviceProperties;
     vkGetPhysicalDeviceProperties(phys, &physicalDeviceProperties);
 
@@ -308,9 +308,9 @@ bool Window::isDeviceSuitable(VkPhysicalDevice phys, VkSurfaceKHR surface, Queue
     return indices.isComplete() && extensionsSupported && swapChainAdequate  && supportedFeatures.samplerAnisotropy;
 }
 
-void Window::impl::framebuffer_resized(GLFWwindow* window, int width, int height) {
+void Window::M::framebuffer_resized(GLFWwindow* window, int width, int height) {
     /// i think acquire next image works with surface
-    //Window::impl *g = (Window::impl*)(glfwGetWindowUserPointer(window));
+    //Window::M *g = (Window::M*)(glfwGetWindowUserPointer(window));
     //g->sz = vec2i { width, height };
     //g->resize(g->sz, g->user_data);
 }
@@ -386,12 +386,12 @@ Window Window::select(vec2i sz, ResizeFn resize, void *user_data) {
 
     /// we should fully isolate glfw in vk
     glfwSetWindowUserPointer(g->window, user_data);
-    //glfwSetFramebufferSizeCallback(g->window, impl::framebuffer_resized); -- user data not layered here and will be handled in ux
+    //glfwSetFramebufferSizeCallback(g->window, M::framebuffer_resized); -- user data not layered here and will be handled in ux
     glfwShowWindow(g->window);
     return g;
 }
 
-uint32_t Window::impl::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
+uint32_t Window::M::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
     VkPhysicalDeviceMemoryProperties memProperties;
     vkGetPhysicalDeviceMemoryProperties(phys, &memProperties);
 
@@ -405,14 +405,14 @@ uint32_t Window::impl::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags
     return 0;
 }
 
-Window::impl::~impl() {
+Window::M::~M() {
     vkDestroySurfaceKHR(instance, surface, nullptr);
     glfwDestroyWindow(window);
 }
 
 Device::operator VkDevice() { return data->device; }
 
-void Device::impl::recreateSwapChain() {
+void Device::M::recreateSwapChain() {
     int width = 0, height = 0;
     glfwGetFramebufferSize(gpu->window, &width, &height);
     while (width == 0 || height == 0) {
@@ -430,7 +430,7 @@ void Device::impl::recreateSwapChain() {
     createFramebuffers();
 }
 
-void Device::impl::createDescriptorPool() {
+void Device::M::createDescriptorPool() {
     std::array<VkDescriptorPoolSize, 1 + Asset::count> poolSizes{};
     poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
@@ -451,7 +451,7 @@ void Device::impl::createDescriptorPool() {
     }
 }
 
-void Device::impl::createFramebuffers() {
+void Device::M::createFramebuffers() {
     swapChainFramebuffers.resize(swapChainImageViews.size());
 
     for (size_t i = 0; i < swapChainImageViews.size(); i++) {
@@ -476,7 +476,7 @@ void Device::impl::createFramebuffers() {
     }
 }
 
-void Device::impl::createSyncObjects() {
+void Device::M::createSyncObjects() {
     imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
     renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
     inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
@@ -497,7 +497,7 @@ void Device::impl::createSyncObjects() {
     }
 }
 
-void Device::impl::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory) {
+void Device::M::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory) {
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo.size = size;
@@ -523,7 +523,7 @@ void Device::impl::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkM
     vkBindBufferMemory(device, buffer, bufferMemory, 0);
 }
 
-VkCommandBuffer Device::impl::command_begin() {
+VkCommandBuffer Device::M::command_begin() {
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
@@ -542,7 +542,7 @@ VkCommandBuffer Device::impl::command_begin() {
     return commandBuffer;
 }
 
-void Device::impl::command_submit(VkCommandBuffer commandBuffer) {
+void Device::M::command_submit(VkCommandBuffer commandBuffer) {
     vkEndCommandBuffer(commandBuffer);
 
     VkSubmitInfo submitInfo{};
@@ -556,7 +556,7 @@ void Device::impl::command_submit(VkCommandBuffer commandBuffer) {
     vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
 }
 
-void Device::impl::copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size) {
+void Device::M::copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size) {
     VkCommandBuffer commandBuffer = command_begin();
 
     VkBufferCopy copyRegion{};
@@ -566,7 +566,7 @@ void Device::impl::copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSi
     command_submit(commandBuffer);
 }
 
-void Device::impl::createCommandBuffers() {
+void Device::M::createCommandBuffers() {
     commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
 
     VkCommandBufferAllocateInfo allocInfo{};
@@ -580,7 +580,7 @@ void Device::impl::createCommandBuffers() {
     }
 }
 
-void Device::impl::createCommandPool() {
+void Device::M::createCommandPool() {
     QueueFamilyIndices &queueFamilyIndices = gpu->indices;
 
     VkCommandPoolCreateInfo poolInfo{};
@@ -593,7 +593,7 @@ void Device::impl::createCommandPool() {
     }
 }
 
-void Device::impl::createColorResources() {
+void Device::M::createColorResources() {
     VkFormat colorFormat = swapChainImageFormat;
 
     createImage(swapChainExtent.width, swapChainExtent.height, 1, gpu->msaaSamples, colorFormat, VK_IMAGE_TILING_OPTIMAL,
@@ -617,7 +617,7 @@ void Device::impl::createColorResources() {
     transitionImageLayout(transferImage, colorFormat, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1);
 }
 
-ion::image Device::impl::screenshot() {
+ion::image Device::M::screenshot() {
     uint32_t width  = gpu->sz.x;
     uint32_t height = gpu->sz.y;
     image    res { size { height, width }};
@@ -695,14 +695,14 @@ ion::image Device::impl::screenshot() {
     return res;
 }
 
-void Device::impl::createDepthResources() {
+void Device::M::createDepthResources() {
     VkFormat depthFormat = findDepthFormat();
 
     createImage(swapChainExtent.width, swapChainExtent.height, 1, gpu->msaaSamples, depthFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depthImage, depthImageMemory);
     depthImageView = createImageView(depthImage, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT, 1);
 }
 
-VkFormat Device::impl::findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features) {
+VkFormat Device::M::findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features) {
     for (VkFormat format : candidates) {
         VkFormatProperties props;
         vkGetPhysicalDeviceFormatProperties(gpu, format, &props);
@@ -717,7 +717,7 @@ VkFormat Device::impl::findSupportedFormat(const std::vector<VkFormat>& candidat
     throw std::runtime_error("failed to find supported format!");
 }
 
-VkFormat Device::impl::findDepthFormat() {
+VkFormat Device::M::findDepthFormat() {
     return findSupportedFormat(
         {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT},
         VK_IMAGE_TILING_OPTIMAL,
@@ -725,11 +725,11 @@ VkFormat Device::impl::findDepthFormat() {
     );
 }
 
-bool Device::impl::hasStencilComponent(VkFormat format) {
+bool Device::M::hasStencilComponent(VkFormat format) {
     return format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT;
 }
 
-void Device::impl::generateMipmaps(VkImage image, VkFormat imageFormat, int32_t texWidth, int32_t texHeight, uint32_t mipLevels) {
+void Device::M::generateMipmaps(VkImage image, VkFormat imageFormat, int32_t texWidth, int32_t texHeight, uint32_t mipLevels) {
     // Check if image format supports linear blitting
     VkFormatProperties formatProperties;
     vkGetPhysicalDeviceFormatProperties(gpu, imageFormat, &formatProperties);
@@ -817,7 +817,7 @@ void Device::impl::generateMipmaps(VkImage image, VkFormat imageFormat, int32_t 
 }
 
 
-VkImageView Device::impl::createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t mipLevels) {
+VkImageView Device::M::createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t mipLevels) {
     VkImageViewCreateInfo viewInfo{};
     viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     viewInfo.image = image;
@@ -837,7 +837,7 @@ VkImageView Device::impl::createImageView(VkImage image, VkFormat format, VkImag
     return imageView;
 }
 
-void Device::impl::createImage(uint32_t width, uint32_t height, uint32_t mipLevels, VkSampleCountFlagBits numSamples,
+void Device::M::createImage(uint32_t width, uint32_t height, uint32_t mipLevels, VkSampleCountFlagBits numSamples,
         VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties,
         VkImage& image, VkDeviceMemory& imageMemory, void *platform_import) {
     VkImageCreateInfo imageInfo{};
@@ -874,7 +874,7 @@ void Device::impl::createImage(uint32_t width, uint32_t height, uint32_t mipLeve
     vkBindImageMemory(device, image, imageMemory, 0);
 }
 
-void Device::impl::transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t mipLevels) {
+void Device::M::transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t mipLevels) {
     VkCommandBuffer commandBuffer = command_begin();
 
     VkImageMemoryBarrier barrier{};
@@ -944,7 +944,7 @@ void Device::impl::transitionImageLayout(VkImage image, VkFormat format, VkImage
     command_submit(commandBuffer);
 }
 
-void Device::impl::copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height) {
+void Device::M::copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height) {
     VkCommandBuffer commandBuffer = command_begin();
 
     VkBufferImageCopy region {
@@ -958,7 +958,7 @@ void Device::impl::copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t wi
     command_submit(commandBuffer);
 }
 
-VkSurfaceFormatKHR Device::impl::chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats) {
+VkSurfaceFormatKHR Device::M::chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats) {
     for (const auto& availableFormat : availableFormats) {
         if (availableFormat.format     == VK_FORMAT_B8G8R8A8_UNORM && // was VK_FORMAT_B8G8R8A8_SRGB (incompatible with png/jpeg loader, internal rgba format)
             availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
@@ -969,7 +969,7 @@ VkSurfaceFormatKHR Device::impl::chooseSwapSurfaceFormat(const std::vector<VkSur
     return availableFormats[0];
 }
 
-VkPresentModeKHR Device::impl::chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) {
+VkPresentModeKHR Device::M::chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) {
     for (const auto& availablePresentMode : availablePresentModes) {
         if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
             return availablePresentMode;
@@ -979,7 +979,7 @@ VkPresentModeKHR Device::impl::chooseSwapPresentMode(const std::vector<VkPresent
     return VK_PRESENT_MODE_FIFO_KHR;
 }
 
-VkExtent2D Device::impl::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities) {
+VkExtent2D Device::M::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities) {
     if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
         return capabilities.currentExtent;
     } else {
@@ -998,7 +998,7 @@ VkExtent2D Device::impl::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabi
     }
 }
 
-void Device::impl::createLogicalDevice() {
+void Device::M::createLogicalDevice() {
     QueueFamilyIndices &indices = gpu->indices;
 
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
@@ -1045,7 +1045,7 @@ void Device::impl::createLogicalDevice() {
     vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
 }
 
-void Device::impl::createSwapChain() {
+void Device::M::createSwapChain() {
     SwapChainSupportDetails &swapChainSupport = gpu->details;//GPU::querySwapChainSupport(gpu);
 
     VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
@@ -1097,7 +1097,7 @@ void Device::impl::createSwapChain() {
     swapChainExtent = extent;
 }
 
-void Device::impl::createImageViews() {
+void Device::M::createImageViews() {
     swapChainImageViews.resize(swapChainImages.size());
 
     for (uint32_t i = 0; i < swapChainImages.size(); i++) {
@@ -1105,7 +1105,7 @@ void Device::impl::createImageViews() {
     }
 }
 
-void Device::impl::createRenderPass() {
+void Device::M::createRenderPass() {
     VkAttachmentDescription colorAttachment{};
     colorAttachment.format = swapChainImageFormat;
     colorAttachment.samples = gpu->msaaSamples;
@@ -1197,7 +1197,7 @@ Device Device::create(Window &gpu) {
     return dev;
 }
 
-void Device::impl::cleanupSwapChain() {
+void Device::M::cleanupSwapChain() {
     vkDestroyImageView(device, depthImageView, nullptr);
     vkDestroyImage(device, depthImage, nullptr);
     vkFreeMemory(device, depthImageMemory, nullptr);
@@ -1217,7 +1217,7 @@ void Device::impl::cleanupSwapChain() {
     vkDestroySwapchainKHR(device, swapChain, nullptr);
 }
 
-Device::impl::~impl() {
+Device::M::~M() {
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
         vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
@@ -1233,19 +1233,19 @@ Device::impl::~impl() {
     cleanupSwapChain();
 }
 
-Texture::impl::~impl() {
+Texture::M::~M() {
     vkDestroySampler    (device, sampler, nullptr);
     vkDestroyImageView  (device, view,    nullptr);
     vkDestroyImage      (device, image,   nullptr);
     vkFreeMemory        (device, memory,  nullptr);
 }
 
-void Texture::impl::create_image_view() {
+void Texture::M::create_image_view() {
     view = device->createImageView(
         image, device->textureFormat, VK_IMAGE_ASPECT_COLOR_BIT, device->mipLevels); // VK_FORMAT_R8G8B8A8_SRGB
 }
 
-void Texture::impl::create_sampler() {
+void Texture::M::create_sampler() {
     VkPhysicalDeviceProperties properties{};
     vkGetPhysicalDeviceProperties(device->gpu, &properties);
 
@@ -1272,25 +1272,25 @@ void Texture::impl::create_sampler() {
     }
 }
 
-void Device::impl::loop(lambda<void(array<Pipeline>&)> select) {
-    array<Pipeline> pipelines;
+void Device::M::loop(lambda<void(array<Pipes>&)> select) {
+    array<Pipes> a_pipes;
     while (!glfwWindowShouldClose(gpu->window)) {
         /// user events fire off (events are processed by the user)
         glfwPollEvents();
 
         /// the user selects pipelines
-        select(pipelines);
+        select(a_pipes);
 
         /// we draw pipelines
-        drawFrame(pipelines);
+        drawFrame(a_pipes);
 
         /// we then reset for next frame
-        pipelines.destruct();
+        a_pipes.destruct();
     }
     vkDeviceWaitIdle(device);
 }
 
-Texture &Window::impl::texture(Device &dev, vec2i sz, bool sampling, VkImageUsageFlagBits usage) {
+Texture &Window::M::texture(Device &dev, vec2i sz, bool sampling, VkImageUsageFlagBits usage) {
     static Texture tx = Texture();
     tx->device = dev;
     tx->format = dev->textureFormat;
@@ -1302,7 +1302,7 @@ Texture &Window::impl::texture(Device &dev, vec2i sz, bool sampling, VkImageUsag
     return tx;
 }
 
-void Texture::impl::update_image(ion::image &img) {
+void Texture::M::update_image(ion::image &img) {
     ion::rgba8 *pixels = img.data;
     vec2i sz = { int(img.width()), int(img.height()) };
     size_t image_size = sz.x * sz.y * 4;
@@ -1338,7 +1338,7 @@ void Texture::impl::update_image(ion::image &img) {
     updated    = true;
 }
 
-void Texture::impl::create_image(array<ion::path> texture_paths, Asset type) {
+void Texture::M::create_image(array<ion::path> texture_paths, Asset type) {
     ion::image img;
 
     /// todo: fix assignment of image not working (the nature of this code is such to avoid it)
@@ -1373,7 +1373,7 @@ void Texture::impl::create_image(array<ion::path> texture_paths, Asset type) {
 }
 
 /// needs a format specifier
-void Texture::impl::create_image(vec2i size) {
+void Texture::M::create_image(vec2i size) {
     int texWidth = size.x, texHeight = size.y, texChannels = 4;
     VkDeviceSize imageSize = size.x * size.y * 4;
     device->mipLevels = 1;
@@ -1424,8 +1424,8 @@ void Texture::update(image img) {
     data->update_image(img);
 }
 
-void Pipeline::impl::createUniformBuffers() {
-    VkDeviceSize bufferSize = gfx->u_type->base_sz; /// was UniformBufferObject
+void Pipeline::M::createUniformBuffers() {
+    VkDeviceSize bufferSize = gfx->utype->base_sz; /// was UniformBufferObject
 
     uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
     uniformBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
@@ -1440,18 +1440,18 @@ void Pipeline::impl::createUniformBuffers() {
     }
 }
 
-VkVertexInputBindingDescription Pipeline::impl::getBindingDescription() {
+VkVertexInputBindingDescription Pipeline::M::getBindingDescription() {
     VkVertexInputBindingDescription bindingDescription{};
     bindingDescription.binding   = 0;
-    bindingDescription.stride    = gfx->v_type->base_sz;
+    bindingDescription.stride    = gfx->vtype->base_sz;
     bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
     return bindingDescription;
 }
 
-std::vector<VkVertexInputAttributeDescription> Pipeline::impl::getAttributeDescriptions() {
+std::vector<VkVertexInputAttributeDescription> Pipeline::M::getAttributeDescriptions() {
     std::vector<VkVertexInputAttributeDescription> attributeDescriptions;
     size_t        index = 0;
-    doubly<prop> &props = *(doubly<prop>*)gfx->v_type->meta;
+    doubly<prop> &props = *(doubly<prop>*)gfx->vtype->meta;
     attributeDescriptions.resize(props->len());
 
     auto get_format = [](prop &p) {
@@ -1475,11 +1475,11 @@ std::vector<VkVertexInputAttributeDescription> Pipeline::impl::getAttributeDescr
     return attributeDescriptions;
 }
 
-void Pipeline::impl::start() {
+void Pipeline::M::start() {
     /// if we are not debugging, load pipeline and never 'reload' again
     /// (we expect resources to be in .spv form)
     if (!is_debug()) {
-        reload();
+        reload(*this);
         init = true;
     } else {
         // while debugging we can adjust resources at runtime
@@ -1506,7 +1506,7 @@ void Pipeline::impl::start() {
                 data->cleanup();
 
             /// perform reload
-            data->reload();
+            data->reload((Pipeline::M&)*data);
             data->init = true;
             data->device->mtx.unlock();
         };
@@ -1520,7 +1520,149 @@ void Pipeline::impl::start() {
     }
 }
 
-void Pipeline::impl::cleanup() {
+void Pipeline::M::assemble_part(Pipeline::M *pipeline, gltf::Model &m, str part) {
+    using namespace gltf;
+
+    type_t vtype = pipeline->gfx->vtype;
+    /// its not terrible in that you could have all actual levels in this file
+    /// its just not lending itself interface-wise to a load specific model with parts in it
+    /// we only want a bunch of parts to a model though; apply the transform too.. (scale & translation)
+    for (Scene &s: m->scenes) {
+        /// nodes schmodes.  parts?.. i would say parts.
+        for (size_t inode: s->nodes) {
+            Node &node = m->nodes [inode];
+            /// load specific node name from node group
+            if (node->name != part) continue;
+            Mesh &mesh = m->meshes[node->mesh];
+            for (Primitive &prim: mesh->primitives) {
+
+                /// for each attrib we fill out the vstride
+                struct vstride {
+                    ion::prop      *prop;
+                    type_t          compound_type;
+                    AssignFn<void>  assign;
+                    Accessor::M    *accessor;
+                    Buffer::M      *buffer;
+                    BufferView::M  *buffer_view;
+                    num             offset;
+                };
+
+                ///
+                array<vstride> strides { prim->attributes->count() };
+                size_t pcount = 0;
+                size_t vlen = 0;
+                for (field<mx> f: prim->attributes) {
+                    str       prop_bind      = f.key.grab();
+                    symbol    prop_sym       = symbol(prop_bind);
+                    num       accessor_index = num(f.value);
+                    Accessor &accessor       = m->accessors[accessor_index];
+
+                    /// all accessors are same length
+                    /// same on our dst
+                    /// the src stride is the size of struct_type[n_components]
+                    
+                    assert(vtype->meta_map);
+                    prop*  p = (*vtype->meta_map)[prop_sym];
+                    assert(p);
+
+                    vstride &stride    = strides[pcount];
+                    stride.prop        = p;
+                    stride.compound_type = p->member_type; /// native glm-type or float
+                    stride.assign      = p->member_type->functions->assign;
+                    stride.accessor    = accessor.data;
+                    stride.buffer_view = m->bufferViews[accessor->bufferView].data;
+                    stride.buffer      = m->buffers[stride.buffer_view->buffer].data;
+                    stride.offset      = stride.prop->offset; /// origin at offset and stride by V type
+                    
+                    if (vlen)
+                        assert(vlen == accessor->count);
+                    else
+                        vlen = accessor->count;
+                    
+                    if (stride.compound_type == typeof(float)) {
+                        assert(accessor->componentType == gltf::ComponentType::FLOAT);
+                        assert(accessor->type == gltf::CompoundType::SCALAR);
+                    }
+                    if (stride.compound_type == typeof(glm::vec2)) {
+                        assert(accessor->componentType == gltf::ComponentType::FLOAT);
+                        assert(accessor->type == gltf::CompoundType::VEC2);
+                    }
+                    if (stride.compound_type == typeof(glm::vec3)) {
+                        assert(accessor->componentType == gltf::ComponentType::FLOAT);
+                        assert(accessor->type == gltf::CompoundType::VEC3);
+                    }
+                    if (stride.compound_type == typeof(glm::vec4)) {
+                        assert(accessor->componentType == gltf::ComponentType::FLOAT);
+                        assert(accessor->type == gltf::CompoundType::VEC4);
+                    }
+                }
+                strides.set_size(pcount);
+
+                /// allocate entire vertex buffer for this 
+                u8 *vbuf = (u8*)vtype->functions->valloc(null, null, vlen);
+                u8 *dst  = vbuf;
+
+                /// copy data into vbuf
+                for (vstride &stride: strides) {
+                    /// offset into src buffer
+                    num src_offset = stride.buffer_view->byteOffset;
+                    /// size of member / accessor compound-type
+                    num src_stride = stride.compound_type->base_sz;
+                    for (num i = 0; i < vlen; i++) {
+                        /// dst: vertex member position
+                        u8 *member = &dst[stride.offset];
+                        /// src: gltf buffer at offset: 
+                        /// buffer-view + [0...accessor-count] * src-stride (same as our type size)
+                        u8 *src    = &stride.buffer->uri[src_offset + src_stride * i];
+                        memcpy(member, src, src_stride);
+                    }
+                    /// next vertex
+                    dst += vtype->base_sz;
+                }
+                /// create vertex buffer by wrapping what we've copied from allocation (we have a primitive array)
+                mx verts { memory::wrap(vtype, vbuf, pcount) }; /// load indices (always store 32bit uint)
+                pipeline->createVertexBuffer(verts);
+
+                /// indices data = indexing mesh-primitive->indices
+                Accessor &a_indices = m->accessors[prim->indices];
+                pipeline->indicesSize = a_indices->count;
+                ///
+                type_t    a_type = typeof(u32);
+                BufferView &view =        m->bufferViews[ a_indices->bufferView ];
+                Buffer      &buf =        m->buffers    [ view->buffer ];
+
+                /// root type would have to be component type for the singular u16, u32
+                u32  *u32_window = (u32*)&buf->uri.data [ view->byteOffset ];
+                assert(a_indices->componentType == ComponentType::UNSIGNED_INT);
+                memory *mem_indices = memory::window(typeof(u32), u32_window, a_indices->count);
+                pipeline->createIndexBuffer(mx(mem_indices));
+                break;
+            }
+            break;
+        }
+    }
+}
+
+void Pipeline::M::createVertexBuffer(mx vertices) {
+    VkDeviceSize bufferSize = vertices.type()->base_sz * vertices.count();
+    VkBuffer stagingBuffer;
+    VkDeviceMemory stagingBufferMemory;
+    device->createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        stagingBuffer, stagingBufferMemory);
+    void* vdata;
+    vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &vdata);
+        memcpy(vdata, vertices.mem->origin, (size_t) bufferSize);
+    vkUnmapMemory(device, stagingBufferMemory);
+    device->createBuffer(bufferSize,
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertexBuffer, vertexBufferMemory);
+    device->copyBuffer(stagingBuffer, vertexBuffer, bufferSize);
+    vkDestroyBuffer(device, stagingBuffer, nullptr);
+    vkFreeMemory(device, stagingBufferMemory, nullptr);
+}
+
+void Pipeline::M::cleanup() {
     vkDestroyPipeline(device, graphicsPipeline, null);
 
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
@@ -1543,12 +1685,12 @@ void Pipeline::impl::cleanup() {
     vkDestroyPipelineLayout      (device, pipelineLayout,       null);
 }
 
-Pipeline::impl::~impl() {
+Pipeline::M::~M() {
     cleanup();
     gmem->drop();
 }
 
-void Pipeline::impl::createIndexBuffer(mx mx_indices) {
+void Pipeline::M::createIndexBuffer(mx mx_indices) {
     assert(mx_indices.type() == typeof(u32));
     array<uint32_t> indices = mx_indices.grab();
     VkDeviceSize bufferSize = sizeof(uint32_t) * indices.len();
@@ -1568,28 +1710,8 @@ void Pipeline::impl::createIndexBuffer(mx mx_indices) {
     vkFreeMemory(device, stagingBufferMemory, nullptr);
 }
 
-void Pipeline::impl::createIndexBuffer(std::vector<uint32_t> &indices) {
-    VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
-    VkBuffer stagingBuffer;
-    VkDeviceMemory stagingBufferMemory;
-
-    device->createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
-    
-    void* vdata;
-    vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &vdata);
-        memcpy(vdata, indices.data(), (size_t) bufferSize);
-    vkUnmapMemory(device, stagingBufferMemory);
-    
-    device->createBuffer(bufferSize,
-        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        indexBuffer, indexBufferMemory);
-    device->copyBuffer(stagingBuffer, indexBuffer, bufferSize);
-    vkDestroyBuffer(device, stagingBuffer, nullptr);
-    vkFreeMemory(device, stagingBufferMemory, nullptr);
-}
 /// the array initializer is quite broken when performing a sized allocation; also code buffer is not sized
-VkShaderModule Pipeline::impl::createShaderModule(const array<char>& code) {
+VkShaderModule Pipeline::M::createShaderModule(const array<char>& code) {
     VkShaderModuleCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
     createInfo.codeSize = code.len();
@@ -1602,7 +1724,7 @@ VkShaderModule Pipeline::impl::createShaderModule(const array<char>& code) {
     return shaderModule;
 }
 
-void Pipeline::impl::createGraphicsPipeline() {
+void Pipeline::M::createGraphicsPipeline() {
     char vert[64];
     char frag[64];
     snprintf(vert, sizeof(vert), "shaders/%s.vert.spv", gfx->shader);
@@ -1730,7 +1852,7 @@ void Pipeline::impl::createGraphicsPipeline() {
 
 
 // fix this, get this working; its basically a duplicate of 
-void Pipeline::impl::createDescriptorSetLayout() {
+void Pipeline::M::createDescriptorSetLayout() {
     VkDescriptorSetLayoutBinding layoutBinding[1 + Asset::count]; // uniform buffer + samplers[asset_count]
     memset(&layoutBinding, 0, sizeof(layoutBinding));
 
@@ -1759,7 +1881,7 @@ void Pipeline::impl::createDescriptorSetLayout() {
     }
 }
 
-void Pipeline::impl::updateDescriptorSets() {
+void Pipeline::M::updateDescriptorSets() {
     bool updated = false;
     for (int a = 0; a < Asset::count; a++) { /// todo: remove 'undefined' Texture enum; very confusing idea!
         if (textures[a]->updated) {
@@ -1774,7 +1896,7 @@ void Pipeline::impl::updateDescriptorSets() {
         VkDescriptorBufferInfo bufferInfo {};
         bufferInfo.buffer = uniformBuffers[i];
         bufferInfo.offset = 0;
-        bufferInfo.range  = gfx->u_type->base_sz;//sizeof(UniformBufferObject);
+        bufferInfo.range  = gfx->utype->base_sz;//sizeof(UniformBufferObject);
 
         std::array<VkWriteDescriptorSet, 1 + Asset::count> descriptorWrites { };
         descriptorWrites[0].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -1811,7 +1933,7 @@ void Pipeline::impl::updateDescriptorSets() {
 }
 
 /// get this working, test this
-void Pipeline::impl::createDescriptorSets() {
+void Pipeline::M::createDescriptorSets() {
     std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descriptorSetLayout);
     VkDescriptorSetAllocateInfo allocInfo {};
     allocInfo.sType                 = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -1826,7 +1948,7 @@ void Pipeline::impl::createDescriptorSets() {
     updateDescriptorSets();
 }
 
-void Pipeline::impl::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
+void Pipeline::M::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
     VkRenderPassBeginInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     renderPassInfo.renderPass = device->renderPass;
@@ -1869,7 +1991,7 @@ void Pipeline::impl::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     vkCmdEndRenderPass(commandBuffer);
 }
 
-void Device::impl::drawFrame(array<Pipeline>& pipelines) {
+void Device::M::drawFrame(array<Pipes>& a_pipes) {
     vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
 
     uint32_t imageIndex;
@@ -1896,13 +2018,16 @@ void Device::impl::drawFrame(array<Pipeline>& pipelines) {
     /// pre commands are run prior to pipelines
     if (preCommands) preCommands(image, cmd);
 
-    /// render pass for each pipeline
-    for (Pipeline &pipeline: pipelines) {
-        pipeline->uniform_update(); /// this user function may update textures in sync with the frame
-        pipeline->updateDescriptorSets(); /// make sure textures are updated
-        pipeline->recordCommandBuffer(cmd, imageIndex);
+    /// array pipes -> array pipelines -> pipeline
+    for (Pipes &pipes: a_pipes) {
+        for (Pipeline &pipeline: pipes->pipelines) {
+            memory *mem = pipeline.grab();
+            pipeline->uniform_update(mem); /// this user function may update textures in sync with the frame
+            mem->drop();
+            pipeline->updateDescriptorSets(); /// make sure textures are updated
+            pipeline->recordCommandBuffer(cmd, imageIndex);
+        }
     }
-
     /// post commands are afterwards (gfx may want to blt vector image on the screen)
     if (postCommands) postCommands(image, cmd);
 

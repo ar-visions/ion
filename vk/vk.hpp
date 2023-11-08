@@ -12,7 +12,7 @@
 #include <glm/gtx/hash.hpp>
 
 /// this belongs here i think
-#include <vk/tiny_obj_loader.h>
+//#include <vk/tiny_obj_loader.h>
 
 #include <mx/mx.hpp>
 #include <media/image.hpp>
@@ -46,20 +46,20 @@ struct QueueFamilyIndices {
 };
 
 struct Vulkan:mx {
-    struct impl {
+    struct M {
         int v_major = 1;
         int v_minor = 0;
         uint32_t version = VK_MAKE_VERSION(1, 0, 0);
         VkApplicationInfo app_info;
         void init();
-        ~impl();
+        ~M();
         VkInstance inst();
         bool check_validation();
         std::vector<symbol> getRequiredExtensions();
         operator bool();
-        type_register(impl);
+        type_register(M);
     };
-    mx_declare(Vulkan, mx, impl);
+    mx_declare(Vulkan, mx, M);
 
     /// need not construct unless we want a specific version other than 1.0
     Vulkan(int v_major, int v_minor):Vulkan() {
@@ -87,7 +87,7 @@ struct Device;
 
 struct Window:mx {
 
-    struct impl {
+    struct M {
         VkInstance              instance;
         VkPhysicalDevice        phys        = VK_NULL_HANDLE;
         VkSampleCountFlagBits   msaaSamples = VK_SAMPLE_COUNT_1_BIT; /// max allowed by this GPU, not the actual sample counts used all the time; it can also force sampling down
@@ -106,9 +106,9 @@ struct Window:mx {
 
         static void framebuffer_resized(GLFWwindow *, int, int);
 
-        ~impl();
+        ~M();
         operator bool() { return phys != VK_NULL_HANDLE; }
-        type_register(impl);
+        type_register(M);
 
         Texture &texture(Device &dev, vec2i sz, bool sampling,
             VkImageUsageFlagBits usage = (VkImageUsageFlagBits)(VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT));
@@ -136,7 +136,7 @@ struct Window:mx {
     
     static Window select(vec2i sz, ResizeFn resize, void *user_data);
     
-    mx_object(Window, mx, impl);
+    mx_object(Window, mx, M);
 };
 
 static void transitionImageLayout(VkCommandBuffer commandBuffer, VkImage image,
@@ -190,8 +190,10 @@ static void transitionImageLayout(VkCommandBuffer commandBuffer, VkImage image,
     );
 }
 
+struct Pipes;
+
 struct Device:mx {
-    struct impl {
+    struct M {
         Window                      gpu;
         VkDevice                    device;
         VkQueue                     graphicsQueue;
@@ -236,7 +238,7 @@ struct Device:mx {
         // resolves colorImage (to resolveImage), transfers resolveImage
         ion::image screenshot();
 
-        void drawFrame(array<Pipeline> &pipelines);
+        void drawFrame(array<Pipes> &a_pipes);
         void recreateSwapChain();
         void createDescriptorPool();
         void createFramebuffers();
@@ -267,16 +269,16 @@ struct Device:mx {
         void createImageViews();
         void createRenderPass();
         void cleanupSwapChain();
-        ~impl();
-        void loop(lambda<void(array<Pipeline>&)>);
+        ~M();
+        void loop(lambda<void(array<Pipes>&)>);
         operator bool() { return device != VK_NULL_HANDLE; }
-        type_register(impl);
+        type_register(M);
     };
 
     static Device create(Window &gpu);
 
     operator VkDevice();
-    mx_object(Device, mx, impl);
+    mx_object(Device, mx, M);
 };
 
 enums(Asset, color, 
@@ -309,7 +311,7 @@ using mesh  = array<ngon>;
 using face  = ngon;
 
 struct Texture:mx {
-    struct impl {
+    struct M {
         Device          device;
         VkImageUsageFlagBits usage;
         VkFormat        format;
@@ -331,49 +333,41 @@ struct Texture:mx {
         void create_image(vec2i sz);
         void update_image(ion::image &img);
         
-        ~impl();
+        ~M();
         operator bool() { return image != VK_NULL_HANDLE; }
-        type_register(impl);
+        type_register(M);
     };
-    mx_object(Texture, mx, impl);
+    mx_object(Texture, mx, M);
 
     static Texture load(Device &dev, symbol name, Asset type);
     void update(image img);
 };
 
 struct GraphicsData {
-    Device device;
+    str    name;
     symbol shader;
-    symbol model;
-    type_t u_type;
-    type_t v_type;
+    type_t utype;
+    type_t vtype;
     ///
     type_register(GraphicsData);
 };
 
-template <typename U, typename V>
 struct Graphics:mx {
-    Graphics(Device device, symbol model, symbol shader = "pbr") : Graphics() {
-        data->device = device;
+    Graphics(symbol name, type_t utype, type_t vtype, symbol shader = "pbr") : Graphics() {
+        data->name   = name;
         data->shader = shader;
-        data->model  = model;
-        data->u_type = typeof(U);
-        data->v_type = typeof(V);
+        data->utype  = utype;
+        data->vtype  = vtype;
     }
     mx_object(Graphics, mx, GraphicsData);
 };
 
-// Now, create a template that will derive from yes or no based on whether T has a member named "tangent"
-template <typename T, typename V = void>
-struct has_tangent : std::false_type {};
-
-// Specialize a version of the template that will only be used if T has a member named "tangent"
-template <typename T>
-struct has_tangent<T, decltype((void) T::tangent, void())> : std::true_type {};
+using MG = map<Graphics>;
 
 struct Pipeline:mx {
-    struct impl {
+    struct M {
         mx                          user; // user data
+        str                         name; // Pipelines represent 'parts' of models and must have a name
         Device                      device;
         memory*                     gmem; // graphics memory (grabbed)
         GraphicsData*               gfx;
@@ -388,8 +382,8 @@ struct Pipeline:mx {
         VkBuffer                    indexBuffer;
         VkDeviceMemory              indexBufferMemory;
         size_t                      indicesSize;
-        lambda<void()>              reload;
-        lambda<void()>              uniform_update;
+        lambda<void(Pipeline::M&)>  reload;
+        lambda<void(memory*)>       uniform_update;
         bool                        init;
         watch                       watcher;
 
@@ -400,10 +394,10 @@ struct Pipeline:mx {
         Texture textures[Asset::count];
 
         void start();
-        void cleanup(); /// impl calls cleanup, but cleanup is called prior to a reload
+        void cleanup(); /// M calls cleanup, but cleanup is called prior to a reload
         void createUniformBuffers();
 
-        ~impl();
+        ~M();
 
         VkShaderModule createShaderModule(const array<char>& code);
 
@@ -412,312 +406,114 @@ struct Pipeline:mx {
         void updateDescriptorSets();
         void createGraphicsPipeline();
 
-        static void tangents(
-            glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, glm::vec2 uv0, glm::vec2 uv1, glm::vec2 uv2,
-            glm::vec3 &tangent) {
-            // Calculate the edge vectors of the triangle.
-            glm::vec3 edge0 = v1 - v0;
-            glm::vec3 edge1 = v2 - v0;
-
-            // Calculate the UV delta vectors.
-            glm::vec2 deltaUV0 = uv1 - uv0;
-            glm::vec2 deltaUV1 = uv2 - uv0;
-
-            // Calculate the tangent
-            float r   = 1.0f / (deltaUV0.x * deltaUV1.y - deltaUV0.y * deltaUV1.x);
-            tangent   = (edge0 * deltaUV1.y - edge1 * deltaUV0.y) * r;
-
-            // Normalize the tangent
-            tangent   = glm::normalize(tangent);
-        }
-
-        /// loadGltf requires you to map the vertex group to a V type.
-        /// convert to use just one type fpr a specific node group
-
-        static map<Pipeline> 
-
-        static void loadGltf(Pipeline &pipeline, ion::path path, str part, map<type_t> node_groups) {
-            using namespace gltf;
-            Model m = Model::load(path);
-            array<u32> indices;
-            
-            /// iterate through node groups; we have a list of nodes to load from this model
-            for (field<type_t> f: node_groups) {
-                str    name  = f.key.grab();
-                type_t vtype = f.value;
-
-                /// its not terrible in that you could have all actual levels in this file
-                /// its just not lending itself interface-wise to a load specific model with parts in it
-                /// we only want a bunch of parts to a model though; apply the transform too.. (scale & translation)
-                for (Scene &s: m->scenes) {
-                    /// nodes schmodes.  parts?.. i would say parts.
-                    for (size_t inode: s->nodes) {
-                        Node &node = m->nodes [inode];
-                        /// load specific node name from node group
-                        if (node->name != name) continue;
-                        Mesh &mesh = m->meshes[node->mesh];
-                        for (Primitive &prim: mesh->primitives) {
-
-                            /// for each attrib we fill out the vstride
-                            struct vstride {
-                                ion::prop      *prop;
-                                type_t          compound_type;
-                                AssignFn<void>  assign;
-                                Accessor::M    *accessor;
-                                Buffer::M      *buffer;
-                                BufferView::M  *buffer_view;
-                                num             offset;
-                            };
-
-                            ///
-                            array<vstride> strides { prim->attributes->count() };
-                            size_t pcount = 0;
-                            size_t vlen = 0;
-                            for (field<mx> f: prim->attributes) {
-                                str       prop_bind      = f.key.grab();
-                                symbol    prop_sym       = symbol(prop_bind);
-                                num       accessor_index = num(f.value);
-                                Accessor &accessor       = m->accessors[accessor_index];
-
-                                /// all accessors are same length
-                                /// same on our dst
-                                /// the src stride is the size of struct_type[n_components]
-                                
-                                assert(vtype->meta_map);
-                                prop*  p = (*vtype->meta_map)[prop_sym];
-                                assert(p);
-
-                                vstride &stride    = strides[pcount];
-                                stride.prop        = p;
-                                stride.compound_type = p->member_type; /// native glm-type or float
-                                stride.assign      = p->member_type->functions->assign;
-                                stride.accessor    = accessor.data;
-                                stride.buffer_view = m->bufferViews[accessor->bufferView].data;
-                                stride.buffer      = m->buffers[stride.buffer_view->buffer].data;
-                                stride.offset      = stride.prop->offset; /// origin at offset and stride by V type
-                                
-                                if (vlen)
-                                    assert(vlen == accessor->count);
-                                else
-                                    vlen = accessor->count;
-                                
-                                if (stride.compound_type == typeof(float)) {
-                                    assert(accessor->componentType == gltf::ComponentType::FLOAT);
-                                    assert(accessor->type == gltf::CompoundType::SCALAR);
-                                }
-                                if (stride.compound_type == typeof(glm::vec2)) {
-                                    assert(accessor->componentType == gltf::ComponentType::FLOAT);
-                                    assert(accessor->type == gltf::CompoundType::VEC2);
-                                }
-                                if (stride.compound_type == typeof(glm::vec3)) {
-                                    assert(accessor->componentType == gltf::ComponentType::FLOAT);
-                                    assert(accessor->type == gltf::CompoundType::VEC3);
-                                }
-                                if (stride.compound_type == typeof(glm::vec4)) {
-                                    assert(accessor->componentType == gltf::ComponentType::FLOAT);
-                                    assert(accessor->type == gltf::CompoundType::VEC4);
-                                }
-                            }
-                            strides.set_size(pcount);
-
-                            /// allocate entire vertex buffer for this 
-                            u8 *vbuf = (u8*)vtype->functions->valloc(null, null, vlen);
-                            u8 *dst  = vbuf;
-
-                            /// copy data into vbuf
-                            for (vstride &stride: strides) {
-                                /// offset into src buffer
-                                num src_offset = stride.buffer_view->byteOffset;
-                                /// size of member / accessor compound-type
-                                num src_stride = stride.compound_type->base_sz;
-                                for (num i = 0; i < vlen; i++) {
-                                    /// dst: vertex member position
-                                    u8 *member = &dst[stride.offset];
-                                    /// src: gltf buffer at offset: 
-                                    /// buffer-view + [0...accessor-count] * src-stride (same as our type size)
-                                    u8 *src    = &stride.buffer->uri[src_offset + src_stride * i];
-                                    memcpy(member, src, src_stride);
-                                }
-                                /// next vertex
-                                dst += vtype->base_sz;
-                            }
-                            /// create vertex buffer by wrapping what we've copied from allocation (we have a primitive array)
-                            mx verts { memory::wrap(vtype, vbuf, pcount) }; /// load indices (always store 32bit uint)
-                            pipeline.createVertexBuffer(verts);
-
-                            /// indices data = indexing mesh-primitive->indices
-                            Accessor &a_indices = m->accessors[prim->indices];
-                            pipeline.indicesSize = a_indices->count;
-                            ///
-                            type_t    a_type = typeof(u32);
-                            BufferView &view =        m->bufferViews[ a_indices->bufferView ];
-                            Buffer      &buf =        m->buffers    [ view->buffer ];
-
-                            /// root type would have to be component type for the singular u16, u32
-                            u32  *u32_window = (u32*)&buf->uri.data [ view->byteOffset ];
-                            assert(a_indices->componentType == ComponentType::UNSIGNED_INT);
-                            memory *mem_indices = memory::window(typeof(u32), u32_window, a_indices->count);
-                            pipeline.createIndexBuffer(mx(mem_indices));
-                            break;
-                        }
-                        break;
-                    }
-                }
-            }
-        }
-
-        template <typename V>
-        void loadModel(cstr obj) {
-            tinyobj::attrib_t                   attrib;
-            std::vector<tinyobj::shape_t>       shapes;
-            std::vector<tinyobj::material_t>    materials;
-            std::string                         warn, err;
-
-            if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, (symbol)obj)) {
-                throw std::runtime_error(warn + err);
-            }
-
-            std::vector<V>        vertices(attrib.vertices.size());
-            std::vector<bool>     emitted(attrib.vertices.size());
-            std::vector<uint32_t> indices (indicesSize);
-            size_t                cur = 0;
-            auto                  uniqueVertices = std::unordered_map<V, uint32_t> { };
-
-            for (const auto& shape : shapes) {
-                for (const auto& index : shape.mesh.indices) {
-                    V vertex {
-                        attrib.vertices.data(),  index.vertex_index,
-                        attrib.texcoords.data(), index.texcoord_index,
-                        attrib.normals.data(),   index.normal_index };
-
-                    if (uniqueVertices.count(vertex) == 0) {
-                        uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
-                        vertices.push_back(vertex);
-                    }
-                    indices.push_back(uniqueVertices[vertex]);
-                }
-            }
-
-            if constexpr (has_tangent<V>::value)
-                for (size_t i = 0; i < indices.size(); i += 3) {
-                    V &v0 = vertices[indices[i + 0]];
-                    V &v1 = vertices[indices[i + 1]];
-                    V &v2 = vertices[indices[i + 2]];
-
-                    glm::vec3 tangent;
-                    tangents(v0.pos, v1.pos, v2.pos,
-                             v0.uv,  v1.uv,  v2.uv,
-                            tangent);
-
-                    v0.tangent = tangent;
-                    v1.tangent = tangent;
-                    v2.tangent = tangent;
-                }
-
-            indicesSize = indices.size();
-            createVertexBuffer(vertices);
-            createIndexBuffer(indices);
-        }
-
-        void createVertexBuffer(mx vertices) {
-            VkDeviceSize bufferSize = vertices.type()->base_sz * vertices.count();
-            VkBuffer stagingBuffer;
-            VkDeviceMemory stagingBufferMemory;
-            device->createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                stagingBuffer, stagingBufferMemory);
-            void* vdata;
-            vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &vdata);
-                memcpy(vdata, vertices.mem->origin, (size_t) bufferSize);
-            vkUnmapMemory(device, stagingBufferMemory);
-            device->createBuffer(bufferSize,
-                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertexBuffer, vertexBufferMemory);
-            device->copyBuffer(stagingBuffer, vertexBuffer, bufferSize);
-            vkDestroyBuffer(device, stagingBuffer, nullptr);
-            vkFreeMemory(device, stagingBufferMemory, nullptr);
-        }
         
-        template <typename V>
-        void createVertexBuffer(std::vector<V> &vertices) {
-            VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
-            VkBuffer stagingBuffer;
-            VkDeviceMemory stagingBufferMemory;
-            device->createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                stagingBuffer, stagingBufferMemory);
-            void* vdata;
-            vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &vdata);
-                memcpy(vdata, vertices.data(), (size_t) bufferSize);
-            vkUnmapMemory(device, stagingBufferMemory);
-            device->createBuffer(bufferSize,
-                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertexBuffer, vertexBufferMemory);
-            device->copyBuffer(stagingBuffer, vertexBuffer, bufferSize);
-            vkDestroyBuffer(device, stagingBuffer, nullptr);
-            vkFreeMemory(device, stagingBufferMemory, nullptr);
-        }
+        /// initialize vertex array, and index arrays
+        static void assemble_part(Pipeline::M *pipeline, gltf::Model &m, str part);
 
+        void createVertexBuffer(mx vertices);
         void createIndexBuffer(mx indices);
-        void createIndexBuffer(std::vector<uint32_t> &indices);
 
         VkVertexInputBindingDescription getBindingDescription();
         std::vector<VkVertexInputAttributeDescription> getAttributeDescriptions();
 
         void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
         operator bool() { return graphicsPipeline != VK_NULL_HANDLE; }
-        type_register(impl);
+        type_register(M);
     };
-
-    mx_object(Pipeline, mx, impl);
 
     /// pipelines track themselves, and notify the user (the app that a reload is happening [likely needed for status/logging alone?])
     /// important to note that Device is not reloaded
     /// if you have 40 pipelines and 1 file changes associated to one of them, we are not rebuilding all 40, just 1.
-    template <typename U, typename V>
-    Pipeline(Graphics<U,V> graphics):Pipeline() { /// instead of a texture it needs flags for the resources to load
+    Pipeline(Device &device, Graphics graphics):Pipeline() { /// instead of a texture it needs flags for the resources to load
         data->gmem           = graphics.grab(); /// just so we can hold onto the data; we must drop this in our dtr
         data->gfx            = graphics.data;
-        data->device         = data->gfx->device;
-        
-        data->uniform_update = [data=data]() {
-            U ubo {};
-            ubo.update(data);
-            memcpy(data->uniformBuffersMapped[data->device->currentFrame], &ubo, sizeof(ubo));
+        data->device         = device;
+        data->name           = graphics->name;
+    }
+
+    mx_object(Pipeline, mx, M);
+};
+
+/// for Daniel to call back.. they got tired of calling
+struct Pipes:mx {
+    struct M {
+        Device                      device;
+        gltf::Model                 m;
+        symbol                      model;
+        array<Texture>              textures;
+        array<Pipeline>             pipelines;
+        lambda<void(Pipeline::M&)>  reload;
+        lambda<void(memory*)>       uniform_update;
+        register(M);
+    };
+
+    mx_basic(Pipes);
+
+    /// alternately Pipeline could be a vector of Parts data; i just need this simplicity now
+    Pipes(Device &device, symbol model, array<Graphics> parts):Pipes() { /// major change: parts uses Graphics
+        using namespace gltf;
+
+        path gltf_path = fmt {"models/{0}.gltf", { model }};
+        data->device = device;
+        data->model = model;
+        data->m = Model::load(gltf_path);
+
+        /// all pipelines must use same Device
+        for (Graphics &gfx: parts)
+            data->pipelines += Pipeline(device, gfx);
+
+        auto reload_textures = [data=data, model=model]() {
+            for (size_t i = 0; i < Asset::count; i++) /// todo: check against usage map to see if the texture applies and should be loaded
+                data->textures[i] = Texture::load(data->device, model, Asset(i));
         };
 
-        data->reload       = [data=data]() { /// this will need a proper cleanup proc in itsself
-            data->binding_desc = data->getBindingDescription();
-            data->attr_desc    = data->getAttributeDescriptions();
-            
-            data->createUniformBuffers();
-            data->createDescriptorSetLayout();
-            data->createGraphicsPipeline();
+        reload_textures();
+                
+        /// it would be best to make this one runtime
+        data->uniform_update = [data=data](memory *pipeline_mem) {
+            Pipeline::M *p   = (Pipeline::M *)pipeline_mem->origin;
+            static void *ubo = p->gfx->utype->functions->alloc_new(null, null); /// not a leak.  its a singleton
+            p->gfx->utype->functions->process(ubo, pipeline_mem);
+            memcpy(p->uniformBuffersMapped[p->device->currentFrame], ubo, p->gfx->utype->base_sz);
+        };
+
+        data->reload = [data=data, reload_textures=reload_textures](Pipeline::M &p) { /// this will need a proper cleanup proc in itsself
+            p.binding_desc = p.getBindingDescription();
+            p.attr_desc    = p.getAttributeDescriptions();
+            p.createUniformBuffers();
+            p.createDescriptorSetLayout();
+            p.createGraphicsPipeline();
+
+            reload_textures();
 
             /// load texture assets for all enumerables (minus undefined)
-            for (size_t i = 0; i < Asset::count; i++)
-                data->textures[i] = Texture::load(
-                    data->gfx->device, data->gfx->model, Asset(i));
-
-            str model = data->gfx->model;
-            path g = fmt {"models/{0}.gltf", { model }};
-            if (g.exists()) {
-                map<type_t> parts = {
-                    { model, typeof(V) }
-                };
-                data->loadGltf(g, parts);
-            } else {
-                path p = fmt {"models/{0}.obj",  { str(data->gfx->model) }};
-                console.test(p.exists(), "model resource not found");
-                data->template loadModel<V>(p.cs());
-            }
-
-            data->createDescriptorSets();
+            for (size_t i = 0; i < Asset::count; i++) /// todo: check against usage map to see if the texture applies and should be loaded
+                p.textures[i] = data->textures[i];
+            
+            Pipeline::M::assemble_part(&p, data->m, p.name);
+            p.createDescriptorSets();
         };
 
-        /// start monitoring for changes, also recompiles shaders each time (if a shader does not compile on first go, it will error right away and thats useful)
-        data->start(); /// the monitor needs the shader and the model so it can extrapolate what to listen for
+        for (Pipeline &p: data->pipelines) {
+            p->uniform_update = data->uniform_update;
+            p->reload = data->reload;
+            p->start();
+        }
+    }
+
+    Pipeline &operator[](str s) {
+        for (Pipeline &p: data->pipelines) {
+            if (s == p->name)
+                return p;
+        }
+        assert(false);
+        static Pipeline def;
+        return def;
     }
 };
+
+
+
+
 
 }
