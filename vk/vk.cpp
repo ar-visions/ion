@@ -1540,7 +1540,6 @@ void Pipeline::M::assemble_part(Pipeline::M *pipeline, gltf::Model &m, str part)
                 struct vstride {
                     ion::prop      *prop;
                     type_t          compound_type;
-                    AssignFn<void>  assign;
                     Accessor::M    *accessor;
                     Buffer::M      *buffer;
                     BufferView::M  *buffer_view;
@@ -1565,10 +1564,9 @@ void Pipeline::M::assemble_part(Pipeline::M *pipeline, gltf::Model &m, str part)
                     prop*  p = (*vtype->meta_map)[prop_sym];
                     assert(p);
 
-                    vstride &stride    = strides[pcount];
+                    vstride &stride    = strides[pcount++];
                     stride.prop        = p;
                     stride.compound_type = p->member_type; /// native glm-type or float
-                    stride.assign      = p->member_type->functions->assign;
                     stride.accessor    = accessor.data;
                     stride.buffer_view = m->bufferViews[accessor->bufferView].data;
                     stride.buffer      = m->buffers[stride.buffer_view->buffer].data;
@@ -1599,7 +1597,7 @@ void Pipeline::M::assemble_part(Pipeline::M *pipeline, gltf::Model &m, str part)
                 strides.set_size(pcount);
 
                 /// allocate entire vertex buffer for this 
-                u8 *vbuf = (u8*)vtype->functions->valloc(null, null, vlen);
+                u8 *vbuf = (u8*)calloc(vlen, vtype->base_sz);
                 u8 *dst  = vbuf;
 
                 /// copy data into vbuf
@@ -1620,7 +1618,7 @@ void Pipeline::M::assemble_part(Pipeline::M *pipeline, gltf::Model &m, str part)
                     dst += vtype->base_sz;
                 }
                 /// create vertex buffer by wrapping what we've copied from allocation (we have a primitive array)
-                mx verts { memory::wrap(vtype, vbuf, pcount) }; /// load indices (always store 32bit uint)
+                mx verts { memory::wrap(vtype, vbuf, vlen) }; /// load indices (always store 32bit uint)
                 pipeline->createVertexBuffer(verts);
 
                 /// indices data = indexing mesh-primitive->indices
