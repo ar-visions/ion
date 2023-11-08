@@ -1528,7 +1528,7 @@ void Pipeline::M::assemble_part(Pipeline::M *pipeline, gltf::Model &m, str part)
     /// its just not lending itself interface-wise to a load specific model with parts in it
     /// we only want a bunch of parts to a model though; apply the transform too.. (scale & translation)
     for (Scene &s: m->scenes) {
-        /// nodes schmodes.  parts?.. i would say parts.
+        /// iterate through node indices
         for (size_t inode: s->nodes) {
             Node &node = m->nodes [inode];
             /// load specific node name from node group
@@ -1981,7 +1981,7 @@ void Pipeline::M::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t im
         scissor.extent = device->swapChainExtent;
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-        VkBuffer vertexBuffers[] = {vertexBuffer};
+        VkBuffer vertexBuffers[] = {vertexBuffer}; // vertexBuffer = 0x00!
         VkDeviceSize offsets[] = {0};
         vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
         vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);

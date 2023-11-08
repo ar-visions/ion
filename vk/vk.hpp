@@ -440,7 +440,7 @@ struct Pipes:mx {
         Device                      device;
         gltf::Model                 m;
         symbol                      model;
-        array<Texture>              textures;
+        array<Texture>              textures { Asset::count };
         array<Pipeline>             pipelines;
         lambda<void(Pipeline::M&)>  reload;
         lambda<void(memory*)>       uniform_update;
@@ -463,8 +463,12 @@ struct Pipes:mx {
             data->pipelines += Pipeline(device, gfx);
 
         auto reload_textures = [data=data, model=model]() {
-            for (size_t i = 0; i < Asset::count; i++) /// todo: check against usage map to see if the texture applies and should be loaded
-                data->textures[i] = Texture::load(data->device, model, Asset(i));
+            static bool loaded = false;
+            if (!loaded) { /// add watch ability back to this with a cache
+                for (size_t i = 0; i < Asset::count; i++) /// todo: check against usage map to see if the texture applies and should be loaded
+                    data->textures[i] = Texture::load(data->device, model, Asset(i));
+                loaded = true;
+            }
         };
 
         reload_textures();
