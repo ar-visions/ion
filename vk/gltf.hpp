@@ -83,10 +83,9 @@ namespace gltf {
             doubly<prop> meta() {
                 return {
                     { "name",          name        },
-                    { "mesh",          mesh        },
-                    { "rotation",      rotation    },
-                    { "scale",         scale       },
-                    { "translation",   translation }
+                    { "mesh",          mesh        }
+                    /// no longer planning on supporting the rotation scale and translation.
+                    /// just apply those. also bake your materials.. use SimpleBake and make use of multiple channels
                 };
             }
             register(M);
@@ -153,11 +152,13 @@ namespace gltf {
     struct AssetDesc:mx {
         struct M {
             str generator;
+            str copyright;
             str version;
             ///
             doubly<prop> meta() {
                 return {
                     { "generator", generator },
+                    { "copyright", copyright },
                     { "version",   version   }
                 };
             }

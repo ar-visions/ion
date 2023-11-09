@@ -1598,11 +1598,12 @@ void Pipeline::M::assemble_part(Pipeline::M *pipeline, gltf::Model &m, str part)
 
                 /// allocate entire vertex buffer for this 
                 u8 *vbuf = (u8*)calloc(vlen, vtype->base_sz);
-                u8 *dst  = vbuf;
+                
 
                 /// copy data into vbuf
                 for (vstride &stride: strides) {
                     /// offset into src buffer
+                    u8 *dst        = vbuf;
                     num src_offset = stride.buffer_view->byteOffset;
                     /// size of member / accessor compound-type
                     num src_stride = stride.compound_type->base_sz;
@@ -1613,9 +1614,9 @@ void Pipeline::M::assemble_part(Pipeline::M *pipeline, gltf::Model &m, str part)
                         /// buffer-view + [0...accessor-count] * src-stride (same as our type size)
                         u8 *src    = &stride.buffer->uri[src_offset + src_stride * i];
                         memcpy(member, src, src_stride);
+                        /// next vertex
+                        dst += vtype->base_sz;
                     }
-                    /// next vertex
-                    dst += vtype->base_sz;
                 }
                 /// create vertex buffer by wrapping what we've copied from allocation (we have a primitive array)
                 mx verts { memory::wrap(vtype, vbuf, vlen) }; /// load indices (always store 32bit uint)
@@ -1626,11 +1627,37 @@ void Pipeline::M::assemble_part(Pipeline::M *pipeline, gltf::Model &m, str part)
                 pipeline->indicesSize = a_indices->count;
                 ///
                 type_t    a_type = typeof(u32);
-                BufferView &view =        m->bufferViews[ a_indices->bufferView ];
-                Buffer      &buf =        m->buffers    [ view->buffer ];
+                BufferView &view = m->bufferViews[ a_indices->bufferView ];
+                Buffer      &buf = m->buffers    [ view->buffer ];
 
                 /// root type would have to be component type for the singular u16, u32
-                u32  *u32_window = (u32*)&buf->uri.data [ view->byteOffset ];
+                u32  *u32_window = (u32*)(buf->uri.data + view->byteOffset);
+
+                #if 0
+                u32 i0 = u32_window[0 + 0];
+                u32 i1 = u32_window[0 + 1];
+                u32 i2 = u32_window[0 + 2];
+
+                u32 i02 = u32_window[3 + 0];
+                u32 i12 = u32_window[3 + 1];
+                u32 i22 = u32_window[3 + 2];
+                
+                struct Vertex_ {
+                    glm::vec3 pos;
+                    glm::vec3 normal;
+                    glm::vec4 tangent;
+                    glm::vec2 uv;
+                };
+                Vertex_ *v  = (Vertex_*)verts.mem->origin;
+                Vertex_ *v0 = &v[i0];
+                Vertex_ *v1 = &v[i1];
+                Vertex_ *v2 = &v[i2];
+
+                Vertex_ *v02 = &v[i02]; /// this is all 0.
+                Vertex_ *v12 = &v[i12];
+                Vertex_ *v22 = &v[i22];
+                #endif
+                
                 assert(a_indices->componentType == ComponentType::UNSIGNED_INT);
                 memory *mem_indices = memory::window(typeof(u32), u32_window, a_indices->count);
                 pipeline->createIndexBuffer(mx(mem_indices));
