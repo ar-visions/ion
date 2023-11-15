@@ -329,7 +329,7 @@ struct Texture:mx {
         
         void create_image_view();
         void create_sampler();
-        void create_image(array<ion::path> texture_paths, Asset type); // VK_FORMAT_R8G8B8A8_SRGB
+        void create_image(ion::image img, Asset type); // VK_FORMAT_R8G8B8A8_SRGB
         void create_image(vec2i sz);
         void update_image(ion::image &img);
         
@@ -339,25 +339,32 @@ struct Texture:mx {
     };
     mx_object(Texture, mx, M);
 
-    static Texture load(Device &dev, symbol name, Asset type);
+    static Texture    load(Device &dev, symbol name, Asset type);
+    static ion::image asset_image(symbol name, Asset type);
+    static Texture    from_image(Device &dev, image img, Asset type);
+
     void update(image img);
 };
+
+using GraphicsGen = lambda<void(mx&,mx&,array<image>&)>;
 
 struct GraphicsData {
     str    name;
     symbol shader;
     type_t utype;
     type_t vtype;
+    GraphicsGen gen;
     ///
     type_register(GraphicsData);
 };
 
 struct Graphics:mx {
-    Graphics(symbol name, type_t utype, type_t vtype, symbol shader = "pbr") : Graphics() {
+    Graphics(symbol name, type_t utype, type_t vtype, symbol shader = "pbr", GraphicsGen gen = null) : Graphics() {
         data->name   = name;
         data->shader = shader;
         data->utype  = utype;
         data->vtype  = vtype;
+        data->gen    = gen;
     }
     mx_object(Graphics, mx, GraphicsData);
 };
@@ -370,7 +377,7 @@ struct Pipeline:mx {
         str                         name; // Pipelines represent 'parts' of models and must have a name
         Device                      device;
         memory*                     gmem; // graphics memory (grabbed)
-        GraphicsData*               gfx;
+        Graphics                    gfx;
         std::vector<VkBuffer>       uniformBuffers;
         std::vector<VkDeviceMemory> uniformBuffersMemory;
         std::vector<void*>          uniformBuffersMapped;
@@ -408,7 +415,7 @@ struct Pipeline:mx {
 
         
         /// initialize vertex array, and index arrays
-        static void assemble_part(Pipeline::M *pipeline, gltf::Model &m, str part);
+        static void assemble_graphics(Pipeline::M *pipeline, gltf::Model &m, Graphics &gfx);
 
         void createVertexBuffer(mx vertices);
         void createIndexBuffer(mx indices);
@@ -452,11 +459,12 @@ struct Pipes:mx {
     /// alternately Pipeline could be a vector of Parts data; i just need this simplicity now
     Pipes(Device &device, symbol model, array<Graphics> parts):Pipes() { /// major change: parts uses Graphics
         using namespace gltf;
-
-        path gltf_path = fmt {"models/{0}.gltf", { model }};
         data->device = device;
         data->model = model;
-        data->m = Model::load(gltf_path);
+        if (model) {
+            path gltf_path = fmt {"models/{0}.gltf", { model }};
+            data->m = Model::load(gltf_path);
+        }
 
         /// all pipelines must use same Device
         for (Graphics &gfx: parts)
@@ -470,8 +478,6 @@ struct Pipes:mx {
                 loaded = true;
             }
         };
-
-        reload_textures();
                 
         /// it would be best to make this one runtime
         data->uniform_update = [data=data](memory *pipeline_mem) {
@@ -494,7 +500,7 @@ struct Pipes:mx {
             for (size_t i = 0; i < Asset::count; i++) /// todo: check against usage map to see if the texture applies and should be loaded
                 p.textures[i] = data->textures[i];
             
-            Pipeline::M::assemble_part(&p, data->m, p.name);
+            Pipeline::M::assemble_graphics(&p, data->m, p.gfx);
             p.createDescriptorSets();
         };
 
@@ -503,6 +509,7 @@ struct Pipes:mx {
             p->reload = data->reload;
             p->start();
         }
+        reload_textures();
     }
 
     Pipeline &operator[](str s) {

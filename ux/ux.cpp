@@ -49,6 +49,9 @@ void dispatch::operator()(event e) {
 
 void Element::focused()   { }
 void Element::unfocused() { }
+void Element::move()      { }
+void Element::down()      { }
+void Element::up()        { }
 
 doubly<LineInfo> &Element::get_lines(Canvas *p_canvas) {
 

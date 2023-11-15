@@ -44,5 +44,6 @@ struct Canvas:mx {
     void fill(graphics::shape path);
     void clip(graphics::shape path);
     void gaussian(vec2d sz, rectd crop);
+    void arc(glm::vec3 pos, real radius, real startAngle, real endAngle, bool is_fill = false);
 };
 }

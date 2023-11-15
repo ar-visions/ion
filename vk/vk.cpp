@@ -1338,17 +1338,7 @@ void Texture::M::update_image(ion::image &img) {
     updated    = true;
 }
 
-void Texture::M::create_image(array<ion::path> texture_paths, Asset type) {
-    ion::image img;
-
-    /// todo: fix assignment of image not working (the nature of this code is such to avoid it)
-    /// load from first path that exists
-    for (ion::path &p: texture_paths) {
-        if (p.exists()) {
-            img = ion::image(p);
-            break;
-        }
-    }
+void Texture::M::create_image(ion::image img, Asset type) {
     /// otherwise create a blank image; based on asset type, it will be black or white
     if (!img) {
         img = ion::size { 2, 2 };
@@ -1403,21 +1393,33 @@ void Texture::M::create_image(vec2i size) {
     sz     = size;
 }
 
-/// make this not a static method; change the texture already in memory
-Texture Texture::load(Device &dev, symbol name, Asset type) {
-    Texture tx;
+ion::image Texture::asset_image(symbol name, Asset type) {
     array<ion::path> paths = {
         fmt {"textures/{0}.{1}.png", { name, type.symbol() }},
         fmt {"textures/{0}.png",     { type.symbol() }}
     };
+    for (ion::path &p: paths) {
+        if (p.exists())
+            return ion::image(p);
+    }
+    return null;
+}
+
+Texture Texture::from_image(Device &dev, image img, Asset type) {
+    Texture tx;
     //assert(path.exists());
     tx->device = dev;
     tx->format = dev->swapChainImageFormat;
     tx->usage  = VkImageUsageFlagBits(VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
-    tx->create_image(paths, type);
+    tx->create_image(img, type);
     tx->create_image_view();
     tx->create_sampler();
     return tx;
+}
+
+/// make this not a static method; change the texture already in memory
+Texture Texture::load(Device &dev, symbol name, Asset type) {
+    return from_image(dev, asset_image(name, type), type);
 }
 
 void Texture::update(image img) {
@@ -1520,13 +1522,11 @@ void Pipeline::M::start() {
     }
 }
 
-void Pipeline::M::assemble_part(Pipeline::M *pipeline, gltf::Model &m, str part) {
+void Pipeline::M::assemble_graphics(Pipeline::M *pipeline, gltf::Model &m, Graphics &gfx) {
     using namespace gltf;
-
+    
+    str part = gfx->name;
     type_t vtype = pipeline->gfx->vtype;
-    /// its not terrible in that you could have all actual levels in this file
-    /// its just not lending itself interface-wise to a load specific model with parts in it
-    /// we only want a bunch of parts to a model though; apply the transform too.. (scale & translation)
     for (Scene &s: m->scenes) {
         /// iterate through node indices
         for (size_t inode: s->nodes) {
@@ -1556,10 +1556,7 @@ void Pipeline::M::assemble_part(Pipeline::M *pipeline, gltf::Model &m, str part)
                     num       accessor_index = num(f.value);
                     Accessor &accessor       = m->accessors[accessor_index];
 
-                    /// all accessors are same length
-                    /// same on our dst
                     /// the src stride is the size of struct_type[n_components]
-                    
                     assert(vtype->meta_map);
                     prop*  p = (*vtype->meta_map)[prop_sym];
                     assert(p);
@@ -1614,6 +1611,7 @@ void Pipeline::M::assemble_part(Pipeline::M *pipeline, gltf::Model &m, str part)
                         /// buffer-view + [0...accessor-count] * src-stride (same as our type size)
                         u8 *src    = &stride.buffer->uri[src_offset + src_stride * i];
                         memcpy(member, src, src_stride);
+
                         /// next vertex
                         dst += vtype->base_sz;
                     }
@@ -1624,42 +1622,22 @@ void Pipeline::M::assemble_part(Pipeline::M *pipeline, gltf::Model &m, str part)
 
                 /// indices data = indexing mesh-primitive->indices
                 Accessor &a_indices = m->accessors[prim->indices];
-                pipeline->indicesSize = a_indices->count;
-                ///
-                type_t    a_type = typeof(u32);
                 BufferView &view = m->bufferViews[ a_indices->bufferView ];
                 Buffer      &buf = m->buffers    [ view->buffer ];
+                memory *mem_indices;
 
-                /// root type would have to be component type for the singular u16, u32
-                u32  *u32_window = (u32*)(buf->uri.data + view->byteOffset);
-
-                #if 0
-                u32 i0 = u32_window[0 + 0];
-                u32 i1 = u32_window[0 + 1];
-                u32 i2 = u32_window[0 + 2];
-
-                u32 i02 = u32_window[3 + 0];
-                u32 i12 = u32_window[3 + 1];
-                u32 i22 = u32_window[3 + 2];
-                
-                struct Vertex_ {
-                    glm::vec3 pos;
-                    glm::vec3 normal;
-                    glm::vec4 tangent;
-                    glm::vec2 uv;
-                };
-                Vertex_ *v  = (Vertex_*)verts.mem->origin;
-                Vertex_ *v0 = &v[i0];
-                Vertex_ *v1 = &v[i1];
-                Vertex_ *v2 = &v[i2];
-
-                Vertex_ *v02 = &v[i02]; /// this is all 0.
-                Vertex_ *v12 = &v[i12];
-                Vertex_ *v22 = &v[i22];
-                #endif
-                
-                assert(a_indices->componentType == ComponentType::UNSIGNED_INT);
-                memory *mem_indices = memory::window(typeof(u32), u32_window, a_indices->count);
+                pipeline->indicesSize = a_indices->count;
+                if (a_indices->componentType == ComponentType::UNSIGNED_SHORT) {
+                    u16 *u16_window = (u16*)(buf->uri.data + view->byteOffset);
+                    u32 *u32_alloc  = (u32*)calloc(sizeof(u32), a_indices->count);
+                    for (int i = 0; i < a_indices->count; i++)
+                        u32_alloc[i] = u32(u16_window[i]);
+                    mem_indices = memory::wrap(typeof(u32), u32_alloc, a_indices->count);
+                } else {
+                    assert(a_indices->componentType == ComponentType::UNSIGNED_INT);
+                    u32 *u32_window = (u32*)(buf->uri.data + view->byteOffset);
+                    mem_indices = memory::window(typeof(u32), u32_window, a_indices->count);
+                }
                 pipeline->createIndexBuffer(mx(mem_indices));
                 break;
             }

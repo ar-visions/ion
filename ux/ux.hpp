@@ -699,6 +699,9 @@ struct Element:node {
 
     virtual void focused();
     virtual void unfocused();
+    virtual void move();
+    virtual void down();
+    virtual void up();
     virtual void draw_text(Canvas& canvas, rectd& rect);
     virtual void draw(Canvas& canvas);
 

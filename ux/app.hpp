@@ -30,6 +30,14 @@ struct App:composer {
         data->app_fn = app_fn;
     }
 
+    bool is_hovering(Element *e) {
+        return data->hover.index_of(e) >= 0;
+    }
+
+    bool is_active(Element *e) {
+        return data->active.index_of(e) >= 0;
+    }
+
     void shell_server(uri url);
     int run();
     
@@ -52,7 +60,7 @@ struct App:composer {
                 Element::props *edata = e->data;
                 rectd &bounds = ee->data->fill_bounds ? ee->data->fill_bounds : ee->data->bounds;
                 bool in = bounds.contains(rel);
-                e->data->cursor = in ? vec2d(x, y) : vec2d(-1, -1);
+                e->data->cursor = vec2d(x - o.x, y - o.y);
                 return (in && (!active || !edata->active)) ? ee : null;
             });
             array<Element*> actives = e->select([&](Element *ee) -> Element* {

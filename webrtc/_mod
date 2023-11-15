@@ -1,0 +1,110 @@
+
+dep(ion:net ion:ux juice:juice srtp:srtp2 usrsctp:usrsctp)
+
+if(APPLE)
+    dep(AVFoundation VideoToolbox)
+else()
+    src(nvenc/NvEncoder.cpp
+        nvenc/NvEncoderD3D11.cpp)
+    if(UNIX)
+        dep(X11 EGL GLX GL glut nvcuvid nvidia-encode xcb-xkb xkbcommon xkbcommon-x11 Xcomposite)
+    else()
+        dep(nvcuvid nvencodeapi Windowscodecs windowsapp dwmapi advapi32 uuid bcrypt msvcrt d3d11 dxgi dxgi11)
+    endif()
+endif()
+
+# wide-linking interns (the order must prefer impl first)
+includes(${p})
+includes(${p}/src)
+includes(${p}/rtc)
+includes(${p}/impl)
+
+if(APPLE)
+    file(TO_CMAKE_PATH "$ENV{VULKAN_SDK}/macOS/include" VULKAN_INCLUDE)
+    includes(${VULKAN_INCLUDE})
+elseif(UNIX)
+    # this is installed with a package currently
+    #file(TO_CMAKE_PATH "$ENV{VULKAN_SDK}/include" VULKAN_INCLUDE)
+else()
+    file(TO_CMAKE_PATH "$ENV{VULKAN_SDK}/Include" VULKAN_INCLUDE)
+    includes(${VULKAN_INCLUDE})
+endif()
+
+# MBEDTLS_SSL_DTLS_SRTP
+
+defines(
+    USE_MBEDTLS
+    RTC_EXPORTS
+    RTC_SYSTEM_JUICE
+    RTC_SYSTEM_SRTP
+    RTC_ENABLE_WEBSOCKET
+    RTC_ENABLE_MEDIA
+    WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS)
+
+src(src/av1packetizationhandler.cpp
+    src/av1rtppacketizer.cpp
+    src/candidate.cpp
+    src/capi.cpp
+    src/channel.cpp
+    src/configuration.cpp
+    src/datachannel.cpp
+    src/description.cpp
+    src/global.cpp
+    src/h264packetizationhandler.cpp
+    src/h264rtppacketizer.cpp
+    src/mediachainablehandler.cpp
+    src/mediahandlerelement.cpp
+    src/mediahandlerrootelement.cpp
+    src/message.cpp
+    src/nalunit.cpp
+    src/opuspacketizationhandler.cpp
+    src/opusrtppacketizer.cpp
+    src/peerconnection.cpp
+    src/rtcpnackresponder.cpp
+    src/rtcpreceivingsession.cpp
+    src/rtcpsrreporter.cpp
+    src/rtp.cpp
+    src/rtppacketizationconfig.cpp
+    src/rtppacketizer.cpp
+    src/track.cpp
+    src/websocket.cpp
+    src/websocketserver.cpp)
+
+src(impl/wstransport.cpp
+    impl/certificate.cpp
+    impl/channel.cpp
+    impl/datachannel.cpp
+    impl/dtlssrtptransport.cpp
+    impl/dtlstransport.cpp
+    impl/http.cpp
+    impl/httpproxytransport.cpp
+    impl/icetransport.cpp
+    impl/init.cpp
+    impl/logcounter.cpp
+    impl/peerconnection.cpp
+    impl/pollinterrupter.cpp
+    impl/pollservice.cpp
+    impl/processor.cpp
+    impl/sctptransport.cpp
+    impl/sha.cpp
+    impl/tcpserver.cpp
+    impl/tcptransport.cpp
+    impl/threadpool.cpp
+    impl/tls.cpp
+    impl/tlstransport.cpp
+    impl/track.cpp
+    impl/transport.cpp
+    impl/utils.cpp
+    impl/verifiedtlstransport.cpp
+    impl/websocket.cpp
+    impl/websocketserver.cpp
+    impl/wshandshake.cpp)
+
+if(APPLE)
+    src(apple/apple_capture.mm)
+endif()
+
+if(WIN32)
+    cflags(+/bigobj)
+    src(win/capture.cpp)
+endif()

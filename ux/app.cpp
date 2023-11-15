@@ -89,7 +89,6 @@ static void mouse_move_callback(mx &user, double x, double y) {
     Element *last = null;
     for (Element* n: app->hover) {
         n->Element::data->hover  = true;
-        //n->Element::data->cursor = app->data->cursor; /// this type could be bool true when the point is in bounds
         last = n;
         if (last->data->selectable || last->data->editable) {
             /// compute sel start on mouse click down
@@ -98,6 +97,7 @@ static void mouse_move_callback(mx &user, double x, double y) {
                 last->data->sel_end = last->get_selection(app->cursor, is_down);
             }
         }
+        n->move();
     }
 }
 
@@ -111,7 +111,8 @@ static void mouse_button_callback(mx &user, int button, int state, int mods) {
 
     app->buttons[button] = bool(state);
     Element* root = (Element*)app.composer::data->instances; /// for ux this is always single
-    
+    array<Element*> prev_active = app->active;
+
     for (Element* n: app->active)
         n->Element::data->active = false;
     
@@ -138,9 +139,9 @@ static void mouse_button_callback(mx &user, int button, int state, int mods) {
     }
     /// set mouse cursel on editable nodes
     if (last) {
+        bool is_down = app->active[0];
         if (last->data->selectable || last->data->editable) {
             /// compute sel start on mouse click down
-            bool    is_down = app->active[0];
             TextSel s = last->get_selection(app->cursor, is_down);
 
             /// we are either setting the sel_start, or sel_end (with a swap potential for out of sync selection)
@@ -155,6 +156,17 @@ static void mouse_button_callback(mx &user, int button, int state, int mods) {
                     last->data->sel_start = s;
             }
         }
+    }
+
+    /// new down states
+    for (Element* n: app->active) {
+        if (prev_active.index_of(n) == -1)
+            n->down();
+    }
+    /// new up states
+    for (Element *n: prev_active) {
+        if (app->active.index_of(n) == -1)
+            n->up();
     }
 }
 

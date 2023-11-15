@@ -826,12 +826,12 @@ struct ICanvas {
         assert(false);
     }
 
-    void outline(array<glm::vec2> &line) {
+    void outline(array<glm::vec2> &line, bool is_fill = false) {
         SkPaint ps = SkPaint(top->ps);
         ps.setAntiAlias(true);
         ps.setColor(sk_color(top->color));
-        ps.setStrokeWidth(top->outline_sz);
-        ps.setStroke(true);
+        ps.setStrokeWidth(is_fill ? 0 : top->outline_sz);
+        ps.setStroke(!is_fill);
         glm::vec2 *a = null;
         SkPath path;
         for (glm::vec2 &b: line) {
@@ -852,7 +852,7 @@ struct ICanvas {
         top->proj       = p;
     }
 
-    void outline(array<glm::vec3> &v3) {
+    void outline(array<glm::vec3> &v3, bool is_fill = false) {
         glm::vec2 sz = { this->sz.x / this->dpi_scale.x, this->sz.y / this->dpi_scale.y };
         array<glm::vec2> projected { v3.len() };
         for (glm::vec3 &vertex: v3) {
@@ -863,7 +863,7 @@ struct ICanvas {
             glm::vec2  v2 = { screenX, screenY };
             projected    += v2;
         }
-        outline(projected);
+        outline(projected, is_fill);
     }
 
     void line(glm::vec3 &a, glm::vec3 &b) {
@@ -871,6 +871,25 @@ struct ICanvas {
         ab.push(a);
         ab.push(b);
         outline(ab);
+    }
+
+    void arc(glm::vec3 position, real radius, real startAngle, real endAngle, bool is_fill = false) {
+        const int segments = 36;
+        ion::array<glm::vec3> arcPoints { size_t(segments) };
+        float angleStep = (endAngle - startAngle) / segments;
+
+        for (int i = 0; i <= segments; ++i) {
+            float     angle = glm::radians(startAngle + angleStep * i);
+            glm::vec3 point;
+            point.x = position.x + radius * cos(angle);
+            point.y = position.y;
+            point.z = position.z + radius * sin(angle);
+            glm::vec4 viewSpacePoint = top->view * glm::vec4(point, 1.0f);
+            glm::vec3 clippingSp     = glm::vec3(viewSpacePoint);
+            arcPoints += clippingSp;
+        }
+        arcPoints.set_size(segments);
+        outline(arcPoints, is_fill);
     }
 
     void outline(rectd &rect) {
@@ -1055,6 +1074,10 @@ void Canvas::restore() {
 }
 vec2i   Canvas::size() {
     return data->size();
+}
+
+void Canvas::arc(glm::vec3 pos, real radius, real startAngle, real endAngle, bool is_fill) {
+    return data->arc(pos, radius, startAngle, endAngle, is_fill);
 }
 
 text_metrics Canvas::measure(str text) {
