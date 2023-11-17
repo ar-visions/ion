@@ -135,7 +135,6 @@ Streams camera(array<StreamType> stream_types, array<Media> priority, str alias,
                 /// capture loop
                 while (!s->rt->stop) {
                     DWORD flags;
-
                     for (Routine &r: routines) {
                         IMFSample* pSample = null;
                         pReader->ReadSample(r.dwStreamIndex, 0, null, &flags, null, &pSample);
@@ -156,7 +155,6 @@ Streams camera(array<StreamType> stream_types, array<Media> priority, str alias,
                         }
                     }
                 }
-                /// cleanup
                 pType->Release();
             }
             pReader->Release();
