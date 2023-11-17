@@ -1,3 +1,10 @@
+cpp(17)
+dep(mx:mx)
+#dep(mx:mx ion:net ion:vk @Vulkan)
+src(-camera-apple.mm)
+src(-camera-win.cpp)
+src(-canera-linux.cpp)
+
 dep(mx:async
     opusenc:opusenc
     opusfile:opusfile
@@ -14,3 +21,15 @@ else()
 endif()
 
 includes(${INSTALL_PREFIX}/include/opus)
+
+if(APPLE)
+    dep(IOSurface QuartzCore Metal CoreMedia CoreFoundation Cocoa IOKit AVFoundation)
+    cflags(+-fobjc-arc +-Wno-deprecated-declarations)
+    src(camera-apple.mm)
+elseif(WIN32)
+    src(camera-win.cpp)
+    dep(mf mfplat mfreadwrite mfuuid strmiids quartz ole32 oleaut32 uuid)
+elseif(UNIX)
+    src(camera-linux.cpp)
+    dep(v4l2)
+endif()

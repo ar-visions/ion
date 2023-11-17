@@ -788,7 +788,6 @@ struct ICanvas {
             SkScalar(0), SkScalar(0), SkSamplingOptions(c), &ps);
         sk_canvas->restore();
     }
-    /// would be reasonable to have a rich() method
 
     /// the lines are most definitely just text() calls, it should be up to the user to perform multiline.
     void text(str &text, rectd &rect, alignment &align, vec2d &offset, bool ellip, rectd *placement) {

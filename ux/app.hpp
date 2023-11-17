@@ -1,12 +1,13 @@
 #include <ux/ux.hpp>
 #include <ux/canvas.hpp>
 #include <ux/controls.hpp>
+#include <media/streams.hpp>
 
 namespace ion {
 struct App:composer {
     struct adata {
         composer::cmdata*   cmdata;
-        //array<Camera>     cameras;
+        Streams             media; // look!
         //GPU               win;
         Canvas             *canvas;
         vec2d               cursor;
