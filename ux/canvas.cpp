@@ -763,10 +763,11 @@ struct ICanvas {
         if (!att) {
             SkBitmap bm;
             rgba8   *px = image.pixels();
+            memset(px, 255, 640 * 360 * 4);
             SkImageInfo info = SkImageInfo::Make(isz.x, isz.y, kRGBA_8888_SkColorType, kUnpremul_SkAlphaType);
             bm.installPixels(info, px, image.stride());
             sk_sp<SkImage> *im = new sk_sp<SkImage>(bm.asImage());
-            image.mem->attach("sk-image", im, [im]() { delete im; });
+            att = image.mem->attach("sk-image", im, [im]() { delete im; });
         }
         
         /// now its just of matter of scaling the little guy to fit in the box.

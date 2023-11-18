@@ -70,7 +70,7 @@ void Streams::push(MediaBuffer buffer) {
     Frame  &frame = data->swap[data->frames % 2];
     bool is_video = false;
 
-    if (buffer->type == Media::PCM) {
+    if (buffer->type == Media::PCM || buffer->type == Media::PCMf32) {
         frame.audio = buffer;
         data->audio_queued = true;
     } else {
@@ -82,6 +82,8 @@ void Streams::push(MediaBuffer buffer) {
     if (is_video && data->resolve_image) {
         u8 *src =      frame.video->bytes;
         u8 *dst = (u8*)frame.image.data;
+        frame.image.mem->count   = data->w * data->h;
+        frame.image.mem->reserve = frame.image.mem->count;
         switch (frame.video->type.value) {
             case Media::YUY2:
                 yuy2_rgba(src, dst, data->w, data->h);

@@ -1,4 +1,4 @@
-cpp(17)
+cpp(20)
 dep(mx:mx)
 #dep(mx:mx ion:net ion:vk @Vulkan)
 src(-camera-apple.mm)

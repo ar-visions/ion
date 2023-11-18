@@ -9,7 +9,7 @@ enums(StreamType, undefined,
       undefined, Audio, Image, Video);
 
 enums(Media, undefined,
-      undefined, PCM, YUY2, NV12, MJPEG, H264);
+      undefined, PCM, PCMf32, YUY2, NV12, MJPEG, H264);
 
 struct MediaBuffer:mx {
     struct M {
@@ -31,11 +31,12 @@ struct MediaBuffer:mx {
     operator bool() { return data->sz; }
 };
 
-struct PCM   : MediaBuffer { PCM  (u8 *bytes, sz_t sz) : MediaBuffer(Media::PCM,   bytes, sz) { } };
-struct YUY2  : MediaBuffer { YUY2 (u8 *bytes, sz_t sz) : MediaBuffer(Media::YUY2,  bytes, sz) { } };
-struct NV12  : MediaBuffer { NV12 (u8 *bytes, sz_t sz) : MediaBuffer(Media::NV12,  bytes, sz) { } };
-struct MJPEG : MediaBuffer { MJPEG(u8 *bytes, sz_t sz) : MediaBuffer(Media::MJPEG, bytes, sz) { } };
-struct H264  : MediaBuffer { H264 (u8 *bytes, sz_t sz) : MediaBuffer(Media::H264,  bytes, sz) { } };
+struct PCMf32 : MediaBuffer { PCMf32(u8 *bytes, sz_t sz) : MediaBuffer(Media::PCMf32, bytes, sz) { } };
+struct PCM    : MediaBuffer { PCM   (u8 *bytes, sz_t sz) : MediaBuffer(Media::PCM,    bytes, sz) { } };
+struct YUY2   : MediaBuffer { YUY2  (u8 *bytes, sz_t sz) : MediaBuffer(Media::YUY2,   bytes, sz) { } };
+struct NV12   : MediaBuffer { NV12  (u8 *bytes, sz_t sz) : MediaBuffer(Media::NV12,   bytes, sz) { } };
+struct MJPEG  : MediaBuffer { MJPEG (u8 *bytes, sz_t sz) : MediaBuffer(Media::MJPEG,  bytes, sz) { } };
+struct H264   : MediaBuffer { H264  (u8 *bytes, sz_t sz) : MediaBuffer(Media::H264,   bytes, sz) { } };
 
 struct Frame {
     u64         from, to;
@@ -123,9 +124,8 @@ struct Streams:mx {
     void cancel() { data->error = true; }
 
     Streams &await_ready() {
-        while (!data->ready) {
+        while (!data->ready)
             yield();
-        }
         return *this;
     }
 

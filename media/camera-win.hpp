@@ -5,6 +5,9 @@
 
 namespace ion {
 
-Streams camera(array<StreamType> media, array<Media> priority, str alias, int rwidth, int rheight);
+Streams camera(array<StreamType> media,
+               array<Media> priority,
+               str video_dev, str audio_dev,
+               int rwidth, int rheight);
 
 }
