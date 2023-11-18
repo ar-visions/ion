@@ -4,7 +4,7 @@ dep(ion:media mx:watch glm:glm_static glfw:glfw3 @Vulkan)
 if(MSVC)
     cflags(/wd4838 /wd4061 /wd4062 /wd4473 /wd4474 /wd4475)
 else()
-    cflags(+-Wno-c++11-narrowing +-Wno-switch +-Wno-format)
+    cflags(+-Wno-ambiguous-reversed-operator +-Wno-deprecated-volatile +-Wno-c++11-narrowing +-Wno-switch +-Wno-format)
 endif()
 ##
 if(APPLE)

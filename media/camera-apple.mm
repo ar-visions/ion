@@ -1,4 +1,4 @@
-#import "apple.h"
+#import "camera-apple.h"
 
 extern "C" void AllowKeyRepeats(void)
 {
@@ -96,9 +96,9 @@ extern "C" void AllowKeyRepeats(void)
 @end
 
 
-#include <camera/camera.hpp>
+#include <media/camera.hpp>
 #ifdef __APPLE__
-#import <camera/apple.h>
+#import <media/camera-apple.h>
 #endif
 #include <memory>
 //#include <vk/vk.hpp>

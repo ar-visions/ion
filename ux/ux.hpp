@@ -355,7 +355,8 @@ struct OBJ:mx {
 
     OBJ(path p, lambda<V(group&, vec3d*, vec2d*, vec3d*)> fn) : OBJ() {
         str g;
-        str contents  = str::read_file(p.exists() ? p : fmt {"models/{0}.obj", { p }});
+        path pp = p.exists() ? p : fmt {"models/{0}.obj", { p }};
+        str contents  = str::read_file(pp.cs());
         assert(contents.len() > 0);
         
         auto lines    = contents.split("\n");
