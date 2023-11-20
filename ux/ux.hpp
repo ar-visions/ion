@@ -700,6 +700,7 @@ struct Element:node {
 
     virtual void focused();
     virtual void unfocused();
+    virtual void scroll(real x, real y);
     virtual void move();
     virtual void down();
     virtual void up();

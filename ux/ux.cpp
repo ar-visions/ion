@@ -47,6 +47,8 @@ void dispatch::operator()(event e) {
 /// place text before drawing? or, place text as we draw.
 //void Element::layout()
 
+void Element::scroll(real x, real y) { }
+
 void Element::focused()   { }
 void Element::unfocused() { }
 void Element::move()      { }

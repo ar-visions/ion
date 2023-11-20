@@ -37,6 +37,9 @@ static void key_callback(mx &user, int key, int scancode, int action, int mods) 
     App      app   = app_data(user);
     Element* root  = (Element*)app.composer::data->instances; /// for ux this is always single
     Element* focus = root->Element::data->focused;
+    auto        cd = app.composer::data;
+
+    cd->shift = mods & GLFW_MOD_SHIFT;
 
 	if (action != GLFW_PRESS && action != GLFW_REPEAT)
 		return;
@@ -80,12 +83,13 @@ static void char_callback (mx &user, uint32_t c) {
 
 static void mouse_move_callback(mx &user, double x, double y) {
     App app = app_data(user);
+    auto cd = app.composer::data;
     app->cursor = vec2d { x, y };// / app->data->e->vk_gpu->dpi_scale;
 
     for (Element* n: app->hover)
         n->Element::data->hover = false;
     
-    app->hover = app.select_at(app->cursor, app->buttons[0]);
+    app->hover = app.select_at(app->cursor, cd->buttons[0]);
     Element *last = null;
     for (Element* n: app->hover) {
         n->Element::data->hover  = true;
@@ -103,13 +107,19 @@ static void mouse_move_callback(mx &user, double x, double y) {
 
 static void scroll_callback(mx &user, double x, double y) {
     App app = app_data(user);
+    
+    if (app->hover) {
+        Element *e = app->hover[app->hover.len() - 1];
+        e->scroll(x, y);
+    }
 }
 
 static void mouse_button_callback(mx &user, int button, int state, int mods) {
     App  app   = app_data(user);
-    bool shift = mods & GLFW_MOD_SHIFT;
+    auto cd    = app.composer::data;
 
-    app->buttons[button] = bool(state);
+    cd->buttons[button] = bool(state);
+    
     Element* root = (Element*)app.composer::data->instances; /// for ux this is always single
     array<Element*> prev_active = app->active;
 
@@ -148,11 +158,11 @@ static void mouse_button_callback(mx &user, int button, int state, int mods) {
             if (is_down) {
                 /// if shift key, you alter between swapping start and end based on if its before or after
                 last->data->sel_start = s;
-                if (!shift)
+                if (!cd->shift)
                     last->data->sel_end = s;
             } else {
                 last->data->sel_end   = s;
-                if (!shift)
+                if (!cd->shift)
                     last->data->sel_start = s;
             }
         }

@@ -462,7 +462,9 @@ struct composer:mx {
         lambda<node()> render;
         map<mx>       args;
         ion::style    style;
-
+        bool          shift;
+        bool          alt;
+        int           buttons[16];
         type_register(cmdata);
     };
     

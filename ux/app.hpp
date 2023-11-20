@@ -4,6 +4,7 @@
 #include <media/streams.hpp>
 
 namespace ion {
+
 struct App:composer {
     struct adata {
         composer::cmdata*   cmdata;
@@ -11,7 +12,6 @@ struct App:composer {
         //GPU               win;
         Canvas             *canvas;
         vec2d               cursor;
-        bool                buttons[16];
         array<Element*>     active;
         array<Element*>     hover;
         VkEngine            e;

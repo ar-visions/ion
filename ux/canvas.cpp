@@ -749,7 +749,7 @@ struct ICanvas {
         return (trim == 0) ? "" : (p == &text) ? text : cur;
     }
 
-    void image(ion::image &image, rectd &rect, alignment &align, vec2d &offset) {
+    void image(ion::image &image, rectd &rect, alignment &align, vec2d &offset, bool attach_tx) {
         SkPaint ps = SkPaint(top->ps);
         vec2d  pos = { 0, 0 };
         vec2i  isz = image.sz();
@@ -760,19 +760,23 @@ struct ICanvas {
         
         /// cache SkImage using memory attachments
         attachment *att = image.mem->find_attachment("sk-image");
+        sk_sp<SkImage> *im;
         if (!att) {
             SkBitmap bm;
-            rgba8   *px = image.pixels();
-            memset(px, 255, 640 * 360 * 4);
-            SkImageInfo info = SkImageInfo::Make(isz.x, isz.y, kRGBA_8888_SkColorType, kUnpremul_SkAlphaType);
-            bm.installPixels(info, px, image.stride());
-            sk_sp<SkImage> *im = new sk_sp<SkImage>(bm.asImage());
-            att = image.mem->attach("sk-image", im, [im]() { delete im; });
+            rgba8          *px = image.pixels();
+            //memset(px, 255, 640 * 360 * 4);
+            SkImageInfo   info = SkImageInfo::Make(isz.x, isz.y, kRGBA_8888_SkColorType, kUnpremul_SkAlphaType);
+            sz_t        stride = image.stride() * sizeof(rgba8);
+            bm.installPixels(info, px, stride);
+            sk_sp<SkImage> bm_image = bm.asImage();
+            im = new sk_sp<SkImage>(bm_image);
+            if (attach_tx)
+                att = image.mem->attach("sk-image", im, [im]() { delete im; });
         }
         
         /// now its just of matter of scaling the little guy to fit in the box.
-        real scx = std::min(1.0, rect.w / isz.x);
-        real scy = std::min(1.0, rect.h / isz.y);
+        real scx = rect.w / isz.x;
+        real scy = rect.h / isz.y;
         real sc  = (scy > scx) ? scx : scy;
         
         /// no enums were harmed during the making of this function
@@ -782,12 +786,19 @@ struct ICanvas {
         sk_canvas->save();
         sk_canvas->translate(pos.x + offset.x, pos.y + offset.y);
         
-        SkCubicResampler c;
+        SkCubicResampler cubicResampler { 1.0f/3, 1.0f/3 };
+        SkSamplingOptions samplingOptions(cubicResampler);
+
         sk_canvas->scale(sc, sc);
-        sk_canvas->drawImage(
-            ((sk_sp<SkImage> *)att->data)->get(),
-            SkScalar(0), SkScalar(0), SkSamplingOptions(c), &ps);
+        SkImage *img = im->get();
+        sk_canvas->drawImage(img, SkScalar(0), SkScalar(0), samplingOptions);
         sk_canvas->restore();
+
+        if (!attach_tx) {
+            delete im;
+            ctx->flush();
+            ctx->submit();
+        }
     }
 
     /// the lines are most definitely just text() calls, it should be up to the user to perform multiline.
@@ -1092,8 +1103,8 @@ str     Canvas::ellipsis(str text, rectd rect, text_metrics &tm) {
     return data->ellipsis(text, rect, tm);
 }
 
-void    Canvas::image(ion::image img, rectd rect, alignment align, vec2d offset) {
-    return data->image(img, rect, align, offset);
+void    Canvas::image(ion::image img, rectd rect, alignment align, vec2d offset, bool attach_tx) {
+    return data->image(img, rect, align, offset, attach_tx);
 }
 
 void    Canvas::text(str text, rectd rect, alignment align, vec2d offset, bool ellip, rectd *placement) {

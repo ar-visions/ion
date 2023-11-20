@@ -26,7 +26,7 @@ struct Canvas:mx {
     text_metrics measure(str text);
     double measure_advance(char *text, size_t len);
     str ellipsis(str text, rectd rect, text_metrics &tm);
-    void image(image img, rectd rect, alignment align, vec2d offset);
+    void image(image img, rectd rect, alignment align, vec2d offset, bool attach_tx = false);
     void text(str text, rectd rect, alignment align, vec2d offset, bool ellip, rectd *placement = null);
     void clip(rectd path);
     void projection(glm::mat4 &m, glm::mat4 &v, glm::mat4 &p);
