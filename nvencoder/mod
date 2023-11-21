@@ -3,9 +3,9 @@ if(APPLE)
 else()
     cpp(17)
     dep(ion:vk dl pthread)
-
-    includes(${EXTERN_DIR}/vk_video_samples/vk_video_encoder
-             ${EXTERN_DIR}/vk_video_samples/common/include)
+    skip()
+    #includes(${EXTERN_DIR}/vk_video_samples/vk_video_encoder
+    #         ${EXTERN_DIR}/vk_video_samples/common/include)
     
     src(${EXTERN_DIR}/vk_video_samples/vk_video_encoder/NvEncodeApp.cpp)
 endif()

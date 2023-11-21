@@ -96,7 +96,7 @@ void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT
 
 bool is_wayland() {
     const char* session_type = std::getenv("XDG_SESSION_TYPE");
-    return session_type && std::strcmp(session_type, "wayland") == 0;
+    return session_type && strcmp(session_type, "wayland") == 0;
 }
 
 void Vulkan::M::init() {

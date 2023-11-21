@@ -201,7 +201,8 @@
 			"fft": "cpp",
 			"hash_map": "cpp",
 			"*.glsl": "cpp",
-			"mprealsupport": "cpp"
+			"mprealsupport": "cpp",
+			"time.h": "c"
 		},
 		"git.ignoreLimitWarning": true
 	}

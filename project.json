@@ -24,7 +24,8 @@
             "commit":   "7482de6",
             "url":      "https://github.com/glfw/glfw",
             "cmake": {
-                "args-win": ["-DCMAKE_C_FLAGS=/MT","-DUSE_MSVC_RUNTIME_LIBRARY_DLL=0"]
+                "args-win": ["-DCMAKE_C_FLAGS=/MT","-DUSE_MSVC_RUNTIME_LIBRARY_DLL=0"],
+                "args-lin": ["-DGLFW_USE_WAYLAND=1"]
             }
         },
         {
@@ -47,7 +48,7 @@
             "commit":   "775b17ef7c7e270731e61d82c5f6e08be9caa64e",
             "url":      "https://github.com/nvpro-samples/nvpro_core",
             "resource": true,
-            "platforms": ["win","lin"],
+            "platforms": ["none"],
             "script":    ["python3", "adjust-headers.py"]
         },
         {
@@ -55,7 +56,7 @@
             "version":  "1",
             "commit":   "b36f79c1756456ee5e8316c084a41f44e3c244b4",
             "url":      "https://github.com/nvpro-samples/vk_video_samples",
-            "platforms": ["win","lin"],
+            "platforms": ["none"],
             "cmake": {
                 "path":"vk_video_encoder"
             }
