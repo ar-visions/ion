@@ -22,5 +22,5 @@ endif()
 includes(${INSTALL_PREFIX}/../../extern/mbedtls/tests/include)
 ##
 if(NOT WIN32)
-    cflags(+-Wno-write-strings +-Wno-deprecated-declarations +-Wno-ambiguous-reversed-operator)
+    cxxflags(+-Wno-write-strings +-Wno-deprecated-declarations +-Wno-ambiguous-reversed-operator)
 endif()

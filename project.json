@@ -24,8 +24,7 @@
             "commit":   "7482de6",
             "url":      "https://github.com/glfw/glfw",
             "cmake": {
-                "args-win": ["-DCMAKE_C_FLAGS=/MT","-DUSE_MSVC_RUNTIME_LIBRARY_DLL=0"],
-                "args-lin": ["-DGLFW_USE_WAYLAND=1"]
+                "args-win": ["-DCMAKE_C_FLAGS=/MT","-DUSE_MSVC_RUNTIME_LIBRARY_DLL=0"]
             }
         },
         {

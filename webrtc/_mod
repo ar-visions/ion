@@ -105,6 +105,6 @@ if(APPLE)
 endif()
 
 if(WIN32)
-    cflags(+/bigobj)
+    cxxflags(+/bigobj)
     src(win/capture.cpp)
 endif()

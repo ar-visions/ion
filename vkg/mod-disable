@@ -17,7 +17,7 @@ defines(VKVG_USE_GLUTESS
 
 # unselect if its there, already having being built
 src(-shaders.h)
-cflags(+-Wno-c++11-narrowing +-Wno-switch +-Wno-format)
+cxxflags(+-Wno-c++11-narrowing +-Wno-switch +-Wno-format)
 
 # -----------------------------------------------
 # -------------- shader generation --------------
