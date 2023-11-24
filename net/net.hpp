@@ -64,6 +64,7 @@ struct uri:mx {
 
     static memory *convert(memory *mem) { return parse(str(mem)); }
 
+    uri(nullptr_t          n) : uri() { }
     uri(str                s) : uri(parse(s))   { }
     uri(symbol           sym) : uri(parse(sym)) { } 
     uri(uri &r, method mtype) : uri(r.copy()) { data->mtype = mtype; }

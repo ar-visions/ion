@@ -4,8 +4,6 @@
 #include <vk/vkh_device.h>
 #include <vk/vkh_image.h>
 #include <vk/vkh_presenter.h>
-//#include <vkg/vkg.hpp>
-//#include <camera/camera.hpp>
 
 #ifdef __APPLE__
 extern "C" void AllowKeyRepeats(void);
@@ -40,7 +38,8 @@ static void key_callback(mx &user, int key, int scancode, int action, int mods) 
     auto        cd = app.composer::data;
 
     cd->shift = mods & GLFW_MOD_SHIFT;
-
+    printf("shift = %d\n", cd->shift);
+    
 	if (action != GLFW_PRESS && action != GLFW_REPEAT)
 		return;
     
@@ -182,7 +181,7 @@ static void mouse_button_callback(mx &user, int button, int state, int mods) {
 
 void App::shell_server(uri bind) {
     ///
-    async([&](runtime *rt, int i) -> mx {
+    async([bind, data=this->data](runtime *rt, int i) -> mx {
         SSHService ssh;
         logger::service = [p=&ssh](mx msg) -> void {
             p->send_message(null, msg.grab());
@@ -248,11 +247,6 @@ int App::run() {
 	vkengine_scroll_callback (e,       scroll_callback);
 	vkengine_set_title       (e, "ux");
 
-    /// works on macOS currently (needs to present, and update a canvas)
-    //cameras  = array<Camera>(32);
-    //cameras += Camera { e, 0, 1920, 1080, 30 };
-    //cameras[0].start_capture();
-
     shell_server(data->args["debug"]);
 
 	while (!vkengine_should_close(e)) {
@@ -281,19 +275,7 @@ int App::run() {
             eroot->draw(*canvas);
         }
 
-        //rectd bounds = rectd { 0, 0, 64, 64 };
-        //canvas->color({0.0, 0.0, 1.0, 1.0});
-        //canvas->fill(bounds);
-
         canvas->flush();
-
-        /// blt this to VkImage, bound to a canvas that we can perform subsequent drawing ops on
-        /// canvas needs to draw other canvas too (Sk has this)
-        ///
-        //if (data->cameras[0].image)
-        //    vkh_presenter_build_blit_cmd(data->e->renderer,
-        //        data->cameras[0].image->image,
-        //        data->cameras[0].width / 2, data->cameras[0].height / 2); 
 
         /// we need an array of renderers/presenters; must work with a 3D scene, bloom shading etc
 		if (!vkh_presenter_draw(e->renderer)) {
@@ -307,7 +289,5 @@ int App::run() {
                 break;
             }
 	}
-
-    //cameras[0].stop_capture();
     return 0;
 }

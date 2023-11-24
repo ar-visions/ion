@@ -247,13 +247,17 @@ bool SSHService::send_message(SSHPeer peer, str msg) {
 }
 
 void SSHService::mounted() {
-    ssh_init();
-    async(1, [this](runtime *rt, int i) -> mx {
-        while (state->running) accept();
-        ssh_bind_free(state->sshbind);
-        //composer::cmdata *composer = ((node*)this)->data->composer;
-        ssh_finalize(); /// not until app shutdown?
-        return false;
-    });
+    if (state->bind) {
+        ssh_init();
+        async(1, [this](runtime *rt, int i) -> mx {
+            while (state->running) {
+                accept();
+            }
+            ssh_bind_free(state->sshbind);
+            //composer::cmdata *composer = ((node*)this)->data->composer;
+            ssh_finalize(); /// not until app shutdown?
+            return false;
+        });
+    }
 }
 

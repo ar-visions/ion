@@ -176,6 +176,14 @@ static VkEngine singleton;
 
 void glfw_key(GLFWwindow* window, int key, int scancode, int action, int mods) {
 	vk_engine_t *e = (vk_engine_t*)glfwGetWindowUserPointer(window);
+	/// this happens on windows but not linux, so correcting it to be the same for both
+	if (action == 0)
+		mods &= ~GLFW_MOD_SHIFT;
+	else {
+		if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT)  == GLFW_PRESS || 
+			glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS)
+			mods |=  GLFW_MOD_SHIFT;
+	}
 	e->fn_key(e->user, key, scancode, action, mods);
 }
 

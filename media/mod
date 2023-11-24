@@ -31,6 +31,6 @@ elseif(WIN32)
     dep(mf mfplat mfreadwrite mfuuid strmiids quartz ole32 oleaut32 uuid)
 elseif(UNIX)
     src(camera-linux.cpp)
-    dep(v4l2)
+    dep(v4l2 asound) # Video4Linux2 and ALSA Sound
     cxxflags(+-Wno-volatile)
 endif()

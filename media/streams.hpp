@@ -64,6 +64,7 @@ struct Streams:mx {
         array<Media>         media;
         doubly<Remote>       listeners;
         u64                  frames;
+        int                  channels; /// number of audio channels contained (float32 format!)
         bool                 ready;
         bool                 error;
         int                  w, h, hz;
@@ -81,7 +82,7 @@ struct Streams:mx {
         StreamType audio_t   = StreamType::Audio;
         StreamType video_t   = StreamType::Video;
         StreamType image_t   = StreamType::Image;
-        data->use_audio      = stream_types.index_of(audio_t) >= 0;
+        data->use_audio      = stream_types.index_of(audio_t) >= 0; /// get audio working; render an audiogram strip at the bottom
         data->use_video      = stream_types.index_of(video_t) >= 0;
         data->resolve_image  = stream_types.index_of(image_t) >= 0;
 
@@ -101,10 +102,11 @@ struct Streams:mx {
         return remote;
     }
 
-    void set_info(int w, int h, int hz) {
+    void set_info(int w, int h, int hz, int channels) {
         data->w  = w;
         data->h  = h;
         data->hz = hz;
+        data->channels = channels;
         if (data->resolve_image)
             for (num i = 0; i < 2; i++) {
                 size sz { h, w };
