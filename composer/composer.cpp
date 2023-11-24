@@ -436,14 +436,8 @@ size_t style::block::score(node *pn, bool score_state) {
             prop* member = null;
             assert(qd.state.len() > 0);
             u8*   addr   = property_find(pn->mem->origin, pn->mem->type, qd.state, member);
-            if (qd.state == "focus") {
-                int test = 0;
-                test++;
-            }
             if (addr) {
                 state_match = member->member_type->functions->boolean(null, addr);
-                int test = 0;
-                test++;
                 break;
             }
         }
@@ -529,7 +523,6 @@ void style::impl::cache_members() {
     cache_b = [&](block *bl) -> void {
         for (entry *e: bl->entries) {
             bool  found = false;
-            ///
             array<block*> &cache = members[e->member];
             for (block *cb:cache)
                  found |= cb == bl;
@@ -644,8 +637,6 @@ style style::init() {
             };
             /// spawn watcher (this syncs once before returning)
             st->reloader = watch::spawn({"./style"}, {".css"}, {}, reload);
-            int test = 0;
-            test++;
         }
         mx.unlock();
     }
@@ -661,13 +652,7 @@ style::entry *style::impl::best_match(node *n, prop *member, array<style::entry*
     /// find top style pair for this member
     type_t type = n->mem->type;
     for (style::entry *e: entries) {
-        static int test = 0;
-        test++;
         block *bl = e->bl;
-        if (bl->quals && bl->quals[0]->state == "focus") {
-            int test = 0;
-            test++;
-        }
         real score = bl->match(n, true); /// fix at tm
         str &prop = *member->s_key;
         if (score > 0 && score >= best_score) { /// Edit:focus is eval'd as false?
@@ -681,13 +666,13 @@ style::entry *style::impl::best_match(node *n, prop *member, array<style::entry*
 
 /// todo: move functions into itype pattern
 bool style::impl::applicable(node *n, prop *member, array<style::entry*> &result) {
-    array<style::block*> &blocks = members[*member->s_key];
+    array<style::block*> &blocks = members[*member->s_key]; /// members must be 'sample' on load, and retrieving it should return a block
     type_t type = n->mem->type;
     bool ret = false;
 
     for (style::block *block:blocks) {
         if (!block->types || block->types.index_of(type) >= 0) {
-            auto f = block->entries->lookup(*member->s_key);
+            auto f = block->entries->lookup(*member->s_key); /// VideoView stored, and then retrieved from members map
             if (f && block->match(n, false) > 0) {
                 result += f->value;
                 ret = true;

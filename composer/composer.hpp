@@ -270,7 +270,6 @@ struct style:mx {
                 /// 500ms [ease [out]]
                 /// 0.2s -- will be linear with in (argument meaningless for linear but applies to all others)
                 dur    = unit<duration>(sp[0]);
-                printf("sp[1] = %s\n", sp[1].cs());
                 easing = sp.len() > 1 ? ease(sp[1])      : ease();
                 dir    = sp.len() > 2 ? direction(sp[2]) : direction();
             }

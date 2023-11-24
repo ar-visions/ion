@@ -279,10 +279,10 @@ void Element::draw(Canvas& canvas) {
         Element* c = (Element*)n;
         /// clip to child
         /// translate to child location
-        rectd sub_bounds = children.area ? children.area.rect(bounds) : data->fill_bounds;
-        canvas.translate(sub_bounds.xy());
+        c->data->sub_bounds = children.area ? children.area.rect(bounds) : data->fill_bounds; /// fall back to fill bounds if no child area is set.
+        canvas.translate(c->data->sub_bounds.xy());
         canvas.opacity(effective_opacity());
-        (*c)->bounds = rect<r64> { 0, 0, sub_bounds.w, sub_bounds.h };
+        (*c)->bounds = rect<r64> { 0, 0, c->data->sub_bounds.w, c->data->sub_bounds.h };
         //canvas.clip(0, 0, r.w, r.h);
         c->draw(canvas);
     }
@@ -432,12 +432,10 @@ void Element::draw(Canvas& canvas) {
     }
 
     vec2d Element::offset() {
-        Element *n = (Element*)node::data->parent;
+        Element *n = (Element*)this;
         vec2d  o = { 0, 0 };
         while (n) {
-            props::drawing &draw = n->data->drawings[operation::child];
-            rectd &rect = draw.shape.bounds();
-            o  +=  rect.xy();
+            o  += n->Element::data->sub_bounds.xy(); /// this is calculated in the generic draw function
             o  -= n->Element::data->scroll;
             n   = (Element*)n->node::data->parent;
         }

@@ -53,33 +53,48 @@ struct App:composer {
     ///
     array<Element *> select_at(vec2d cur, bool active = true) {
         array<Element*> result = array<Element*>();
-        auto proc = [&](Element *e) {
+        lambda<void(Element*)> proc;
+        proc = [&](Element *e) {
+
+            if (strcmp(e->mem->type->name, "Annotate") == 0) {
+                int test = 0;
+                test++;
+            }
+
             array<Element*> inside = e->select([&](Element *ee) {
                 real           x = cur.x, y = cur.y;
                 vec2d          o = ee->offset();
                 vec2d        rel = cur + o;
-                Element::props *edata = e->data;
+                Element::props *eedata = ee->data;
                 rectd &bounds = ee->data->fill_bounds ? ee->data->fill_bounds : ee->data->bounds;
                 bool in = bounds.contains(rel);
-                e->data->cursor = vec2d(x - o.x, y - o.y);
-                return (in && (!active || !edata->active)) ? ee : null;
+                if (strcmp(ee->mem->type->name, "VideoView") == 0) {
+                    vec2d o2 = ee->offset();
+                    int test = 0;
+                    test++;
+                }
+                ee->data->cursor = vec2d(x - o.x, y - o.y);
+                return (in && (!active || !eedata->active)) ? ee : null;
             });
+            
             array<Element*> actives = e->select([&](Element *ee) -> Element* {
                 return (active && ee->data->active) ? ee : null;
             });
+
             for (Element *i: inside)
                 result += (Element*)i;
+            
             for (Element *i: actives)
                 result += (Element*)i;
         };
-
+        /// work on single root vs array root
         if (composer::data->instances && composer::data->instances->data->children) {
             for (node *e: composer::data->instances->data->children)
                 proc((Element*)e);
         } else if (composer::data->instances)
             proc((Element*)composer::data->instances);
         
-        return result;
+        return result.reverse();
     }
     ///
 };

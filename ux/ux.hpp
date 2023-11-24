@@ -554,6 +554,7 @@ struct Element:node {
         bool                    focus;
         int                     tab_index;
         vec2d                   cursor;
+        rectd                   sub_bounds; /// has our offset relative to parent, as calculated from the child area
 
         /// if we consider events handled contextually and by many users, it makes sense to have dispatch
         struct events {

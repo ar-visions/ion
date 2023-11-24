@@ -619,7 +619,6 @@ struct audio_t {
                 *dst = null;
                 return 0;
             }
-
         }
 
         *dst = (float*)buffer;
