@@ -1457,10 +1457,10 @@ std::vector<VkVertexInputAttributeDescription> Pipeline::M::getAttributeDescript
     attributeDescriptions.resize(props->len());
 
     auto get_format = [](prop &p) {
-        if (p.member_type == typeof(glm::vec2)) return VK_FORMAT_R32G32_SFLOAT;
-        if (p.member_type == typeof(glm::vec3)) return VK_FORMAT_R32G32B32_SFLOAT;
-        if (p.member_type == typeof(glm::vec4)) return VK_FORMAT_R32G32B32A32_SFLOAT;
-        if (p.member_type == typeof(float))     return VK_FORMAT_R32_SFLOAT;
+        if (p.type == typeof(glm::vec2)) return VK_FORMAT_R32G32_SFLOAT;
+        if (p.type == typeof(glm::vec3)) return VK_FORMAT_R32G32B32_SFLOAT;
+        if (p.type == typeof(glm::vec4)) return VK_FORMAT_R32G32B32A32_SFLOAT;
+        if (p.type == typeof(float))     return VK_FORMAT_R32_SFLOAT;
         ///
         assert(false);
         return VK_FORMAT_UNDEFINED;
@@ -1563,7 +1563,7 @@ void Pipeline::M::assemble_graphics(Pipeline::M *pipeline, gltf::Model &m, Graph
 
                     vstride &stride    = strides[pcount++];
                     stride.prop        = p;
-                    stride.compound_type = p->member_type; /// native glm-type or float
+                    stride.compound_type = p->type; /// native glm-type or float
                     stride.accessor    = accessor.data;
                     stride.buffer_view = m->bufferViews[accessor->bufferView].data;
                     stride.buffer      = m->buffers[stride.buffer_view->buffer].data;

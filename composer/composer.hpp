@@ -663,7 +663,7 @@ T *node::context(str id) {
     while (n) {
         u8*   addr   = property_find(n->mem->origin, n->mem->type, id, member);
         if (addr) {
-            assert(member->member_type == typeof(T));
+            assert(member->type == typeof(T));
             return (T*)addr;
         }
         n = n->data->parent;
@@ -673,7 +673,7 @@ T *node::context(str id) {
     u8     *addr = property_find(app->origin, app->type, id, member);
     ///
     if (addr) {
-        assert(member->member_type == typeof(T));
+        assert(member->type == typeof(T));
         return (T*)addr;
     }
 

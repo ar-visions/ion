@@ -21,14 +21,13 @@
 #include <skia/include/effects/SkGradientShader.h>
 #include <skia/include/effects/SkImageFilters.h>
 #include <skia/include/effects/SkDashPathEffect.h>
-
+#include <skia/include/core/SkStream.h>
+#include <skia/modules/svg/include/SkSVGDOM.h>
 #include <skia/include/core/SkAlphaType.h>
-#include <skia/include/core/SkCanvas.h>
 #include <skia/include/core/SkColor.h>
 #include <skia/include/core/SkColorType.h>
 #include <skia/include/core/SkImageInfo.h>
 #include <skia/include/core/SkRefCnt.h>
-#include <skia/include/core/SkSurface.h>
 #include <skia/include/core/SkTypes.h>
 #include <skia/include/gpu/GrDirectContext.h>
 #include <skia/include/gpu/ganesh/SkSurfaceGanesh.h>

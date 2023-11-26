@@ -120,7 +120,7 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
                     /// get best style matching entry for this property
                     style::entry *best = composer->style->best_match(instance, &p, *entries);
                     ///
-                    type_t prop_type = p.member_type;
+                    type_t prop_type = p.type;
                     u8    *prop_dst  = &data_origin[p.offset];
                     
                     /// dont repeat this; store best in transitions lookup for this member name
@@ -185,7 +185,7 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
                 if (sel.start > 0 && sel.member->parent_type == tdata) { /// make sure we have the correct data origin!
                     real   amount = math::clamp(real(now - sel.start) / real(sel.end - sel.start), 0.0, 1.0);
                     real   curve  = sel.entry->trans.pos(amount);
-                    type_t prop_type = sel.member->member_type;
+                    type_t prop_type = sel.member->type;
                     u8    *prop_dst  = &data_origin[sel.member->offset];
 
                     assert(prop_type->functions->mix);
@@ -218,7 +218,7 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
                         /// duplicates are not allowed in ux; we could handle it just not now; meta map would need to return a list not the type.  iceman: ugh!
                         assert(def->parent_type == tdata);
 
-                        type_t prop_type = def->member_type;
+                        type_t prop_type = def->type;
                         type_t arg_type  = a.value.type();
                         u8    *prop_dst  = &data_origin[def->offset];
                         u8    *arg_src   = (u8*)a.value.mem->typed_data(arg_type, 0); /// passing int into mx recovers int, but passing lambda will give data inside.  we want to store a context
@@ -436,15 +436,10 @@ size_t style::block::score(node *pn, bool score_state) {
             prop* member = null;
             assert(qd.state.len() > 0);
             u8*   addr   = property_find(pn->mem->origin, pn->mem->type, qd.state, member);
-            if (addr) {
-                state_match = member->member_type->functions->boolean(null, addr);
-                break;
-            }
+            if   (addr) state_match = member->type->functions->boolean(null, addr);
         }
 
         bool state_reject = score_state && qd.state && !state_match;
-
-        ///
         if (!id_reject && !type_reject && !state_reject) {
             double sc = size_t(   id_match) << 1 |
                         size_t( type_match) << 0 |

@@ -50,7 +50,7 @@ struct App:composer {
 
     mx operator[](symbol s) { return data->args[s]; }
 
-    ///
+    /// support 1 vec2, and 2 vec2's for a rectangular selection
     array<Element *> select_at(vec2d cur, bool active = true) {
         array<Element*> result = array<Element*>();
         lambda<void(Element*)> proc;
@@ -62,18 +62,16 @@ struct App:composer {
             }
 
             array<Element*> inside = e->select([&](Element *ee) {
+                node          &n = *(node*)ee;
                 real           x = cur.x, y = cur.y;
-                vec2d          o = ee->offset();
+                vec2d          o = ((Element*)n->parent)->offset(); // ee->offset(); // get parent offset
                 vec2d        rel = cur + o;
+                rectd    &bounds = ee->data->bounds;
+
                 Element::props *eedata = ee->data;
-                rectd &bounds = ee->data->fill_bounds ? ee->data->fill_bounds : ee->data->bounds;
+                
                 bool in = bounds.contains(rel);
-                if (strcmp(ee->mem->type->name, "VideoView") == 0) {
-                    vec2d o2 = ee->offset();
-                    int test = 0;
-                    test++;
-                }
-                ee->data->cursor = vec2d(x - o.x, y - o.y);
+                ee->data->cursor = vec2d(rel.x - bounds.x, rel.y - bounds.y);
                 return (in && (!active || !eedata->active)) ? ee : null;
             });
             
