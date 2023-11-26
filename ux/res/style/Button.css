@@ -1,7 +1,6 @@
 
 Button {
-    fill-area:    l32 t32 r-32 b-256, 200ms quad;
-    fill-radius:  32;
+    fill-radius:  12;
     fill-color:   #a4fa;
     image-src:    "menu.png";
     image-region:  l5 t5 r-5 b-5;
@@ -20,7 +19,6 @@ Button:hover {
 
 
 Button:active {
-    fill-area:    l64 t64 r-64 b-64, 200ms back out;
     opacity:      1.0;
     fill-color:   #84ff;
     text-color:   #fffa;
@@ -31,7 +29,6 @@ Edit {
     fill-radius:     22, 2400ms quad;
     text-align:      0.0 0.0;
     text-color:    #fff;
-    fill-area:       l20 t20 r-20 b-20, 200ms quad;
     text-area:       l140 t130 r-140 b-130;
     editable:        true;
     multiline:       true;

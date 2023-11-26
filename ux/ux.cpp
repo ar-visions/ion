@@ -208,10 +208,10 @@ void Element::draw_text(Canvas& canvas, rectd& rect) {
 }
 
 void Element::draw(Canvas& canvas) {
-    type_t type = mem->type;
-    node::edata *edata       = ((node*)this)->data;
-    Element *eparent         = (Element*)edata->parent;
-    rect<r64>       bounds   = eparent ? eparent->data->bounds :
+    type_t         type      = mem->type;
+    node::edata   *edata     = ((node*)this)->data;
+    Element       *eparent   = (Element*)edata->parent;
+    rect<r64>      parent_bounds = eparent ? eparent->data->bounds : 
         rect<r64> { 0, 0, r64(canvas.get_virtual_width()), r64(canvas.get_virtual_height()) };
     props::drawing &fill     = data->drawings[operation::fill];
     props::drawing &image    = data->drawings[operation::image];
@@ -219,9 +219,14 @@ void Element::draw(Canvas& canvas) {
     props::drawing &outline  = data->drawings[operation::outline]; /// outline is more AR than border.  and border is a bad idea, badly defined and badly understood. outline is on the 0 pt.  just offset it if you want.
     props::drawing &children = data->drawings[operation::child]; /// outline is more AR than border.  and border is a bad idea, badly defined and badly understood. outline is on the 0 pt.  just offset it if you want.
     
-
     canvas.save();
-    data->fill_bounds = fill.area.rect(bounds); /// use this bounds if we do not have specific areas defined
+    if (strcmp(type->name, "Button") == 0) {
+        int test = 0;
+        test++;
+    }
+
+    data->bounds      = data->area.relative_rect(parent_bounds);
+    data->fill_bounds = fill.area.relative_rect(data->bounds); /// use this bounds if we do not have specific areas defined
     
     /// if there is a fill color
     if (fill.color) { /// free'd prematurely during style change (not a transition)
@@ -242,7 +247,7 @@ void Element::draw(Canvas& canvas) {
 
     /// if there is fill image
     if (image.img) {
-        image.shape = image.area.rect(bounds);
+        image.shape = image.area.relative_rect(data->bounds);
         canvas.save();
         canvas.opacity(effective_opacity());
         canvas.image(image.img, image.shape, image.align, {0,0});
@@ -252,14 +257,14 @@ void Element::draw(Canvas& canvas) {
     /// if there is text (its not alpha 0, and there is text)
     if (data->content && ((data->content.type() == typeof(char)) ||
                           (data->content.type() == typeof(str)))) {
-        rectd rect = text.area ? text.area.rect(bounds) : data->fill_bounds;
+        rectd rect = text.area ? text.area.relative_rect(data->bounds) : data->fill_bounds;
         draw_text(canvas, rect);
         text.shape = rect;
     }
 
     /// if there is an effective border to draw
     if (outline.color && outline.border.size > 0.0) {
-        rectd outline_rect = outline.area ? outline.area.rect(bounds) : data->fill_bounds;
+        rectd outline_rect = outline.area ? outline.area.relative_rect(data->bounds) : data->fill_bounds;
         if (outline.radius) {
             vec4d r = outline.radius;
             vec2d tl { r.x, r.x };
@@ -279,10 +284,8 @@ void Element::draw(Canvas& canvas) {
         Element* c = (Element*)n;
         /// clip to child
         /// translate to child location
-        c->data->sub_bounds = children.area ? children.area.rect(bounds) : data->fill_bounds; /// fall back to fill bounds if no child area is set.
-        canvas.translate(c->data->sub_bounds.xy());
+        canvas.translate(c->data->bounds.xy());
         canvas.opacity(effective_opacity());
-        (*c)->bounds = rect<r64> { 0, 0, c->data->sub_bounds.w, c->data->sub_bounds.h };
         //canvas.clip(0, 0, r.w, r.h);
         c->draw(canvas);
     }
@@ -435,7 +438,7 @@ void Element::draw(Canvas& canvas) {
         Element *n = (Element*)this;
         vec2d  o = { 0, 0 };
         while (n) {
-            o  += n->Element::data->sub_bounds.xy(); /// this is calculated in the generic draw function
+            o  += n->Element::data->bounds.xy(); /// this is calculated in the generic draw function
             o  -= n->Element::data->scroll;
             n   = (Element*)n->node::data->parent;
         }

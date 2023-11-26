@@ -220,9 +220,11 @@ struct coord {
     vec2d       offset;
     xalign      x_type;
     yalign      y_type;
+    bool        x_rel;
+    bool        y_rel;
 
-    coord(alignment &al, vec2d &offset, xalign &xt, yalign &yt) :
-        align(al), offset(offset), x_type(xt), y_type(yt) { }
+    coord(alignment &al, vec2d &offset, xalign &xt, yalign &yt, bool &x_rel, bool &y_rel) :
+        align(al), offset(offset), x_type(xt), y_type(yt), x_rel(x_rel), y_rel(y_rel) { }
 
     coord(str s) {
         array<str> sp = s.split();
@@ -235,6 +237,20 @@ struct coord {
 
         str sx_offset = &sx[1];
         str sy_offset = &sy[1];
+
+        x_rel = false;
+        y_rel = false;
+        
+        if (sx_offset)
+            if (sx_offset[sx_offset.len() - 1] == '+') {
+                sx_offset = sx_offset.mid(0, sx_offset.len() - 1);
+                x_rel = true;
+            }
+        if (sy_offset)
+            if (sy_offset[sy_offset.len() - 1] == '+') {
+                sy_offset = sy_offset.mid(0, sy_offset.len() - 1);
+                y_rel = true;
+            }
 
         offset = { sx_offset.real_value<real>(), sy_offset.real_value<real>() };
         
@@ -260,8 +276,10 @@ struct coord {
         vec2d       offset = this->offset  * (1.0 - a) + b.offset  * a;
         xalign      x_type = b.x_type;
         yalign      y_type = b.y_type;
+        bool        x_rel  = b.x_rel;
+        bool        y_rel  = b.y_rel;
         return coord {
-            align, offset, x_type, y_type
+            align, offset, x_type, y_type, x_rel, y_rel
         };
     }
 
@@ -275,8 +293,7 @@ struct coord {
     }
 
     coord(cstr cs) : coord(str(cs)) { }
-
-    type_register(coord);
+    register(coord);
 };
 
 /// good primitive for ui, implemented in basic canvas ops.
@@ -304,6 +321,14 @@ struct region {
 
     operator bool() { return set; }
     
+    rectd relative_rect(rectd &win) {
+        vec2d rel = win.xy();
+        rectd r { tl.plot(win, rel), br.plot(win, rel) };
+        r.x -= win.x;
+        r.y -= win.y;
+        return r;
+    }
+
     ///
     rectd rect(rectd &win) {
         vec2d rel = win.xy();
@@ -554,7 +579,6 @@ struct Element:node {
         bool                    focus;
         int                     tab_index;
         vec2d                   cursor;
-        rectd                   sub_bounds; /// has our offset relative to parent, as calculated from the child area
 
         /// if we consider events handled contextually and by many users, it makes sense to have dispatch
         struct events {
@@ -587,7 +611,6 @@ struct Element:node {
             inline rectd rect() { return shape.bounds(); }
         };
 
-        /// this is simply bounds, not rounded
         inline graphics::shape shape() {
             return drawings[operation::child].shape;
         }
@@ -596,20 +619,17 @@ struct Element:node {
             return rectd((rectd&)shape());
         }
 
-        ///
         drawing             drawings[operation::count];
+        region              area; /// directly sets the bounds rectd
         rgbad               sel_color;
         rgbad               sel_background;
-        vec2d               scroll = {0,0};
+        vec2d               scroll = { 0, 0 };
         std::queue<fn_t>    queue;
-
-        /// kerning not yet supported by skia for some odd reason; we need to add this
         vec2d               text_spacing = { 1.0, 1.0 }; /// kerning & line-height scales here
-
-        mx                  content; /// lines could be an 'attachment' to content; thus when teh user sets content explicitly, it will then be recomputed
+        mx                  content;    /// lines could be an 'attachment' to content; thus when teh user sets content explicitly, it will then be recomputed
         doubly<LineInfo>    lines;
         double              opacity = 1.0;
-        rectd               bounds;     /// local coordinates of this control, so x and y are 0 based
+        rectd               bounds;     /// local coordinates of this control; xy are relative to parent xy
         rectd               fill_bounds;
         rectd               text_bounds;
         ion::font           font;  
@@ -638,6 +658,8 @@ struct Element:node {
 
                 prop { "text-spacing",   text_spacing },
                 prop { "image-src",      drawings[operation::image]  .img     },
+
+                prop { "area",           area },
 
                 prop { "fill-area",      drawings[operation::fill]   .area    },
                 prop { "image-area",     drawings[operation::image]  .area    },

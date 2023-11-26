@@ -579,8 +579,7 @@ struct node:mx {
     node(type_t type, size_t sz) : node() { 
         data->type = type;
         data->id   = null;
-        data->args = null;
-        data->children = array<node>(sz);
+        data->children = array<node*>(sz, size_t(0));
     }
 
     template <typename T>
@@ -588,7 +587,7 @@ struct node:mx {
         node res(typeof(array<node>), a.length());
         for (auto &v:a) {
             node ve = fn(v);
-            //if (ve) res.data->children += ve;
+            if  (ve) res.data->children += new node(ve);
         }
         return res;
     }
@@ -599,7 +598,7 @@ struct node:mx {
         if (res.data->children)
         for (auto &[v,k]:m) {
             node r = fn(k, v);
-            //if (r) res.data->children += r;
+            if  (r) res.data->children += new node(r);
         }
         return res;
     }
