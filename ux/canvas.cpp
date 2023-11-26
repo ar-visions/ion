@@ -45,6 +45,30 @@
 
 using namespace ion;
 
+struct iSVG {
+    sk_sp<SkSVGDOM> svg_dom;
+    int             w, h;
+};
+
+mx_implement(SVG, mx);
+
+SVG::SVG(path p) : SVG() {
+    SkStream* stream = new SkFILEStream((symbol)p.cs());
+    data->svg_dom = SkSVGDOM::MakeFromStream(*stream);
+    delete stream;
+}
+
+void render(Canvas &canvas, int w, int h) {
+    if (this->w != w || this->h != h) {
+        this->w  = w;
+        this->h  = h;
+        SkImageInfo info = SkImageInfo::MakeN32Premul(w, h);
+        auto surface = SkSurface::MakeRaster(info);
+        data->svg_dom->setContainerSize(SkSize::Make(w, h));
+    }
+    data->svg_dom->render(canvas.data->sk_canvas);
+}
+
 static SkPoint rotate90(const SkPoint& p) { return {p.fY, -p.fX}; }
 static SkPoint rotate180(const SkPoint& p) { return p * -1; }
 static SkPoint setLength(SkPoint p, float len) {

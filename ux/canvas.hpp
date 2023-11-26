@@ -2,6 +2,7 @@
 #include <ux/ux.hpp>
 
 struct ICanvas;
+struct iSVG;
 namespace ion {
 
 struct Canvas:mx {
@@ -46,4 +47,12 @@ struct Canvas:mx {
     void gaussian(vec2d sz, rectd crop);
     void arc(glm::vec3 pos, real radius, real startAngle, real endAngle, bool is_fill = false);
 };
+
+struct SVG:mx {
+    mx_declare(Canvas, mx, iSVG);
+
+    SVG(path p);
+    void render(Canvas &canvas, int w, int h);
+};
+
 }
