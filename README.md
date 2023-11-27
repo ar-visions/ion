@@ -4,7 +4,7 @@ ion-modules framework repository. C++ managed memory with introspective types, m
 ![ion 'Orbiter' engine](https://github.com/ar-visions/ion/blob/main/ion-orbiter.png?raw=true)
 
 Annotator under development on hyperspace project  
-3D spatial apps with context aware, dictation-enabled widgets  
+3D spatial apps with context aware, dictation-enabled components  
 [https://github.com/ar-visions/hyperspace.git]
 
 Orbiter sync agent (will be basic IDE)
