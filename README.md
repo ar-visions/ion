@@ -1,7 +1,7 @@
 # ion
 ion-modules framework repository. C++ managed memory with introspective types, meta reflection with intuitive syntax
 
-![ion 'Orbiter' engine](https://github.com/ar-visions/ion/blob/ion-orbiter.png?raw=true)
+![ion 'Orbiter' engine](https://github.com/ar-visions/ion/blob/main/ion-orbiter.png?raw=true)
 
 Annotator under development on hyperspace project  
 3D spatial apps with context aware, dictation-enabled widgets  
