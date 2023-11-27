@@ -1175,23 +1175,23 @@ void    Canvas::gaussian(vec2d sz, rectd crop) {
 }
 
 struct iSVG {
-    sk_sp<SkSVGDOM> svg_dom;
+    //sk_sp<SkSVGDOM> svg_dom;
     int             w, h;
 };
 
 mx_implement(SVG, mx);
 
 SVG::SVG(path p) : SVG() {
-    SkStream* stream = new SkFILEStream((symbol)p.cs());
-    data->svg_dom = SkSVGDOM::MakeFromStream(*stream);
-    delete stream;
+    //SkStream* stream = new SkFILEStream((symbol)p.cs());
+    //data->svg_dom = SkSVGDOM::MakeFromStream(*stream);
+    //delete stream;
 }
 
 void SVG::render(Canvas &canvas, int w, int h) {
     if (data->w != w || data->h != h) {
         data->w  = w;
         data->h  = h;
-        data->svg_dom->setContainerSize(SkSize::Make(w, h));
+        //data->svg_dom->setContainerSize(SkSize::Make(w, h));
     }
-    data->svg_dom->render(canvas.data->sk_canvas);
+    //data->svg_dom->render(canvas.data->sk_canvas);
 }
