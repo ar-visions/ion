@@ -10,21 +10,14 @@ using CaptureCallback = ion::lambda<void(void*, ion::sz_t)>;
 
 #define kNumberBuffers 3
 
-// User data structure
-typedef struct {
-
-    bool isRunning;
-} AudioRecorderState;
-
 struct audio_t {
-    CaptureCallback callback;
-    ion::str        audio_alias;
-    int             selected = -1;
-    ion::Media      selected_format;
-    int             sample_rate;
-    bool            halt;
-    bool            shutdown;
-
+    CaptureCallback     callback;
+    ion::str            audio_alias;
+    int                 selected = -1;
+    ion::Media          selected_format;
+    int                 sample_rate;
+    bool                halt;
+    bool                shutdown;
     AudioQueueBufferRef buffers[kNumberBuffers];
     AudioQueueRef       queue;
     UInt32              bufferByteSize;

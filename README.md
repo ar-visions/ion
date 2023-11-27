@@ -1,11 +1,11 @@
 # ion
 ion-modules framework repository. C++ managed memory with introspective types, meta reflection with intuitive syntax
 
-simple agent atm (not updated in months will update very very shortly)
+![alt text](https://github.com/ar-visions/ion/blob/ion-orbiter.png?raw=true)
 
-[https://github.com/ar-visions/orbiter.git]
-
-spatial dev kit, ai module & training scripts at the moment no data.
-the use-case here is go pro or xavier based dev.  it has cross compilation ability in the ion::dx build system
-
+Annotator under development on hyperspace project  
+3D spatial apps with context aware, dictation-enabled widgets  
 [https://github.com/ar-visions/hyperspace.git]
+
+Orbiter sync agent (will be basic IDE)
+[https://github.com/ar-visions/orbiter.git]
