@@ -49,7 +49,7 @@ struct Canvas:mx {
 };
 
 struct SVG:mx {
-    mx_declare(Canvas, mx, iSVG);
+    mx_declare(SVG, mx, iSVG);
 
     SVG(path p);
     void render(Canvas &canvas, int w, int h);
