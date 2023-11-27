@@ -31,7 +31,7 @@
 #endif /* HAVE_SYS_TIME_H */
 #ifdef HAVE_SYS_UTIME_H
 #ifdef __APPLE__
-#include <sys/utime.h>
+#include <utime.h>
 #else
 #endif
 #include <utime.h>

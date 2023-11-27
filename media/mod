@@ -3,7 +3,7 @@ dep(mx:mx)
 #dep(mx:mx ion:net ion:vk @Vulkan)
 src(-camera-apple.mm)
 src(-camera-win.cpp)
-src(-canera-linux.cpp)
+src(-camera-linux.cpp)
 
 dep(mx:async
     opusenc:opusenc
@@ -23,7 +23,7 @@ endif()
 includes(${INSTALL_PREFIX}/include/opus)
 
 if(APPLE)
-    dep(IOSurface QuartzCore Metal CoreMedia CoreFoundation Cocoa IOKit AVFoundation)
+    dep(IOSurface QuartzCore Metal CoreMedia CoreAudio AudioToolbox CoreFoundation Cocoa IOKit AVFoundation)
     cxxflags(+-fobjc-arc +-Wno-deprecated-declarations)
     src(camera-apple.mm)
 elseif(WIN32)

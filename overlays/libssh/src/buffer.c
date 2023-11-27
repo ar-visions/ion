@@ -38,6 +38,7 @@
 #include "libssh/misc.h"
 #include "libssh/bignum.h"
 
+#ifndef __APPLE__
 uint64_t htonll(uint64_t hostlonglong) {
     // If the host is already in network byte order, just return it.
     #if BYTE_ORDER == LITTLE_ENDIAN
@@ -55,6 +56,7 @@ uint64_t ntohll(uint64_t hostlonglong) {
     return hostlonglong;
     #endif
 }
+#endif
 
 /*
  * Describes a buffer state

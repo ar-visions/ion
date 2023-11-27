@@ -17,7 +17,7 @@
 
 #include <alsa/asoundlib.h>
 
-#include <media/camera-linux.hpp>
+#include <media/camera.hpp>
 
 namespace ion {
 

@@ -8,6 +8,8 @@ includes(${module_path}
 defines(LIBSSH_STATIC HAVE_LIBMBEDCRYPTO)
 set(dir ${EXTERN_DIR}/libssh/src)
 
+cflags(+-Wno-unused-value)
+
 # add source references
 src(${dir}/agent.c              ${dir}/auth.c                   ${dir}/base64.c  
     ${dir}/channels.c           ${dir}/client.c                 ${dir}/config.c                

@@ -1,5 +1,5 @@
 
-#include <media/camera-win.hpp>
+#include <media/camera.hpp>
 
 //#include <windows.h>
 #include <mfapi.h>

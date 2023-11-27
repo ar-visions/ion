@@ -1,7 +1,12 @@
-#if   defined(__APPLE__)
-#include <media/camera-apple.hpp>
-#elif defined(_WIN32)
-#include <media/camera-win.hpp>
-#else
-#include <media/camera-linux.hpp>
-#endif
+#pragma once
+#include <media/image.hpp>
+#include <media/streams.hpp>
+#include <async/async.hpp>
+
+namespace ion {
+
+Streams camera(
+        array<StreamType> stream_types, array<Media> priority,
+        str video_alias, str audio_alias, int width, int height);
+
+}

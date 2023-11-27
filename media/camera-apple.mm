@@ -1,5 +1,208 @@
 #import "camera-apple.h"
 
+#include <media/media.hpp>
+#include <media/streams.hpp>
+#include <CoreAudio/CoreAudio.h>
+#include <AudioToolbox/AudioToolbox.h>
+#include <stdio.h>
+
+using CaptureCallback = ion::lambda<void(void*, ion::sz_t)>;
+
+#define kNumberBuffers 3
+
+// User data structure
+typedef struct {
+
+    bool isRunning;
+} AudioRecorderState;
+
+struct audio_t {
+    CaptureCallback callback;
+    ion::str        audio_alias;
+    int             selected = -1;
+    ion::Media      selected_format;
+    int             sample_rate;
+    bool            halt;
+    bool            shutdown;
+
+    AudioQueueBufferRef buffers[kNumberBuffers];
+    AudioQueueRef       queue;
+    UInt32              bufferByteSize;
+    SInt64              currentPacket;
+
+    bool select(ion::str &audio_alias) {
+        this->audio_alias = audio_alias;
+
+        OSStatus        status;
+        AudioObjectID  *deviceIDs = NULL;
+        UInt32          dataSize  = 0;
+        UInt32          propertySize;
+
+        // Get the size of the data to be returned
+        AudioObjectPropertyAddress propertyAddress = {
+            kAudioHardwarePropertyDevices,
+            kAudioObjectPropertyScopeGlobal,
+            kAudioObjectPropertyElementMaster
+        };
+
+        status = AudioObjectGetPropertyDataSize(kAudioObjectSystemObject, &propertyAddress, 0, NULL, &dataSize);
+        if (status != kAudioHardwareNoError) {
+            fprintf(stderr, "Error getting data size for audio devices\n");
+            return -1;
+        }
+
+        // Calculate the number of devices and allocate memory
+        UInt32 deviceCount = dataSize / sizeof(AudioObjectID);
+        deviceIDs = (AudioObjectID *)malloc(dataSize);
+
+        // Get the audio devices
+        status = AudioObjectGetPropertyData(
+            kAudioObjectSystemObject, &propertyAddress, 
+            0, NULL, &dataSize, deviceIDs);
+        
+        if (status != kAudioHardwareNoError) {
+            fprintf(stderr, "Error getting audio devices\n");
+            free(deviceIDs);
+            return -1;
+        }
+
+        // Iterate over each device and print its name
+        for (UInt32 i = 0; selected == -1 && i < deviceCount; ++i) {
+            CFStringRef deviceName = NULL;
+            propertySize = sizeof(deviceName);
+
+            /// filter by mics (needs a number of channels in input)
+            bool is_mic = false;
+            AudioObjectPropertyAddress propertyAddressMic = {
+                kAudioDevicePropertyStreamConfiguration,
+                kAudioDevicePropertyScopeInput,
+                kAudioObjectPropertyElementMaster
+            };
+            status = AudioObjectGetPropertyDataSize(deviceIDs[i], &propertyAddressMic, 0, NULL, &dataSize);
+            if (status == kAudioHardwareNoError && dataSize > 0) {
+                AudioBufferList *bufferList = (AudioBufferList *)malloc(dataSize);
+                status = AudioObjectGetPropertyData(deviceIDs[i], &propertyAddressMic, 0, NULL, &dataSize, bufferList);
+                if (status == kAudioHardwareNoError) {
+                    int channelCount = 0;
+                    for (UInt32 j = 0; j < bufferList->mNumberBuffers; j++)
+                        channelCount += bufferList->mBuffers[j].mNumberChannels;
+                    if (channelCount > 0)
+                        is_mic = true;
+                }
+                free(bufferList);
+            }
+            if (!is_mic)
+                continue;
+            propertyAddress.mSelector = kAudioDevicePropertyDeviceNameCFString;
+            status = AudioObjectGetPropertyData(deviceIDs[i], &propertyAddress, 0, NULL, &propertySize, &deviceName);
+            if (status == kAudioHardwareNoError && deviceName) {
+                char name[256];
+                if (CFStringGetCString(deviceName, name, sizeof(name), kCFStringEncodingUTF8)) {
+                    printf("microphone %u: %s\n", (unsigned int)i, name);
+                    if (selected == -1 || !audio_alias || strstr(name, audio_alias.data))
+                        selected = (int)deviceIDs[i];
+                }
+                CFRelease(deviceName);
+            }
+        }
+
+        free(deviceIDs);
+        return selected >= 0;
+    }
+
+    void stop() {
+        if (shutdown)
+            return;
+        halt = true;
+
+        /// stop and cleanup
+        printf("Stopping recording...\n");
+        AudioQueueStop(queue, true);
+
+        /// dispose of the audio queue and buffers
+        for (int i = 0; i < kNumberBuffers; ++i)
+            AudioQueueFreeBuffer(queue, buffers[i]);
+        
+        AudioQueueDispose(queue, true);
+    }
+
+    static void AudioInputCallback(
+            void *inUserData, AudioQueueRef inAQ, AudioQueueBufferRef inBuffer,
+            const AudioTimeStamp *inStartTime, UInt32 inNumPackets,
+            const AudioStreamPacketDescription *inPacketDesc) {
+        audio_t *audio = (audio_t*)inUserData;
+
+        if (inNumPackets > 0) {
+            void  *src = inBuffer->mAudioData;
+            UInt32 sz  = inBuffer->mAudioDataByteSize;
+            audio->callback(src, sz);
+            ///
+            audio->currentPacket += inNumPackets;
+        }
+
+        /// Re-enqueue the buffer if recording is still in progress
+        if (!audio->halt && !audio->shutdown) {
+            AudioQueueEnqueueBuffer(audio->queue, inBuffer, 0, NULL);
+        }
+    }
+
+    ion::async start() {
+        return ion::async(1, [this](ion::runtime* rt, int i) -> ion::mx {
+
+            AudioStreamBasicDescription dataFormat;
+            dataFormat.mSampleRate          = sample_rate;
+            dataFormat.mFormatID            = kAudioFormatLinearPCM;
+            dataFormat.mFormatFlags         = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked;
+            dataFormat.mFramesPerPacket     = 1;
+            dataFormat.mChannelsPerFrame    = 1; // Mono; use 2 for stereo
+            dataFormat.mBitsPerChannel      = 32;
+            dataFormat.mBytesPerPacket      = dataFormat.mBytesPerFrame = 
+                (dataFormat.mBitsPerChannel / 8) * dataFormat.mChannelsPerFrame;
+
+            // Create the audio queue
+            AudioQueueNewInput(&dataFormat, AudioInputCallback, (void*)this, NULL,
+                kCFRunLoopCommonModes, 0, &queue);
+
+            // Determine the buffer size
+            UInt32 maxPacketSize;
+            UInt32 size = sizeof(maxPacketSize);
+            AudioQueueGetProperty(queue,
+                kAudioQueueProperty_MaximumOutputPacketSize, &maxPacketSize, &size);
+
+            // Calculate the buffer size
+            bufferByteSize = 2048; // Example buffer size; adjust as necessary
+            currentPacket  = 0;
+
+            for (int i = 0; i < kNumberBuffers; ++i) {
+                AudioQueueAllocateBuffer(queue, bufferByteSize, &buffers[i]);
+                AudioQueueEnqueueBuffer(queue, buffers[i], 0, NULL);
+            }
+
+            // Start the audio queue
+            halt = false;
+            AudioQueueStart(queue, NULL);
+
+            // Run loop to keep the application running while recording
+            printf("Recording...\n");
+            while (!halt) {
+                CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.25, false);
+            }
+            return true;
+        });
+    }
+};
+
+struct camera_t {
+    CaptureCallback callback;
+    ion::str        video_alias;
+    int             width        = 640;
+    int             height       = 360;
+    int             rate         = 30;
+    bool            halt         = false;
+    AppleCapture   *capture;
+    ion::Media      selected_format;
+};
+
 extern "C" void AllowKeyRepeats(void)
 {
     @autoreleasepool {
@@ -24,18 +227,12 @@ extern "C" void AllowKeyRepeats(void)
     [self.captureSession stopRunning];
 }
 
-- (void)start:(int)index width:(int)width height:(int)height user:(void*)user callback:(CaptureCallback)callback {
+- (void)start:(camera_t*)camera {
     self.captureSession = [[AVCaptureSession alloc] init];
     self.captureSession.sessionPreset = AVCaptureSessionPresetHigh;
-    self.user = user;
-    self.callback = callback;
-
-    //NSArray<AVCaptureDeviceType> *deviceTypes = @[AVCaptureDeviceTypeExternalUnknown];
-    //AVCaptureDeviceDiscoverySession *discoverySession = [AVCaptureDeviceDiscoverySession discoverySessionWithDeviceTypes:deviceTypes mediaType:AVMediaTypeVideo position:AVCaptureDevicePositionUnspecified];
-    //NSArray<AVCaptureDevice *> *devices = discoverySession.devices;
+    self.camera = camera;
 
     NSArray<AVCaptureDevice *> *devices = [AVCaptureDevice devices];
-
     int current_index = 0;
 
     printf("devices count %d\n", (int)[devices count]);
@@ -46,7 +243,10 @@ extern "C" void AllowKeyRepeats(void)
             if (![self filterDevice:device format:kCMVideoCodecType_JPEG])
                 continue;
             
-            bool use_device = current_index++ == index;
+            NSString   *device_name = [device localizedName];
+            const char *device_cs   = [device_name UTF8String];
+            bool        use_device  = strstr(device_cs, self.camera->video_alias.data) != NULL;
+
             if (!use_device)
                 continue;
 
@@ -59,8 +259,6 @@ extern "C" void AllowKeyRepeats(void)
             if ([self.captureSession canAddInput:input]) {
                 [self.captureSession addInput:input];
             }
-
-            exit(1);
 
             self.videoOutput = [[AVCaptureVideoDataOutput alloc] init];
             [self.videoOutput setSampleBufferDelegate:self queue:dispatch_queue_create("videoQueue", DISPATCH_QUEUE_SERIAL)];
@@ -78,19 +276,21 @@ extern "C" void AllowKeyRepeats(void)
 #pragma mark - AVCaptureVideoDataOutputSampleBufferDelegate
 
 - (void)captureOutput:(AVCaptureOutput *)output didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection *)connection {
-    // Extracting the CMBlockBuffer from the CMSampleBuffer
-    printf("got capture\n");
+    /// Extracting the CMBlockBuffer from the CMSampleBuffer
     CMBlockBufferRef blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer);
     if (blockBuffer == NULL) {
-        return; // Handle the error or exit the function
+        self.camera->halt = true;
+        return; /// Handle the error or exit the function
     }
     
-    // Getting a pointer to the raw data
+    /// Getting a pointer to the raw data
     size_t lengthAtOffset;
     size_t totalLength;
-    char *dataPointer;
-    CMBlockBufferGetDataPointer(blockBuffer, 0, &lengthAtOffset, &totalLength, &dataPointer);
-    self.callback(self.user, (void*)dataPointer, totalLength);
+    char  *dataPointer;
+    CMBlockBufferGetDataPointer(
+        blockBuffer, 0, &lengthAtOffset, 
+        &totalLength, &dataPointer);
+    self.camera->callback((void*)dataPointer, totalLength);
 }
 
 @end
@@ -101,61 +301,52 @@ extern "C" void AllowKeyRepeats(void)
 #import <media/camera-apple.h>
 #endif
 #include <memory>
-//#include <vk/vk.hpp>
-//#include <vkh/vkh_device.h>
-//#include <vkh/vkh_image.h>
 
 using namespace ion;
 
 namespace ion {
 
-Camera::Camera(void *user, CaptureCallback callback) : user(user), callback(callback) { }
+Streams camera(array<StreamType> stream_types, array<Media> priority, str video_alias, str audio_alias,
+               int width, int height) {
 
-#ifdef __APPLE__
+    return Streams(stream_types, priority,
+            [stream_types, priority, video_alias, audio_alias, width, height]
+    (Streams s) -> void {
 
-/*
-void global_callback(void *metal_texture, void *metal_layer, void *context) {
-    Camera *camera = (Camera*)context;
-    camera->e->vk_device->mtx.lock();
-    camera->image = vkh_image_create(
-        camera->e->vkh, VK_FORMAT_B8G8R8A8_UNORM, u32(camera->width), u32(camera->height),
-        VK_IMAGE_TILING_OPTIMAL, VKH_MEMORY_USAGE_GPU_ONLY,
-        VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT, metal_texture);
-    camera->e->vk_device->mtx.unlock();
+        /// setup audio
+        audio_t  audio { };
+        assert(audio.select((str&)audio_alias));
+        audio.selected_format = Media::PCMf32;
+        audio.sample_rate     = 48000;
+        audio.callback        = [&](void* v_audio, sz_t v_audio_size) {
+            Streams  &streams = (Streams &)s;
+            streams.push(
+                MediaBuffer(audio.selected_format, (u8*)v_audio, v_audio_size));
+        };
+        audio.start();
+
+        /// setup camera
+        camera_t camera { };
+        camera.capture  = [AppleCapture new];
+        camera.width    = width;
+        camera.height   = height;
+        camera.rate     = 30;
+        camera.callback = [&](void* v_image, sz_t v_image_size) {
+            Streams &streams = (Streams &)s;
+            streams.push(MediaBuffer(camera.selected_format, (u8*)v_image, v_image_size));
+        };
+        [camera.capture start:&camera];
+
+        printf("started camera...\n");
+        while (!s->rt->stop) {
+            if (camera.halt)
+                break;
+        }
+
+        [camera.capture stop];
+        audio.stop();
+    });
+
 }
-
-todo:
-convert metal_texture to h264 nalu packet src
-*/
-
-
-void Camera::on_data(void *user, void *data, int len) {
-    printf("got data: %p, %d\n", user, len);
-}
-
-/// Camera will resolve the vulkan texture in this module (not doing this in ux/app lol)
-void Camera::start_capture() {
-    //capture->capture = [[metal_capture alloc] initWithCallback:global_callback context:(void*)this camera_index:camera_index];
-    AppleCapture *cap = [AppleCapture new];
-    [cap start:0 width:1920 height:1080 user:(void*)this callback:&Camera::on_data];
-
-    capture = (AppleCapture_*)CFBridgingRetain(cap);
-
-}
-
-void Camera::stop_capture() {
-    [((__bridge AppleCapture*)capture) stop];
-    capture = null;
-}
-
-#else
-
-void Camera::start_capture() {
-}
-
-void Camera::stop_capture() {
-}
-
-#endif
 
 }
