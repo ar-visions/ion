@@ -1,5 +1,6 @@
-# ion
-ion-modules framework repository. C++ managed memory with introspective types, meta reflection with intuitive syntax
+# ion repository (
+ion-modules framework repository. Cross Software Development with C++.  
+Managed memory with introspective types, meta reflection with intuitive syntax
 
 ![ion 'Orbiter' engine](https://github.com/ar-visions/ion/blob/main/ion-orbiter.png?raw=true)
 
