@@ -1,5 +1,5 @@
 # ion repository
-ion-modules framework repository. Cross Software Development with C++.  
+ion-modules framework repository. Cross platform development with C++.  
 Managed memory with introspective types, meta reflection with intuitive syntax
 
 ![ion 'Orbiter' engine](https://github.com/ar-visions/ion/blob/main/ion-orbiter.png?raw=true)
