@@ -1,4 +1,4 @@
-# ion repository (
+# ion repository
 ion-modules framework repository. Cross Software Development with C++.  
 Managed memory with introspective types, meta reflection with intuitive syntax
 
