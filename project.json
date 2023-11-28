@@ -71,6 +71,12 @@
             }
         },
         {
+            "name":     "FFmpeg",
+            "version":  "6.2",
+            "url":      "https://github.com/FFmpeg/FFmpeg",
+            "commit":   "44e9cccffa6eef7fee8662f9e9bd88e3b04b0724"
+        },
+        {
             "name":     "gsl",
             "version":  "2.7",
             "url":      "https://github.com/ampl/gsl",
