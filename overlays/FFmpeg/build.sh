@@ -1,7 +1,10 @@
+#!/bin/sh
 ./configure \
 	--pkgconfigdir=$1/lib/pkgconfig \
 	--pkg-config-flags="--static" \
 	--arch=x86_64 \
+	--enable-static \
+	--disable-shared \
 	--disable-doc \
 	--disable-everything \
 	--enable-gpl \
@@ -23,4 +26,10 @@
 	--enable-decoder=opus \
 	--enable-decoder=aac \
 	--enable-parser=opus \
-	--enable-nonfree && make -j16
+	--enable-nonfree && make -j16 && make install
+
+# check if build succeeded
+if [ $? -ne 0 ]; then
+    echo "build failed"
+    exit 1
+fi
