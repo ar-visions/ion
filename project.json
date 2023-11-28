@@ -91,7 +91,15 @@
             "name":     "minih264",
             "version":  "1.0.0",
             "url":      "https://github.com/lieff/minih264",
-            "commit":   "b0baea7"
+            "commit":   "b0baea7",
+            "resource": true
+        },
+        {
+            "name":     "h264bsd",
+            "version":  "1.0.0",
+            "url":      "https://github.com/oneam/h264bsd",
+            "commit":   "42bcb5d",
+            "resource": true
         },
         {
             "name":     "fdk-aac",
