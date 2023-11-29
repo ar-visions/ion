@@ -56,7 +56,7 @@ struct Remote:mx {
     mx_basic(Remote);
 };
 
-struct Streams:mx {
+struct MStream:mx {
     struct M {
         runtime*             rt;
         mutex                mtx;
@@ -77,7 +77,7 @@ struct Streams:mx {
         register(M)
     };
 
-    Streams(array<StreamType> stream_types, array<Media> media, lambda<void(Streams)> fn):Streams() {
+    MStream(array<StreamType> stream_types, array<Media> media, lambda<void(MStream)> fn):MStream() {
         data->stream_types   = stream_types;
         data->media          = media;
         StreamType audio_t   = StreamType::Audio;
@@ -126,7 +126,7 @@ struct Streams:mx {
     void ready()  { data->ready = true; }
     void cancel() { data->error = true; }
 
-    Streams &await_ready() {
+    MStream &await_ready() {
         while (!data->ready)
             yield();
         return *this;
@@ -134,7 +134,7 @@ struct Streams:mx {
 
     bool contains(StreamType type) { return data->stream_types.index_of(type) >= 0; }
     
-    mx_basic(Streams);
+    mx_basic(MStream);
 };
 
 }

@@ -108,16 +108,10 @@
             "commit":   "8264e376ea6f2fdaa3813ff1a8463e368d95083c"
         },
         {
-            "name":     "libebml",
-            "version":  "release-1.4.4",
-            "url":      "https://github.com/Matroska-Org/libebml",
-            "commit":   "2d5c11c"
-        },
-        {
-            "name":     "libmatroska",
-            "version":  "release-1.7.2",
-            "url":      "https://github.com/Matroska-Org/libmatroska",
-            "commit":   "44aefa8ff53562367100619cb79c949b2bb6b87e"
+            "name":     "libwebm",
+            "version":  "1.0.0.31",
+            "url":      "https://github.com/webmproject/libwebm",
+            "commit":   "6745fd2"
         },
         {
             "name":     "depot_tools",

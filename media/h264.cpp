@@ -6,6 +6,8 @@
 #define H264E_ENABLE_PLAIN_C    1
 #include <media/minih264e.h>
 
+#include <h264bsd_decoder.h>
+
 #if H264E_MAX_THREADS
 #include "system.h"
 
@@ -87,7 +89,7 @@ void h264e_thread_pool_run(void *pool, void (*callback)(void*), void *callback_j
 
 namespace ion {
 
-struct i264e {
+struct i264 {
 public:
     bool                    valid;     /// while waiting for first frame it should be valid
     size_t                  frame_size, width, height;
@@ -258,12 +260,74 @@ public:
     }
 
     lambda<bool(mx)> output;
-    type_register(i264e);
+    type_register(i264);
 };
 
-mx_implement(h264e, mx);
+/*
+MStream h264bsd_test() {
+    // Initialize decoder
+    storage_t* storage = h264bsdAlloc();
+    h264bsdInit(storage, 0);
 
-h264e::h264e(lambda<bool(mx)> output) : h264e() {
+    // Variables for NALU data
+    u8* naluData;
+    u32 naluSize;
+
+    // Variables for picture size
+    u32 picWidth, picHeight, picSize;
+    u32 cropParamsAvailable;
+
+    auto readNextNalu = lambda<bool(u8**, u32*)> [&](u8** pdata, u32* plen) -> bool {
+
+    };
+
+    // Main loop to read NALUs and decode
+    while (readNextNalu(&naluData, &naluSize)) { // Implement this function
+        // Feed NAL unit to the decoder
+        u32 usedBytes = h264bsdDecode(storage, naluData, naluSize, 0, &readBytes);
+
+        if (usedBytes == H264BSD_RDY) {
+            // Check if sequence parameters are available
+            if (h264bsdIsSequenceHeaderReady(storage)) {
+                // Get picture size information
+                picWidth = h264bsdPicWidth(storage);
+                picHeight = h264bsdPicHeight(storage);
+                picSize = h264bsdPicSizeInMbs(storage) * 256;
+
+                // Check for cropping parameters (if the video is cropped)
+                u32 l, w, h, o;
+                h264bsdCroppingParams(storage, &cropParamsAvailable, &l, &w, &t, &h);
+                if (cropParamsAvailable) {
+                    // Adjust width and height based on cropping parameters
+                    picWidth  = w;
+                    picHeight = h;
+                }
+
+                printf("Video dimensions: %ux%u\n", picWidth, picHeight);
+            }
+
+            // Retrieve and process the decoded picture
+            u32 picId;
+            u8* picData;
+            h264bsdNextOutputPicture(storage, &picData, &picId, &error);
+            processDecodedPicture(picData, picSize); // Implement this function
+        } else if (usedBytes == H264BSD_ERROR) {
+            printf("Decoding error\n");
+            break;
+        }
+    }
+
+    // Release resources
+    h264bsdShutdown(storage);
+    h264bsdFree(storage);
+
+    return 0;
+}
+*/
+
+mx_implement(h264, mx);
+
+h264::h264(lambda<bool(mx)> output) : h264() {
     data->gop        = 16;
     data->qp         = 33;
     data->kbps       = 0; /// not sure whats normal here, but default shouldnt set it
@@ -274,11 +338,11 @@ h264e::h264e(lambda<bool(mx)> output) : h264e() {
     data->output     = output;
 }
 
-void h264e::push(yuv420 image) {
+void h264::push(yuv420 image) {
     data->push(image);
 }
 
-async h264e::run() {
+async h264::run() {
     return data->run();
 }
 

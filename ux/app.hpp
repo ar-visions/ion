@@ -8,7 +8,7 @@ namespace ion {
 struct App:composer {
     struct adata {
         composer::cmdata*   cmdata;
-        Streams             media; // look!
+        MStream             media; // look!
         //GPU               win;
         Canvas             *canvas;
         vec2d               cursor;

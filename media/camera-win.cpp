@@ -34,8 +34,8 @@ struct GuidEqual {
     }
 };
 
-Streams camera(array<StreamType> stream_types, array<Media> priority, str video_alias, str audio_alias, int rwidth, int rheight) {
-    return Streams(stream_types, priority, [stream_types, priority, video_alias, audio_alias, rwidth, rheight](Streams s) -> void {
+MStream camera(array<StreamType> stream_types, array<Media> priority, str video_alias, str audio_alias, int rwidth, int rheight) {
+    return MStream(stream_types, priority, [stream_types, priority, video_alias, audio_alias, rwidth, rheight](MStream s) -> void {
 
         HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
         assert(!FAILED(hr));
@@ -153,7 +153,7 @@ Streams camera(array<StreamType> stream_types, array<Media> priority, str video_
         for (Routine *r: routines) {
             if (r->dwStreamIndex != (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM)
                 continue;
-            /// get frame rate (hz) [hz = numerator / denominator; should probably store this in Streams]
+            /// get frame rate (hz) [hz = numerator / denominator; should probably store this in MStream]
             u32    numerator    = 0;
             u32    denominator  = 0;
             MFGetAttributeRatio(r->pType, MF_MT_FRAME_RATE, &numerator, &denominator);

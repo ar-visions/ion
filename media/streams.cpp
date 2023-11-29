@@ -66,7 +66,7 @@ void nv12_rgba(const uint8_t* nv12, uint8_t* rgba, int width, int height) {
         }
 }
 
-void Streams::push(MediaBuffer buffer) {
+void MStream::push(MediaBuffer buffer) {
     Frame  &frame = data->swap[data->frames % 2];
     bool is_video = false;
 
@@ -108,7 +108,7 @@ void Streams::push(MediaBuffer buffer) {
 }
 
 void Remote::close() {
-    Streams::M *streams = (Streams::M*)data->sdata;
+    MStream::M *streams = (MStream::M*)data->sdata;
     raw_t       key     = mem->origin;
 
     streams->mtx.lock();

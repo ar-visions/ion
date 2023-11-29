@@ -753,10 +753,10 @@ struct audio_t {
 
 
 
-Streams camera(
+MStream camera(
         array<StreamType> stream_types, array<Media> priority,
         str video_alias, str audio_alias, int width, int height) {
-    return Streams(stream_types, priority, [stream_types, priority, video_alias, audio_alias, width, height](Streams s) -> void {
+    return MStream(stream_types, priority, [stream_types, priority, video_alias, audio_alias, width, height](MStream s) -> void {
         audio_t  audio;
         audio.select(audio_alias.data);
 
@@ -771,7 +771,7 @@ Streams camera(
         assert(camera_select_format(&cam, priority, &selected_v4l, &selected_format)); /// query formats and priority by Media order
 
         cam.process_fn = [s, selected_format](camera_t *cam, u8* data, sz_t sz) {
-            Streams &streams = (Streams&)s;
+            MStream &streams = (MStream&)s;
             streams.push(MediaBuffer(selected_format, data, sz));
         };
 
