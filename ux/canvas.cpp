@@ -22,7 +22,7 @@
 #include <skia/include/effects/SkImageFilters.h>
 #include <skia/include/effects/SkDashPathEffect.h>
 #include <skia/include/core/SkStream.h>
-#include <skia/modules/svg/include/SkSVGDOM.h>
+//#include <skia/modules/svg/include/SkSVGDOM.h>
 #include <skia/include/core/SkAlphaType.h>
 #include <skia/include/core/SkColor.h>
 #include <skia/include/core/SkColorType.h>

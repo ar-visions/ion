@@ -4,21 +4,13 @@
 #endif
 #include <net/net.hpp>
 #include <media/media.hpp>
+#include <media/h264.hpp>
 #include <vk/vk.hpp>
 #include <composer/composer.hpp>
 #include <rtc/rtc.hpp>
 #include <webrtc/streamer/dispatchqueue.hpp>
 
 namespace ion {
-
-struct i264e;
-struct h264e:mx {
-    mx_declare(h264e, mx, i264e);
-    
-    h264e(lambda<bool(mx)> output);
-    void push(yuv420 frame);
-    async run();
-};
 
 struct ClientTrackData {
     std::shared_ptr<rtc::Track> track;

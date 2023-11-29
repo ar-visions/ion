@@ -158,7 +158,7 @@ Streams camera(array<StreamType> stream_types, array<Media> priority, str video_
             u32    denominator  = 0;
             MFGetAttributeRatio(r->pType, MF_MT_FRAME_RATE, &numerator, &denominator);
             u32    hz           = numerator / denominator;
-            s.set_info(rwidth, rheight, hz);
+            s.set_info(rwidth, rheight, hz, 1);
         }
 
         s.ready();

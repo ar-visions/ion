@@ -1,4 +1,5 @@
 #pragma once
+#include <media/image.hpp>
 #include <async/async.hpp>
 
 namespace ion {
