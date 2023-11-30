@@ -1,176 +1,98 @@
-
-/*
-extern "C" {
-#include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
-#include <libswscale/swscale.h>
-#include <libavutil/imgutils.h>
-}
-*/
-
-#if 0
+#define MP4V2_USE_STATIC_LIB
+#include <mp4v2/mp4v2.h>
+#include <fdk-aac/aacenc_lib.h>
 
 #include <mx/mx.hpp>
+#include <media/h264.hpp>
 #include <media/video.hpp>
 
-struct AVFrame;
-struct AVCodec;
-struct AVCodecContext;
-struct AVStream;
+using namespace ion;
 
 struct iVideo {
-    AVFormatContext   *format_ctx;
-    AVStream          *video_st,    *audio_st;
-    AVCodecContext    *video_ctx,   *audio_ctx;
-    AVCodec           *video_codec, *audio_codec;
-    AVFrame           *frame;
-    struct SwsContext *sws_ctx;
-    int                width, height, hz;
-    int                audio_sample_rate = 48000;
-    int                audio_channels = 1;
+    MP4FileHandle      mp4;
+    MP4TrackId         video_track;
+    MP4TrackId         audio_track;
+    HANDLE_AACENCODER  aac_encoder;
+    h264               h264_encoder;
+    
+    int                width, height, hz = 30;
+    int                audio_rate        = 48000;
+    int                audio_channels    = 1;
     bool               stopped;
     int                pts;
 
+    AACENC_BufDesc     output_aac;
+    AACENC_BufDesc     input_pcm;
+
+    u8*                buffer_aac;
+    int                buffer_aac_id = 1;
+    int                buffer_aac_sz;
+    u8*                buffer_pcm;
+    int                buffer_pcm_id = 2;
+    int                buffer_pcm_sz;
+
     register(iVideo);
-
-    void encode_frame(AVStream *st, AVCodecContext *ctx) {
-        AVPacket pkt;
-        av_init_packet(&pkt);
-        pkt.stream_index = st->index; // Set the stream index
-        pkt.data         = NULL;
-        pkt.size         = 0;
-
-        assert(avcodec_send_frame(ctx, frame) >= 0);
-        while (avcodec_receive_packet(ctx, &pkt) == 0) {
-            assert(av_write_frame(format_ctx, &pkt) >= 0);
-            av_packet_unref(&pkt);
-        }
-    }
-
-    void encode_video_frame() {
-        encode_frame(video_st, video_ctx);
-    }
-
-    void encode_audio_frame() {
-        encode_frame(audio_st, audio_ctx);
-    }
 
     void stop() {
         if (!stopped) {
-            av_frame_free(&frame);
-            frame = null;
-            encode_video_frame();
-            encode_audio_frame();
-            av_write_trailer(format_ctx);
             stopped = true;
+            aacEncClose(&aac_encoder);
+            MP4Close(mp4);
         }
     }
 
     int write_frame(Frame &f) {
-        // convert RGBA image to YUV420P
-        const u8 *inData    [1] = { (u8*)f.image.pixels() }; // RGBA
-        int       inLinesize[1] = { 4 * width }; // RGBA stride
-        sws_scale(sws_ctx, inData, inLinesize, 0, height, frame->data, frame->linesize);
-        encode_video_frame();
-        encode_audio_frame();
-        frame->pts = pts++;
+        input_pcm.numBufs    = 1;
+        input_pcm.bufs       = (void**)&buffer_pcm;
+        input_pcm.bufSizes   = &buffer_pcm_sz;
+        output_aac.numBufs   = 1;
+        output_aac.bufs      = (void**)&buffer_aac;
+        output_aac.bufSizes  = &buffer_aac_sz;
+        assert(aacEncEncode(aac_encoder, &input_pcm, &output_aac, NULL, NULL) == AACENC_OK);
+        MP4WriteSample(mp4, audio_track, buffer_aac, buffer_aac_sz);
+        //MP4WriteSample(mp4, video_track, videoData, videoDataSize);
         return 0;
     }
 
     ~iVideo() {
         stop();
-        avcodec_free_context(&video_ctx);
-        av_frame_free(&frame);
-        sws_freeContext(sws_ctx);
-        avformat_free_context(format_ctx);
     }
 
     void start(path &output) {
-        // 1. Allocate format context and set format
-        avformat_alloc_output_context2(&format_ctx, NULL, NULL, output.cs());
-        assert(format_ctx);
+        // init aac encoder
+        assert(aacEncOpen(&aac_encoder, 0, 1) == AACENC_OK);
+        AACENC_InfoStruct info = { 0 };
+        assert(aacEncoder_SetParam(aac_encoder, AACENC_AOT, AOT_AAC_LC)   == AACENC_OK);
+        assert(aacEncoder_SetParam(aac_encoder, AACENC_BITRATE, 128000)   == AACENC_OK);
+        assert(aacEncoder_SetParam(aac_encoder, AACENC_SAMPLERATE, 48000) == AACENC_OK);
+        assert(aacEncEncode(aac_encoder, NULL, NULL, NULL, NULL)          == AACENC_OK);
 
-        int      ret, i;
+        mp4 = MP4Create((symbol)output.cs());
+        assert(mp4 != MP4_INVALID_FILE_HANDLE);
 
-        audio_codec  = (AVCodec *)avcodec_find_encoder(AV_CODEC_ID_AAC); // You can use "aac" for AAC encoding
-        audio_st     = avformat_new_stream(format_ctx, audio_codec);
+        buffer_pcm_sz = audio_rate / hz;
+        buffer_pcm = (u8*)calloc(1, buffer_pcm_sz);
+        
+        video_track = MP4AddH264VideoTrack(mp4,
+            hz, 1, width, height, // time base is hz, duration is 1, 1/hz
+            0x42, // Baseline Profile (BP)
+            0x80, // no-constraints
+            0x1F, // level 3.1, commonly used for standard high-definition video, can be indicated with the value 0x1F.
+            3);   // 4-1. This value is used in the encoding of the length of the NAL units in the video stream. Typically, this is set to 3, which means the length field size is 4 bytes (since it's zero-based counting).
 
-        // Set audio parameters (sample format, sample rate, channel layout, etc.)
-        audio_st->codecpar->codec_id        = audio_codec->id;
-        audio_st->codecpar->codec_type      = AVMEDIA_TYPE_AUDIO;
-        audio_st->codecpar->format          = AV_SAMPLE_FMT_FLTP;   // PCM float 32 data
-        audio_st->codecpar->sample_rate     = audio_sample_rate;    // Sample rate (adjust as needed)
-        audio_st->codecpar->channels        = 1;                    // Number of audio channels (stereo)
-        audio_st->codecpar->channel_layout  = AV_CH_LAYOUT_MONO;    // Channel layout
-        audio_st->time_base.num             = 1;
-        audio_st->time_base.den             = audio_st->codecpar->sample_rate;
-
-        // Configure audio_ctx settings
-        audio_ctx   = avcodec_alloc_context3(audio_codec);
-        audio_ctx->codec_id                 = audio_codec->id;
-        audio_ctx->bit_rate                 = 128000;               // Adjust as needed (bitrate for audio)
-        audio_ctx->sample_fmt               = AV_SAMPLE_FMT_FLTP;   // Adjust as needed (sample format)
-        audio_ctx->sample_rate              = audio_sample_rate;    // Adjust as needed (sample rate)
-        audio_ctx->channels                 = 1;                    // Adjust as needed (number of audio channels)
-        audio_ctx->channel_layout           = AV_CH_LAYOUT_MONO;
-        // Set other audio_ctx parameters as needed, such as codec-specific options
-
-        // Open the audio codec context
-        assert (avcodec_open2(audio_ctx, audio_codec, NULL) >= 0);
-
-        // 2. Find and open video codec
-        video_codec = (AVCodec*)avcodec_find_encoder(AV_CODEC_ID_H264);
-
-        video_st    = avformat_new_stream(format_ctx, video_codec);
-        video_st->codecpar->codec_id = video_codec->id;
-        video_st->codecpar->codec_type = AVMEDIA_TYPE_VIDEO;
-        video_st->codecpar->width = width;
-        video_st->codecpar->height = height;
-        video_st->codecpar->format = AV_PIX_FMT_YUV420P;        // Pixel format (adjust as needed)
-        video_st->time_base = (AVRational){1, hz};              // Frame rate (adjust as needed)
-
-        video_ctx   = avcodec_alloc_context3(video_codec);
-        video_ctx->codec_id     = video_codec->id;
-        video_ctx->bit_rate     = 400000; // Adjust as needed
-        video_ctx->width        = width;
-        video_ctx->height       = height;
-        video_ctx->time_base    = (AVRational){ 1, hz }; // Adjust frame rate as needed
-        video_ctx->framerate    = (AVRational){ hz, 1 }; // Adjust frame rate as needed
-        video_ctx->gop_size     = 10; // Adjust as needed
-        video_ctx->max_b_frames = 1; // Adjust as needed
-        video_ctx->pix_fmt      = AV_PIX_FMT_YUV420P;
-
-        /// constant quality mode
-        video_ctx->qmin         = 10; // Set a minimum quantization value (adjust as needed)
-        video_ctx->qmax         = 51; // Set a maximum quantization value (adjust as needed)
-      //video_ctx->crf          = 18; // Set the desired CRF value (adjust as needed)
-
-        assert (avcodec_open2(video_ctx, video_codec, NULL) >= 0);
-
-        frame = av_frame_alloc();
-        frame->format = video_ctx->pix_fmt;
-        frame->width  = video_ctx->width;
-        frame->height = video_ctx->height;
-
-        ret = av_image_alloc(frame->data, frame->linesize, width, height, video_ctx->pix_fmt, 32); /// image holder
-        sws_ctx = sws_getContext(width, height, AV_PIX_FMT_RGBA, width, height, AV_PIX_FMT_YUV420P, SWS_BILINEAR, NULL, NULL, NULL); /// converter
-        ret = avformat_write_header(format_ctx, NULL);
-        if (ret < 0) {
-            char error_message[256];
-            av_strerror(ret, error_message, sizeof(error_message));
-            fprintf(stderr, "Error writing header: %s\n", error_message);
-            exit(1);
-        }
+        assert(audio_rate % hz == 0);
+        audio_track = MP4AddAudioTrack(
+            mp4, audio_rate, audio_rate / hz, MP4_MPEG2_AAC_LC_AUDIO_TYPE);
     }
 };
 
 mx_implement(Video, mx);
 
-Video::Video(int width, int height, int hz, int audio_sample_rate, path output) : Video() {
-    data->width  = width;
-    data->height = height;
-    data->hz     = hz;
-    data->audio_sample_rate = audio_sample_rate;
+Video::Video(int width, int height, int hz, int audio_rate, path output) : Video() {
+    data->width      = width;
+    data->height     = height;
+    data->hz         = hz;
+    data->audio_rate = audio_rate;
     data->start(output);
 }
 
@@ -181,5 +103,3 @@ int Video::write_frame(Frame &f) {
 void Video::stop() {
     data->stop();
 }
-
-#endif

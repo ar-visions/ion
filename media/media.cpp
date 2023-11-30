@@ -20,10 +20,10 @@
 //#include <gsl/gsl_errno.h>
 //#include <gsl/gsl_fft_real.h>
 
-#include <ogg/ogg.h>
-#include <opus/opus.h>
-#include <opusenc/opusenc.h>
-#include <opusfile/opusfile.h>
+//#include <ogg/ogg.h>
+//#include <opus/opus.h>
+//#include <opusenc/opusenc.h>
+//#include <opusfile/opusfile.h>
 
 #if 0
 extern "C" {
@@ -173,6 +173,7 @@ bool audio::save(path dest, i64 bitrate) {
     
     /// conversion to opus
     if (ext == ".opus") {
+        #if 0
         const i64        latency    = 20; /// compute 20ms frame size
         const i64        frame_size = data->sample_rate / (1000 / latency);
         OggOpusEnc      *enc;
@@ -198,7 +199,7 @@ bool audio::save(path dest, i64 bitrate) {
         ope_encoder_drain(enc); /// drain? flush!
         ope_encoder_destroy(enc);
         ope_comments_destroy(comments);
-        
+        #endif
     } else if (ext == ".mp3") {
         #if 0
         FILE          *mp3_file = fopen(s_path, "wb");
@@ -262,6 +263,7 @@ audio::audio(path res, bool force_mono) : mx(&data) {
     int  error;
     ///
     if (ext == ".opus") {
+        #if 0
         /// open file
         OggOpusFile *opus_file = op_open_file(s_path, &error);
         if (error != 0) console.fault("failed to open file: {0}, error {1}", { error });
@@ -296,7 +298,7 @@ audio::audio(path res, bool force_mono) : mx(&data) {
         
         /// this will always result in exactly total_samples read -- or a crash
         if (t != data->total_samples) console.fault("sample count mismatch: {0}", { str(res) });
-        
+        #endif
     } else if (ext == ".mp3") {
         /// open file
         mp3dec_t         dec;

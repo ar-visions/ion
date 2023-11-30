@@ -13,13 +13,9 @@ src(-camera-linux.cpp)
 # ---------------------------------
 
 dep(mx:async
-    opusenc:opusenc
-    opusfile:opusfile
-    opus:opus
-    ogg:ogg
     shine:shine
-    speexdsp:speexdps
-    libwebm:libwebm)
+    speexdsp:speexdsp
+    mp4v2:mp4v2)
 
 if(WIN32)
     dep(libpng:libpng16_static
