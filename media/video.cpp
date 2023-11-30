@@ -27,9 +27,11 @@ struct iVideo {
     u8*                buffer_aac;
     int                buffer_aac_id = 1;
     int                buffer_aac_sz;
-    u8*                buffer_pcm;
+    int                buffer_aac_el = sizeof(u8);
+    short*             buffer_pcm;
     int                buffer_pcm_id = 2;
     int                buffer_pcm_sz;
+    int                buffer_pcm_el = sizeof(short);
 
     register(iVideo);
 
@@ -45,10 +47,17 @@ struct iVideo {
         input_pcm.numBufs    = 1;
         input_pcm.bufs       = (void**)&buffer_pcm;
         input_pcm.bufSizes   = &buffer_pcm_sz;
-        output_aac.numBufs   = 1;
-        output_aac.bufs      = (void**)&buffer_aac;
-        output_aac.bufSizes  = &buffer_aac_sz;
-        assert(aacEncEncode(aac_encoder, &input_pcm, &output_aac, NULL, NULL) == AACENC_OK);
+        input_pcm.bufferIdentifiers = &buffer_pcm_id;
+        input_pcm.bufElSizes = &buffer_pcm_el;
+
+        output_aac.numBufs    = 1;
+        output_aac.bufs       = (void**)&buffer_aac;
+        output_aac.bufSizes   = &buffer_aac_sz;
+        output_aac.bufferIdentifiers = &buffer_aac_id;
+        output_aac.bufElSizes = &buffer_aac_el;
+        AACENC_InArgs args { 1, 0 };
+        AACENC_OutArgs out_args { };
+        assert(aacEncEncode(aac_encoder, &input_pcm, &output_aac, &args, &out_args) == AACENC_OK);
         MP4WriteSample(mp4, audio_track, buffer_aac, buffer_aac_sz);
         //MP4WriteSample(mp4, video_track, videoData, videoDataSize);
         return 0;
@@ -59,19 +68,21 @@ struct iVideo {
     }
 
     void start(path &output) {
+        buffer_aac_sz = 128000 / 8 / hz * 2; /// i doubt i need * 2
+        buffer_pcm_sz = sizeof(short) * audio_rate / hz;
+        buffer_aac = (u8*)   calloc(1, buffer_aac_sz);
+        buffer_pcm = (short*)calloc(1, buffer_pcm_sz);
         // init aac encoder
         assert(aacEncOpen(&aac_encoder, 0, 1) == AACENC_OK);
         AACENC_InfoStruct info = { 0 };
-        assert(aacEncoder_SetParam(aac_encoder, AACENC_AOT, AOT_AAC_LC)   == AACENC_OK);
-        assert(aacEncoder_SetParam(aac_encoder, AACENC_BITRATE, 128000)   == AACENC_OK);
-        assert(aacEncoder_SetParam(aac_encoder, AACENC_SAMPLERATE, 48000) == AACENC_OK);
-        assert(aacEncEncode(aac_encoder, NULL, NULL, NULL, NULL)          == AACENC_OK);
+        assert(aacEncoder_SetParam(aac_encoder, AACENC_AOT, AOT_AAC_LC)     == AACENC_OK);
+        assert(aacEncoder_SetParam(aac_encoder, AACENC_BITRATE, 128000)     == AACENC_OK);
+        assert(aacEncoder_SetParam(aac_encoder, AACENC_SAMPLERATE, audio_rate) == AACENC_OK);
+        assert(aacEncoder_SetParam(aac_encoder, AACENC_CHANNELMODE, MODE_1) == AACENC_OK);
+        assert(aacEncEncode(aac_encoder, NULL, NULL, NULL, NULL)            == AACENC_OK);
 
         mp4 = MP4Create((symbol)output.cs());
         assert(mp4 != MP4_INVALID_FILE_HANDLE);
-
-        buffer_pcm_sz = audio_rate / hz;
-        buffer_pcm = (u8*)calloc(1, buffer_pcm_sz);
         
         video_track = MP4AddH264VideoTrack(mp4,
             hz, 1, width, height, // time base is hz, duration is 1, 1/hz

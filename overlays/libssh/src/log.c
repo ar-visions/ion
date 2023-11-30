@@ -33,7 +33,11 @@
 #ifdef __APPLE__
 #include <utime.h>
 #else
+#ifdef __linux__
+#include <utime.h>
+#else
 #include <sys/utime.h>
+#endif
 #ifdef _WIN32
 #include <time.h>
 #endif
