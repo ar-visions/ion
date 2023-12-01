@@ -299,12 +299,12 @@ using namespace ion;
 
 namespace ion {
 
-Streams camera(array<StreamType> stream_types, array<Media> priority, str video_alias, str audio_alias,
+MStream camera(array<StreamType> stream_types, array<Media> priority, str video_alias, str audio_alias,
                int width, int height) {
 
-    return Streams(stream_types, priority,
+    return MStream(stream_types, priority,
             [stream_types, priority, video_alias, audio_alias, width, height]
-    (Streams s) -> void {
+    (MStream s) -> void {
 
         /// setup audio
         audio_t  audio { };
@@ -312,7 +312,7 @@ Streams camera(array<StreamType> stream_types, array<Media> priority, str video_
         audio.selected_format = Media::PCMf32;
         audio.sample_rate     = 48000;
         audio.callback        = [&](void* v_audio, sz_t v_audio_size) {
-            Streams  &streams = (Streams &)s;
+            MStream  &streams = (MStream &)s;
             streams.push(
                 MediaBuffer(audio.selected_format, (u8*)v_audio, v_audio_size));
         };
@@ -325,7 +325,7 @@ Streams camera(array<StreamType> stream_types, array<Media> priority, str video_
         camera.height   = height;
         camera.rate     = 30;
         camera.callback = [&](void* v_image, sz_t v_image_size) {
-            Streams &streams = (Streams &)s;
+            MStream &streams = (MStream &)s;
             streams.push(MediaBuffer(camera.selected_format, (u8*)v_image, v_image_size));
         };
         [camera.capture start:&camera];
