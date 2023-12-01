@@ -1,7 +1,25 @@
 #include <media/image.hpp>
 #include <png.h>
+#include <yuv_rgb.h>
 
 namespace ion {
+
+yuv420::yuv420(image img) : 
+        array<u8>(size_t(img.width() * img.height() +
+                            img.width() * img.height() / 4 +
+                            img.width() * img.height() / 4),
+                    size_t(img.width() * img.height() +
+                            img.width() * img.height() / 4 +
+                            img.width() * img.height() / 4)) {
+    w  = img.width();
+    h  = img.height();
+    y  =  data;
+    u  = &data[w * h];
+    v  = &data[w * h + (w/2 * h/2)];
+    sz = w * h * 3 / 2;
+    rgb32_yuv420_sseu(
+        w, h, (u8*)img.data, 4 * w, y, u, v, w, (w+1)/2, YCBCR_JPEG);
+}
 
 /// load an image into 32bit rgba format
 image::image(ion::size sz, rgba8 *px, int scanline) : array() {

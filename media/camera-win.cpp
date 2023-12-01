@@ -56,6 +56,7 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
             int                 selected_stream;
             int                 format_index = -1;
             Media               selected_format;
+            int                 selected_media;
         };
 
         doubly<Routine*> routines;
@@ -111,7 +112,46 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
                 GUID  subtype       = GUID_NULL;
                 IMFMediaType* pType = null;
                 MFCreateSourceReaderFromMediaSource(r->pSource, null, &r->pReader);
+
                 while (SUCCEEDED(r->pReader->GetNativeMediaType(stream_index, 0, &pType))) {
+                    int selected_media;
+
+                    if (cat == 0) {
+                        selected_media = -1;
+                        IMFMediaType* mediaType = nullptr;
+                        GUID    subtype { 0 };
+                        UINT32  frameRate    = 0u;
+                        UINT32  frameRateMin = 0u;
+                        UINT32  frameRateMax = 0u;
+                        UINT32  denominator  = 0u;
+                        DWORD   index        = 0u;
+                        UINT32  width        = 0u;
+                        UINT32  height       = 0u;
+                        HRESULT hr = S_OK;
+                        while (hr == S_OK) {
+                            hr = r->pReader->GetNativeMediaType(stream_index, index, &mediaType);
+                            if (hr != S_OK)
+                                break;
+                            hr = mediaType->GetGUID(MF_MT_SUBTYPE, &subtype);
+                            hr = MFGetAttributeSize(mediaType, MF_MT_FRAME_SIZE, &width, &height);
+                            hr = MFGetAttributeRatio(mediaType, MF_MT_FRAME_RATE, &frameRate, &denominator);
+                            if (hr == S_OK) {
+                                printf("frame size: %d %d\n", width, height);
+                                printf("frame rate: %d %d\n", frameRate, denominator);
+                                fflush(stdout);
+                                if (width == rwidth && height == rheight && frameRate == 30) {
+                                    selected_media = index;
+                                    mediaType->Release();
+                                    break;
+                                }
+                            }
+                            mediaType->Release();
+                            ++index;
+                        }
+                        assert(selected_media >= 0);
+                    } else
+                        selected_media = 0;
+
                     pType->GetGUID(MF_MT_SUBTYPE, &subtype);
                     Media vf = format_from_guid(subtype);
                     if (vf != Media::undefined) {
@@ -120,6 +160,7 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
                             r->selected_format = vf;
                             r->format_index    = index;
                             r->selected_stream = stream_index;
+                            r->selected_media  = selected_media;
                         }
                     }
                     pType->Release();
@@ -128,14 +169,8 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
                 }
 
                 assert(r->selected_format);
-                
                 /// load selected_stream (index of MediaFoundation device stream)
-                if (SUCCEEDED(r->pReader->GetNativeMediaType(r->selected_stream, 0, &r->pType))) {
-                    if (cat == 0) { 
-                        // set resolution; asset success
-                        HRESULT hr = MFSetAttributeSize(r->pType, MF_MT_FRAME_SIZE, rwidth, rheight);
-                        assert(SUCCEEDED(hr));
-                    }
+                if (SUCCEEDED(r->pReader->GetNativeMediaType(r->selected_stream, r->selected_media, &r->pType))) {
                     HRESULT hr = r->pReader->SetCurrentMediaType(r->selected_stream, null, r->pType);
                     assert(SUCCEEDED(hr));
                     if (cat == 1) {
@@ -153,12 +188,7 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
         for (Routine *r: routines) {
             if (r->dwStreamIndex != (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM)
                 continue;
-            /// get frame rate (hz) [hz = numerator / denominator; should probably store this in MStream]
-            u32    numerator    = 0;
-            u32    denominator  = 0;
-            MFGetAttributeRatio(r->pType, MF_MT_FRAME_RATE, &numerator, &denominator);
-            u32    hz           = numerator / denominator;
-            s.set_info(rwidth, rheight, hz, 1);
+            s.set_info(rwidth, rheight, 30, 1);
         }
 
         s.ready();
@@ -166,6 +196,7 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
         /// capture loop
         while (!s->rt->stop) {
             DWORD flags = 0;
+            i64 t = millis();
             for (Routine *r: routines) {
                 IMFSample* pSample = null;
                 r->pReader->SetCurrentMediaType(r->dwStreamIndex, NULL, r->pType);
@@ -187,6 +218,10 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
                     pSample->Release();
                 }
             }
+            i64 t2 = millis();
+            i64 t3 = t2 - t;
+            printf("duration = %d\n", (int)t3);
+            fflush(stdout);
         }
         
         MFShutdown();

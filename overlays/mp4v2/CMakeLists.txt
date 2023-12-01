@@ -4,8 +4,29 @@ project(MP4v2 VERSION 2.1.3)
 
 set(CMAKE_CXX_STANDARD 11)
 
-option(BUILD_SHARED "Build libmp4v2 as a shared library" ON)
-option(BUILD_UTILS "Build MP4v2 auxiliary tools" ON)
+if(MSVC)
+    add_compile_options(
+        $<$<CONFIG:>:/MT>
+        $<$<CONFIG:Debug>:/MT>
+        $<$<CONFIG:Release>:/MT>
+    )
+    add_compile_options(/MT)
+    set(CMAKE_C_COMPILER    "clang-cl")
+	set(CMAKE_CXX_COMPILER  "clang-cl")
+else()
+	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror -Wall -Wextra -pedantic -std=c99")
+endif()
+
+option(BUILD_SHARED "Build libmp4v2 as a shared library" OFF)
+option(BUILD_UTILS  "Build MP4v2 auxiliary tools"        OFF)
+
+string(REPLACE "/MD" "/MT" CMAKE_CXX_FLAGS         ${CMAKE_CXX_FLAGS})
+string(REPLACE "/MD" "/MT" CMAKE_CXX_FLAGS_RELEASE ${CMAKE_CXX_FLAGS_RELEASE})
+string(REPLACE "/MD" "/MT" CMAKE_CXX_FLAGS_DEBUG   ${CMAKE_CXX_FLAGS_DEBUG})
+
+set(CMAKE_CXX_FLAGS         "${CMAKE_CXX_FLAGS}         /MT")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT")
+set(CMAKE_CXX_FLAGS_DEBUG   "${CMAKE_CXX_FLAGS_DEBUG}   /MT")
 
 #
 # Generate include/mp4v2/project.h and libplatform/config.h
@@ -93,14 +114,11 @@ function(configure_pkg_config_file pkg_config_file_in)
     configure_file(${pkg_config_file_in} ${pkg_config_file} @ONLY)
 endfunction() 
 
-configure_pkg_config_file(mp4v2.pc.in)
+# configure_pkg_config_file(mp4v2.pc.in)
 
 #
 # Set compile flags
 #
-if(MSVC)
-    add_compile_options(/EHsc)
-endif()
 
 #
 # Define MP4v2 source files
@@ -311,9 +329,12 @@ if(BUILD_SHARED)
     set_target_properties(mp4v2 PROPERTIES VERSION ${PROJECT_version} SOVERSION ${PROJECT_version_major})
 else()
     if(MSVC)
-        add_compile_options(/MT)
+        add_compile_options(/MT /EHsc)
     endif()
     add_library(mp4v2 STATIC ${MP4V2_SOURCE_FILES})
+    if(MSVC)
+        target_compile_options(mp4v2 PUBLIC /MT)
+    endif()
     target_compile_definitions(mp4v2 PUBLIC MP4V2_USE_STATIC_LIB)
 endif()
 
@@ -381,7 +402,9 @@ else()
     install(TARGETS mp4v2 ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}")
 endif()
 
-install(FILES "${CMAKE_CURRENT_BINARY_DIR}/mp4v2.pc" DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
+if(NOT MSVC)
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/mp4v2.pc" DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
+endif()
 
 if(BUILD_UTILS)
     install(TARGETS mp4art

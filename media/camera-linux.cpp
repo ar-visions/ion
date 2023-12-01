@@ -24,7 +24,6 @@ namespace ion {
 #define CLEAR(x) memset(&(x), 0, sizeof(x))
 
 enum io_method {
-	IO_METHOD_READ,
 	IO_METHOD_MMAP,
 	IO_METHOD_USERPTR,
 };
@@ -38,7 +37,7 @@ struct camera_t {
     char             dev_name[128];
     char             alias[128];
     enum io_method   io = IO_METHOD_MMAP;
-    int              width = 640, height = 360, hz = 30;
+    int              width = 640, height = 360, hz = 60;
     int              fd = -1;
     Buffer          *buffers;
     unsigned int     n_buffers;
@@ -152,31 +151,10 @@ static int read_frame(camera_t *cam)
 	unsigned int i;
 
 	switch (cam->io) {
-	case IO_METHOD_READ:
-		if (-1 == read(cam->fd, cam->buffers[0].start, cam->buffers[0].length)) {
-			switch (errno) {
-			case EAGAIN:
-				return 0;
-
-			case EIO:
-				/* Could ignore EIO, see spec. */
-
-				/* fall through */
-
-			default:
-				errno_exit("read");
-			}
-		}
-
-		process_image(cam, cam->buffers[0].start, cam->buffers[0].length);
-		break;
-
 	case IO_METHOD_MMAP:
 		CLEAR(buf);
-
 		buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 		buf.memory = V4L2_MEMORY_MMAP;
-
 		if (-1 == xioctl(cam->fd, VIDIOC_DQBUF, &buf)) {
 			switch (errno) {
 			case EAGAIN:
@@ -191,62 +169,44 @@ static int read_frame(camera_t *cam)
 				errno_exit("VIDIOC_DQBUF");
 			}
 		}
-
 		assert(buf.index < cam->n_buffers);
-
 		process_image(cam, cam->buffers[buf.index].start, buf.bytesused);
-
 		if (-1 == xioctl(cam->fd, VIDIOC_QBUF, &buf))
 			errno_exit("VIDIOC_QBUF");
 		break;
 
 	case IO_METHOD_USERPTR:
 		CLEAR(buf);
-
 		buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 		buf.memory = V4L2_MEMORY_USERPTR;
-
 		if (-1 == xioctl(cam->fd, VIDIOC_DQBUF, &buf)) {
 			switch (errno) {
 			case EAGAIN:
 				return 0;
-
 			case EIO:
 				/* Could ignore EIO, see spec. */
-
 				/* fall through */
-
 			default:
 				errno_exit("VIDIOC_DQBUF");
 			}
 		}
-
 		for (i = 0; i < cam->n_buffers; ++i)
 			if (buf.m.userptr == (unsigned long)cam->buffers[i].start
 			    && buf.length == cam->buffers[i].length)
 				break;
-
 		assert(i < cam->n_buffers);
-
 		process_image(cam, (void *)buf.m.userptr, buf.bytesused);
-
 		if (-1 == xioctl(cam->fd, VIDIOC_QBUF, &buf))
 			errno_exit("VIDIOC_QBUF");
 		break;
 	}
-
 	return 1;
 }
 
 static void stop_capturing(camera_t *cam)
 {
 	enum v4l2_buf_type type;
-
 	switch (cam->io) {
-	case IO_METHOD_READ:
-		/* Nothing to do. */
-		break;
-
 	case IO_METHOD_MMAP:
 	case IO_METHOD_USERPTR:
 		type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
@@ -262,10 +222,6 @@ static void start_capturing(camera_t *cam)
 	enum v4l2_buf_type type;
 
 	switch (cam->io) {
-	case IO_METHOD_READ:
-		/* Nothing to do. */
-		break;
-
 	case IO_METHOD_MMAP:
 		for (i = 0; i < cam->n_buffers; ++i) {
 			struct v4l2_buffer buf;
@@ -309,10 +265,6 @@ static void uninit_device(camera_t *cam)
 	unsigned int i;
 
 	switch (cam->io) {
-	case IO_METHOD_READ:
-		free(cam->buffers[0].start);
-		break;
-
 	case IO_METHOD_MMAP:
 		for (i = 0; i < cam->n_buffers; ++i)
 			if (-1 == munmap(cam->buffers[i].start, cam->buffers[i].length))
@@ -471,14 +423,6 @@ static void init_device(camera_t *cam, int format, int width, int height, int hz
 	}
 
 	switch (cam->io) {
-	case IO_METHOD_READ:
-		if (!(cap.capabilities & V4L2_CAP_READWRITE)) {
-			fprintf(stderr, "%s does not support read i/o\n",
-				 cam->dev_name);
-			exit(EXIT_FAILURE);
-		}
-		break;
-
 	case IO_METHOD_MMAP:
 	case IO_METHOD_USERPTR:
 		if (!(cap.capabilities & V4L2_CAP_STREAMING)) {
@@ -489,30 +433,7 @@ static void init_device(camera_t *cam, int format, int width, int height, int hz
 		break;
 	}
 
-	/* Select video input, video standard and tune here. */
-	CLEAR(cropcap);
-	cropcap.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-
-	if (0 == xioctl(cam->fd, VIDIOC_CROPCAP, &cropcap)) {
-		crop.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-		crop.c = cropcap.defrect; /* reset to default */
-
-		if (-1 == xioctl(cam->fd, VIDIOC_S_CROP, &crop)) {
-			switch (errno) {
-			case EINVAL:
-				/* Cropping not supported. */
-				break;
-			default:
-				/* Errors ignored. */
-				break;
-			}
-		}
-	} else {
-		/* Errors ignored. */
-	}
-
 	CLEAR(fmt);
-
 	fmt.type                = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     fmt.fmt.pix.width       = width;
     fmt.fmt.pix.height      = height;
@@ -542,10 +463,6 @@ static void init_device(camera_t *cam, int format, int width, int height, int hz
     }
 
 	switch (cam->io) {
-	case IO_METHOD_READ:
-		init_read(cam, fmt.fmt.pix.sizeimage);
-		break;
-
 	case IO_METHOD_MMAP:
 		init_mmap(cam);
 		break;
@@ -556,38 +473,30 @@ static void init_device(camera_t *cam, int format, int width, int height, int hz
 	}
 }
 
-static void close_device(camera_t *cam)
-{
+static void close_device(camera_t *cam) {
 	if (-1 == close(cam->fd))
 		errno_exit("close");
-
 	cam->fd = -1;
 }
 
-static void open_device(camera_t *cam)
-{
+static void open_device(camera_t *cam) {
 	struct stat st;
-
 	if (-1 == stat(cam->dev_name, &st)) {
 		fprintf(stderr, "Cannot identify '%s': %d, %s\n",
 			 cam->dev_name, errno, strerror(errno));
 		exit(EXIT_FAILURE);
 	}
-
 	if (!S_ISCHR(st.st_mode)) {
 		fprintf(stderr, "%s is no device\n", cam->dev_name);
 		exit(EXIT_FAILURE);
 	}
-
 	cam->fd = open(cam->dev_name, O_RDWR /* required */ | O_NONBLOCK, 0);
-
 	if (-1 == cam->fd) {
 		fprintf(stderr, "Cannot open '%s': %d, %s\n",
 			 cam->dev_name, errno, strerror(errno));
 		exit(EXIT_FAILURE);
 	}
 }
-
 
 struct audio_t {
     str        dev_name;
@@ -730,18 +639,15 @@ struct audio_t {
                     snd_ctl_close(handle);
                     console.fault("[audio_t] cannot get card info for card {0}: {1}", { card_id, snd_strerror(err) });
                 }
-
                 // check if the card name or ID contains the desired substring
                 const char *card_name_str = snd_ctl_card_info_get_name(info);
                 const char *card_id_str   = snd_ctl_card_info_get_id(info);
-                
                 if (strstr(card_name_str, search_str) != NULL || strstr(card_id_str, search_str) != NULL) {
                     sub_id   = 0;
                     dev_name = fmt { "hw:{0},{1}", { card_id, sub_id }};
                     found    = true;
                     console.log("[audio_t] found card {0}", { dev_name });
                 }
-
                 snd_ctl_close(handle);
             }
         }
@@ -752,7 +658,6 @@ struct audio_t {
 };
 
 
-
 MStream camera(
         array<StreamType> stream_types, array<Media> priority,
         str video_alias, str audio_alias, int width, int height) {
@@ -761,7 +666,7 @@ MStream camera(
         audio.select(audio_alias.data);
 
         camera_t cam;
-        cam.io = IO_METHOD_USERPTR;//IO_METHOD_MMAP;
+        cam.io = IO_METHOD_MMAP;//IO_METHOD_USERPTR;//IO_METHOD_MMAP;
 
         assert(cam.select(video_alias.data)); /// find camera with this name
         open_device(&cam);
@@ -777,12 +682,13 @@ MStream camera(
 
         s->w = width;
         s->h = height;
-        init_device(&cam, selected_v4l, width, height, 30);
+        init_device(&cam, selected_v4l, width, height, 60);
         start_capturing(&cam);
 
-        audio.record(30, 1);
-        s.set_info(width, height, 30, audio.channels);
+        audio.record(60, 1);
+        s.set_info(width, height, 60, audio.channels);
         s.ready();
+		i64 t = millis();
         while (!s->rt->stop) {
             /// read video frame
             for (;;) {
@@ -817,9 +723,16 @@ MStream camera(
             }
             /// read audio
             float *audio_frame = null;
-            if (!audio.read_frames(&audio_frame))
-                break;
-            s.push(MediaBuffer(Media::PCMf32, (u8*)audio_frame, sizeof(float) * audio.frames * audio.channels));
+            //if (!audio.read_frames(&audio_frame))
+            //    break;
+			u8 buf[4];
+			s.push(MediaBuffer(Media::PCMf32, (u8*)buf, sizeof(float) * 1));
+            //s.push(MediaBuffer(Media::PCMf32, (u8*)audio_frame, sizeof(float) * audio.frames * audio.channels));
+			i64 t2 = millis();
+			i64 diff = t2 - t;
+			printf("took %d millis to capture video and audio\n", (int)diff);
+
+			t = t2;
         }
         stop_capturing(&cam);
         uninit_device(&cam);

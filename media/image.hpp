@@ -431,55 +431,7 @@ struct yuv420:array<u8> {
 
     yuv420() : array<u8>() { }
 
-    yuv420(image img) : 
-            array<u8>(size_t(img.width() * img.height() +
-                             img.width() * img.height() / 4 +
-                             img.width() * img.height() / 4),
-                      size_t(img.width() * img.height() +
-                             img.width() * img.height() / 4 +
-                             img.width() * img.height() / 4)) {
-        w = img.width();
-        h = img.height();
-        y =  data;
-        u = &data[w * h];
-        v = &data[w * h + (w/2 * h/2)];
-        sz = w * h * 3 / 2;
-        u8 *uu   = u;
-        u8 *vv   = v;
-
-        for (size_t iy = 0; iy < h; iy += 2) {
-            u8   *yy00 =    &data[(iy + 0) * w];
-            u8   *yy10 =    &data[(iy + 1) * w];
-            u8   *yy01 =    &data[(iy + 0) * w + w];
-            u8   *yy11 =    &data[(iy + 1) * w + w + 1];
-            
-            for (size_t ix = 0; ix < w; ix += 2) {
-                rgba8 &c00 = img.data[(iy + 0) * w + (ix + 0)];
-                rgba8 &c10 = img.data[(iy + 0) * w + (ix + 1)];
-                rgba8 &c01 = img.data[(iy + 1) * w + (ix + 0)];
-                rgba8 &c11 = img.data[(iy + 1) * w + (ix + 1)];
-                ///
-                *yy00 = (77*c00.r + 150*c00.g + 29*c00.b) >> 8;
-                *yy10 = (77*c10.r + 150*c10.g + 29*c10.b) >> 8;
-                *yy01 = (77*c01.r + 150*c01.g + 29*c01.b) >> 8;
-                *yy11 = (77*c11.r + 150*c11.g + 29*c11.b) >> 8;
-                
-                yy00 += 2;
-                yy10 += 2;
-                yy01 += 2;
-                yy11 += 2;
-                ///
-                *(uu++)   = (((-38*c00.r -74*c00.g +112*c00.b) +
-                              (-38*c10.r -74*c10.g +112*c10.b) +
-                              (-38*c01.r -74*c01.g +112*c01.b) +
-                              (-38*c11.r -74*c11.g +112*c11.b)) >> 10) + 128;
-                *(vv++)   = (((112*c00.r -94*c00.g  -18*c00.b) +
-                              (112*c10.r -94*c10.g  -18*c10.b) +
-                              (112*c01.r -94*c01.g  -18*c01.b) +
-                              (112*c11.r -94*c11.g  -18*c11.b)) >> 10) + 128;
-            }
-        }
-    }
+    yuv420(image img);
     size_t       width() const { return w; }
     size_t      height() const { return h; }
 };

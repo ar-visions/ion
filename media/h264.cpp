@@ -125,8 +125,8 @@ public:
     }
 
     void start(yuv420 &ref) {
-        gop        = 16;
-        qp         = 33;
+        gop        = 5; //16 = low
+        qp         = 11; //33 = low
         kbps       = 0; /// not sure whats normal here, but default shouldnt set it
         fps        = 30;
         threads    = 4;
@@ -179,20 +179,26 @@ public:
 
     /// called from outside thread; we must maintain sync with encoder
     array<u8> encode(yuv420 &frame) {
-        array<u8> res(size(width * height * 4 * 2));
+        num w = frame.width();
+        num h = frame.height();
+        num w_prev = width;
+        num h_prev = height;
+        array<u8> res(size(w * h * 4 * 2));
+        int w_cursor = 0;
+
         if (!started)
             start(frame);
-        
+
         /// verify frame is correct count of bytes, yuv 420
         u8* buf_in = (u8*)frame.mem->origin;
         assert(frame.mem->count * frame.mem->type->base_sz == frame_size);
 
         yuv.yuv[0]    = buf_in; 
-        yuv.yuv[1]    = buf_in + width*height; 
-        yuv.yuv[2]    = buf_in + width*height*5/4; 
-        yuv.stride[0] = width;
-        yuv.stride[1] = width/2;
-        yuv.stride[2] = width/2;
+        yuv.yuv[1]    = buf_in + w*h; 
+        yuv.yuv[2]    = buf_in + w*h*5/4; 
+        yuv.stride[0] = w;
+        yuv.stride[1] = w/2;
+        yuv.stride[2] = w/2;
         
         run_param.frame_type = 0;
         run_param.encode_speed = speed;
@@ -211,8 +217,8 @@ public:
         int encoded_len = 0;
         assert(!H264E_encode(enc, scratch, &run_param, &yuv, (u8**)&encoded_raw, &encoded_len));
         iframes++;
-        assert(encoded_len <= res.mem->count);
-        memcpy(res.data, (u8*)encoded_raw, (size_t)encoded_len);
+
+        memcpy(&res.data[w_cursor], (u8*)encoded_raw, (size_t)encoded_len);
         res.set_size((size_t)encoded_len);
         return res;
     }
@@ -315,7 +321,7 @@ MStream h264bsd_test() {
 mx_implement(h264, mx);
 
 array<u8> h264::encode(yuv420 image) { /// its not a ref, so we can pass image and have it auto convert to yuv420
-    return data->encode(image);
+    return data->encode(image); /// handles resize with the proper nalu packet here, so the controller doesnt need to
 }
 
 }

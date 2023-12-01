@@ -85,6 +85,13 @@
             "resource": true
         },
         {
+            "name":     "x264",
+            "version":  "6.0.0",
+            "url":      "https://github.com/mirror/x264",
+            "commit":   "eaa68fa",
+            "platforms": ["none"]
+        },
+        {
             "name":     "h264bsd",
             "version":  "1.0.0",
             "url":      "https://github.com/oneam/h264bsd",
@@ -95,7 +102,10 @@
             "name":     "fdk-aac",
             "version":  "v2.0.2",
             "url":      "https://github.com/mstorsjo/fdk-aac",
-            "commit":   "8264e376ea6f2fdaa3813ff1a8463e368d95083c"
+            "commit":   "8264e376ea6f2fdaa3813ff1a8463e368d95083c",
+            "cmake": {
+                "args": ["-DBUILD_SHARED_LIBS=No"]
+            }
         },
         {
             "name":     "mp4v2",
@@ -112,6 +122,12 @@
             "url":      "https://chromium.googlesource.com/chromium/tools/depot_tools.git",
             "commit":   "02e70b435732a41d3d251f7c861110c6ee91f65b",
             "resource": true
+        },
+        {
+            "name":     "yuv2rgb",
+            "version":  "nov30-23",
+            "url":      "https://github.com/descampsa/yuv2rgb",
+            "commit":   "ee78934"
         },
         {
             "name":     "skia",
