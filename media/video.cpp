@@ -44,22 +44,25 @@ struct iVideo {
     }
 
     int write_frame(Frame &f) {
-        input_pcm.numBufs    = 1;
-        input_pcm.bufs       = (void**)&buffer_pcm;
-        input_pcm.bufSizes   = &buffer_pcm_sz;
-        input_pcm.bufferIdentifiers = &buffer_pcm_id;
-        input_pcm.bufElSizes = &buffer_pcm_el;
+        input_pcm.numBufs            = 1;
+        input_pcm.bufs               = (void**)&buffer_pcm;
+        input_pcm.bufSizes           = &buffer_pcm_sz;
+        input_pcm.bufferIdentifiers  = &buffer_pcm_id;
+        input_pcm.bufElSizes         = &buffer_pcm_el;
 
-        output_aac.numBufs    = 1;
-        output_aac.bufs       = (void**)&buffer_aac;
-        output_aac.bufSizes   = &buffer_aac_sz;
+        output_aac.numBufs           = 1;
+        output_aac.bufs              = (void**)&buffer_aac;
+        output_aac.bufSizes          = &buffer_aac_sz;
         output_aac.bufferIdentifiers = &buffer_aac_id;
-        output_aac.bufElSizes = &buffer_aac_el;
+        output_aac.bufElSizes        = &buffer_aac_el;
         AACENC_InArgs args { 1, 0 };
         AACENC_OutArgs out_args { };
         assert(aacEncEncode(aac_encoder, &input_pcm, &output_aac, &args, &out_args) == AACENC_OK);
         MP4WriteSample(mp4, audio_track, buffer_aac, buffer_aac_sz);
-        //MP4WriteSample(mp4, video_track, videoData, videoDataSize);
+
+        array<u8> nalus = h264_encoder.encode(f.image); /// needs a quality setting; this default is very high quality and constant quality too; meant for data science work
+
+        MP4WriteSample(mp4, video_track, nalus.data, nalus.len());
         return 0;
     }
 
@@ -75,11 +78,11 @@ struct iVideo {
         // init aac encoder
         assert(aacEncOpen(&aac_encoder, 0, 1) == AACENC_OK);
         AACENC_InfoStruct info = { 0 };
-        assert(aacEncoder_SetParam(aac_encoder, AACENC_AOT, AOT_AAC_LC)     == AACENC_OK);
-        assert(aacEncoder_SetParam(aac_encoder, AACENC_BITRATE, 128000)     == AACENC_OK);
-        assert(aacEncoder_SetParam(aac_encoder, AACENC_SAMPLERATE, audio_rate) == AACENC_OK);
-        assert(aacEncoder_SetParam(aac_encoder, AACENC_CHANNELMODE, MODE_1) == AACENC_OK);
-        assert(aacEncEncode(aac_encoder, NULL, NULL, NULL, NULL)            == AACENC_OK);
+        assert(aacEncoder_SetParam(aac_encoder, AACENC_AOT,         AOT_AAC_LC) == AACENC_OK);
+        assert(aacEncoder_SetParam(aac_encoder, AACENC_BITRATE,     128000)     == AACENC_OK);
+        assert(aacEncoder_SetParam(aac_encoder, AACENC_SAMPLERATE,  audio_rate) == AACENC_OK);
+        assert(aacEncoder_SetParam(aac_encoder, AACENC_CHANNELMODE, MODE_1)     == AACENC_OK);
+        assert(aacEncEncode(aac_encoder, NULL, NULL, NULL, NULL)                == AACENC_OK);
 
         mp4 = MP4Create((symbol)output.cs());
         assert(mp4 != MP4_INVALID_FILE_HANDLE);

@@ -15,7 +15,9 @@ src(-camera-linux.cpp)
 dep(mx:async
     shine:shine
     speexdsp:speexdsp
-    mp4v2:mp4v2)
+    mp4v2:mp4v2
+    yuv2rgb:yuv2rgb
+    x264:x264)
 
 if(WIN32)
     dep(libpng:libpng16_static

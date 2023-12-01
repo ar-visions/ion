@@ -85,6 +85,12 @@
             "resource": true
         },
         {
+            "name":     "x264",
+            "version":  "6.0.0",
+            "url":      "https://github.com/mirror/x264",
+            "commit":   "eaa68fa"
+        },
+        {
             "name":     "h264bsd",
             "version":  "1.0.0",
             "url":      "https://github.com/oneam/h264bsd",
@@ -112,6 +118,12 @@
             "url":      "https://chromium.googlesource.com/chromium/tools/depot_tools.git",
             "commit":   "02e70b435732a41d3d251f7c861110c6ee91f65b",
             "resource": true
+        },
+        {
+            "name":     "yuv2rgb",
+            "version":  "nov30-23",
+            "url":      "https://github.com/descampsa/yuv2rgb",
+            "commit":   "ee78934"
         },
         {
             "name":     "skia",

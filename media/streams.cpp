@@ -84,6 +84,7 @@ void MStream::push(MediaBuffer buffer) {
         u8 *dst = (u8*)frame.image.data;
         frame.image.mem->count   = data->w * data->h;
         frame.image.mem->reserve = frame.image.mem->count;
+        i64 a = millis();
         switch (frame.video->type.value) {
             case Media::YUY2:
                 yuy2_rgba(src, dst, data->w, data->h);
@@ -98,6 +99,9 @@ void MStream::push(MediaBuffer buffer) {
                 assert(false);
                 break; 
         }
+        i64 b = millis();
+        i64 c = b - a;
+        printf("conversion took %d millis\n", (int)c);
     }
     
     if ((!data->use_video || data->video_queued) && (!data->use_audio || data->audio_queued)) {
