@@ -5,6 +5,7 @@ project(MP4v2 VERSION 2.1.3)
 set(CMAKE_CXX_STANDARD 11)
 
 if(MSVC)
+    # tried this several ways, as it was being stubborn
     add_compile_options(
         $<$<CONFIG:>:/MT>
         $<$<CONFIG:Debug>:/MT>
@@ -13,20 +14,15 @@ if(MSVC)
     add_compile_options(/MT)
     set(CMAKE_C_COMPILER    "clang-cl")
 	set(CMAKE_CXX_COMPILER  "clang-cl")
+    set(CMAKE_CXX_FLAGS         "${CMAKE_CXX_FLAGS}         /MT")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT")
+    set(CMAKE_CXX_FLAGS_DEBUG   "${CMAKE_CXX_FLAGS_DEBUG}   /MT")
 else()
 	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror -Wall -Wextra -pedantic -std=c99")
 endif()
 
 option(BUILD_SHARED "Build libmp4v2 as a shared library" OFF)
 option(BUILD_UTILS  "Build MP4v2 auxiliary tools"        OFF)
-
-string(REPLACE "/MD" "/MT" CMAKE_CXX_FLAGS         ${CMAKE_CXX_FLAGS})
-string(REPLACE "/MD" "/MT" CMAKE_CXX_FLAGS_RELEASE ${CMAKE_CXX_FLAGS_RELEASE})
-string(REPLACE "/MD" "/MT" CMAKE_CXX_FLAGS_DEBUG   ${CMAKE_CXX_FLAGS_DEBUG})
-
-set(CMAKE_CXX_FLAGS         "${CMAKE_CXX_FLAGS}         /MT")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT")
-set(CMAKE_CXX_FLAGS_DEBUG   "${CMAKE_CXX_FLAGS_DEBUG}   /MT")
 
 #
 # Generate include/mp4v2/project.h and libplatform/config.h
@@ -400,10 +396,6 @@ if(BUILD_SHARED)
     endif()
 else()
     install(TARGETS mp4v2 ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}")
-endif()
-
-if(NOT MSVC)
-    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/mp4v2.pc" DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
 endif()
 
 if(BUILD_UTILS)

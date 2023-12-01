@@ -17,7 +17,7 @@ yuv420::yuv420(image img) :
     u  = &data[w * h];
     v  = &data[w * h + (w/2 * h/2)];
     sz = w * h * 3 / 2;
-    rgb32_yuv420_sseu(
+    rgb32_yuv420(
         w, h, (u8*)img.data, 4 * w, y, u, v, w, (w+1)/2, YCBCR_JPEG);
 }
 
