@@ -11,7 +11,6 @@ cxx="clang++"
 cc="clang"
 dbg="true"
 
-
 if [ -n "$MSYSTEM" ]; then
     PYTHON3="/mingw64/bin/python3"
     GN="/mingw64/bin/gn"
