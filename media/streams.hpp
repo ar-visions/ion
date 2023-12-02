@@ -67,6 +67,7 @@ struct MStream:mx {
         u64                  frames;
         int                  channels; /// number of audio channels contained (float32 format!)
         bool                 ready;
+        bool                 stop;
         bool                 error;
         int                  w, h, hz;
         bool                 use_audio;
@@ -116,7 +117,7 @@ struct MStream:mx {
             }
     }
 
-    void push(MediaBuffer buffer);
+    bool push(MediaBuffer buffer);
     void dispatch() {
         Frame &frame = data->swap[data->frames++ % 2];
         for (Remote &listener: data->listeners)
@@ -124,7 +125,8 @@ struct MStream:mx {
     }
 
     void ready()  { data->ready = true; }
-    void cancel() { data->error = true; }
+    void stop()   { data->stop  = true; data->rt->stop = true; }
+    void cancel() { data->error = true; data->rt->stop = true; }
 
     MStream &await_ready() {
         while (!data->ready)

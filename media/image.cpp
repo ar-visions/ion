@@ -6,11 +6,11 @@ namespace ion {
 
 yuv420::yuv420(image img) : 
         array<u8>(size_t(img.width() * img.height() +
-                            img.width() * img.height() / 4 +
-                            img.width() * img.height() / 4),
-                    size_t(img.width() * img.height() +
-                            img.width() * img.height() / 4 +
-                            img.width() * img.height() / 4)) {
+                         img.width() * img.height() / 4 +
+                         img.width() * img.height() / 4),
+                  size_t(img.width() * img.height() +
+                         img.width() * img.height() / 4 +
+                         img.width() * img.height() / 4)) {
     w  = img.width();
     h  = img.height();
     y  =  data;

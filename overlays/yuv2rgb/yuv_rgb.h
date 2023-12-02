@@ -11,10 +11,18 @@
 
 #ifdef IS_SSE2
 #define yuv420_rgb24 yuv420_rgb24_sseu
-#define yuv420_rgb32 yuv420_rgb32_sseu
+#define yuv420_rgb32 yuv420_rgb32_sse
+
+#define rgb24_yuv420 rgb24_yuv420_sseu
+#define rgb32_yuv420 rgb32_yuv420_sseu
+
 #else
 #define yuv420_rgb24 yuv420_rgb24_std
 #define yuv420_rgb32 yuv420_rgb32_std
+
+#define yuv420_rgb24 yuv420_rgb24_std
+#define rgb32_yuv420 rgb32_yuv420_std
+
 #endif
 
 // Copyright 2016 Adrien Descamps

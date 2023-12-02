@@ -66,10 +66,11 @@ void nv12_rgba(const uint8_t* nv12, uint8_t* rgba, int width, int height) {
         }
 }
 
-void MStream::push(MediaBuffer buffer) {
+bool MStream::push(MediaBuffer buffer) {
+    if (data->stop || data->error || !data->ready)
+        return false;
     Frame  &frame = data->swap[data->frames % 2];
     bool is_video = false;
-
     if (buffer->type == Media::PCM || buffer->type == Media::PCMf32) {
         frame.audio = buffer;
         data->audio_queued = true;
@@ -78,7 +79,6 @@ void MStream::push(MediaBuffer buffer) {
         is_video = true;
         data->video_queued = true;
     }
-    
     if (is_video && data->resolve_image) {
         u8 *src =      frame.video->bytes;
         u8 *dst = (u8*)frame.image.data;
@@ -103,12 +103,12 @@ void MStream::push(MediaBuffer buffer) {
         i64 c = b - a;
         printf("conversion took %d millis\n", (int)c);
     }
-    
     if ((!data->use_video || data->video_queued) && (!data->use_audio || data->audio_queued)) {
         dispatch();
         data->video_queued = false;
         data->audio_queued = false;
     }
+    return true;
 }
 
 void Remote::close() {

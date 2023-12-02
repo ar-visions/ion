@@ -34,8 +34,97 @@ struct GuidEqual {
     }
 };
 
+
+
+void test1() {
+    IMFMediaSource* pSource = nullptr;
+    IMFSourceReader* pReader = nullptr;
+    IMFMediaType* pType = nullptr;
+    IMFAttributes* pAttributes = nullptr;
+    IMFActivate** ppDevices = nullptr;
+
+    // Initialize Media Foundation
+    MFStartup(MF_VERSION);
+
+    // Set up the attributes for the device enumerator: We're looking for video capture devices
+    HRESULT hr = MFCreateAttributes(&pAttributes, 1);
+    if (SUCCEEDED(hr)) {
+        hr = pAttributes->SetGUID(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE, MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID);
+    }
+    // Create Media Source for the First Camera
+    // This part of the code is simplified; normally, you would enumerate devices
+    // and select the first camera.
+    u32 count;
+    hr = MFEnumDeviceSources(pAttributes, &ppDevices, &count);
+    if (SUCCEEDED(hr) && count > 0) {
+        // Create the media source using the first device in the list.
+        hr = ppDevices[0]->ActivateObject(IID_PPV_ARGS(&pSource));
+    }
+
+    // Create Source Reader
+    hr = MFCreateSourceReaderFromMediaSource(pSource, nullptr, &pReader);
+
+    // Set the desired media type (640x360, 30FPS)
+    for (DWORD i = 0; ; ++i) {
+        hr = pReader->GetNativeMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, i, &pType);
+        if (FAILED(hr)) { break; }
+
+        UINT32 width = 0, height = 0;
+        MFGetAttributeSize(pType, MF_MT_FRAME_SIZE, &width, &height);
+
+        UINT32 frameRateNum = 0, frameRateDenom = 0;
+        MFGetAttributeRatio(pType, MF_MT_FRAME_RATE, &frameRateNum, &frameRateDenom);
+
+        if (width == 640 && height == 360 && frameRateNum / frameRateDenom == 30) {
+            hr = pReader->SetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, nullptr, pType);
+            break;
+        }
+        pType->Release();
+    }
+
+    // Check if suitable format found
+    if (!pType) {
+        // Handle error: Suitable format not found
+    }
+
+    // Read frames
+    while (true) {
+
+        i64 t1 = millis();
+
+        DWORD streamIndex, flags;
+        LONGLONG timestamp;
+        IMFSample* pSample = nullptr;
+
+        hr = pReader->ReadSample(MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, &streamIndex, &flags, &timestamp, &pSample);
+        
+        if (FAILED(hr) || flags & MF_SOURCE_READERF_ENDOFSTREAM) {
+            break;
+        }
+
+        if (pSample) {
+            // Process the sample
+            // ...
+
+            pSample->Release();
+        }
+
+        i64 t2 = millis();
+        printf("duration = %d\n", (int)(t2 - t1));
+        fflush(stdout);
+    }
+
+    // Clean up
+    pType->Release();
+    pReader->Release();
+    pSource->Release();
+    MFShutdown();
+}
+
 MStream camera(array<StreamType> stream_types, array<Media> priority, str video_alias, str audio_alias, int rwidth, int rheight) {
     return MStream(stream_types, priority, [stream_types, priority, video_alias, audio_alias, rwidth, rheight](MStream s) -> void {
+
+        test1();
 
         HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
         assert(!FAILED(hr));
@@ -121,8 +210,6 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
                         IMFMediaType* mediaType = nullptr;
                         GUID    subtype { 0 };
                         UINT32  frameRate    = 0u;
-                        UINT32  frameRateMin = 0u;
-                        UINT32  frameRateMax = 0u;
                         UINT32  denominator  = 0u;
                         DWORD   index        = 0u;
                         UINT32  width        = 0u;
@@ -148,7 +235,12 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
                             mediaType->Release();
                             ++index;
                         }
-                        assert(selected_media >= 0);
+                        if (selected_media == -1) {
+                            pType->Release();
+                            pType = null;
+                            stream_index++;
+                            continue;
+                        }
                     } else
                         selected_media = 0;
 
@@ -185,21 +277,18 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
             }
         }
 
-        for (Routine *r: routines) {
-            if (r->dwStreamIndex != (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM)
-                continue;
-            s.set_info(rwidth, rheight, 30, 1);
-        }
-
+        s.set_info(rwidth, rheight, 30, 1);
         s.ready();
 
         /// capture loop
+        Routine *r = routines[0];
+        r->pReader->SetCurrentMediaType(r->dwStreamIndex, NULL, r->pType);
+
         while (!s->rt->stop) {
             DWORD flags = 0;
             i64 t = millis();
             for (Routine *r: routines) {
                 IMFSample* pSample = null;
-                r->pReader->SetCurrentMediaType(r->dwStreamIndex, NULL, r->pType);
                 r->pReader->ReadSample(r->dwStreamIndex, 0, null, &flags, null, &pSample);
                 if (flags & MF_SOURCE_READERF_ENDOFSTREAM)
                     break;
@@ -208,13 +297,13 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
                     BYTE*           pData           = null;
                     DWORD           maxLength       = 0, 
                                     currentLength   = 0;
-                    pSample->ConvertToContiguousBuffer(&pBuffer);
-                    pBuffer->Lock(&pData, &maxLength, &currentLength);
-                    s.push(
-                        MediaBuffer(r->selected_format, pData, currentLength)
-                    );
-                    pBuffer->Unlock();
-                    pBuffer->Release();
+                    //pSample->ConvertToContiguousBuffer(&pBuffer);
+                    //pBuffer->Lock(&pData, &maxLength, &currentLength);
+                    //s.push(
+                    //    MediaBuffer(r->selected_format, pData, currentLength)
+                    //);
+                    //pBuffer->Unlock();
+                    //pBuffer->Release();
                     pSample->Release();
                 }
             }
