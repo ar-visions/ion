@@ -22,7 +22,7 @@ else()
         VERBATIM)
     
     # install the libs that it makes; it wont install the bootstrap
-    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/out/Vulkan/libskia.a
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/out/${cfg_lower}/libskia.a
         DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
 
     # without the trailing slash it puts 'include' inside of skia
