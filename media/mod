@@ -19,10 +19,10 @@ dep(mx:async
     yuv2rgb:yuv2rgb)
 
 if(WIN32)
-    dep(libpng:libpng16_static
-        zlib:zlibstatic)
+    dep(libpng:png
+        zlib:zlib)
 else()
-    dep(libpng:png zlib:z)
+    dep(libpng:png zlib:zlib)
 endif()
 
 includes(${INSTALL_PREFIX}/include/opus)
