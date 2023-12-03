@@ -193,6 +193,7 @@ struct camera_t {
     int             rate         = 30;
     bool            halt         = false;
     AppleCapture   *capture;
+    ion::array<ion::Media> priority;
     ion::Media      selected_format;
 };
 
@@ -220,6 +221,16 @@ extern "C" void AllowKeyRepeats(void)
     [self.captureSession stopRunning];
 }
 
+CMVideoCodecType codec_type(ion::Media &m) {
+    switch (m.value) {
+        case ion::Media::MJPEG: return kCMVideoCodecType_JPEG;
+        case ion::Media::YUY2:  
+            printf("found format\n");
+            return kCVPixelFormatType_422YpCbCr8;
+        default: return 0;
+    }
+}
+
 - (void)start:(camera_t*)camera {
     self.captureSession = [[AVCaptureSession alloc] init];
     self.captureSession.sessionPreset = AVCaptureSessionPresetHigh;
@@ -228,20 +239,52 @@ extern "C" void AllowKeyRepeats(void)
     NSArray<AVCaptureDevice *> *devices = [AVCaptureDevice devices];
     int current_index = 0;
 
+    bool single = false;
+    ion::str filter = self.camera->video_alias;
+    if (filter)
+        for (AVCaptureDevice *device in devices) {
+            if ([device hasMediaType:AVMediaTypeVideo] && [device supportsAVCaptureSessionPreset:AVCaptureSessionPresetHigh]) {
+                NSString   *device_name = [device localizedName];
+                const char *device_cs   = [device_name UTF8String];
+                bool        use_device  = strstr(device_cs, filter.data) != NULL;
+                printf("filter.data = %s\n", filter.data);
+                if (!use_device)
+                    continue;
+                printf("device cs = %s\n", device_cs);
+                single = true;
+            }
+        }
+    
+    if (!single) {
+        printf("setting filter to null\n");
+        filter = ion::null; /// lets just choose one for god sakes. the mac is not a common target and i dont want to change the query device.  lets pick teh first usable one
+    }
+    /// one massive issue with this api is multiple cameras with the same name will shuffle from run to run. LOL.
     printf("devices count %d\n", (int)[devices count]);
     for (AVCaptureDevice *device in devices) {
         if ([device hasMediaType:AVMediaTypeVideo] && [device supportsAVCaptureSessionPreset:AVCaptureSessionPresetHigh]) {
             
-            /// check if device supports format specified
-            if (![self filterDevice:device format:kCMVideoCodecType_JPEG])
+            
+            printf("1\n");
+            CMVideoCodecType found = 0;
+            for (ion::Media &m: camera->priority) {
+                CMVideoCodecType t = codec_type(m);
+                if (!found)
+                    found = t;
+            }
+            if (!found)
                 continue;
             
+            printf("2\n");
             NSString   *device_name = [device localizedName];
             const char *device_cs   = [device_name UTF8String];
-            bool        use_device  = strstr(device_cs, self.camera->video_alias.data) != NULL;
+            bool        use_device  = !filter || strstr(device_cs, filter.data) != NULL;
 
+            printf("why?\n");
             if (!use_device)
                 continue;
+
+            printf("using device %s\n", device_cs);
 
             NSError *error;
             AVCaptureDeviceInput *input = [AVCaptureDeviceInput deviceInputWithDevice:device error:&error];
@@ -261,6 +304,7 @@ extern "C" void AllowKeyRepeats(void)
             }
 
             [self.captureSession startRunning];
+            printf("started capture session\n");
             break;
         }
     }
@@ -271,6 +315,7 @@ extern "C" void AllowKeyRepeats(void)
 - (void)captureOutput:(AVCaptureOutput *)output didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection *)connection {
     /// Extracting the CMBlockBuffer from the CMSampleBuffer
     CMBlockBufferRef blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer);
+    exit(0);
     if (blockBuffer == NULL) {
         self.camera->halt = true;
         return; /// Handle the error or exit the function
@@ -321,12 +366,19 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
         /// setup camera
         camera_t camera { };
         camera.capture  = [AppleCapture new];
+        camera.video_alias = video_alias;
         camera.width    = width;
         camera.height   = height;
+        camera.priority = priority;
         camera.rate     = 30;
+        i64 last = millis();
         camera.callback = [&](void* v_image, sz_t v_image_size) {
             MStream &streams = (MStream &)s;
             streams.push(MediaBuffer(camera.selected_format, (u8*)v_image, v_image_size));
+            i64 t = millis();
+            printf("duration = %d\n", (int)(t - last));
+            exit(0);
+            last = t;
         };
         [camera.capture start:&camera];
 
