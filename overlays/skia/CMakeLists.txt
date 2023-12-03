@@ -3,19 +3,20 @@ project(skia)
 
 # cmake needs to make something so we can depend on it
 add_executable(bootstrap bootstrap.c)
+string(TOLOWER ${CMAKE_BUILD_TYPE} cfg_lower)
 
 # our build script can be defined here
 if(WIN32)
     # we copy the files in ninja.bat
     add_custom_target(build
-        COMMAND "gen.bat" ${SDK}
-        COMMAND "ninja.bat" ${SDK}
+        COMMAND "gen.bat" ${SDK} ${cfg_lower}
+        COMMAND "ninja.bat" ${SDK} ${cfg_lower}
         COMMENT "running skia build"
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
         VERBATIM)
 else()
     add_custom_target(build
-        COMMAND sh "build.sh" ${SDK}
+        COMMAND sh "build.sh" ${SDK} ${cfg_lower}
         COMMENT "running skia build"
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
         VERBATIM)

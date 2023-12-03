@@ -109,8 +109,13 @@ install(TARGETS pthreadVC3
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-  RENAME "pthread.lib"
 )
+
+install(CODE "
+    execute_process(COMMAND \${CMAKE_COMMAND} -E rename
+        \${CMAKE_INSTALL_LIBDIR}/pthreadVC3.lib
+        \${CMAKE_INSTALL_LIBDIR}/pthread.lib)
+")
 
 # Install pdb files
 if(BUILD_SHARED_LIBS)
