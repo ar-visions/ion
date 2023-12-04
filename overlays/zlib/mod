@@ -1,3 +1,0 @@
-if(WIN32)
-    set_target_properties(zlib zlibstatic PROPERTIES OUTPUT_NAME zlib)
-endif()
