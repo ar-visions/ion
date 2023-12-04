@@ -15,7 +15,7 @@
             "commit":   "07b8803",
             "url":      "https://github.com/glennrp/libpng",
             "cmake": {
-                "args": ["-DPNG_STATIC=1"]
+                "args": ["-DPNG_STATIC=On"]
             }
         },
         {
