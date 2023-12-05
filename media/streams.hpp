@@ -23,7 +23,7 @@ struct PCMInfo:mx {
         int                 bytes_per_frame;
         u32                 samples;
         u32                 channels;
-        array<u8>           audio_buffer;
+        mx                  audio_buffer;
         register(M);
     };
     mx_basic(PCMInfo);
@@ -35,7 +35,7 @@ struct MediaBuffer:mx {
         Media    type;
         int      sample_rate;
         int      channels;
-        array<u8> buf;
+        mx       buf;
         register(M)
     };
     mx_basic(MediaBuffer);
@@ -45,14 +45,15 @@ struct MediaBuffer:mx {
         data->buf  = buf;
     }
 
-    MediaBuffer(PCMInfo &pcm, array<u8> buf):MediaBuffer() {
+    MediaBuffer(PCMInfo &pcm, mx buf) : MediaBuffer() {
         data->pcm  = pcm;
         data->type = pcm->format;
         data->buf  = buf;
     }
 
     /// hand-off constructor
-    MediaBuffer(PCMInfo &pcm) {
+    MediaBuffer(PCMInfo &pcm) : MediaBuffer() 
+    {
         data->pcm  = pcm;
         data->type = pcm->format;
         data->buf  = pcm->audio_buffer; /// no copy
