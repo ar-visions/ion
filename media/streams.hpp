@@ -9,41 +9,79 @@ namespace ion {
 enums(StreamType, undefined,
       undefined, Audio, Image, Video);
 
+/// todo: convert to types, removing enum
+/// h264 is nothing more than a nalu buffer sequence
+/// mjpeg should remain the bytes encoded
+/// it just seems a better more open system, using registered types
 enums(Media, undefined,
-      undefined, PCM, PCMf32, YUY2, NV12, MJPEG, H264);
+      undefined, PCM, PCMf32, PCMu32, YUY2, NV12, MJPEG, H264);
+
+struct PCMInfo:mx {
+    struct M {
+        Media               format;
+        sz_t                frame_samples;
+        int                 bytes_per_frame;
+        u32                 samples;
+        u32                 channels;
+        array<u8>           audio_buffer;
+        register(M);
+    };
+    mx_basic(PCMInfo);
+};
 
 struct MediaBuffer:mx {
     struct M {
+        PCMInfo  pcm;
         Media    type;
-        u8      *bytes;
-        sz_t     sz;
-        ~M() {
-            free(bytes);
-        }
+        int      sample_rate;
+        int      channels;
+        array<u8> buf;
         register(M)
     };
     mx_basic(MediaBuffer);
 
-    MediaBuffer(Media type, u8 *bytes, sz_t sz):MediaBuffer() {
-        data->type  = type;
-        data->bytes = bytes;
-        data->sz    = sz;
+    MediaBuffer(Media type, array<u8> buf):MediaBuffer() {
+        data->type = type;
+        data->buf  = buf;
     }
-    operator bool() { return data->sz; }
+
+    MediaBuffer(PCMInfo &pcm, array<u8> buf):MediaBuffer() {
+        data->pcm  = pcm;
+        data->type = pcm->format;
+        data->buf  = buf;
+    }
+
+    /// hand-off constructor
+    MediaBuffer(PCMInfo &pcm) {
+        data->pcm  = pcm;
+        data->type = pcm->format;
+        data->buf  = pcm->audio_buffer; /// no copy
+        pcm->audio_buffer = array<u8>(0, data->buf.reserve()); /// recycle potential
+    }
+
+    /// for audio; we could have others with different arguments for video
+    /// or we can name it convert_pcm
+    MediaBuffer convert_pcm(PCMInfo &pcm_to);
+
+    operator bool() { return data->buf.len() > 0; }
 };
 
-struct PCMf32 : MediaBuffer { PCMf32(u8 *bytes, sz_t sz) : MediaBuffer(Media::PCMf32, bytes, sz) { } };
-struct PCM    : MediaBuffer { PCM   (u8 *bytes, sz_t sz) : MediaBuffer(Media::PCM,    bytes, sz) { } };
-struct YUY2   : MediaBuffer { YUY2  (u8 *bytes, sz_t sz) : MediaBuffer(Media::YUY2,   bytes, sz) { } };
-struct NV12   : MediaBuffer { NV12  (u8 *bytes, sz_t sz) : MediaBuffer(Media::NV12,   bytes, sz) { } };
-struct MJPEG  : MediaBuffer { MJPEG (u8 *bytes, sz_t sz) : MediaBuffer(Media::MJPEG,  bytes, sz) { } };
-struct H264   : MediaBuffer { H264  (u8 *bytes, sz_t sz) : MediaBuffer(Media::H264,   bytes, sz) { } };
+
+
+struct PCMu32 : MediaBuffer { PCMu32(array<u8> buf) : MediaBuffer(Media::PCMu32, buf) { } };
+struct PCMf32 : MediaBuffer { PCMf32(array<u8> buf) : MediaBuffer(Media::PCMf32, buf) { } };
+struct PCM    : MediaBuffer { PCM   (array<u8> buf) : MediaBuffer(Media::PCM,    buf) { } };
+struct YUY2   : MediaBuffer { YUY2  (array<u8> buf) : MediaBuffer(Media::YUY2,   buf) { } };
+struct NV12   : MediaBuffer { NV12  (array<u8> buf) : MediaBuffer(Media::NV12,   buf) { } };
+struct MJPEG  : MediaBuffer { MJPEG (array<u8> buf) : MediaBuffer(Media::MJPEG,  buf) { } };
+struct H264   : MediaBuffer { H264  (array<u8> buf) : MediaBuffer(Media::H264,   buf) { } };
 
 struct Frame {
     u64         from, to;
     MediaBuffer video;
     MediaBuffer audio;
     ion::image  image;
+    mutex       mtx;
 };
 
 struct Remote:mx {
@@ -60,7 +98,7 @@ struct MStream:mx {
     struct M {
         runtime*             rt;
         mutex                mtx;
-        Frame                swap[2];
+        Frame                swap[4];
         array<StreamType>    stream_types;
         array<Media>         media;
         doubly<Remote>       listeners;
@@ -75,6 +113,8 @@ struct MStream:mx {
         bool                 resolve_image;
         bool                 audio_queued;
         bool                 video_queued;
+        PCMInfo              pcm_input;
+        PCMInfo              pcm_output;
         register(M)
     };
 
@@ -110,7 +150,7 @@ struct MStream:mx {
         data->hz = hz;
         data->channels = channels;
         if (data->resolve_image)
-            for (num i = 0; i < 2; i++) {
+            for (num i = 0; i < 4; i++) {
                 size sz { h, w };
                 rgba8 *bytes = (rgba8*)calloc(sizeof(rgba8), sz);
                 data->swap[i].image = image(sz, bytes, 0);
@@ -119,7 +159,7 @@ struct MStream:mx {
 
     bool push(MediaBuffer buffer);
     void dispatch() {
-        Frame &frame = data->swap[data->frames++ % 2];
+        Frame &frame = data->swap[data->frames++ % 4];
         for (Remote &listener: data->listeners)
             listener->callback(frame);
     }
@@ -133,6 +173,12 @@ struct MStream:mx {
             yield();
         return *this;
     }
+
+    void init_input_pcm (Media format, int channels, int samples);
+    void init_output_pcm(Media format, int channels, int samples);
+
+    array<MediaBuffer> audio_packets(u8 *buffer, int len);
+        /// frameless pcm, MStreams will reframe and resample for the user
 
     bool contains(StreamType type) { return data->stream_types.index_of(type) >= 0; }
     

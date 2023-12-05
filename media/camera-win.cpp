@@ -34,98 +34,8 @@ struct GuidEqual {
     }
 };
 
-
-
-void test1() {
-    IMFMediaSource* pSource = nullptr;
-    IMFSourceReader* pReader = nullptr;
-    IMFMediaType* pType = nullptr;
-    IMFAttributes* pAttributes = nullptr;
-    IMFActivate** ppDevices = nullptr;
-
-    // Initialize Media Foundation
-    MFStartup(MF_VERSION);
-
-    // Set up the attributes for the device enumerator: We're looking for video capture devices
-    HRESULT hr = MFCreateAttributes(&pAttributes, 1);
-    if (SUCCEEDED(hr)) {
-        hr = pAttributes->SetGUID(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE, MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID);
-    }
-    // Create Media Source for the First Camera
-    // This part of the code is simplified; normally, you would enumerate devices
-    // and select the first camera.
-    u32 count;
-    hr = MFEnumDeviceSources(pAttributes, &ppDevices, &count);
-    if (SUCCEEDED(hr) && count > 0) {
-        // Create the media source using the first device in the list.
-        hr = ppDevices[0]->ActivateObject(IID_PPV_ARGS(&pSource));
-    }
-
-    // Create Source Reader
-    hr = MFCreateSourceReaderFromMediaSource(pSource, nullptr, &pReader);
-
-    // Set the desired media type (640x360, 30FPS)
-    for (DWORD i = 0; ; ++i) {
-        hr = pReader->GetNativeMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, i, &pType);
-        if (FAILED(hr)) { break; }
-
-        UINT32 width = 0, height = 0;
-        MFGetAttributeSize(pType, MF_MT_FRAME_SIZE, &width, &height);
-
-        UINT32 frameRateNum = 0, frameRateDenom = 0;
-        MFGetAttributeRatio(pType, MF_MT_FRAME_RATE, &frameRateNum, &frameRateDenom);
-
-        if (width == 640 && height == 360 && frameRateNum / frameRateDenom == 30) {
-            hr = pReader->SetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, nullptr, pType);
-            break;
-        }
-        pType->Release();
-    }
-
-    // Check if suitable format found
-    if (!pType) {
-        // Handle error: Suitable format not found
-    }
-
-    // Read frames
-    while (true) {
-
-        i64 t1 = millis();
-
-        DWORD streamIndex, flags;
-        LONGLONG timestamp;
-        IMFSample* pSample = nullptr;
-
-        hr = pReader->ReadSample(MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, &streamIndex, &flags, &timestamp, &pSample);
-        
-        if (FAILED(hr) || flags & MF_SOURCE_READERF_ENDOFSTREAM) {
-            break;
-        }
-
-        if (pSample) {
-            // Process the sample
-            // ...
-
-            pSample->Release();
-        }
-
-        i64 t2 = millis();
-        printf("duration = %d\n", (int)(t2 - t1));
-        fflush(stdout);
-    }
-
-    // Clean up
-    pType->Release();
-    pReader->Release();
-    pSource->Release();
-    MFShutdown();
-}
-
 MStream camera(array<StreamType> stream_types, array<Media> priority, str video_alias, str audio_alias, int rwidth, int rheight) {
     return MStream(stream_types, priority, [stream_types, priority, video_alias, audio_alias, rwidth, rheight](MStream s) -> void {
-
-        test1();
-
         HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
         assert(!FAILED(hr));
 
@@ -136,6 +46,7 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
         }
 
         struct Routine {
+            bool                video;
             IMFAttributes*      pConfig;
             IMFMediaSource*     pSource;
             IMFActivate*        pDevice;
@@ -146,25 +57,27 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
             int                 format_index = -1;
             Media               selected_format;
             int                 selected_media;
+            bool                name_match;
+            PCMInfo             pcm;
+        };
+
+        struct MediaCategory {
+            str                 alias;
+            IMFActivate**       ppDevices;
+            u32                 deviceCount;
+            IMFAttributes*      pConfig;
+            GUID               &guid;
+            DWORD               dwStreamIndex;
         };
 
         doubly<Routine*> routines;
-
-        struct MediaCategory {
-            str             alias;
-            IMFActivate**   ppDevices;
-            u32             deviceCount;
-            IMFAttributes*  pConfig;
-            GUID           &guid;
-            DWORD           dwStreamIndex;
-        };
 
         /// enum video capture devices, select one we have highest priority for
         MediaCategory search[2] = {
             { video_alias, null, 0, null, (GUID&)MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID, (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM },
             { audio_alias, null, 0, null, (GUID&)MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_AUDCAP_GUID, (DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM }
         };
-
+        /// Video & Audio device enumeration
         for (int cat = 0; cat < 2; cat++) {
             if (cat == 0 && !s->use_video)
                 continue;
@@ -174,8 +87,7 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
             MFCreateAttributes(&mcat.pConfig, 1);
             mcat.pConfig->SetGUID(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE, mcat.guid);
             MFEnumDeviceSources(mcat.pConfig, &mcat.ppDevices, &mcat.deviceCount);
-            
-            /// using while so we can break early (format not found), or at end of statement
+            ///
             for (int i = 0; i < mcat.deviceCount; i++) {
                 u32 ulen = 0;
                 mcat.ppDevices[i]->GetStringLength(MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME, &ulen);
@@ -184,10 +96,7 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
                     (WCHAR*)device_name.data, ulen + 1, &ulen);
                 cstr utf8_name  = device_name.to_utf8();
                 bool name_match = !!strstr(utf8_name, mcat.alias.data);
-
                 free(utf8_name);
-                if (!name_match)
-                    continue;
 
                 Routine *r = new Routine {
                     .pConfig = mcat.pConfig,
@@ -204,7 +113,6 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
 
                 while (SUCCEEDED(r->pReader->GetNativeMediaType(stream_index, 0, &pType))) {
                     int selected_media;
-
                     if (cat == 0) {
                         selected_media = -1;
                         IMFMediaType* mediaType = nullptr;
@@ -241,18 +149,25 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
                             stream_index++;
                             continue;
                         }
-                    } else
+                    } else {
                         selected_media = 0;
+                    }
 
                     pType->GetGUID(MF_MT_SUBTYPE, &subtype);
                     Media vf = format_from_guid(subtype);
                     if (vf != Media::undefined) {
                         int index = priority.index_of(vf);
-                        if (index >= 0 && (index < r->format_index || r->format_index == -1)) {
+                        if (index >= 0 && (
+                                (index < r->format_index) || 
+                                (r->format_index == -1)   ||
+                                (name_match && !r->name_match))) {
+                            
+                            r->video           = (cat == 0);
                             r->selected_format = vf;
                             r->format_index    = index;
                             r->selected_stream = stream_index;
                             r->selected_media  = selected_media;
+                            r->name_match      = name_match;
                         }
                     }
                     pType->Release();
@@ -260,57 +175,118 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
                     stream_index++;
                 }
 
-                assert(r->selected_format);
+                assert(r->selected_format.value);
+
                 /// load selected_stream (index of MediaFoundation device stream)
-                if (SUCCEEDED(r->pReader->GetNativeMediaType(r->selected_stream, r->selected_media, &r->pType))) {
-                    HRESULT hr = r->pReader->SetCurrentMediaType(r->selected_stream, null, r->pType);
+                /// routine must know the specs of the stream so that it may perform conversion
+                /// todo: MStream should do so; (simplify this implementation for 1 stream type per request)
+                r->pReader->GetNativeMediaType(r->selected_stream, r->selected_media, &r->pType);
+                if (cat == 1) {
+                    GUID audio_type;
+                    hr = r->pType->GetGUID(MF_MT_SUBTYPE, &audio_type);
                     assert(SUCCEEDED(hr));
-                    if (cat == 1) {
-                        IMFSample* pSample = null;
-                        DWORD flags = 0;
-                        HRESULT    hr = r->pReader->ReadSample(MF_SOURCE_READER_FIRST_AUDIO_STREAM,
-                            0, NULL, &flags, NULL, &pSample);
-                        pSample = pSample;
+
+                    Media format;
+                    u32 samples_per_second;
+                    u32 channels;
+                    u32 bits_per_sample;
+
+                    hr = r->pType->GetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, &samples_per_second);
+                    assert(SUCCEEDED(hr));
+                    hr = r->pType->GetUINT32(MF_MT_AUDIO_NUM_CHANNELS, &channels);
+                    assert(SUCCEEDED(hr));
+                    hr = r->pType->GetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, &bits_per_sample);
+                    assert(SUCCEEDED(hr));
+
+                    if (bits_per_sample == 32) {
+                        if (audio_type == MFAudioFormat_Float) {
+                            format = Media::PCMf32; // sample units are 32-bit floating-point
+                        } else if (audio_type == MFAudioFormat_PCM) {
+                            format = Media::PCMu32; // sample units are 32-bit integer
+                        } else {
+                            assert(false);
+                        }
+                    } else if (bits_per_sample == 16) {
+                        if (audio_type == MFAudioFormat_PCM) {
+                            format = Media::PCM; // sample units are 16-bit floating-point
+                        } else {
+                            assert(false);
+                        }
+                    } else {
+                        assert(false);
                     }
+                    
+                    /// MStreams converts this stream of pcm-whatever to 16bit short in the channel count
+                    /// todo: remove pcm info from this module, 
+                    /// as it will be used cross platform 
+                    /// (no need to do anything different in each driver)
+                    s.init_output_pcm(Media::PCM, 1, 48000 / 30);
+                    s.init_input_pcm (format, channels, samples_per_second / 30);
                 }
                 routines += r;
             }
         }
 
+        assert(routines->len() > 0);
+
         s.set_info(rwidth, rheight, 30, 1);
         s.ready();
 
         /// capture loop
-        Routine *r = routines[0];
-        r->pReader->SetCurrentMediaType(r->dwStreamIndex, NULL, r->pType);
+        Routine *r_video = routines[0];
+        assert(r_video->selected_format);
+
+        for (Routine *r: routines)
+            if (r_video->selected_format != Media::undefined)
+                async([r, s](runtime *rt, int i) -> mx {
+                    MStream &ms = (MStream &)s;
+                    r->pReader->SetCurrentMediaType(r->dwStreamIndex, NULL, r->pType);
+                    while (!ms->rt->stop) {
+                        DWORD flags = 0;
+                        i64 t = millis();
+                        IMFSample* pSample = null;
+                        r->pReader->ReadSample(r->dwStreamIndex, 0, null, &flags, null, &pSample);
+                        if (flags & MF_SOURCE_READERF_ENDOFSTREAM)
+                            break;
+                        ///
+                        if (pSample) {
+                            IMFMediaBuffer* pBuffer         = null;
+                            BYTE*           pData           = null;
+                            DWORD           maxLength       = 0, 
+                                            currentLength   = 0;
+                            pSample->ConvertToContiguousBuffer(&pBuffer);
+                            pBuffer->Lock(&pData, &maxLength, &currentLength);
+                            
+                            /// if this is audio, we need a sub routine to make 
+                            /// sure we have enough data to send, and keep
+                            /// remainder around for next round
+                            PCMInfo &pcm = r->pcm;
+                            if (!r->video) {
+                                array<MediaBuffer> packets = ms.audio_packets(pData, currentLength);
+                                for (MediaBuffer &m: packets)
+                                    ms.push(m);
+                            } else {
+                                /// video-based method is to simply send the nalu frames received
+                                array<u8> copy = array<u8>(sz_t(currentLength));
+                                memcpy(copy.data, pData, currentLength);
+                                MediaBuffer packet = MediaBuffer(r->selected_format, copy);
+                                ms.push(packet);
+                            }
+
+                            pBuffer->Unlock();
+                            pBuffer->Release();
+                            pSample->Release();
+                        }
+                        i64 t2 = millis();
+                        i64 t3 = t2 - t;
+                        printf("[%s] duration = %d\n", r->video ? "video" : "audio", (int)t3);
+                        fflush(stdout);
+                    }
+                    return true;
+                });
 
         while (!s->rt->stop) {
-            DWORD flags = 0;
-            i64 t = millis();
-            for (Routine *r: routines) {
-                IMFSample* pSample = null;
-                r->pReader->ReadSample(r->dwStreamIndex, 0, null, &flags, null, &pSample);
-                if (flags & MF_SOURCE_READERF_ENDOFSTREAM)
-                    break;
-                if (pSample) {
-                    IMFMediaBuffer* pBuffer         = null;
-                    BYTE*           pData           = null;
-                    DWORD           maxLength       = 0, 
-                                    currentLength   = 0;
-                    //pSample->ConvertToContiguousBuffer(&pBuffer);
-                    //pBuffer->Lock(&pData, &maxLength, &currentLength);
-                    //s.push(
-                    //    MediaBuffer(r->selected_format, pData, currentLength)
-                    //);
-                    //pBuffer->Unlock();
-                    //pBuffer->Release();
-                    pSample->Release();
-                }
-            }
-            i64 t2 = millis();
-            i64 t3 = t2 - t;
-            printf("duration = %d\n", (int)t3);
-            fflush(stdout);
+            usleep(1000);
         }
         
         MFShutdown();

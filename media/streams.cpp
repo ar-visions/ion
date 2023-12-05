@@ -1,6 +1,7 @@
 #include <mx/mx.hpp>
 #include <media/image.hpp>
 #include <media/streams.hpp>
+#include <speex/speex_resampler.h>
 
 namespace ion {
 
@@ -66,12 +67,174 @@ void nv12_rgba(const uint8_t* nv12, uint8_t* rgba, int width, int height) {
         }
 }
 
+MediaBuffer MediaBuffer::convert_pcm(PCMInfo &pcm_to) {
+    PCMInfo &pcm = data->pcm;
+    if (pcm_to->format   == pcm->format   &&
+        pcm_to->channels == pcm->channels &&
+        pcm_to->samples  == pcm->samples)
+        return MediaBuffer(pcm, data->buf);
+    
+    array<float> combined(sz_t(pcm->frame_samples * 2)); /// must be reduced to float32 so resampling can take place after
+    sz_t         combined_samples = 0;
+
+    if (pcm->format == Media::PCMf32) {
+        if (pcm_to->channels == pcm->channels) {
+            combined_samples = pcm->frame_samples;
+            float *input = (float*)data->buf.data;
+            for (int i = 0; i < pcm->frame_samples; i++)
+                combined[i] = input[i];
+        } else if (pcm->channels == 1 && pcm_to->channels == 2) {
+            combined_samples = pcm->frame_samples * 2;
+            float *input = (float*)data->buf.data;
+            for (int i = 0; i < pcm->frame_samples; i++) {
+                float cv = input[i];
+                combined[i * 2 + 0] = cv;
+                combined[i * 2 + 1] = cv;
+            }
+        } else if (pcm_to->channels == 1) {
+            combined_samples = pcm->frame_samples / 2;
+            float     *input = (float*)data->buf.data;
+            for (sz_t i = 0; i < pcm->frame_samples; i += 2) {
+                combined[i / 2] =
+                    (float)((input[i * 2 + 0] + 
+                             input[i * 2 + 1]) / 2.0f);
+            }
+        } else
+            assert(false);
+        
+    } else {
+        /// 
+        if (pcm_to->channels == pcm->channels) {
+            combined_samples = pcm->frame_samples;
+            short *input = (short*)data->buf.data;
+            for (int i = 0; i < pcm->frame_samples; i++)
+                combined[i] = std::max(input[i] / 32767.0f, -1.0f);
+        } else if (pcm->channels == 1 && pcm_to->channels == 2) {
+            combined_samples = pcm->frame_samples * 2;
+            short *input = (short*)data->buf.data;
+            for (int i = 0; i < pcm->frame_samples; i++) {
+                float cv = std::max(input[i] / 32767.0f, -1.0f);
+                combined[i * 2 + 0] = cv;
+                combined[i * 2 + 1] = cv;
+            }
+        } else if (pcm_to->channels == 1) {
+            combined_samples = pcm->frame_samples / 2;
+            short *input = (short*)data->buf.data;
+            for (sz_t i = 0; i < pcm->frame_samples; i += 2) {
+                /// frame size is channel-2 based on this struct
+                combined[i / 2] = std::max(
+                    (float)((input[i * 2 + 0] / 32767.0f + 
+                             input[i * 2 + 1] / 32767.0f) / 2.0f), -1.0f);
+            }
+        } else
+            assert(false);
+    }
+    combined.set_size(combined_samples);
+
+    /// if we are requesting f32 and the sample rate does not change, we return this as a MediaBuffer
+    if (pcm_to->format == Media::PCMf32 && pcm_to->samples == pcm->samples)
+        return MediaBuffer(pcm_to, combined_samples);
+
+    /// channels are pcm_to, but rate is different
+    array<float> res;
+    if (pcm_to->samples != pcm->samples) {
+        array<float> resampled = array<float>(pcm_to->samples);
+        int err;
+        SpeexResamplerState *resampler = speex_resampler_init(
+            pcm_to->channels, pcm->samples, pcm_to->samples, SPEEX_RESAMPLER_QUALITY_DEFAULT, &err);
+        assert(err == RESAMPLER_ERR_SUCCESS);
+        u32    in_len  = combined.len()      / pcm_to->channels;
+        u32    out_len = resampled.reserve() / pcm_to->channels;
+        speex_resampler_process_interleaved_float(resampler, combined.data, &in_len, resampled.data, &out_len);
+        speex_resampler_destroy(resampler);
+        res = resampled;
+        res.set_size(out_len);
+    } else {
+        res = combined;
+    }
+
+    /// going to float, no need to convert
+    if (pcm_to->format == Media::PCMf32)
+        return MediaBuffer(pcm_to, res);
+
+    /// convert final
+    sz_t sz = res.len();
+    array<short> conv(sz);
+    for (sz_t i = 0; i < sz; i++) {
+        conv[i] = (short)(res[i] * 32767.0f);
+    }
+    conv.set_size(sz);
+    ///
+    return MediaBuffer(pcm_to, conv);
+}
+
+static void set_pcminfo(PCMInfo &pcm, Media format, int channels, int samples) {
+    int bits_per_sample = format == Media::PCM ? 16 : 32;
+    int nb = bits_per_sample / 8;
+
+    pcm->format          = format;
+    pcm->samples         = samples;
+    pcm->channels        = channels;
+    pcm->frame_samples   = samples * channels;
+    pcm->bytes_per_frame = pcm->frame_samples * nb;
+    pcm->audio_buffer    = array<u8>(size_t(pcm->bytes_per_frame) * 16);
+}
+
+void MStream::init_input_pcm(Media format, int channels, int samples) {
+    set_pcminfo(data->pcm_input, format, channels, samples);
+}
+
+void MStream::init_output_pcm(Media format, int channels, int samples) {
+    set_pcminfo(data->pcm_output, format, channels, samples);
+}
+
+array<MediaBuffer> MStream::audio_packets(u8 *pData, int currentLength) {
+    PCMInfo &pcm_o = data->pcm_output;
+    PCMInfo &pcm_i = data->pcm_input;
+    /// audio method is to perform some flow control and conversion (this code should be in PCMState or so)
+    int reserve    = pcm_i->audio_buffer.reserve();
+    int cur_sz     = pcm_i->audio_buffer.len();
+    int cur_write  = cur_sz + currentLength;
+    array<MediaBuffer> res;
+
+    /// update buffer and return null if this is not filling up the frame
+    if (cur_write < pcm_i->bytes_per_frame) {
+        memcpy(&pcm_i->audio_buffer.data[cur_sz], pData, currentLength);
+        pcm_i->audio_buffer.set_size(cur_sz + currentLength);
+        return res;
+    }
+    int      rpos  = 0;
+    int      wpos  = cur_sz;
+
+    while (cur_write >= pcm_i->bytes_per_frame) {
+        int    diff = pcm_i->bytes_per_frame - wpos;
+        memcpy(&pcm_i->audio_buffer.data[wpos], &pData[rpos], diff);
+        pcm_i->audio_buffer.set_size(pcm_i->bytes_per_frame); /// 16,000 samples -> 48,000, 2 channels -> 1
+        
+        MediaBuffer input_unconv = MediaBuffer(pcm_i);
+        //pcm_i->audio_buffer.set_size(0); /// MediaBuffer clears this with new allocation of the reserve size of audio_buffer
+
+        MediaBuffer conv = input_unconv.convert_pcm(pcm_o);
+
+        res        += conv;
+        cur_write  -= pcm_i->bytes_per_frame;
+        wpos        = 0;
+        rpos       += pcm_i->bytes_per_frame;
+    }
+    /// set remaining amount here
+    memcpy(pcm_i->audio_buffer.data, &pData[rpos], cur_write);
+    pcm_i->audio_buffer.set_size(cur_write);
+    return res;
+}
+
 bool MStream::push(MediaBuffer buffer) {
     if (data->stop || data->error || !data->ready)
         return false;
-    Frame  &frame = data->swap[data->frames % 2];
+    Frame  &frame = data->swap[data->frames % 4];
+    frame.mtx.lock();
     bool is_video = false;
     if (buffer->type == Media::PCM || buffer->type == Media::PCMf32) {
+        /// convert if this PCM format doesnt equal the priority #1
         frame.audio = buffer;
         data->audio_queued = true;
     } else {
@@ -80,7 +243,7 @@ bool MStream::push(MediaBuffer buffer) {
         data->video_queued = true;
     }
     if (is_video && data->resolve_image) {
-        u8 *src =      frame.video->bytes;
+        u8 *src =      frame.video->buf.data;
         u8 *dst = (u8*)frame.image.data;
         frame.image.mem->count   = data->w * data->h;
         frame.image.mem->reserve = frame.image.mem->count;
@@ -108,6 +271,7 @@ bool MStream::push(MediaBuffer buffer) {
         data->video_queued = false;
         data->audio_queued = false;
     }
+    frame.mtx.unlock();
     return true;
 }
 
