@@ -33,8 +33,6 @@ struct MediaBuffer:mx {
     struct M {
         PCMInfo  pcm;
         Media    type;
-        int      sample_rate;
-        int      channels;
         mx       buf;
         register(M)
     };

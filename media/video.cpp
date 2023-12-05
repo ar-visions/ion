@@ -30,7 +30,6 @@ struct iVideo {
     int                buffer_aac_id = 1;
     int                buffer_aac_sz;
     int                buffer_aac_el = sizeof(u8);
-    short*             buffer_pcm;
     int                buffer_pcm_id = 2;
     int                buffer_pcm_sz;
     int                buffer_pcm_el = sizeof(short);
@@ -61,10 +60,9 @@ struct iVideo {
         buffer_aac_sz = 128000 / 8 / hz * audio_channels;
         buffer_pcm_sz = sizeof(short) * audio_channels * audio_rate / hz;
         buffer_aac = (u8*)   calloc(1, buffer_aac_sz);
-        buffer_pcm = (short*)calloc(1, buffer_pcm_sz);
 
         input_pcm.numBufs            = 1;
-        input_pcm.bufs               = (void**)&buffer_pcm;
+        input_pcm.bufs               = (void**)0;
         input_pcm.bufSizes           = &buffer_pcm_sz;
         input_pcm.bufferIdentifiers  = &buffer_pcm_id;
         input_pcm.bufElSizes         = &buffer_pcm_el;
@@ -124,11 +122,12 @@ struct iVideo {
                 f->mtx.lock();
                 if (f->audio) {
                     assert(f->audio->type == Media::PCM);
-                    assert(f->audio->buf.count() == buffer_pcm_sz * 1);
-                    memcpy(buffer_pcm, f->audio->buf.origin<u8>(), buffer_pcm_sz);
-
+                    assert(f->audio->buf.count() == buffer_pcm_sz / sizeof(short)); // buf == 1600, buffer_pcm_sz == 3200 (extra channel?)
+                    /// set input pointer for this operation
+                    input_pcm.bufs = &f->audio->buf.mem->origin;
                     assert(aacEncEncode(aac_encoder, &input_pcm, &output_aac, &args, &out_args) == AACENC_OK);
                     MP4WriteSample(mp4, audio_track, buffer_aac, buffer_aac_sz);
+                    input_pcm.bufs = (void**)0;
                 }
 
                 array<u8> nalus = h264_encoder.encode(f->image); /// needs a quality setting; this default is very high quality and constant quality too; meant for data science work
