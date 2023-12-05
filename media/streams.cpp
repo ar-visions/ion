@@ -78,14 +78,13 @@ MediaBuffer MediaBuffer::convert_pcm(PCMInfo &pcm_to) {
     sz_t         combined_samples = 0;
 
     if (pcm->format == Media::PCMf32) {
+        float *input = data->buf.origin<float>();
         if (pcm_to->channels == pcm->channels) {
             combined_samples = pcm->frame_samples;
-            float *input = (float*)data->buf.data;
             for (int i = 0; i < pcm->frame_samples; i++)
                 combined[i] = input[i];
         } else if (pcm->channels == 1 && pcm_to->channels == 2) {
             combined_samples = pcm->frame_samples * 2;
-            float *input = (float*)data->buf.data;
             for (int i = 0; i < pcm->frame_samples; i++) {
                 float cv = input[i];
                 combined[i * 2 + 0] = cv;
@@ -93,7 +92,6 @@ MediaBuffer MediaBuffer::convert_pcm(PCMInfo &pcm_to) {
             }
         } else if (pcm_to->channels == 1) {
             combined_samples = pcm->frame_samples / 2;
-            float     *input = (float*)data->buf.data;
             for (sz_t i = 0; i < pcm->frame_samples; i += 2) {
                 combined[i / 2] =
                     (float)((input[i * 2 + 0] + 
@@ -103,15 +101,13 @@ MediaBuffer MediaBuffer::convert_pcm(PCMInfo &pcm_to) {
             assert(false);
         
     } else {
-        /// 
+        short *input = data->buf.origin<short>();
         if (pcm_to->channels == pcm->channels) {
             combined_samples = pcm->frame_samples;
-            short *input = (short*)data->buf.data;
             for (int i = 0; i < pcm->frame_samples; i++)
                 combined[i] = std::max(input[i] / 32767.0f, -1.0f);
         } else if (pcm->channels == 1 && pcm_to->channels == 2) {
             combined_samples = pcm->frame_samples * 2;
-            short *input = (short*)data->buf.data;
             for (int i = 0; i < pcm->frame_samples; i++) {
                 float cv = std::max(input[i] / 32767.0f, -1.0f);
                 combined[i * 2 + 0] = cv;
@@ -119,7 +115,6 @@ MediaBuffer MediaBuffer::convert_pcm(PCMInfo &pcm_to) {
             }
         } else if (pcm_to->channels == 1) {
             combined_samples = pcm->frame_samples / 2;
-            short *input = (short*)data->buf.data;
             for (sz_t i = 0; i < pcm->frame_samples; i += 2) {
                 /// frame size is channel-2 based on this struct
                 combined[i / 2] = std::max(
@@ -160,9 +155,9 @@ MediaBuffer MediaBuffer::convert_pcm(PCMInfo &pcm_to) {
     /// convert final
     sz_t sz = res.len();
     array<short> conv(sz);
-    for (sz_t i = 0; i < sz; i++) {
+    for (sz_t i = 0; i < sz; i++)
         conv[i] = (short)(res[i] * 32767.0f);
-    }
+    
     conv.set_size(sz);
     ///
     return MediaBuffer(pcm_to, conv);
@@ -193,22 +188,23 @@ array<MediaBuffer> MStream::audio_packets(u8 *pData, int currentLength) {
     PCMInfo &pcm_i = data->pcm_input;
     /// audio method is to perform some flow control and conversion (this code should be in PCMState or so)
     int reserve    = pcm_i->audio_buffer.reserve();
-    int cur_sz     = pcm_i->audio_buffer.len();
+    int cur_sz     = pcm_i->audio_buffer.count();
     int cur_write  = cur_sz + currentLength;
     array<MediaBuffer> res;
+    u8*       dst  = (u8*)pcm_i->audio_buffer.origin<u8>();
 
     /// update buffer and return null if this is not filling up the frame
     if (cur_write < pcm_i->bytes_per_frame) {
-        memcpy(&pcm_i->audio_buffer.data[cur_sz], pData, currentLength);
+        memcpy(&dst[cur_sz], pData, currentLength);
         pcm_i->audio_buffer.set_size(cur_sz + currentLength);
         return res;
     }
     int      rpos  = 0;
     int      wpos  = cur_sz;
-
+    
     while (cur_write >= pcm_i->bytes_per_frame) {
         int    diff = pcm_i->bytes_per_frame - wpos;
-        memcpy(&pcm_i->audio_buffer.data[wpos], &pData[rpos], diff);
+        memcpy(&dst[wpos], &pData[rpos], diff);
         pcm_i->audio_buffer.set_size(pcm_i->bytes_per_frame); /// 16,000 samples -> 48,000, 2 channels -> 1
         
         MediaBuffer input_unconv = MediaBuffer(pcm_i);
@@ -222,7 +218,7 @@ array<MediaBuffer> MStream::audio_packets(u8 *pData, int currentLength) {
         rpos       += pcm_i->bytes_per_frame;
     }
     /// set remaining amount here
-    memcpy(pcm_i->audio_buffer.data, &pData[rpos], cur_write);
+    memcpy(dst, &pData[rpos], cur_write);
     pcm_i->audio_buffer.set_size(cur_write);
     return res;
 }
@@ -243,7 +239,7 @@ bool MStream::push(MediaBuffer buffer) {
         data->video_queued = true;
     }
     if (is_video && data->resolve_image) {
-        u8 *src =      frame.video->buf.data;
+        u8 *src = (u8*)frame.video->buf.mem->origin;
         u8 *dst = (u8*)frame.image.data;
         frame.image.mem->count   = data->w * data->h;
         frame.image.mem->reserve = frame.image.mem->count;

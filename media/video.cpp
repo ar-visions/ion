@@ -99,7 +99,7 @@ struct iVideo {
         audio_track = MP4AddAudioTrack(
             mp4, audio_rate, audio_rate / hz, MP4_MPEG2_AAC_LC_AUDIO_TYPE);
 
-        async([this](runtime *rt, int i) -> mx {
+        ion::async([this](runtime *rt, int i) -> mx {
             while (!stopped && !current)
                 yield();
             
@@ -124,8 +124,8 @@ struct iVideo {
                 f->mtx.lock();
                 if (f->audio) {
                     assert(f->audio->type == Media::PCM);
-                    assert(f->audio->buf.len() == buffer_pcm_sz * 1);
-                    memcpy(buffer_pcm, f->audio->buf.data, buffer_pcm_sz);
+                    assert(f->audio->buf.count() == buffer_pcm_sz * 1);
+                    memcpy(buffer_pcm, f->audio->buf.origin<u8>(), buffer_pcm_sz);
 
                     assert(aacEncEncode(aac_encoder, &input_pcm, &output_aac, &args, &out_args) == AACENC_OK);
                     MP4WriteSample(mp4, audio_track, buffer_aac, buffer_aac_sz);

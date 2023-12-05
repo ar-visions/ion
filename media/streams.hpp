@@ -64,7 +64,7 @@ struct MediaBuffer:mx {
     /// or we can name it convert_pcm
     MediaBuffer convert_pcm(PCMInfo &pcm_to);
 
-    operator bool() { return data->buf.len() > 0; }
+    operator bool() { return data->buf.count() > 0; }
 };
 
 
