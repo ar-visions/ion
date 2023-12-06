@@ -210,6 +210,8 @@ array<MediaBuffer> MStream::audio_packets(u8 *pData, int currentLength) {
         }
         MediaBuffer input_unconv = MediaBuffer(pcm_i, buf);
         MediaBuffer conv = input_unconv.convert_pcm(pcm_o);
+        static int s_id = 0;
+        conv->id = s_id++; // test code to verify audio is coming in, in sequence; never left there, etc
         res        += conv;
         cur_sz     -= pcm_i->bytes_per_frame;
         rpos       += pcm_i->bytes_per_frame;
@@ -225,14 +227,28 @@ array<MediaBuffer> MStream::audio_packets(u8 *pData, int currentLength) {
 bool MStream::push(MediaBuffer buffer) {
     if (data->stop || data->error || !data->ready)
         return false;
-    Frame  &frame = data->swap[data->frames % 4];
+    Frame  &frame = data->swap[0]; //data->swap[data->frames % 4];
     frame.mtx.lock();
     bool is_video = false;
     if (buffer->type == Media::PCM || buffer->type == Media::PCMf32) {
         /// convert if this PCM format doesnt equal the priority #1
+        for (;;) {
+            if (!frame.audio)
+                break;
+            frame.mtx.unlock();
+            usleep(10);
+            frame.mtx.lock();
+        }
         frame.audio = buffer;
         data->audio_queued = true;
     } else {
+        for (;;) {
+            if (!frame.video)
+                break;
+            frame.mtx.unlock();
+            usleep(10);
+            frame.mtx.lock();
+        }
         frame.video = buffer;
         is_video = true;
         data->video_queued = true;

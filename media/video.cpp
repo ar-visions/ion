@@ -119,17 +119,29 @@ struct iVideo {
                     break;
                 
                 Frame *f = current;
-                f->mtx.lock();
+                for (;;) {
+                    f->mtx.lock();
+                    /// wait for both resources on this
+                    if (!f->audio || !f->video) {
+                        f->mtx.unlock();
+                        usleep(10);
+                    }
+                    break;
+                }
+
                 if (f->audio) {
                     assert(f->audio->type == Media::PCM);
                     int n_samples = f->audio->buf.count();
                     assert(n_samples == buffer_pcm_sz / sizeof(short)); // buf == 1600, buffer_pcm_sz == 3200 (extra channel?)
                     /// set input pointer for this operation
                     u8 *mbuf = (u8*)f->audio->buf.mem->origin;
+                    int buf_id = f->audio->id;
+                    /// sequential id on audio buffers; output here to verify identity.
+
                     input_pcm.bufs = (void**)&mbuf;
-                    for (int i = 0; i < buffer_pcm_sz; i++) {
-                        mbuf[i] = (u8)(rand::uniform(0, 255));
-                    }
+                    //for (int i = 0; i < buffer_pcm_sz; i++) {
+                    //    mbuf[i] = (u8)(rand::uniform(0, 255));
+                    //}
                     args.numInSamples = n_samples;
                     assert(aacEncEncode(aac_encoder, &input_pcm, &output_aac, &args, &out_args) == AACENC_OK);
                     input_pcm.bufs = (void**)0;
@@ -141,6 +153,10 @@ struct iVideo {
 
                 array<u8> nalus = h264_encoder.encode(f->image); /// needs a quality setting; this default is very high quality and constant quality too; meant for data science work
                 MP4WriteSample(mp4, video_track, nalus.data, nalus.len());
+                f->audio = {};
+                f->video = {};
+                assert(!f->audio);
+                assert(!f->video);
                 f->mtx.unlock();
                 frames++;
             }
