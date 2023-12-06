@@ -92,8 +92,8 @@ MediaBuffer MediaBuffer::convert_pcm(PCMInfo &pcm_to) {
             }
         } else if (pcm_to->channels == 1) {
             combined_samples = pcm->frame_samples / 2;
-            for (sz_t i = 0; i < pcm->frame_samples; i += 2) {
-                combined[i / 2] =
+            for (sz_t i = 0; i < combined_samples; i++) {
+                combined[i] =
                     (float)((input[i * 2 + 0] + 
                              input[i * 2 + 1]) / 2.0f);
             }
@@ -115,9 +115,9 @@ MediaBuffer MediaBuffer::convert_pcm(PCMInfo &pcm_to) {
             }
         } else if (pcm_to->channels == 1) {
             combined_samples = pcm->frame_samples / 2;
-            for (sz_t i = 0; i < pcm->frame_samples; i += 2) {
+            for (sz_t i = 0; i < combined_samples; i++) {
                 /// frame size is channel-2 based on this struct
-                combined[i / 2] = std::max(
+                combined[i] = std::max(
                     (float)((input[i * 2 + 0] / 32767.0f + 
                              input[i * 2 + 1] / 32767.0f) / 2.0f), -1.0f);
             }
@@ -189,38 +189,36 @@ array<MediaBuffer> MStream::audio_packets(u8 *pData, int currentLength) {
     /// audio method is to perform some flow control and conversion (this code should be in PCMState or so)
     int reserve    = pcm_i->audio_buffer.reserve();
     int cur_sz     = pcm_i->audio_buffer.count();
-    int cur_write  = cur_sz + currentLength;
+    u8*        src = (u8*)pcm_i->audio_buffer.origin<u8>(); 
     array<MediaBuffer> res;
-    u8*       dst  = (u8*)pcm_i->audio_buffer.origin<u8>();
 
-    /// update buffer and return null if this is not filling up the frame
-    if (cur_write < pcm_i->bytes_per_frame) {
-        memcpy(&dst[cur_sz], pData, currentLength);
-        pcm_i->audio_buffer.set_size(cur_sz + currentLength);
-        return res;
-    }
-    int      rpos  = 0;
-    int      wpos  = cur_sz;
+    memcpy(&src[cur_sz], pData, currentLength);
+    cur_sz += currentLength;
+    pcm_i->audio_buffer.set_size(cur_sz);
     
-    while (cur_write >= pcm_i->bytes_per_frame) {
-        int    diff = pcm_i->bytes_per_frame - wpos;
-        memcpy(&dst[wpos], &pData[rpos], diff);
-        pcm_i->audio_buffer.set_size(pcm_i->bytes_per_frame); /// 16,000 samples -> 48,000, 2 channels -> 1
-        
-        
-        MediaBuffer input_unconv = MediaBuffer(pcm_i);
-        //pcm_i->audio_buffer.set_size(0); /// MediaBuffer clears this with new allocation of the reserve size of audio_buffer
-
+    int rpos = 0;
+    while (cur_sz >= pcm_i->bytes_per_frame) {
+        mx buf;
+        if (pcm_i->format == Media::PCM) {
+            array<short> sbuf(pcm_i->bytes_per_frame / sizeof(short));
+            memcpy(sbuf.data, &src[rpos], pcm_i->bytes_per_frame);
+            buf = sbuf;
+        } else {
+            array<float> fbuf(pcm_i->bytes_per_frame / sizeof(float));
+            memcpy(fbuf.data, &src[rpos], pcm_i->bytes_per_frame);
+            buf = fbuf;
+        }
+        MediaBuffer input_unconv = MediaBuffer(pcm_i, buf);
         MediaBuffer conv = input_unconv.convert_pcm(pcm_o);
-
         res        += conv;
-        cur_write  -= pcm_i->bytes_per_frame;
-        wpos        = 0;
+        cur_sz     -= pcm_i->bytes_per_frame;
         rpos       += pcm_i->bytes_per_frame;
     }
-    /// set remaining amount here
-    memcpy(dst, &pData[rpos], cur_write);
-    pcm_i->audio_buffer.set_size(cur_write);
+
+    array<u8> remaining(pcm_i->audio_buffer.reserve());
+    memcpy(remaining.data, &src[rpos], cur_sz);
+    remaining.set_size(cur_sz);
+    pcm_i->audio_buffer = remaining;
     return res;
 }
 
