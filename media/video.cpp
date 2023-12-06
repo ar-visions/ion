@@ -23,14 +23,14 @@ struct iVideo {
 
     AACENC_BufDesc     output_aac;
     AACENC_BufDesc     input_pcm;
-    AACENC_InArgs      args { 1, 0 };
+    AACENC_InArgs      args { 0, 0 };
     AACENC_OutArgs     out_args { };
 
     u8*                buffer_aac;
-    int                buffer_aac_id = 1;
+    int                buffer_aac_id = OUT_BITSTREAM_DATA;
     int                buffer_aac_sz;
     int                buffer_aac_el = sizeof(u8);
-    int                buffer_pcm_id = 2;
+    int                buffer_pcm_id = IN_AUDIO_DATA;
     int                buffer_pcm_sz;
     int                buffer_pcm_el = sizeof(short);
     Frame*             current = null;
@@ -57,7 +57,7 @@ struct iVideo {
     void start(path &output) {
         assert(audio_channels == 1 || audio_channels == 2);
 
-        buffer_aac_sz = 128000 / 8 / hz * audio_channels;
+        buffer_aac_sz = 128000 / 8 / hz * audio_channels * 10; /// adequate size for encoder
         buffer_pcm_sz = sizeof(short) * audio_channels * audio_rate / hz;
         buffer_aac = (u8*)   calloc(1, buffer_aac_sz);
 
@@ -122,12 +122,21 @@ struct iVideo {
                 f->mtx.lock();
                 if (f->audio) {
                     assert(f->audio->type == Media::PCM);
-                    assert(f->audio->buf.count() == buffer_pcm_sz / sizeof(short)); // buf == 1600, buffer_pcm_sz == 3200 (extra channel?)
+                    int n_samples = f->audio->buf.count();
+                    assert(n_samples == buffer_pcm_sz / sizeof(short)); // buf == 1600, buffer_pcm_sz == 3200 (extra channel?)
                     /// set input pointer for this operation
-                    input_pcm.bufs = &f->audio->buf.mem->origin;
+                    u8 *mbuf = (u8*)f->audio->buf.mem->origin;
+                    input_pcm.bufs = (void**)&mbuf;
+                    for (int i = 0; i < buffer_pcm_sz; i++) {
+                        mbuf[i] = (u8)(rand::uniform(0, 255));
+                    }
+                    args.numInSamples = n_samples;
                     assert(aacEncEncode(aac_encoder, &input_pcm, &output_aac, &args, &out_args) == AACENC_OK);
-                    MP4WriteSample(mp4, audio_track, buffer_aac, buffer_aac_sz);
                     input_pcm.bufs = (void**)0;
+
+                    if (out_args.numOutBytes) {
+                        MP4WriteSample(mp4, audio_track, buffer_aac, buffer_aac_sz);
+                    }
                 }
 
                 array<u8> nalus = h264_encoder.encode(f->image); /// needs a quality setting; this default is very high quality and constant quality too; meant for data science work
