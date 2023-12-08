@@ -261,16 +261,30 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
                             /// sure we have enough data to send, and keep
                             /// remainder around for next round
                             PCMInfo &pcm = r->pcm;
+                            static bool halted = false;
+                            static bool halted_b = false;
+                            static bool halted2 = false;
                             if (!r->video) {
+                                halted = true;
+                                halted_b = true;
                                 array<MediaBuffer> packets = ms.audio_packets(pData, currentLength);
+                                halted_b = false;
                                 for (MediaBuffer &m: packets)
-                                    ms.push(m);
+                                    ms.push(m); /// if the frame is occupied, it shall block here.
+                                printf("[camera] pushed audio\n");
+                                halted = false;
+                                usleep(0);
                             } else {
+                                halted2 = true;
                                 /// video-based method is to simply send the nalu frames received
                                 array<u8> copy = array<u8>(sz_t(currentLength));
                                 memcpy(copy.data, pData, currentLength);
+                                copy.set_size(currentLength);
                                 MediaBuffer packet = MediaBuffer(r->selected_format, copy);
                                 ms.push(packet);
+                                printf("[camera] pushed video\n");
+                                halted2 = false;
+                                usleep(0);
                             }
 
                             pBuffer->Unlock();

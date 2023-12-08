@@ -63,7 +63,7 @@ struct MediaBuffer:mx {
     /// or we can name it convert_pcm
     MediaBuffer convert_pcm(PCMInfo &pcm_to);
 
-    operator bool() { return data->buf.count() > 0; }
+    operator bool() { return data ? data->buf.count() > 0 : false; }
 };
 
 
@@ -98,7 +98,7 @@ struct MStream:mx {
     struct M {
         runtime*             rt;
         mutex                mtx;
-        Frame                swap[1];
+        Frame                main_frame;
         array<StreamType>    stream_types;
         array<Media>         media;
         doubly<Remote>       listeners;
@@ -149,17 +149,16 @@ struct MStream:mx {
         data->h  = h;
         data->hz = hz;
         data->channels = channels;
-        if (data->resolve_image)
-            for (num i = 0; i < 1; i++) {
-                size sz { h, w };
-                rgba8 *bytes = (rgba8*)calloc(sizeof(rgba8), sz);
-                data->swap[i].image = image(sz, bytes, 0);
-            }
+        if (data->resolve_image) {
+            size sz { h, w };
+            rgba8 *bytes = (rgba8*)calloc(sizeof(rgba8), sz);
+            data->main_frame.image = image(sz, bytes, 0);
+        }
     }
 
     bool push(MediaBuffer buffer);
     void dispatch() {
-        Frame &frame = data->swap[0];
+        Frame &frame = data->main_frame;
         for (Remote &listener: data->listeners)
             listener->callback(frame);
     }

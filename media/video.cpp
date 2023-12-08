@@ -34,14 +34,17 @@ struct iVideo {
     int                buffer_pcm_sz;
     int                buffer_pcm_el = sizeof(short);
     Frame*             current = null;
+    mutex              mtx_write;
 
     register(iVideo);
 
     void stop() {
         if (!stopped) {
+            mtx_write.lock();
             stopped = true;
             aacEncClose(&aac_encoder);
             MP4Close(mp4);
+            mtx_write.unlock();
         }
     }
 
@@ -100,65 +103,76 @@ struct iVideo {
         ion::async([this](runtime *rt, int i) -> mx {
             while (!stopped && !current)
                 yield();
-            
             i64 start_write = millis();
             i64 frames = 0;
-
             while (!stopped) {
                 i64 start = start_write + frames * (1000 / hz);
                 i64 t = millis();
-
                 if (start < t) {
                     printf("warning: took too long to write frames; origin is offset\n");
                 } else {
                     i64 w = (start - t);
                     usleep(w * 1000);
                 }
-                
-                if (stopped)
-                    break;
-                
                 Frame *f = current;
-                for (;;) {
-                    f->mtx.lock();
-                    /// wait for both resources on this
-                    if (!f->audio || !f->video) {
+                auto wait_for_media = [&]() {
+                    /// critical section: must wait until they are both set! 
+                    for (;;) {
+                        f->mtx.lock();
+
+                        /// wait for both resources on this
+                        if (f->audio && f->video) // todo: needs to be a resource array
+                            break;
+                        
                         f->mtx.unlock();
                         usleep(10);
                     }
-                    break;
-                }
+                };
+                auto write_encoded_audio = [&]() {
+                    if (f->audio) {
+                        assert(f->audio->type == Media::PCM);
+                        int n_samples = f->audio->buf.count();
+                        assert(n_samples == buffer_pcm_sz / sizeof(short)); // buf == 1600, buffer_pcm_sz == 3200 (extra channel?)
+                        /// set input pointer for this operation
+                        u8 *mbuf = (u8*)f->audio->buf.mem->origin;
+                        int buf_id = f->audio->id;
+                        /// sequential id on audio buffers; output here to verify identity.
 
-                if (f->audio) {
-                    assert(f->audio->type == Media::PCM);
-                    int n_samples = f->audio->buf.count();
-                    assert(n_samples == buffer_pcm_sz / sizeof(short)); // buf == 1600, buffer_pcm_sz == 3200 (extra channel?)
-                    /// set input pointer for this operation
-                    u8 *mbuf = (u8*)f->audio->buf.mem->origin;
-                    int buf_id = f->audio->id;
-                    /// sequential id on audio buffers; output here to verify identity.
+                        input_pcm.bufs = (void**)&mbuf;
+                        //for (int i = 0; i < buffer_pcm_sz; i++)
+                        //    mbuf[i] = (u8)(rand::uniform(0, 255));
+                        
+                        args.numInSamples = n_samples;
+                        assert(aacEncEncode(aac_encoder, &input_pcm, &output_aac, &args, &out_args) == AACENC_OK);
+                        input_pcm.bufs = (void**)0;
 
-                    input_pcm.bufs = (void**)&mbuf;
-                    //for (int i = 0; i < buffer_pcm_sz; i++) {
-                    //    mbuf[i] = (u8)(rand::uniform(0, 255));
-                    //}
-                    args.numInSamples = n_samples;
-                    assert(aacEncEncode(aac_encoder, &input_pcm, &output_aac, &args, &out_args) == AACENC_OK);
-                    input_pcm.bufs = (void**)0;
-
-                    if (out_args.numOutBytes) {
-                        MP4WriteSample(mp4, audio_track, buffer_aac, buffer_aac_sz);
+                        if (out_args.numOutBytes) {
+                            MP4WriteSample(mp4, audio_track, buffer_aac, buffer_aac_sz);
+                        }
                     }
+                };
+                auto write_encoded_video = [&]() {
+                    array<u8> nalus = h264_encoder.encode(f->image); /// needs a quality setting; this default is very high quality and constant quality too; meant for data science work
+                    MP4WriteSample(mp4, video_track, nalus.data, nalus.len());
+                    printf("writing video packet of %d bytes\n", nalus.len());
+                    f->audio = {};
+                    f->video = {};
+                    assert(!f->audio);
+                    assert(!f->video);
+                };
+                auto unlock_frame = [&]() {
+                    frames++;
+                    f->mtx.unlock();
+                };
+                wait_for_media();
+                if (!stopped) {
+                    mtx_write.lock();
+                    printf("writing frame id %d\n", frames);
+                    write_encoded_audio();
+                    write_encoded_video();
+                    mtx_write.unlock();
                 }
-
-                array<u8> nalus = h264_encoder.encode(f->image); /// needs a quality setting; this default is very high quality and constant quality too; meant for data science work
-                MP4WriteSample(mp4, video_track, nalus.data, nalus.len());
-                f->audio = {};
-                f->video = {};
-                assert(!f->audio);
-                assert(!f->video);
-                f->mtx.unlock();
-                frames++;
+                unlock_frame();
             }
             return true;
         });

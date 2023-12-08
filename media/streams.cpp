@@ -227,7 +227,7 @@ array<MediaBuffer> MStream::audio_packets(u8 *pData, int currentLength) {
 bool MStream::push(MediaBuffer buffer) {
     if (data->stop || data->error || !data->ready)
         return false;
-    Frame  &frame = data->swap[0]; //data->swap[data->frames % 4];
+    Frame  &frame = data->main_frame; //data->swap[data->frames % 4];
     frame.mtx.lock();
     bool is_video = false;
     if (buffer->type == Media::PCM || buffer->type == Media::PCMf32) {
@@ -275,14 +275,18 @@ bool MStream::push(MediaBuffer buffer) {
         }
         i64 b = millis();
         i64 c = b - a;
-        printf("conversion took %d millis\n", (int)c);
+        //printf("[streams] conversion took %d millis\n", (int)c);
     }
+    bool run_dispatch = false;
     if ((!data->use_video || data->video_queued) && (!data->use_audio || data->audio_queued)) {
-        dispatch();
+        run_dispatch = true;
         data->video_queued = false;
         data->audio_queued = false;
     }
+    printf("[streams] pushed to stream\n");
     frame.mtx.unlock();
+    if (run_dispatch)
+        dispatch();
     return true;
 }
 
