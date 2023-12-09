@@ -154,7 +154,7 @@ struct iVideo {
                 auto write_encoded_video = [&]() {
                     array<u8> nalus = h264_encoder.encode(f->image); /// needs a quality setting; this default is very high quality and constant quality too; meant for data science work
                     MP4WriteSample(mp4, video_track, nalus.data, nalus.len());
-                    printf("writing video packet of %d bytes\n", nalus.len());
+                    printf("writing video packet of %d bytes\n", (int)nalus.len());
                     f->audio = {};
                     f->video = {};
                     assert(!f->audio);
@@ -167,7 +167,7 @@ struct iVideo {
                 wait_for_media();
                 if (!stopped) {
                     mtx_write.lock();
-                    printf("writing frame id %d\n", frames);
+                    printf("writing frame id %d\n", (int)frames);
                     write_encoded_audio();
                     write_encoded_video();
                     mtx_write.unlock();

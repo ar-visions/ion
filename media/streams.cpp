@@ -189,6 +189,7 @@ array<MediaBuffer> MStream::audio_packets(u8 *pData, int currentLength) {
     /// audio method is to perform some flow control and conversion (this code should be in PCMState or so)
     int reserve    = pcm_i->audio_buffer.reserve();
     int cur_sz     = pcm_i->audio_buffer.count();
+    printf("cur sz = %d\n", cur_sz);
     u8*        src = (u8*)pcm_i->audio_buffer.origin<u8>(); 
     array<MediaBuffer> res;
 
@@ -204,7 +205,7 @@ array<MediaBuffer> MStream::audio_packets(u8 *pData, int currentLength) {
             memcpy(sbuf.data, &src[rpos], pcm_i->bytes_per_frame);
             buf = sbuf;
         } else {
-            array<float> fbuf(pcm_i->bytes_per_frame / sizeof(float));
+            array<float> fbuf(pcm_i->bytes_per_frame / sizeof(float)); /// 16000 * 2 * 4 = 128,0000 samples / 30 = 4266
             memcpy(fbuf.data, &src[rpos], pcm_i->bytes_per_frame);
             buf = fbuf;
         }
@@ -212,7 +213,7 @@ array<MediaBuffer> MStream::audio_packets(u8 *pData, int currentLength) {
         MediaBuffer conv = input_unconv.convert_pcm(pcm_o);
         static int s_id = 0;
         conv->id = s_id++; // test code to verify audio is coming in, in sequence; never left there, etc
-        res        += conv;
+        res += conv;
         cur_sz     -= pcm_i->bytes_per_frame;
         rpos       += pcm_i->bytes_per_frame;
     }
@@ -221,7 +222,7 @@ array<MediaBuffer> MStream::audio_packets(u8 *pData, int currentLength) {
     memcpy(remaining.data, &src[rpos], cur_sz);
     remaining.set_size(cur_sz);
     pcm_i->audio_buffer = remaining;
-    return res;
+    return res; /// may be default state, a falsey object
 }
 
 bool MStream::push(MediaBuffer buffer) {
@@ -243,13 +244,18 @@ bool MStream::push(MediaBuffer buffer) {
         data->audio_queued = true;
     } else {
         for (;;) {
-            if (!frame.video)
+            if (!frame.video) /// not operator was not working because the bool was not implemented in the data struct on MediaBuffer.
                 break;
             frame.mtx.unlock();
             usleep(10);
             frame.mtx.lock();
         }
         frame.video = buffer;
+        printf("got video frame -----> %d\n", frame.video->id);
+        bool is_null    = frame.video->buf.type() == typeof(null_t);
+        bool has_buffer = !is_null && frame.video->buf.count() > 0;
+        assert (has_buffer);
+
         is_video = true;
         data->video_queued = true;
     }

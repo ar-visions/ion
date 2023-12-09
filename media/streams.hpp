@@ -35,6 +35,7 @@ struct MediaBuffer:mx {
         Media    type;
         mx       buf;
         int      id;
+        operator bool() { return buf.mem && bool(buf); }
         register(M)
     };
     mx_basic(MediaBuffer);
@@ -62,8 +63,6 @@ struct MediaBuffer:mx {
     /// for audio; we could have others with different arguments for video
     /// or we can name it convert_pcm
     MediaBuffer convert_pcm(PCMInfo &pcm_to);
-
-    operator bool() { return data ? data->buf.count() > 0 : false; }
 };
 
 

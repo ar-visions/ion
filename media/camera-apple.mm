@@ -359,8 +359,8 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
         audio.callback        = [&](void* v_audio, sz_t v_audio_size) {
             MStream  &streams = (MStream &)s;
             array<MediaBuffer> packets = streams.audio_packets((u8*)v_audio, v_audio_size);
-            for (MediaBuffer &m: packets)
-                streams.push(m);
+            for (MediaBuffer &packet: packets)
+                streams.push(packet);
 
         };
         audio.start();
