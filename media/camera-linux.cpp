@@ -43,9 +43,13 @@ struct camera_t {
     unsigned int     n_buffers;
     int		         out_buf;
     int              format = V4L2_PIX_FMT_YUYV;
-    lambda<void(camera_t*, u8*,sz_t)> process_fn;
+    lambda<void(camera_t*, array<u8>)> process_fn;
 
     bool select(const char *video_alias);
+
+    operator bool() {
+        return fd >= 0;
+    }
 };
 
 static int mapFourccToConstant(const char* fourcc) {
@@ -141,8 +145,8 @@ static int xioctl(int fh, unsigned long int request, void *arg) {
 	return r;
 }
 
-static void process_image(camera_t *cam, const void *p, int size) {
-    cam->process_fn(cam, (u8*)p, size);
+static void process_image(camera_t *cam, array<u8> &data) {
+    cam->process_fn(cam, data);
 }
 
 static int read_frame(camera_t *cam)
@@ -151,7 +155,7 @@ static int read_frame(camera_t *cam)
 	unsigned int i;
 
 	switch (cam->io) {
-	case IO_METHOD_MMAP:
+	case IO_METHOD_MMAP: {
 		CLEAR(buf);
 		buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 		buf.memory = V4L2_MEMORY_MMAP;
@@ -170,14 +174,21 @@ static int read_frame(camera_t *cam)
 			}
 		}
 		assert(buf.index < cam->n_buffers);
-		process_image(cam, cam->buffers[buf.index].start, buf.bytesused);
+
+        array<u8> buffer(buf.bytesused);
+        memcpy(buffer.data, cam->buffers[buf.index].start, buf.bytesused);
+        buffer.set_size(buf.bytesused);
+		process_image(cam, buffer);
+        
 		if (-1 == xioctl(cam->fd, VIDIOC_QBUF, &buf))
 			errno_exit("VIDIOC_QBUF");
-		break;
 
-	case IO_METHOD_USERPTR:
+		break;
+    }
+
+	case IO_METHOD_USERPTR: {
 		CLEAR(buf);
-		buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+		buf.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 		buf.memory = V4L2_MEMORY_USERPTR;
 		if (-1 == xioctl(cam->fd, VIDIOC_DQBUF, &buf)) {
 			switch (errno) {
@@ -191,14 +202,17 @@ static int read_frame(camera_t *cam)
 			}
 		}
 		for (i = 0; i < cam->n_buffers; ++i)
-			if (buf.m.userptr == (unsigned long)cam->buffers[i].start
-			    && buf.length == cam->buffers[i].length)
+			if (buf.m.userptr == (unsigned long)cam->buffers[i].start && buf.length == cam->buffers[i].length)
 				break;
 		assert(i < cam->n_buffers);
-		process_image(cam, (void *)buf.m.userptr, buf.bytesused);
+        array<u8> buffer(buf.bytesused);
+        memcpy(buffer.data, (u8*)buf.m.userptr, buf.bytesused);
+        buffer.set_size(buf.bytesused);
+		process_image(cam, buffer);
 		if (-1 == xioctl(cam->fd, VIDIOC_QBUF, &buf))
 			errno_exit("VIDIOC_QBUF");
 		break;
+    }
 	}
 	return 1;
 }
@@ -500,23 +514,27 @@ static void open_device(camera_t *cam) {
 
 struct audio_t {
     str        dev_name;
-    u32        sample_rate;
+    u32        sample_rate = 48000;
     int        card_id;
     int        sub_id;
     int        channels = 1;
     snd_pcm_t *handle;
     float     *buffer;
-    snd_pcm_uframes_t frames;
+    snd_pcm_uframes_t frame_size;
     
+
+    operator bool() {
+        return dev_name;
+    }
 
     bool read_frames(float** dst) {
         int read_cursor = 0;
-        int remaining   = frames;
-        while (read_cursor < frames) {
-            int r = snd_pcm_readi(handle, &buffer[read_cursor * channels], remaining);
+        int remaining   = frame_size / channels;
+        while (read_cursor < frame_size) {
+            int r = snd_pcm_readi(handle, &buffer[read_cursor], remaining);
             if (r > 0) {
                 remaining   -= r;
-                read_cursor += r;
+                read_cursor += r * channels;
             }
             else if (r == -EAGAIN || (r >= 0 && (size_t)r < remaining)) {
 			    snd_pcm_wait(handle, 1000);
@@ -529,10 +547,8 @@ struct audio_t {
                 return 0;
             }
         }
-
         *dst = (float*)buffer;
-        read_cursor = 0;
-        return frames;
+        return frame_size;
     }
 
     /* I/O error handler */
@@ -571,7 +587,7 @@ struct audio_t {
     }
 
     bool record(int hz, int chans) {
-        frames = sample_rate / hz;
+        frame_size = sample_rate * chans / hz;
         channels = chans;
         snd_pcm_hw_params_t *params;
         int dir;
@@ -598,11 +614,11 @@ struct audio_t {
         snd_pcm_hw_params_set_channels(handle, params, channels);
         snd_pcm_hw_params_set_rate_near(handle, params, &sample_rate, &dir);
         assert(sample_rate == 48000);
-        int prior = frames;
-        snd_pcm_hw_params_set_period_size_near(handle, params, &frames, &dir);
-        assert(prior == frames);
+        int prior = frame_size;
+        snd_pcm_hw_params_set_period_size_near(handle, params, &frame_size, &dir);
+        assert(prior == frame_size);
 
-        snd_pcm_hw_params_set_buffer_size(handle, params, frames * 64);
+        snd_pcm_hw_params_set_buffer_size(handle, params, frame_size * 64);
 
         /// write the parameters to the driver
         if ((err = snd_pcm_hw_params(handle, params)) < 0) {
@@ -614,7 +630,7 @@ struct audio_t {
         snd_pcm_prepare(handle);
 
         /// use a buffer large enough to hold one period
-        buffer = (float*)calloc(sizeof(float), 64 * frames * channels);  /// 2 bytes / sample for S16_LE format
+        buffer = (float*)calloc(sizeof(float), 64 * frame_size);  /// 2 bytes / sample for S16_LE format
         return true;
     }
 
@@ -662,8 +678,13 @@ MStream camera(
         array<StreamType> stream_types, array<Media> priority,
         str video_alias, str audio_alias, int width, int height) {
     return MStream(stream_types, priority, [stream_types, priority, video_alias, audio_alias, width, height](MStream s) -> void {
-        audio_t  audio;
-        audio.select(audio_alias.data);
+        
+            
+        /// PnP device (generic USB mic, widely avail OEM) USB 2.1 device
+        /// output the packet lengths and total size along with average per second.
+        /// it should be 48,000 * 1chan * 4float;
+        /// each sample read at 30hz should average at 
+        ///     48000S/30HZ*1C*4F = 6400
 
         camera_t cam;
         cam.io = IO_METHOD_MMAP;//IO_METHOD_USERPTR;//IO_METHOD_MMAP;
@@ -675,68 +696,92 @@ MStream camera(
         Media   selected_format;
         assert(camera_select_format(&cam, priority, &selected_v4l, &selected_format)); /// query formats and priority by Media order
 
-        cam.process_fn = [s, selected_format](camera_t *cam, u8* data, sz_t sz) {
+        cam.process_fn = [s, selected_format](camera_t *cam, array<u8> data) {
             MStream &streams = (MStream&)s;
-            streams.push(MediaBuffer(selected_format, data, sz));
+            static int video_id = 0;
+            streams.push(MediaBuffer(selected_format, data, video_id++));
         };
 
-        s->w = width;
-        s->h = height;
-        init_device(&cam, selected_v4l, width, height, 60);
+        const int hz = 30;
+
+        s->w  = width;
+        s->h  = height;
+        init_device(&cam, selected_v4l, width, height, hz);
         start_capturing(&cam);
 
-        audio.record(60, 1);
-        s.set_info(width, height, 60, audio.channels);
+        audio_t  audio;
+        StreamType aud = StreamType::Audio;
+        if (stream_types.index_of(aud) >= 0) {
+            audio.select(audio_alias.data);
+            audio.record(hz, 1);
+        }
+        
+        s.set_info(width, height, hz, audio ? audio.channels : 0);
         s.ready();
 		i64 t = millis();
-        while (!s->rt->stop) {
-            /// read video frame
-            for (;;) {
-                fd_set fds;
-                struct timeval tv;
-                int r;
 
-                FD_ZERO(&fds);
-                FD_SET(cam.fd, &fds);
-
-                /* Timeout. */
-                tv.tv_sec = 2;
-                tv.tv_usec = 0;
-
-                r = select(cam.fd + 1, &fds, NULL, NULL, &tv);
-
-                if (-1 == r) {
-                    if (EINTR == errno)
-                        continue;
-                    errno_exit("select");
+        /// read video frame
+        async([&s, &cam](runtime *rt, int index) -> mx {
+            while (!s->rt->stop) {
+                for (;;) {
+                    /// wait for data available, and then proceed until success (break)
+                    fd_set fds;
+                    struct timeval tv;
+                    int r;
+                    FD_ZERO(&fds);
+                    FD_SET(cam.fd, &fds);
+                    /* Timeout. */
+                    tv.tv_sec = 2;
+                    tv.tv_usec = 0;
+                    r = select(cam.fd + 1, &fds, NULL, NULL, &tv);
+                    if (-1 == r) {
+                        if (EINTR == errno)
+                            continue;
+                        errno_exit("select");
+                    }
+                    if (0 == r) {
+                        fprintf(stderr, "select timeout\n");
+                        exit(EXIT_FAILURE);
+                    }
+                    if (read_frame(&cam)) {
+                        break;
+                    }
+                    /* EAGAIN - continue select loop. */
                 }
-
-                if (0 == r) {
-                    fprintf(stderr, "select timeout\n");
-                    exit(EXIT_FAILURE);
-                }
-
-                if (read_frame(&cam))
-                    break;
-                
-                /* EAGAIN - continue select loop. */
             }
-            /// read audio
-            float *audio_frame = null;
-            //if (!audio.read_frames(&audio_frame))
-            //    break;
-			u8 buf[4];
-			s.push(MediaBuffer(Media::PCMf32, (u8*)buf, sizeof(float) * 1));
-            //s.push(MediaBuffer(Media::PCMf32, (u8*)audio_frame, sizeof(float) * audio.frames * audio.channels));
-			i64 t2 = millis();
-			i64 diff = t2 - t;
-			printf("took %d millis to capture video and audio\n", (int)diff);
+            return true;
+        });
 
-			t = t2;
+        if (audio)
+            async([&s, &audio](runtime *rt, int index) -> mx {
+                while (!s->rt->stop) {
+                    /// read audio
+                    float *audio_frame = null;
+                    float audio_frame_0[audio.frame_size];
+                    array<u8> frame(sizeof(float) * audio.frame_size);
+                    memcpy(frame.data, audio_frame_0, frame.reserve());
+                    frame.set_size(frame.reserve());
+                    usleep(1000 * 32);
+                    //if (!audio.read_frames(&audio_frame)) /// frame size is input size of channel count * samples_sec / rate
+                    //    break;
+                    /// create a sweep pattern that linear sweeps from 0 to max 16bit sign/unsign
+                    static int audio_id = 0;
+                    s.push(MediaBuffer(Media::PCMf32, frame, audio_id++));
+                }
+                return true;
+            });
+
+        if (cam || audio)
+            while (!s->rt->stop) {
+                usleep(100);
+            };
+    
+        if (cam) {
+            stop_capturing(&cam);
+            uninit_device(&cam);
+            close_device(&cam);
         }
-        stop_capturing(&cam);
-        uninit_device(&cam);
-        close_device(&cam);
+
         if (!s->ready)
             s.cancel();
     });

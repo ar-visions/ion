@@ -40,15 +40,17 @@ struct MediaBuffer:mx {
     };
     mx_basic(MediaBuffer);
 
-    MediaBuffer(Media type, array<u8> buf):MediaBuffer() {
+    MediaBuffer(Media type, array<u8> buf, int id):MediaBuffer() {
         data->type = type;
         data->buf  = buf;
+        data->id   = id;
     }
 
-    MediaBuffer(PCMInfo &pcm, mx buf) : MediaBuffer() {
+    MediaBuffer(PCMInfo &pcm, mx buf, int id) : MediaBuffer() {
         data->pcm  = pcm;
         data->type = pcm->format;
         data->buf  = buf;
+        data->id   = id;
     }
 
     /// hand-off constructor
@@ -62,18 +64,18 @@ struct MediaBuffer:mx {
 
     /// for audio; we could have others with different arguments for video
     /// or we can name it convert_pcm
-    MediaBuffer convert_pcm(PCMInfo &pcm_to);
+    MediaBuffer convert_pcm(PCMInfo &pcm_to, int id);
 };
 
 
 
-struct PCMu32 : MediaBuffer { PCMu32(array<u8> buf) : MediaBuffer(Media::PCMu32, buf) { } };
-struct PCMf32 : MediaBuffer { PCMf32(array<u8> buf) : MediaBuffer(Media::PCMf32, buf) { } };
-struct PCM    : MediaBuffer { PCM   (array<u8> buf) : MediaBuffer(Media::PCM,    buf) { } };
-struct YUY2   : MediaBuffer { YUY2  (array<u8> buf) : MediaBuffer(Media::YUY2,   buf) { } };
-struct NV12   : MediaBuffer { NV12  (array<u8> buf) : MediaBuffer(Media::NV12,   buf) { } };
-struct MJPEG  : MediaBuffer { MJPEG (array<u8> buf) : MediaBuffer(Media::MJPEG,  buf) { } };
-struct H264   : MediaBuffer { H264  (array<u8> buf) : MediaBuffer(Media::H264,   buf) { } };
+struct PCMu32 : MediaBuffer { PCMu32(array<u8> buf) : MediaBuffer(Media::PCMu32, buf, 0) { } };
+struct PCMf32 : MediaBuffer { PCMf32(array<u8> buf) : MediaBuffer(Media::PCMf32, buf, 0) { } };
+struct PCM    : MediaBuffer { PCM   (array<u8> buf) : MediaBuffer(Media::PCM,    buf, 0) { } };
+struct YUY2   : MediaBuffer { YUY2  (array<u8> buf) : MediaBuffer(Media::YUY2,   buf, 0) { } };
+struct NV12   : MediaBuffer { NV12  (array<u8> buf) : MediaBuffer(Media::NV12,   buf, 0) { } };
+struct MJPEG  : MediaBuffer { MJPEG (array<u8> buf) : MediaBuffer(Media::MJPEG,  buf, 0) { } };
+struct H264   : MediaBuffer { H264  (array<u8> buf) : MediaBuffer(Media::H264,   buf, 0) { } };
 
 struct Frame {
     u64         from, to;
@@ -114,6 +116,8 @@ struct MStream:mx {
         bool                 video_queued;
         PCMInfo              pcm_input;
         PCMInfo              pcm_output;
+        int                  video_next_id;
+        int                  audio_next_id;
         register(M)
     };
 

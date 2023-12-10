@@ -67,12 +67,12 @@ void nv12_rgba(const uint8_t* nv12, uint8_t* rgba, int width, int height) {
         }
 }
 
-MediaBuffer MediaBuffer::convert_pcm(PCMInfo &pcm_to) {
+MediaBuffer MediaBuffer::convert_pcm(PCMInfo &pcm_to, int id) {
     PCMInfo &pcm = data->pcm;
     if (pcm_to->format   == pcm->format   &&
         pcm_to->channels == pcm->channels &&
         pcm_to->samples  == pcm->samples)
-        return MediaBuffer(pcm, data->buf);
+        return MediaBuffer(pcm, data->buf, id);
     
     array<float> combined(sz_t(pcm->frame_samples * 2)); /// must be reduced to float32 so resampling can take place after
     sz_t         combined_samples = 0;
@@ -128,7 +128,7 @@ MediaBuffer MediaBuffer::convert_pcm(PCMInfo &pcm_to) {
 
     /// if we are requesting f32 and the sample rate does not change, we return this as a MediaBuffer
     if (pcm_to->format == Media::PCMf32 && pcm_to->samples == pcm->samples)
-        return MediaBuffer(pcm_to, combined_samples);
+        return MediaBuffer(pcm_to, combined, id);
 
     /// channels are pcm_to, but rate is different
     array<float> res;
@@ -150,7 +150,7 @@ MediaBuffer MediaBuffer::convert_pcm(PCMInfo &pcm_to) {
 
     /// going to float, no need to convert
     if (pcm_to->format == Media::PCMf32)
-        return MediaBuffer(pcm_to, res);
+        return MediaBuffer(pcm_to, res, id);
 
     /// convert final
     sz_t sz = res.len();
@@ -160,7 +160,7 @@ MediaBuffer MediaBuffer::convert_pcm(PCMInfo &pcm_to) {
     
     conv.set_size(sz);
     ///
-    return MediaBuffer(pcm_to, conv);
+    return MediaBuffer(pcm_to, conv, id);
 }
 
 static void set_pcminfo(PCMInfo &pcm, Media format, int channels, int samples) {
@@ -209,8 +209,8 @@ array<MediaBuffer> MStream::audio_packets(u8 *pData, int currentLength) {
             memcpy(fbuf.data, &src[rpos], pcm_i->bytes_per_frame);
             buf = fbuf;
         }
-        MediaBuffer input_unconv = MediaBuffer(pcm_i, buf);
-        MediaBuffer conv = input_unconv.convert_pcm(pcm_o);
+        MediaBuffer input_unconv = MediaBuffer(pcm_i, buf, 0);
+        MediaBuffer conv = input_unconv.convert_pcm(pcm_o, 0);
         static int s_id = 0;
         conv->id = s_id++; // test code to verify audio is coming in, in sequence; never left there, etc
         res += conv;
@@ -240,7 +240,21 @@ bool MStream::push(MediaBuffer buffer) {
             usleep(10);
             frame.mtx.lock();
         }
-        frame.audio = buffer;
+
+        assert(buffer->id == data->audio_next_id);
+
+        if (buffer->type == Media::PCMf32) {
+            int  n_floats = buffer->buf.total_size() / sizeof(float);
+            float *floats = buffer->buf.origin<float>();
+            array<short> shorts(n_floats);
+            for (int i = 0; i < n_floats; i++) {
+                shorts[i] = floats[i] * 32767.0;
+            }
+            frame.audio = MediaBuffer(Media::PCM, shorts, buffer->id);
+        } else
+            frame.audio = buffer;
+        
+        data->audio_next_id = buffer->id + 1;
         data->audio_queued = true;
     } else {
         for (;;) {
@@ -251,11 +265,11 @@ bool MStream::push(MediaBuffer buffer) {
             frame.mtx.lock();
         }
         frame.video = buffer;
-        printf("got video frame -----> %d\n", frame.video->id);
+        assert(buffer->id == data->video_next_id);
+        data->video_next_id = buffer->id + 1;
         bool is_null    = frame.video->buf.type() == typeof(null_t);
         bool has_buffer = !is_null && frame.video->buf.count() > 0;
         assert (has_buffer);
-
         is_video = true;
         data->video_queued = true;
     }
