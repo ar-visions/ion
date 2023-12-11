@@ -1,6 +1,8 @@
 #pragma once
+#include <mx/mx.hpp>
 #include <media/image.hpp>
 #include <async/async.hpp>
+#include <cassert>
 
 namespace ion {
 
@@ -40,13 +42,24 @@ struct MediaBuffer:mx {
     };
     mx_basic(MediaBuffer);
 
-    MediaBuffer(Media type, array<u8> buf, int id):MediaBuffer() {
+    MediaBuffer(Media type, mx &buf, int id):MediaBuffer() {
         data->type = type;
+        if (buf.type() == typeof(float)) {
+            assert(type == Media::PCMf32);
+        } else if (buf.type() == typeof(short)) {
+            assert(type == Media::PCM);
+        } else if (buf.type() == typeof(u8)) {
+            assert(type == Media::YUY2);
+        } else
+            assert(false);
         data->buf  = buf;
         data->id   = id;
     }
 
     MediaBuffer(PCMInfo &pcm, mx buf, int id) : MediaBuffer() {
+        if (buf.type() == typeof(u8)) {
+            assert(false);
+        }
         data->pcm  = pcm;
         data->type = pcm->format;
         data->buf  = buf;

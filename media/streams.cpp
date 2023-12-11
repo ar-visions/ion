@@ -3,6 +3,8 @@
 #include <media/streams.hpp>
 #include <speex/speex_resampler.h>
 
+#include <assert.h>
+
 namespace ion {
 
 int clamp(int v) {
@@ -250,6 +252,7 @@ bool MStream::push(MediaBuffer buffer) {
             for (int i = 0; i < n_floats; i++) {
                 shorts[i] = floats[i] * 32767.0;
             }
+            shorts.set_size(n_floats);
             frame.audio = MediaBuffer(Media::PCM, shorts, buffer->id);
         } else
             frame.audio = buffer;

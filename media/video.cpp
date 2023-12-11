@@ -6,6 +6,107 @@
 #include <media/h264.hpp>
 #include <media/video.hpp>
 
+#include <iostream>
+#include <random>
+#include <vector>
+
+using namespace std;
+
+#define SAMPLE_RATE 48000
+#define CHANNELS 1
+#define DURATION 10  // 10 seconds
+#define FRAME_SIZE 1024  // AAC frame size for many profiles
+
+int mp4_test() {
+    // Initialize random number generator
+    srand(time(NULL));
+
+    // Allocate buffer for 10 seconds of random mono audio at 48kHz
+    int16_t buffer[SAMPLE_RATE * DURATION];
+    for (int i = 0; i < SAMPLE_RATE * DURATION; ++i) {
+        buffer[i] = rand() % 65536 - 32768;  // Generate random noise
+    }
+
+    // AAC encoder initialization (you need to add error checks and configuration)
+    HANDLE_AACENCODER encoder;
+    AACENC_InfoStruct encInfo;
+    aacEncOpen(&encoder, 0, CHANNELS);
+    aacEncoder_SetParam(encoder, AACENC_SAMPLERATE, SAMPLE_RATE);
+    aacEncoder_SetParam(encoder, AACENC_CHANNELMODE, MODE_1);
+    aacEncoder_SetParam(encoder, AACENC_BITRATE, 64000);
+    aacEncoder_SetParam(encoder, AACENC_TRANSMUX, TT_MP4_RAW);
+
+    aacEncEncode(encoder, NULL, NULL, NULL, NULL); // Initialize encoder
+    aacEncInfo(encoder, &encInfo);
+
+    // Encoding loop
+    AACENC_BufDesc in_buf = { 0 }, out_buf = { 0 };
+    AACENC_InArgs in_args = { 0 };
+    AACENC_OutArgs out_args = { 0 };
+    int in_identifier = IN_AUDIO_DATA, out_identifier = OUT_BITSTREAM_DATA;
+    void *in_ptr, *out_ptr;
+    INT in_size, in_elem_size, out_size, out_elem_size;
+    UCHAR outbuf[20480]; // 20k should be more than enough
+    INT_PCM *convert_buf = (INT_PCM*)buffer;
+
+    for (int i = 0; i < SAMPLE_RATE * DURATION; i += FRAME_SIZE) {
+        // Set up input buffer
+        in_ptr = &convert_buf[i];
+        in_size = FRAME_SIZE * sizeof(INT_PCM);
+        in_elem_size = sizeof(INT_PCM);
+        in_buf.numBufs = 1;
+        in_buf.bufs = &in_ptr;
+        in_buf.bufferIdentifiers = &in_identifier;
+        in_buf.bufSizes = &in_size;
+        in_buf.bufElSizes = &in_elem_size;
+
+        // Set up output buffer
+        out_ptr = outbuf;
+        out_size = sizeof(outbuf);
+        out_elem_size = 1;
+        out_buf.numBufs = 1;
+        out_buf.bufs = &out_ptr;
+        out_buf.bufferIdentifiers = &out_identifier;
+        out_buf.bufSizes = &out_size;
+        out_buf.bufElSizes = &out_elem_size;
+
+        // Set up in_args
+        in_args.numInSamples = FRAME_SIZE <= SAMPLE_RATE * DURATION - i ? FRAME_SIZE : SAMPLE_RATE * DURATION - i;
+
+        // Encode frame
+        if (aacEncEncode(encoder, &in_buf, &out_buf, &in_args, &out_args) != AACENC_OK) {
+            // Handle error
+            break;
+        }
+
+        if (out_args.numOutBytes == 0) {
+            continue;
+        }
+
+        // Here, outbuf contains the encoded AAC frame of length out_args.numOutBytes
+        // You should add this frame to your MP4 container here
+    }
+
+    // Finalize encoding
+    aacEncEncode(encoder, NULL, NULL, NULL, NULL);
+
+    // Create MP4 file and add AAC track (use mp4v2 library)
+    MP4FileHandle mp4file = MP4Create("/home/kalen/output.mp4", 0);
+    MP4TrackId track = MP4AddAudioTrack(mp4file, SAMPLE_RATE, MP4_INVALID_DURATION, MP4_MPEG4_AUDIO_TYPE);
+    MP4SetAudioProfileLevel(mp4file, 2);
+    // Add encoded AAC frames to the MP4 track
+
+    // Finalize file
+    MP4Close(mp4file, 0);
+
+    // Clean up
+    aacEncClose(&encoder);
+
+    return 0;
+}
+
+
+
 using namespace ion;
 
 struct iVideo {
@@ -58,6 +159,9 @@ struct iVideo {
     }
 
     void start(path &output) {
+        mp4_test();
+        exit(0);
+
         assert(audio_channels == 1 || audio_channels == 2);
 
         buffer_aac_sz = 128000 / 8 / hz * audio_channels * 10; /// adequate size for encoder
@@ -99,6 +203,11 @@ struct iVideo {
         assert(audio_rate % hz == 0);
         audio_track = MP4AddAudioTrack(
             mp4, audio_rate, audio_rate / hz, MP4_MPEG2_AAC_LC_AUDIO_TYPE);
+        // Set the number of channels to 1 for mono audio
+        if (!MP4SetTrackIntegerProperty(mp4, audio_track, "mdia.minf.stbl.stsd.*.channels", 1)) {
+            // Handle error
+            assert(false);
+        }
 
         ion::async([this](runtime *rt, int i) -> mx {
             while (!stopped && !current)
@@ -139,8 +248,8 @@ struct iVideo {
                         /// sequential id on audio buffers; output here to verify identity.
 
                         input_pcm.bufs = (void**)&mbuf;
-                        //for (int i = 0; i < buffer_pcm_sz; i++)
-                        //    mbuf[i] = (u8)(rand::uniform(0, 255));
+                        for (int i = 0; i < buffer_pcm_sz; i++)
+                            mbuf[i] = (u8)(rand::uniform(0, 255));
                         
                         args.numInSamples = n_samples;
                         assert(aacEncEncode(aac_encoder, &input_pcm, &output_aac, &args, &out_args) == AACENC_OK);
@@ -152,7 +261,7 @@ struct iVideo {
                     }
                 };
                 auto write_encoded_video = [&]() {
-                    array<u8> nalus = h264_encoder.encode(f->image); /// needs a quality setting; this default is very high quality and constant quality too; meant for data science work
+                    ion::array<u8> nalus = h264_encoder.encode(f->image); /// needs a quality setting; this default is very high quality and constant quality too; meant for data science work
                     MP4WriteSample(mp4, video_track, nalus.data, nalus.len());
                     printf("writing video packet of %d bytes\n", (int)nalus.len());
                     f->audio = {};

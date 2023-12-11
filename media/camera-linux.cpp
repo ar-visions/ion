@@ -37,13 +37,14 @@ struct camera_t {
     char             dev_name[128];
     char             alias[128];
     enum io_method   io = IO_METHOD_MMAP;
+    ion::Media       selected_format;
     int              width = 640, height = 360, hz = 60;
     int              fd = -1;
     Buffer          *buffers;
     unsigned int     n_buffers;
     int		         out_buf;
     int              format = V4L2_PIX_FMT_YUYV;
-    lambda<void(camera_t*, array<u8>)> process_fn;
+    lambda<void(camera_t*, mx&)> process_fn;
 
     bool select(const char *video_alias);
 
@@ -127,6 +128,7 @@ static bool camera_select_format(camera_t *cam, const array<ion::Media> &priorit
         index++;
         desc.index = index;
     }
+    cam->selected_format = *selected_format;
     return format_index >= 0;
 }
 
@@ -145,7 +147,7 @@ static int xioctl(int fh, unsigned long int request, void *arg) {
 	return r;
 }
 
-static void process_image(camera_t *cam, array<u8> &data) {
+static void process_image(camera_t *cam, mx &data) {
     cam->process_fn(cam, data);
 }
 
@@ -175,42 +177,14 @@ static int read_frame(camera_t *cam)
 		}
 		assert(buf.index < cam->n_buffers);
 
-        array<u8> buffer(buf.bytesused);
+        array<u8> buffer(buf.bytesused / sizeof(u8));
         memcpy(buffer.data, cam->buffers[buf.index].start, buf.bytesused);
-        buffer.set_size(buf.bytesused);
-		process_image(cam, buffer);
+        buffer.set_size(buf.bytesused / sizeof(u8));
+        process_image(cam, buffer);
         
 		if (-1 == xioctl(cam->fd, VIDIOC_QBUF, &buf))
 			errno_exit("VIDIOC_QBUF");
 
-		break;
-    }
-
-	case IO_METHOD_USERPTR: {
-		CLEAR(buf);
-		buf.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-		buf.memory = V4L2_MEMORY_USERPTR;
-		if (-1 == xioctl(cam->fd, VIDIOC_DQBUF, &buf)) {
-			switch (errno) {
-			case EAGAIN:
-				return 0;
-			case EIO:
-				/* Could ignore EIO, see spec. */
-				/* fall through */
-			default:
-				errno_exit("VIDIOC_DQBUF");
-			}
-		}
-		for (i = 0; i < cam->n_buffers; ++i)
-			if (buf.m.userptr == (unsigned long)cam->buffers[i].start && buf.length == cam->buffers[i].length)
-				break;
-		assert(i < cam->n_buffers);
-        array<u8> buffer(buf.bytesused);
-        memcpy(buffer.data, (u8*)buf.m.userptr, buf.bytesused);
-        buffer.set_size(buf.bytesused);
-		process_image(cam, buffer);
-		if (-1 == xioctl(cam->fd, VIDIOC_QBUF, &buf))
-			errno_exit("VIDIOC_QBUF");
 		break;
     }
 	}
@@ -696,7 +670,7 @@ MStream camera(
         Media   selected_format;
         assert(camera_select_format(&cam, priority, &selected_v4l, &selected_format)); /// query formats and priority by Media order
 
-        cam.process_fn = [s, selected_format](camera_t *cam, array<u8> data) {
+        cam.process_fn = [s, selected_format](camera_t *cam, mx &data) {
             MStream &streams = (MStream&)s;
             static int video_id = 0;
             streams.push(MediaBuffer(selected_format, data, video_id++));
@@ -757,15 +731,15 @@ MStream camera(
                 while (!s->rt->stop) {
                     /// read audio
                     float *audio_frame = null;
-                    float audio_frame_0[audio.frame_size];
-                    array<u8> frame(sizeof(float) * audio.frame_size);
-                    memcpy(frame.data, audio_frame_0, frame.reserve());
-                    frame.set_size(frame.reserve());
-                    usleep(1000 * 32);
-                    //if (!audio.read_frames(&audio_frame)) /// frame size is input size of channel count * samples_sec / rate
-                    //    break;
+                    if (!audio.read_frames(&audio_frame)) /// frame size is input size of channel count * samples_sec / rate
+                        break;
                     /// create a sweep pattern that linear sweeps from 0 to max 16bit sign/unsign
                     static int audio_id = 0;
+
+                    array<float> frame(audio.frame_size);
+                    memcpy(frame.data, audio_frame, frame.reserve() * sizeof(float));
+                    frame.set_size(frame.reserve());
+
                     s.push(MediaBuffer(Media::PCMf32, frame, audio_id++));
                 }
                 return true;
