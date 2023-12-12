@@ -24,7 +24,8 @@ if(WIN32)
 else()
     dep(libpng:png zlib:zlib)
 endif()
-
+#
+#
 includes(${INSTALL_PREFIX}/include/opus)
 
 if(APPLE)
@@ -37,7 +38,7 @@ elseif(WIN32)
 elseif(UNIX)
     src(camera-linux.cpp)
     dep(v4l2 asound) # Video4Linux2 and ALSA Sound
-    cxxflags(+-Wno-volatile)
+    #cxxflags(+-Wno-volatile)
 endif()
 
 set(bsd ${EXTERN_DIR}/h264bsd/src)

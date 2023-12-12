@@ -1,4 +1,5 @@
 #!/bin/sh
+
 ./configure \
 	--pkgconfigdir=$1/lib/pkgconfig \
 	--pkg-config-flags="--static" \
