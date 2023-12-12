@@ -5,27 +5,23 @@ src(-camera-apple.mm)
 src(-camera-win.cpp)
 src(-camera-linux.cpp)
 
-# lets combine image/video/audio through an MStream; our dependence on many libraries helps to satisfy those use-cases
-# ---------------------------------
-# h264  decoding          - h264bsd
-# audio encoding/decoding - ogg/opus/opusenc/opusfile
-# mkv   read/write        - libwebm
-# ---------------------------------
-
 dep(mx:async
+    FFmpeg:swscale 
+    FFmpeg:avdevice
+    FFmpeg:avfilter FFmpeg:avformat
+    FFmpeg:avcodec 
+    FFmpeg:avutil
     shine:shine
     speexdsp:speexdsp
     mp4v2:mp4v2
-    yuv2rgb:yuv2rgb)
+    yuv2rgb:yuv2rgb
+    libpng:png zlib:zlib
+    x264:x264
+    opus:opus opusenc:opusenc opusfile:opusfile
+    FFmpeg:swresample
+    fdk-aac:fdk-aac)
 
-if(WIN32)
-    dep(libpng:png
-        zlib:zlib)
-else()
-    dep(libpng:png zlib:zlib)
-endif()
-#
-#
+
 includes(${INSTALL_PREFIX}/include/opus)
 
 if(APPLE)

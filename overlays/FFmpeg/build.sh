@@ -1,5 +1,7 @@
 #!/bin/sh
 
+export PKG_CONFIG_PATH="$1/lib/pkgconfig"
+
 ./configure \
 	--pkgconfigdir=$1/lib/pkgconfig \
 	--pkg-config-flags="--static" \
@@ -14,7 +16,7 @@
 	--enable-decoder=h264 \
 	--enable-muxer=mp4 \
 	--enable-muxer=matroska \
-	--enable-demuxer=mov \
+	--enable-demuxer=mp4 \
 	--enable-demuxer=matroska \
 	--enable-parser=h264 \
 	--enable-protocol=file \
