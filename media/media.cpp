@@ -154,15 +154,16 @@ mx_implement(audio, mx);
 void audio::convert_mono() {
     if (data->channels == 1)
         return;
-    i16   *n_samples = new short[data->total_samples]; /// now its 1:1 with total_samples because new channels = 1
+    i16     *samples = iaudio::alloc_pcm(data->total_samples, 1); /// now its 1:1 with total_samples because new channels = 1
     for (int       i = 0; i < data->total_samples; i++) {
         float    sum = 0;
         for (int   c = 0; c < data->channels; c++)
                 sum += data->samples[i * data->channels + c];
-        n_samples[i] = sum / data->channels;
+        samples[i] = sum / data->channels;
     }
+    memset(&samples[data->total_samples], 0, 1024 * sizeof(short));
     delete[] data->samples;  /// delete previous data
-    data->samples  = n_samples; /// set new data
+    data->samples  = samples; /// set new data
     data->channels = 1;        /// set to 1 channel
 }
 
@@ -253,11 +254,36 @@ bool audio::save(path dest, i64 bitrate) {
         if (w != data->total_samples)
             console.fault("failed to write all pcm frames to the wav file.");
         drwav_uninit(&wav);
+    } else if (ext == ".m4a" || ext == ".mp4") {
+        return audio::save_m4a(dest, bitrate);
     }
     return true;
 }
 
-audio::audio(path res, bool force_mono) : mx(&data) {
+audio::audio(MediaBuffer buf) : audio() {
+    /// buf has all info it needs its pcm delegate; that must exist
+    assert(buf && buf->pcm);
+    assert(buf->type == Media::PCM); /// must be short-based
+}
+
+audio audio::random_noise(i64 millis, int channels, int sample_rate) {
+    int   total_samples = sample_rate * millis / 1000;
+    audio res;
+    res->total_samples  = total_samples;
+    res->channels       = channels;
+    res->sample_rate    = sample_rate;
+    res->samples        = iaudio::alloc_pcm(total_samples, channels);
+
+    i16  min = -32767;
+    i16  max =  32767;
+    for (sz_t i = 0; i < total_samples * channels; i += channels) {
+        for (sz_t ii = 0; ii < channels; ii++)
+            res->samples[i + ii] = rand::uniform(min, max);
+    }
+    return res;
+}
+
+audio::audio(path res, bool force_mono) : audio() {
     str  ext = res.ext();
     cstr s_path = res.cs();
     int  error;
@@ -279,7 +305,7 @@ audio::audio(path res, bool force_mono) : mx(&data) {
         opus_int16 buffer[buffer_size];
         data->channels = op_channel_count(opus_file, -1);
         data->total_samples = op_pcm_total(opus_file, -1);
-        data->samples = new i16[data->total_samples * data->channels];
+        data->samples = iaudio::alloc_pcm(data->total_samples, data->channels);
         const OpusHead *head = op_head(opus_file, -1);
         if (!head) console.fault("failed to read opus head");
         data->sample_rate = i32(head->input_sample_rate);
@@ -310,7 +336,7 @@ audio::audio(path res, bool force_mono) : mx(&data) {
         data->sample_rate   = api.info.hz;
         
         /// read samples
-        data->samples       = new short[data->total_samples * data->channels];
+        data->samples       = iaudio::alloc_pcm(data->total_samples, data->channels);
         assert(mp3dec_ex_read(&api, data->samples, api.samples) == data->total_samples * data->channels);
         mp3dec_ex_close(&api);
         ///
@@ -323,7 +349,7 @@ audio::audio(path res, bool force_mono) : mx(&data) {
         data->channels      = w.channels;
         data->sample_rate   = w.sampleRate;
         data->total_samples = w.totalPCMFrameCount;
-        data->samples       = new i16[data->total_samples * data->channels];
+        data->samples       = iaudio::alloc_pcm(data->total_samples, data->channels);
         int t = 0;
 
         /// put faith in dr wav

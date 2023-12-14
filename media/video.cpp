@@ -1,113 +1,167 @@
 #define MP4V2_USE_STATIC_LIB
 #include <mp4v2/mp4v2.h>
+
+#include <gpac/isomedia.h>
+
 #include <fdk-aac/aacenc_lib.h>
 
-#include <mx/mx.hpp>
+#include <media/media.hpp>
 #include <media/h264.hpp>
 #include <media/video.hpp>
 
 #include <iostream>
 #include <random>
 #include <vector>
+#include <stdio.h>
+#include <stdlib.h>
+
+#include <string.h>
+#include <stdint.h>
+#include <unistd.h>
+
+extern "C" {
+#include <libavformat/avformat.h>
+#include <libavcodec/avcodec.h>
+#include <libavutil/avutil.h>
+#include <libavutil/opt.h>
+}
+
+extern "C" {
+    #include <shine/layer3.h>
+};
 
 using namespace std;
 
 #define SAMPLE_RATE 48000
-#define CHANNELS 1
-#define DURATION 10  // 10 seconds
-#define FRAME_SIZE 1024  // AAC frame size for many profiles
+#define CHANNELS    2
+#define DURATION    10  // 10 seconds
+#define FRAME_SIZE  1600  // 48000 (let 1 sample = 1 or 2 channels) / 30 (for video; the frame is the amount of audio in one frame)
 
-int mp4_test() {
-    // Initialize random number generator
-    srand(time(NULL));
+namespace ion {
 
-    // Allocate buffer for 10 seconds of random mono audio at 48kHz
-    int16_t buffer[SAMPLE_RATE * DURATION];
-    for (int i = 0; i < SAMPLE_RATE * DURATION; ++i) {
-        buffer[i] = rand() % 65536 - 32768;  // Generate random noise
-    }
-
+#if 1
+/// fdk aac requires us to use their frame size; not exactly sure how to increase it either.
+/// we pad our allocations to allow for this non divisible number 1024 to overlap our total samples
+/// it seems to have multiple arguments and allow for it as long as the numberi s larger; however it doesnt work properly.
+bool audio::save_m4a(path dest, i64 bitrate) {
     // AAC encoder initialization (you need to add error checks and configuration)
     HANDLE_AACENCODER encoder;
-    AACENC_InfoStruct encInfo;
-    aacEncOpen(&encoder, 0, CHANNELS);
-    aacEncoder_SetParam(encoder, AACENC_SAMPLERATE, SAMPLE_RATE);
-    aacEncoder_SetParam(encoder, AACENC_CHANNELMODE, MODE_1);
-    aacEncoder_SetParam(encoder, AACENC_BITRATE, 64000);
-    aacEncoder_SetParam(encoder, AACENC_TRANSMUX, TT_MP4_RAW);
+    aacEncOpen(&encoder, 0, data->channels);
 
+    aacEncoder_SetParam(encoder, AACENC_SAMPLERATE,     48000);
+    aacEncoder_SetParam(encoder, AACENC_AOT,            2);
+    aacEncoder_SetParam(encoder, AACENC_CHANNELORDER,   0);
+    aacEncoder_SetParam(encoder, AACENC_CHANNELMODE,    data->channels == 1 ? MODE_1 : MODE_2);
+    aacEncoder_SetParam(encoder, AACENC_BITRATE,        bitrate);
+    aacEncoder_SetParam(encoder, AACENC_SIGNALING_MODE, 0);
+    aacEncoder_SetParam(encoder, AACENC_TRANSMUX,       2); /// ADTS mode; this may have been the issue?
+
+    AACENC_BufDesc in_buf        = { 0 }, out_buf = { 0 };
+    AACENC_InArgs  in_args       = { 0 };
+    AACENC_OutArgs out_args      = { 0 };
+    
     aacEncEncode(encoder, NULL, NULL, NULL, NULL); // Initialize encoder
-    aacEncInfo(encoder, &encInfo);
+    AACENC_InfoStruct info = {0};
+    assert(aacEncInfo(encoder, &info) == AACENC_OK);
+
+    int frame_size = info.frameLength; /// this is before we * (PCM short) (2) * channels
+    int n_frames   = (int)std::ceil((double)data->total_samples / (double)frame_size);
 
     // Encoding loop
-    AACENC_BufDesc in_buf = { 0 }, out_buf = { 0 };
-    AACENC_InArgs in_args = { 0 };
-    AACENC_OutArgs out_args = { 0 };
-    int in_identifier = IN_AUDIO_DATA, out_identifier = OUT_BITSTREAM_DATA;
-    void *in_ptr, *out_ptr;
-    INT in_size, in_elem_size, out_size, out_elem_size;
+    int            in_identifier = IN_AUDIO_DATA, out_identifier = OUT_BITSTREAM_DATA;
+    void          *in_ptr, *out_ptr;
+    INT            in_size, in_elem_size, out_size, out_elem_size;
     UCHAR outbuf[20480]; // 20k should be more than enough
-    INT_PCM *convert_buf = (INT_PCM*)buffer;
+    MP4FileHandle mp4file = MP4Create((symbol)dest.cs(), 0);
 
-    for (int i = 0; i < SAMPLE_RATE * DURATION; i += FRAME_SIZE) {
+    MP4TrackId track = MP4AddAudioTrack(
+        mp4file, data->sample_rate, frame_size, MP4_MPEG4_AAC_LC_AUDIO_TYPE);
+
+    MP4SetTrackIntegerProperty(mp4file, track, "mdia.minf.stbl.stsd.*[0].channels", data->channels);
+    MP4SetAudioProfileLevel(mp4file, 1);
+
+    for (int i = 0; i < n_frames; i++) {
         // Set up input buffer
-        in_ptr = &convert_buf[i];
-        in_size = FRAME_SIZE * sizeof(INT_PCM);
-        in_elem_size = sizeof(INT_PCM);
-        in_buf.numBufs = 1;
-        in_buf.bufs = &in_ptr;
-        in_buf.bufferIdentifiers = &in_identifier;
-        in_buf.bufSizes = &in_size;
-        in_buf.bufElSizes = &in_elem_size;
+        in_ptr                     = &data->samples[i * frame_size * data->channels];
+        in_size                    = frame_size * data->channels * sizeof(short);
+        in_elem_size               = sizeof(short);
+        in_buf.numBufs             = 1;
+        in_buf.bufs                = &in_ptr;
+        in_buf.bufferIdentifiers   = &in_identifier;
+        in_buf.bufSizes            = &in_size;
+        in_buf.bufElSizes          = &in_elem_size;
 
         // Set up output buffer
-        out_ptr = outbuf;
-        out_size = sizeof(outbuf);
-        out_elem_size = 1;
-        out_buf.numBufs = 1;
-        out_buf.bufs = &out_ptr;
-        out_buf.bufferIdentifiers = &out_identifier;
-        out_buf.bufSizes = &out_size;
-        out_buf.bufElSizes = &out_elem_size;
+        out_ptr                    = outbuf;
+        out_size                   = sizeof(outbuf);
+        out_elem_size              = 1;
+        out_buf.numBufs            = 1;
+        out_buf.bufs               = &out_ptr;
+        out_buf.bufferIdentifiers  = &out_identifier;
+        out_buf.bufSizes           = &out_size;
+        out_buf.bufElSizes         = &out_elem_size;
 
         // Set up in_args
-        in_args.numInSamples = FRAME_SIZE <= SAMPLE_RATE * DURATION - i ? FRAME_SIZE : SAMPLE_RATE * DURATION - i;
-
+        in_args.numInSamples       = frame_size * data->channels;
+        
         // Encode frame
-        if (aacEncEncode(encoder, &in_buf, &out_buf, &in_args, &out_args) != AACENC_OK) {
-            // Handle error
+        if (aacEncEncode(encoder, &in_buf, &out_buf, &in_args, &out_args) != AACENC_OK)
             break;
-        }
 
-        if (out_args.numOutBytes == 0) {
+        if (out_args.numOutBytes == 0)
             continue;
-        }
 
-        // Here, outbuf contains the encoded AAC frame of length out_args.numOutBytes
-        // You should add this frame to your MP4 container here
+        MP4WriteSample(mp4file, track, (const uint8_t*)out_ptr, out_args.numOutBytes, MP4_INVALID_DURATION, 0, false);
     }
 
-    // Finalize encoding
-    aacEncEncode(encoder, NULL, NULL, NULL, NULL);
-
-    // Create MP4 file and add AAC track (use mp4v2 library)
-    MP4FileHandle mp4file = MP4Create("/home/kalen/output.mp4", 0);
-    MP4TrackId track = MP4AddAudioTrack(mp4file, SAMPLE_RATE, MP4_INVALID_DURATION, MP4_MPEG4_AUDIO_TYPE);
-    MP4SetAudioProfileLevel(mp4file, 2);
-    // Add encoded AAC frames to the MP4 track
-
-    // Finalize file
     MP4Close(mp4file, 0);
-
-    // Clean up
     aacEncClose(&encoder);
-
-    return 0;
+    return true;
 }
 
+#else 
 
+/// writing mp3 without incident; sounds exactly the same at 256k
+bool audio::save_m4a(path dest, i64 bitrate) {
+    MP4FileHandle mp4file = MP4Create((symbol)dest.cs(), 0);
+    const size_t samples_per_frame = 1152;
+    MP4TrackId track = MP4AddAudioTrack(
+        mp4file, data->sample_rate, samples_per_frame, MP4_MP3_AUDIO_TYPE);
 
-using namespace ion;
+    MP4SetTrackIntegerProperty(mp4file, track, "mdia.minf.stbl.stsd.*[0].channels", data->channels);
+    MP4SetAudioProfileLevel(mp4file, 1);
+
+    shine_config_t config { };
+    shine_t        s;
+
+    /// set defaults
+    shine_set_config_mpeg_defaults(&config.mpeg);
+    config.wave.channels   = (enum channels)data->channels;
+    config.wave.samplerate = data->sample_rate;
+    config.mpeg.bitr       = int(bitrate / 1000);
+    config.mpeg.emph       = NONE; /// no emphasis
+    config.mpeg.original   = 1;    /// original
+    config.mpeg.mode       = data->channels == 2 ? STEREO : MONO;
+
+    /// init shine
+    if (!(s = shine_initialise(&config))) console.fault("cannot init shine");
+
+    /// read pcm into shine, encode and write to output
+    for (i64 i = 0; i < data->total_samples; i += samples_per_frame) {
+        int n_bytes = 0;
+        u8 *encoded = shine_encode_buffer_interleaved(
+            s, &data->samples[i * data->channels], &n_bytes);
+        MP4WriteSample(mp4file, track, (const uint8_t*)encoded, n_bytes, MP4_INVALID_DURATION, 0, false);
+    }
+    /// cleanup
+    shine_close(s);
+    
+    // Finalize encoding
+    MP4Close(mp4file, 0);
+    return true;
+}
+
+#endif
 
 struct iVideo {
     MP4FileHandle      mp4;
@@ -159,9 +213,6 @@ struct iVideo {
     }
 
     void start(path &output) {
-        mp4_test();
-        exit(0);
-
         assert(audio_channels == 1 || audio_channels == 2);
 
         buffer_aac_sz = 128000 / 8 / hz * audio_channels * 10; /// adequate size for encoder
@@ -304,4 +355,5 @@ int Video::write_frame(Frame &f) {
 
 void Video::stop() {
     data->stop();
+}
 }

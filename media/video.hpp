@@ -1,7 +1,9 @@
 #include <mx/mx.hpp>
 #include <media/streams.hpp>
-struct iVideo;
+
 namespace ion {
+
+struct iVideo;
 struct Video:mx {
     mx_declare(Video, mx, iVideo);
     int write_frame(Frame &f);

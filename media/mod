@@ -4,22 +4,27 @@ dep(mx:mx)
 src(-camera-apple.mm)
 src(-camera-win.cpp)
 src(-camera-linux.cpp)
+#
+
+#FFmpeg:swscale 
+#FFmpeg:avdevice
+#FFmpeg:avfilter FFmpeg:avformat
+#FFmpeg:avcodec 
+#FFmpeg:avutil
+#FFmpeg:swresample
+#x264:x264
+
+#gpac:gpac_static
 
 dep(mx:async
-    FFmpeg:swscale 
-    FFmpeg:avdevice
-    FFmpeg:avfilter FFmpeg:avformat
-    FFmpeg:avcodec 
-    FFmpeg:avutil
+    fdk-aac:fdk-aac
+    mp4v2:mp4v2
     shine:shine
     speexdsp:speexdsp
-    mp4v2:mp4v2
     yuv2rgb:yuv2rgb
     libpng:png zlib:zlib
-    x264:x264
     opus:opus opusenc:opusenc opusfile:opusfile
-    FFmpeg:swresample
-    fdk-aac:fdk-aac)
+    )
 
 
 includes(${INSTALL_PREFIX}/include/opus)
@@ -34,7 +39,7 @@ elseif(WIN32)
 elseif(UNIX)
     src(camera-linux.cpp)
     dep(v4l2 asound) # Video4Linux2 and ALSA Sound
-    #cxxflags(+-Wno-volatile)
+    cxxflags(+-Wno-volatile +-Wno-deprecated-declarations)
 endif()
 
 set(bsd ${EXTERN_DIR}/h264bsd/src)

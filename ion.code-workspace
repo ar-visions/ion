@@ -202,7 +202,9 @@
 			"hash_map": "cpp",
 			"*.glsl": "cpp",
 			"mprealsupport": "cpp",
-			"time.h": "c"
+			"time.h": "c",
+			"pixdesc.h": "c",
+			"scene_manager.h": "c"
 		},
 		"git.ignoreLimitWarning": true
 	}
