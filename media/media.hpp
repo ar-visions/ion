@@ -40,32 +40,31 @@ struct MediaBuffer:mx {
     mx_basic(MediaBuffer);
 
     MediaBuffer(Media type, mx &buf, int id):MediaBuffer() {
-        data->type = type;
+        /// assert supported media and their respective mx data formats
         if (buf.type() == typeof(float)) {
             assert(type == Media::PCMf32);
         } else if (buf.type() == typeof(short)) {
             assert(type == Media::PCM);
         } else if (buf.type() == typeof(u8)) {
-            assert(type == Media::YUY2);
+            assert(type == Media::YUY2 || type == Media::NV12);
         } else
             assert(false);
+
+        data->type = type;
         data->buf  = buf;
         data->id   = id;
     }
 
     MediaBuffer(PCMInfo &pcm, mx buf, int id) : MediaBuffer() {
-        if (buf.type() == typeof(u8)) {
-            assert(false);
-        }
         data->pcm  = pcm;
         data->type = pcm->format;
         data->buf  = buf;
         data->id   = id;
+        assert(pcm->format == Media::PCM || pcm->format == Media::PCMf32);
     }
 
     /// hand-off constructor
-    MediaBuffer(PCMInfo &pcm) : MediaBuffer() 
-    {
+    MediaBuffer(PCMInfo &pcm) : MediaBuffer() {
         data->pcm  = pcm;
         data->type = pcm->format;
         data->buf  = pcm->audio_buffer; /// no copy

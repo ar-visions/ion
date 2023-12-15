@@ -1,8 +1,5 @@
 #define MP4V2_USE_STATIC_LIB
 #include <mp4v2/mp4v2.h>
-
-#include <gpac/isomedia.h>
-
 #include <fdk-aac/aacenc_lib.h>
 
 #include <media/media.hpp>
@@ -17,14 +14,6 @@
 
 #include <string.h>
 #include <stdint.h>
-#include <unistd.h>
-
-extern "C" {
-#include <libavformat/avformat.h>
-#include <libavcodec/avcodec.h>
-#include <libavutil/avutil.h>
-#include <libavutil/opt.h>
-}
 
 extern "C" {
     #include <shine/layer3.h>

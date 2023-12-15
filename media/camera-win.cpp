@@ -280,9 +280,10 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
                                 array<u8> copy = array<u8>(sz_t(currentLength));
                                 memcpy(copy.data, pData, currentLength);
                                 copy.set_size(currentLength);
-                                MediaBuffer packet = MediaBuffer(r->selected_format, copy);
+                                
                                 static int s_frame_id = 0;
-                                packet->id = s_frame_id++;
+                                MediaBuffer packet = MediaBuffer(r->selected_format, copy, s_frame_id++);
+                                
                                 ms.push(packet);
                                 printf("[camera] pushed video\n");
                             }
