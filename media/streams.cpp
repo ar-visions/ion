@@ -250,7 +250,8 @@ bool MStream::push(MediaBuffer buffer) {
             float *floats = buffer->buf.origin<float>();
             array<short> shorts(n_floats);
             for (int i = 0; i < n_floats; i++) {
-                shorts[i] = floats[i] * 32767.0;
+                float v = floats[i];
+                shorts[i] = v * 32767.0;
             }
             shorts.set_size(n_floats);
             frame.audio = MediaBuffer(Media::PCM, shorts, buffer->id);
@@ -306,7 +307,7 @@ bool MStream::push(MediaBuffer buffer) {
         data->video_queued = false;
         data->audio_queued = false;
     }
-    printf("[streams] pushed to stream\n");
+    //printf("[streams] pushed to stream\n");
     frame.mtx.unlock();
     if (run_dispatch)
         dispatch();

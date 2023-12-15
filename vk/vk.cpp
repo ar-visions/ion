@@ -135,7 +135,7 @@ void Vulkan::M::init() {
     } else if (is_win()) {
         extensions.push_back("VK_KHR_win32_surface");
     } else {
-        if (is_wayland())
+        if (false && is_wayland())
             extensions.push_back("VK_KHR_wayland_surface");
         else
             extensions.push_back("VK_KHR_xcb_surface"); // xlib
