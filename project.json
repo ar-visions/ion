@@ -74,7 +74,8 @@
             "name":     "x264",
             "version":  "6.0.0",
             "url":      "https://github.com/mirror/x264",
-            "commit":   "eaa68fa"
+            "commit":   "eaa68fa",
+            "platforms": ["none"]
         },
         {
             "name":     "fdk-aac",
@@ -129,7 +130,8 @@
             "name":     "FFmpeg",
             "version":  "6.2",
             "url":      "https://github.com/FFmpeg/FFmpeg",
-            "commit":   "44e9cccffa6eef7fee8662f9e9bd88e3b04b0724"
+            "commit":   "44e9cccffa6eef7fee8662f9e9bd88e3b04b0724",
+            "platforms": ["none"]
         },
         {
             "name":     "gsl",
@@ -156,7 +158,8 @@
             "name":     "gpac",
             "url":      "https://github.com/gpac/gpac",
             "version":  "2.2.2",
-            "commit":   "b34e38516"
+            "commit":   "b34e38516",
+            "platforms": ["none"]
         },
         {
             "name":     "mp4v2",
