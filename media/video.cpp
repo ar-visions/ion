@@ -182,6 +182,9 @@ struct iVideo {
     mutex              mtx_write;
     short             *pcm_buffer;
     int                pcm_buffer_len;
+    int                pcm_buffer_sz;
+    i64                start_time; /// since iVideo needs to write a certain frame rate, we should wait for the first frame to arrive to set an origin
+    /// swap system should come back (in streams)
 
     register(iVideo);
 
@@ -195,9 +198,71 @@ struct iVideo {
         }
     }
 
-    int write_frame(Frame &f) {
-        current = &f; /// no need to sync this with mutex
-        return 0;
+    void write_audio(mx &audio) {
+        /// must be short-based
+        assert(audio.type() == typeof(short));
+        sz_t len = audio.count();
+        assert(pcm_buffer_len + len <= pcm_buffer_sz);
+
+        /// append to pcm_buffer
+        short *origin = audio.origin<short>();
+        memcpy(&pcm_buffer[pcm_buffer_len], origin, len * sizeof(short));
+        pcm_buffer_len += len;
+
+        bool remainder = false;
+        sz_t frame_w_channels = audio_frame_size * audio_channels;
+        for (int i = 0; i < pcm_buffer_len; i += frame_w_channels) {
+            int amount = pcm_buffer_len - i;
+            if (amount < frame_w_channels) {
+                short *cp = (short*)calloc(sizeof(short), pcm_buffer_sz);
+                memcpy(cp, &pcm_buffer[i], amount * sizeof(short));
+                pcm_buffer_len = amount;
+                free(pcm_buffer);
+                pcm_buffer = cp;
+                remainder = true;
+                break;
+            } else {
+                short *stack_origin = &pcm_buffer[i];
+                input_pcm.bufs = (void**)&stack_origin;
+                args.numInSamples = frame_w_channels;
+                assert(aacEncEncode(aac_encoder, &input_pcm, &output_aac, &args, &out_args) == AACENC_OK);
+                input_pcm.bufs = (void**)0;
+                if (out_args.numOutBytes)
+                    MP4WriteSample(mp4, audio_track, buffer_aac, out_args.numOutBytes, audio_frame_size, 0, true);
+            }
+        }
+
+        if (!remainder) {
+            memset(pcm_buffer, 0, pcm_buffer_len * sizeof(short));
+            pcm_buffer_len = 0;
+        }
+    }
+
+    void write_video(mx &data) {
+        static int frames = 0;
+        frames++;
+        static i64 start = millis();
+        float frames_sec = frames / ((millis() - start) / 1000.0f);
+        printf("write_video: %d - %d - %.2f\n", frames, (int)data.count(), frames_sec);
+        assert(data.type() == typeof(u8));
+        MP4WriteSample(mp4, video_track, data.origin<u8>(), data.count());
+    }
+
+    void write_image(image &im) {
+        ion::array<u8> nalus = h264_encoder.encode(im); /// needs a quality setting; this default is very high quality and constant quality too; meant for data science work
+        write_video(nalus);
+    }
+
+    int write_frame(Frame &frame) {
+        if (frame.image)
+            write_image(frame.image);
+        else
+            write_video(frame.video);
+        
+        if (frame.audio) /// we need to insert blank audio when this is not set, and we are using audio
+            write_audio(frame.audio);
+        
+        return 1;
     }
 
     ~iVideo() {
@@ -237,7 +302,8 @@ struct iVideo {
         assert(aacEncInfo(aac_encoder, &aac_info) == AACENC_OK);
         audio_frame_size = aac_info.frameLength;
 
-        pcm_buffer = (short*)calloc(sizeof(short), audio_frame_size * audio_channels * 64);
+        pcm_buffer_sz = audio_frame_size * audio_channels * 64;
+        pcm_buffer = (short*)calloc(sizeof(short), pcm_buffer_sz);
 
         mp4 = MP4Create((symbol)output.cs());
         assert(mp4 != MP4_INVALID_FILE_HANDLE);
@@ -255,99 +321,6 @@ struct iVideo {
             mp4, audio_rate, audio_frame_size, MP4_MPEG2_AAC_LC_AUDIO_TYPE);
 
         MP4SetTrackIntegerProperty(mp4, audio_track, "mdia.minf.stbl.stsd.*[0].channels", audio_channels);
-
-        ion::async([this](runtime *rt, int i) -> mx {
-            while (!stopped && !current)
-                yield();
-            
-            i64 start_write = millis();
-            i64 frames = 0;
-            Frame *f;
-
-            auto wait_for_media = [&]() {
-                /// critical section: must wait until they are both set! 
-                for (;;) {
-                    f->mtx.lock();
-
-                    /// wait for both resources on this
-                    if (f->audio && f->video) // todo: needs to be a resource array
-                        break;
-                    
-                    f->mtx.unlock();
-                    usleep(10);
-                }
-            };
-            auto write_encoded_audio = [&]() {
-                if (f->audio) {
-                    assert(f->audio->type == Media::PCM);
-                    int n_samples = f->audio->buf.count();
-                    assert(n_samples == buffer_pcm_sz / sizeof(short)); // buf == 1600, buffer_pcm_sz == 3200 (extra channel?)
-                    /// set input pointer for this operation
-                    u8 *mbuf = (u8*)f->audio->buf.mem->origin;
-
-                    memcpy(&pcm_buffer[pcm_buffer_len], mbuf, n_samples * sizeof(short)); /// bytes to copy
-                    pcm_buffer_len += n_samples;
-
-                    for (int i = 0; i < pcm_buffer_len; i += audio_frame_size * audio_channels) {
-                        int amount = pcm_buffer_len - i;
-                        if (amount < audio_frame_size * audio_channels) {
-                            short *cp = (short*)calloc(sizeof(short), audio_frame_size * audio_channels * 64);
-                            memcpy(cp, &pcm_buffer[i], amount * sizeof(short));
-                            pcm_buffer_len = amount;
-                            free(pcm_buffer);
-                            pcm_buffer = cp;
-                            break;
-                        } else {
-                            short *stack_origin = &pcm_buffer[i];
-                            input_pcm.bufs = (void**)&stack_origin;
-                            args.numInSamples = audio_frame_size * audio_channels;
-                            assert(aacEncEncode(aac_encoder, &input_pcm, &output_aac, &args, &out_args) == AACENC_OK);
-                            input_pcm.bufs = (void**)0;
-
-                            if (out_args.numOutBytes) {
-                                MP4WriteSample(mp4, audio_track, buffer_aac, out_args.numOutBytes, audio_frame_size, 0, true);
-                            }
-                        }
-                    }
-                }
-            };
-            auto write_encoded_video = [&]() {
-                ion::array<u8> nalus = h264_encoder.encode(f->image); /// needs a quality setting; this default is very high quality and constant quality too; meant for data science work
-                MP4WriteSample(mp4, video_track, nalus.data, nalus.len());
-                //printf("writing video packet of %d bytes\n", (int)nalus.len());
-                f->audio = {};
-                f->video = {};
-                assert(!f->audio);
-                assert(!f->video);
-            };
-            auto unlock_frame = [&]() {
-                frames++;
-                f->mtx.unlock();
-            };
-
-            while (!stopped) {
-                i64 start = start_write + frames * (1000 / hz);
-                i64 t = millis();
-                if (start < t) {
-                    //printf("warning: took too long to write frames; origin is offset\n");
-                } else {
-                    i64 w = (start - t);
-                    usleep(w * 1000);
-                }
-                f = current;
-                
-                wait_for_media();
-                if (!stopped) {
-                    mtx_write.lock();
-                    //printf("writing frame id %d\n", (int)frames);
-                    write_encoded_audio();
-                    write_encoded_video();
-                    mtx_write.unlock();
-                }
-                unlock_frame();
-            }
-            return true;
-        });
     }
 };
 
@@ -361,8 +334,8 @@ Video::Video(int width, int height, int hz, int audio_rate, path output) : Video
     data->start(output);
 }
 
-int Video::write_frame(Frame &f) {
-    return data->write_frame(f);
+int Video::write_frame(Frame &frame) {
+    return data->write_frame(frame);
 }
 
 void Video::stop() {

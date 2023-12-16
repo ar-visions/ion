@@ -55,6 +55,7 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
             DWORD               dwStreamIndex;
             int                 selected_stream;
             int                 format_index = -1;
+            int                 packet_id;
             Media               selected_format;
             int                 selected_media;
             bool                name_match;
@@ -253,9 +254,9 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
                             IMFMediaBuffer* pBuffer         = null;
                             BYTE*           pData           = null;
                             DWORD           maxLength       = 0, 
-                                            currentLength   = 0;
+                                            dataLength      = 0;
                             pSample->ConvertToContiguousBuffer(&pBuffer);
-                            pBuffer->Lock(&pData, &maxLength, &currentLength);
+                            pBuffer->Lock(&pData, &maxLength, &dataLength);
                             
                             /// if this is audio, we need a sub routine to make 
                             /// sure we have enough data to send, and keep
@@ -267,23 +268,17 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
                             last = millis();
                             if (!r->video) {
                                 i64 duration = last - start;
-                                bytes_received += currentLength;
+                                bytes_received += dataLength;
                                 printf("bytes_received per sec = %.2f/s\n", float(bytes_received) / float(duration / 1000));
-                                
-                                array<MediaBuffer> packets = ms.audio_packets(pData, currentLength);
-                                for (MediaBuffer &packet: packets) {
-                                    ms.push(packet); /// if the frame is occupied, it shall block here.
-                                    printf("[camera] pushed audio (%d bytes)\n", (int)packet->buf.count());
-                                }
+                                Media &format = ms->pcm_input->format;
+                                ms.push_audio_packet(pData, dataLength);
                             } else {
                                 /// video-based method is to simply send the nalu frames received
-                                array<u8> copy = array<u8>(sz_t(currentLength));
-                                memcpy(copy.data, pData, currentLength);
-                                copy.set_size(currentLength);
-                                
+                                array<u8> copy = array<u8>(sz_t(dataLength));
+                                memcpy(copy.data, pData, dataLength);
+                                copy.set_size(dataLength);
                                 static int s_frame_id = 0;
                                 MediaBuffer packet = MediaBuffer(r->selected_format, copy, s_frame_id++);
-                                
                                 ms.push(packet);
                                 printf("[camera] pushed video\n");
                             }

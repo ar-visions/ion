@@ -672,7 +672,6 @@ MStream camera(
         str video_alias, str audio_alias, int width, int height) {
     return MStream(stream_types, priority, [stream_types, priority, video_alias, audio_alias, width, height](MStream s) -> void {
         
-            
         /// PnP device (generic USB mic, widely avail OEM) USB 2.1 device
         /// output the packet lengths and total size along with average per second.
         /// it should be 48,000 * 1chan * 4float;
@@ -688,12 +687,10 @@ MStream camera(
         int     selected_v4l;
         Media   video_format;
         assert(camera_select_format(&cam, priority, &selected_v4l, &video_format)); /// query formats and priority by Media order
+        s.set_video_format(video_format);
 
-        cam.process_fn = [s, video_format](camera_t *cam, mx &data) {
-            MStream &streams = (MStream&)s;
-            static int video_id = 0;
-            streams.push(MediaBuffer(video_format, data, video_id++));
-            printf("video_id = %d\n", video_id);
+        cam.process_fn = [&](camera_t *cam, mx &data) {
+            s.push_video(data);
         };
 
         const int hz = 30;
@@ -714,40 +711,36 @@ MStream camera(
         s.ready();
 		i64 t = millis();
 
-        /// read video frame
-        async([&s, &cam](runtime *rt, int index) -> mx {
-            while (!s->rt->stop) {
-                if (read_frame(&cam)) {
+        int ready_value = audio ? 2 : 1;
+        int is_ready    = 0;
+
+        /// if we need to read the first frame, then it would be ideal to break up the functions into singular calls from this thread
+        /// then we set the origin frame time, then create the threads which should not take more than 1ms
+
+        /// read video frame; initiate as ready once its read the
+        async([&](runtime *rt, int index) -> mx {
+            is_ready++;
+            while (is_ready != ready_value) { usleep(1); }
+
+            bool stop  = s->rt->stop;
+            while (!stop) {
+                if (read_frame(&cam) < 0)
                     break;
-                }
+                stop = s->rt->stop;
             }
             return true;
         });
 
+        /// do not clear frames after writing
+        /// clear audio yes, but not video; we will reuse the video frame
         if (audio) {
             std::shared_mutex mtx;
-            doubly<mx> *queue = new doubly<mx>();
 
-            async([&s, &audio, &mtx, queue](runtime *rt, int index) -> mx {
-                while (!s->rt->stop) {
-                    static int audio_id = 0;
-                    mtx.lock();
-                    int count = (*queue)->length();
-                    if (!count) {
-                        mtx.unlock();
-                        usleep(1000);
-                        continue;
-                    }
-                    mx mx_frame = (*queue)->shift_v();
-                    mtx.unlock();
-                    s.push(MediaBuffer(
-                        mx_frame.type() == typeof(short) ? Media::PCM : Media::PCMf32,
-                        mx_frame, audio_id++));
-                }
-                return true;
-            });
+            /// feed frames into mx queue
+            async([&s, &audio, &mtx, &ready_value, &is_ready](runtime *rt, int index) -> mx {
+                is_ready++;
+                while (is_ready != ready_value) { usleep(1); }
 
-            async([&s, &audio, &mtx, queue](runtime *rt, int index) -> mx {
                 while (!s->rt->stop) {
                     /// read audio (short or float based; next layer in pipeline performs conversions for the user)
                     u8 *audio_frame = null;
@@ -755,19 +748,17 @@ MStream camera(
                         break;
                     
                     mtx.lock();
-                    mx mx_frame;
                     if (audio.audio_format == Media::PCMf32) {
                         array<float> frame(audio.frame_size);
                         memcpy(frame.data, audio_frame, frame.reserve() * audio.unit_size);
                         frame.set_size(frame.reserve());
-                        mx_frame = frame;
+                        s.push_audio(frame);
                     } else {
                         array<short> frame(audio.frame_size);
                         memcpy(frame.data, audio_frame, frame.reserve() * audio.unit_size);
                         frame.set_size(frame.reserve());
-                        mx_frame = frame;
+                        s.push_audio(frame);
                     }
-                    (*queue)->push(mx_frame);
                     mtx.unlock();
 
                 }
@@ -777,7 +768,7 @@ MStream camera(
 
         if (cam || audio)
             while (!s->rt->stop) {
-                usleep(100);
+                usleep(10000);
             };
     
         if (cam) {

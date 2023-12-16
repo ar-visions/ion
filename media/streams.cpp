@@ -11,6 +11,8 @@ int clamp(int v) {
     return v < 0 ? 0 : v > 255 ? 255 : v;
 }
 
+// the purpose of streams is to centralize conversion facility and api access to cameras & mics, cameras, mics, windows and their sound
+
 /// resolve rgba from yuy2
 void yuy2_rgba(u8* yuy2, u8* rgba, int width, int height) {
     for (int y = 0; y < height; y++)
@@ -185,105 +187,84 @@ void MStream::init_output_pcm(Media format, int channels, int samples) {
     set_pcminfo(data->pcm_output, format, channels, samples);
 }
 
-array<MediaBuffer> MStream::audio_packets(u8 *pData, int currentLength) {
-    PCMInfo &pcm_o = data->pcm_output;
-    PCMInfo &pcm_i = data->pcm_input;
-    /// audio method is to perform some flow control and conversion (this code should be in PCMState or so)
-    int reserve    = pcm_i->audio_buffer.reserve();
-    int cur_sz     = pcm_i->audio_buffer.count();
-    printf("cur sz = %d\n", cur_sz);
-    u8*        src = (u8*)pcm_i->audio_buffer.origin<u8>(); 
-    array<MediaBuffer> res;
-
-    memcpy(&src[cur_sz], pData, currentLength);
-    cur_sz += currentLength;
-    pcm_i->audio_buffer.set_size(cur_sz);
-    
-    int rpos = 0;
-    while (cur_sz >= pcm_i->bytes_per_frame) {
-        mx buf;
-        if (pcm_i->format == Media::PCM) {
-            array<short> sbuf(pcm_i->bytes_per_frame / sizeof(short));
-            memcpy(sbuf.data, &src[rpos], pcm_i->bytes_per_frame);
-            buf = sbuf;
-        } else {
-            array<float> fbuf(pcm_i->bytes_per_frame / sizeof(float)); /// 16000 * 2 * 4 = 128,0000 samples / 30 = 4266
-            memcpy(fbuf.data, &src[rpos], pcm_i->bytes_per_frame);
-            buf = fbuf;
+void MStream::start() {
+    // waiting for both resources to start streaming is a better way to get a video origin.
+    data->frames = 0;
+    async([&](runtime *rt, int index) -> mx {
+        int dispatch_time = 0;
+        while (!data->stop && !data->error) {
+            i64 t = millis();
+            if (data->start_time) {
+                if (data->frames > 0) {
+                    u64 next_dispatch = (u64(data->start_time) * u64(1000)) + (i64)((data->frames + 1) * (u64(1000000) / u64(data->hz)));
+                    wait_until(next_dispatch);
+                }
+                dispatch();
+            } else {
+                usleep(1000);
+            }
         }
-        MediaBuffer input_unconv = MediaBuffer(pcm_i, buf, 0);
-        MediaBuffer conv = input_unconv.convert_pcm(pcm_o, 0);
-        static int s_id = 0;
-        conv->id = s_id++; // test code to verify audio is coming in, in sequence; never left there, etc
-        res += conv;
-        cur_sz     -= pcm_i->bytes_per_frame;
-        rpos       += pcm_i->bytes_per_frame;
-    }
-
-    array<u8> remaining(pcm_i->audio_buffer.reserve());
-    memcpy(remaining.data, &src[rpos], cur_sz);
-    remaining.set_size(cur_sz);
-    pcm_i->audio_buffer = remaining;
-    return res; /// may be default state, a falsey object
+        return true;
+    });
 }
 
-bool MStream::push(MediaBuffer buffer) {
+void MStream::dispatch() {
+    data->mtx.lock();
+    int acount = data->audio_queue->count();
+    mx  audio  = acount > 0 ? data->audio_queue->shift_v() : mx {};
+    Frame frame { .image = data->image, .audio = audio };
+    for (Remote &listener: data->listeners)
+        listener->callback(frame);
+    data->frames++;
+    data->mtx.unlock();
+}
+
+/// perform conversion on audio
+bool MStream::push_audio(mx audio) {
     if (data->stop || data->error || !data->ready)
         return false;
-    Frame  &frame = data->main_frame; //data->swap[data->frames % 4];
-    frame.mtx.lock();
-    bool is_video = false;
-    if (buffer->type == Media::PCM || buffer->type == Media::PCMf32) {
-        /// convert if this PCM format doesnt equal the priority #1
-        for (;;) {
-            if (!frame.audio)
-                break;
-            frame.mtx.unlock();
-            usleep(10);
-            frame.mtx.lock();
-        }
+    
+    type_t type = audio.type();
+    i64    t = millis();
+    mx     result;
 
-        assert(buffer->id == data->audio_next_id);
-
-        if (buffer->type == Media::PCMf32) {
-            int  n_floats = buffer->buf.total_size() / sizeof(float);
-            float *floats = buffer->buf.origin<float>();
-            array<short> shorts(n_floats);
-            for (int i = 0; i < n_floats; i++) {
-                float v = floats[i];
-                shorts[i] = v * 32767.0;
-            }
-            shorts.set_size(n_floats);
-            frame.audio = MediaBuffer(Media::PCM, shorts, buffer->id);
-        } else
-            frame.audio = buffer;
-        
-        data->audio_next_id = buffer->id + 1;
-        data->audio_queued = true;
-    } else {
-        for (;;) {
-            if (!frame.video) /// not operator was not working because the bool was not implemented in the data struct on MediaBuffer.
-                break;
-            frame.mtx.unlock();
-            usleep(10);
-            frame.mtx.lock();
+    if (type == typeof(float)) {
+        int  n_floats = audio.total_size() / sizeof(float);
+        float *floats = audio.origin<float>();
+        array<short> shorts(n_floats);
+        for (int i = 0; i < n_floats; i++) {
+            float v = floats[i];
+            shorts[i] = v * 32767.0;
         }
-        frame.video = buffer;
-        assert(buffer->id == data->video_next_id);
-        data->video_next_id = buffer->id + 1;
-        bool is_null    = frame.video->buf.type() == typeof(null_t);
-        bool has_buffer = !is_null && frame.video->buf.count() > 0;
-        assert (has_buffer);
-        is_video = true;
-        data->video_queued = true;
-    }
-    if (is_video && data->resolve_image) {
-        u8 *src = (u8*)frame.video->buf.mem->origin;
-        u8 *dst = (u8*)frame.image.data;
-        frame.image.mem->count   = data->w * data->h;
-        frame.image.mem->reserve = frame.image.mem->count;
+        shorts.set_size(n_floats);
+        result = shorts;
+    } else
+        result = audio;
+
+    data->audio_queue->push(result);
+    if ((!data->use_video || data->video) && !data->start_time)
+        data->start_time = t;
+    
+    data->mtx.unlock();
+    return true;
+}
+
+void MStream::set_video_format(Media format) {
+    data->video_format = format;
+}
+
+/// resolve image given yuy2, nv12, mjpeg, h264
+bool MStream::push_video(mx video) {
+    if (data->stop || data->error || !data->ready)
+        return false;
+    
+    data->mtx.lock();
+    data->video = video;
+    if (data->resolve_image) {
+        u8 *src = (u8*)video.origin<u8>();
+        u8 *dst = (u8*)data->image.data;
         i64 a = millis();
-        switch (frame.video->type.value) {
+        switch (data->video_format.value) {
             case Media::YUY2:
                 yuy2_rgba(src, dst, data->w, data->h);
                 break;
@@ -299,18 +280,12 @@ bool MStream::push(MediaBuffer buffer) {
         }
         i64 b = millis();
         i64 c = b - a;
-        //printf("[streams] conversion took %d millis\n", (int)c);
     }
-    bool run_dispatch = false;
-    if ((!data->use_video || data->video_queued) && (!data->use_audio || data->audio_queued)) {
-        run_dispatch = true;
-        data->video_queued = false;
-        data->audio_queued = false;
-    }
-    //printf("[streams] pushed to stream\n");
-    frame.mtx.unlock();
-    if (run_dispatch)
-        dispatch();
+
+    if ((!data->use_audio || data->audio_queue) && !data->start_time)
+        data->start_time = millis();
+    
+    data->mtx.unlock();
     return true;
 }
 

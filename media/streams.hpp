@@ -14,10 +14,16 @@ enums(StreamType, undefined,
 
 struct Frame {
     u64         from, to;
-    MediaBuffer video;
-    MediaBuffer audio;
     ion::image  image;
+    mx          video;
+    mx          audio;
     mutex       mtx;
+    void lock() {
+        mtx.lock();
+    }
+    void unlock() {
+        mtx.unlock();
+    }
 };
 
 struct Remote:mx {
@@ -34,9 +40,9 @@ struct MStream:mx {
     struct M {
         runtime*             rt;
         mutex                mtx;
-        Frame                main_frame;
         array<StreamType>    stream_types;
         array<Media>         media;
+        Media                video_format;
         doubly<Remote>       listeners;
         u64                  frames;
         int                  channels; /// number of audio channels contained (float32 format!)
@@ -44,11 +50,13 @@ struct MStream:mx {
         bool                 stop;
         bool                 error;
         int                  w, h, hz;
+        doubly<mx>           audio_queue; /// a user need only know frame for the video, but then access audio from here; storage is not kept but its far easier to keep this integral
+        mx                   video;
+        i64                  start_time;
         bool                 use_audio;
         bool                 use_video;
         bool                 resolve_image;
-        bool                 audio_queued;
-        bool                 video_queued;
+        ion::image           image;
         PCMInfo              pcm_input;
         PCMInfo              pcm_output;
         int                  video_next_id;
@@ -74,9 +82,14 @@ struct MStream:mx {
         await_ready();
     }
 
+    void set_video_format(Media format);
+
+    void start();
+
+    /// Streams SHOULD offer a frame of reference
     Remote listen(lambda<void(Frame&)> callback) {
         data->mtx.lock();
-        Remote remote = Remote::M { (raw_t)data, callback };
+        Remote remote = Remote::M { (raw_t)data, callback};
         data->listeners += remote;
         data->mtx.unlock();
         return remote;
@@ -89,19 +102,18 @@ struct MStream:mx {
         data->channels = channels;
         if (data->resolve_image) {
             size sz { h, w };
-            rgba8 *bytes = (rgba8*)calloc(sizeof(rgba8), sz);
-            data->main_frame.image = image(sz, bytes, 0);
+            rgba8 *bytes             = (rgba8*)calloc(sizeof(rgba8), sz);
+            data->image              = ion::image(sz, bytes, 0);
+            data->image.mem->count   = data->w * data->h;
+            data->image.mem->reserve = data->image.mem->count;
         }
     }
 
-    bool push(MediaBuffer buffer);
-    void dispatch() {
-        Frame &frame = data->main_frame;
-        for (Remote &listener: data->listeners)
-            listener->callback(frame);
-    }
+    bool push_audio(mx buffer);
+    bool push_video(mx buffer);
+    void dispatch();
 
-    void ready()  { data->ready = true; }
+    void ready()  { data->ready = true; start(); } /// we start dispatching at the ready
     void stop()   { data->stop  = true; data->rt->stop = true; }
     void cancel() { data->error = true; data->rt->stop = true; }
 
@@ -114,7 +126,7 @@ struct MStream:mx {
     void init_input_pcm (Media format, int channels, int samples);
     void init_output_pcm(Media format, int channels, int samples);
 
-    array<MediaBuffer> audio_packets(u8 *buffer, int len);
+    //array<MediaBuffer> audio_packets(u8 *buffer, int len);
         /// frameless pcm, MStreams will reframe and resample for the user
 
     bool contains(StreamType type) { return data->stream_types.index_of(type) >= 0; }

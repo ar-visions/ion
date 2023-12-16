@@ -356,11 +356,13 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
         assert(audio.select((str&)audio_alias));
         audio.selected_format = Media::PCMf32;
         audio.sample_rate     = 48000;
+        audio.current_id      = 0;
         audio.callback        = [&](void* v_audio, sz_t v_audio_size) {
             MStream  &streams = (MStream &)s;
-            array<MediaBuffer> packets = streams.audio_packets((u8*)v_audio, v_audio_size);
-            for (MediaBuffer &packet: packets)
-                streams.push(packet);
+            array<float> packet(v_audio_size / sizeof(float));
+            memcpy(packet.data, v_audio, v_audio_size);
+            packet.set_size(v_audio_size / sizeof(float));
+            streams.push(MediaBuffer(audio.selected_format, packet, audio.current_id++));
 
         };
         audio.start();
