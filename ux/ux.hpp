@@ -10,6 +10,7 @@
 #include <composer/composer.hpp>
 
 struct GLFWwindow;
+struct SkCanvas;
 
 namespace ion {
 
@@ -566,6 +567,17 @@ struct TextSel {
 };
 
 struct Canvas;
+struct iSVG;
+struct SVG:mx {
+    mx_declare(SVG, mx, iSVG);
+
+    SVG(path p);
+    SVG(cstr p);
+    void render(SkCanvas *sk_canvas, int w = -1, int h = -1);
+    vec2i sz();
+};
+
+struct Canvas;
 struct Element:node {
     /// standard props
     struct props {
@@ -601,7 +613,7 @@ struct Element:node {
             rgbad               secondary;
             real                opacity;
             alignment           align;
-            image               img;
+            SVG                 img; /// feature, not bug or even restriction.  no raster images in UI!
             region              area;
             vec4d               radius;
             graphics::shape     shape; 

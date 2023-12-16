@@ -273,7 +273,7 @@ void Element::draw(Canvas& canvas) {
             vec2d bl { r.z, r.z };
             outline_rect.set_rounded(tl, tr, br, bl);
         }
-        canvas.color(outline.border.color);
+        canvas.color(outline.color);
         canvas.opacity(effective_opacity());
         canvas.outline_sz(outline.border.size);
         canvas.outline(outline_rect); /// this needs to work with vshape, or border

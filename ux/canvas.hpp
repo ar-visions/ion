@@ -1,9 +1,10 @@
 #pragma once
 #include <ux/ux.hpp>
 
+namespace ion {
+
 struct ICanvas;
 struct iSVG;
-namespace ion {
 
 struct Canvas:mx {
     mx_declare(Canvas, mx, ICanvas);
@@ -27,7 +28,8 @@ struct Canvas:mx {
     text_metrics measure(str text);
     double measure_advance(char *text, size_t len);
     str ellipsis(str text, rectd rect, text_metrics &tm);
-    void image(image img, rectd rect, alignment align, vec2d offset, bool attach_tx = false);
+    void image(SVG   img, rectd rect, alignment align, vec2d offset);
+    void image(ion::image img, rectd rect, alignment align, vec2d offset, bool attach_tx = false);
     void text(str text, rectd rect, alignment align, vec2d offset, bool ellip, rectd *placement = null);
     void clip(rectd path);
     void projection(glm::mat4 &m, glm::mat4 &v, glm::mat4 &p);
@@ -46,13 +48,6 @@ struct Canvas:mx {
     void clip(graphics::shape path);
     void gaussian(vec2d sz, rectd crop);
     void arc(glm::vec3 pos, real radius, real startAngle, real endAngle, bool is_fill = false);
-};
-
-struct SVG:mx {
-    mx_declare(SVG, mx, iSVG);
-
-    SVG(path p);
-    void render(Canvas &canvas, int w, int h);
 };
 
 }

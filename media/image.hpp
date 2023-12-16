@@ -394,6 +394,8 @@ struct image:array<rgba8> {
     image(cstr   s) : image(path(s)) { }
     image(ion::size sz, rgba8 *px, int scanline = 0);
 
+    path vector_path();
+
     image &operator=(const image b) {
         mx::drop();
         mx::mem = b.mem->grab();

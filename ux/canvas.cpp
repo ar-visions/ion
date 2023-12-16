@@ -45,6 +45,8 @@
 
 using namespace ion;
 
+namespace ion {
+
 static SkPoint rotate90(const SkPoint& p) { return {p.fY, -p.fX}; }
 static SkPoint rotate180(const SkPoint& p) { return p * -1; }
 static SkPoint setLength(SkPoint p, float len) {
@@ -383,6 +385,25 @@ inline SkColor sk_color(rgba8 c) {
                      (uint32_t(c.r) << 16) | (uint32_t(c.a) << 24));
     return sk;
 }
+
+struct iSVG {
+    sk_sp<SkSVGDOM> svg_dom;
+    int             w, h;
+    int            rw, rh;
+};
+
+mx_implement(SVG, mx);
+
+SVG::SVG(path p) : SVG() {
+    SkStream* stream = new SkFILEStream((symbol)p.cs());
+    data->svg_dom = SkSVGDOM::MakeFromStream(*stream);
+    SkSize size = data->svg_dom->containerSize();
+    data->w = size.fWidth;
+    data->h = size.fHeight;
+    delete stream;
+}
+
+SVG::SVG(cstr p) : SVG(path(p)) { }
 
 struct Skia {
     GrDirectContext *sk_context;
@@ -748,6 +769,33 @@ struct ICanvas {
         return (trim == 0) ? "" : (p == &text) ? text : cur;
     }
 
+
+    void image(ion::SVG &image, rectd &rect, alignment &align, vec2d &offset) {
+        SkPaint ps = SkPaint(top->ps);
+        vec2d  pos = { 0, 0 };
+        vec2i  isz = image.sz();
+        
+        ps.setColor(sk_color(top->color));
+        if (top->opacity != 1.0f)
+            ps.setAlpha(float(ps.getAlpha()) * float(top->opacity));
+        
+        /// now its just of matter of scaling the little guy to fit in the box.
+        real scx = rect.w / isz.x;
+        real scy = rect.h / isz.y;
+        real sc  = (scy > scx) ? scx : scy;
+        
+        /// no enums were harmed during the making of this function (again)
+        pos.x = mix(rect.x, rect.x + rect.w - isz.x * sc, align.x);
+        pos.y = mix(rect.y, rect.y + rect.h - isz.y * sc, align.y);
+        
+        sk_canvas->save();
+        sk_canvas->translate(pos.x + offset.x, pos.y + offset.y);
+        
+        sk_canvas->scale(sc, sc);
+        image.render(sk_canvas, rect.w, rect.h);
+        sk_canvas->restore();
+    }
+
     void image(ion::image &image, rectd &rect, alignment &align, vec2d &offset, bool attach_tx) {
         SkPaint ps = SkPaint(top->ps);
         vec2d  pos = { 0, 0 };
@@ -912,9 +960,7 @@ struct ICanvas {
         ///
         if (top->opacity != 1.0f)
             ps.setAlpha(float(ps.getAlpha()) * float(top->opacity));
-        graphics::shape sh = rect;
-        SkRect r = { float(rect.x), float(rect.y), float(rect.x + rect.w), float(rect.y + rect.h) };
-        sk_canvas->drawRect(r, ps);
+        draw_rect(rect, ps);
     }
 
     void outline(graphics::shape &shape) {
@@ -955,16 +1001,11 @@ struct ICanvas {
         sk_canvas->rotate(degs);
     }
 
-    void fill(rectd &rect) {
-        SkPaint ps = SkPaint(top->ps);
-        ///
-        ps.setColor(sk_color(top->color));
-        ///
-        if (top->opacity != 1.0f)
-            ps.setAlpha(float(ps.getAlpha()) * float(top->opacity));
+    void draw_rect(rectd &rect, SkPaint &ps) {
         SkRect   r = SkRect {
             SkScalar(rect.x),          SkScalar(rect.y),
             SkScalar(rect.x + rect.w), SkScalar(rect.y + rect.h) };
+        
         if (rect.rounded) {
             SkRRect rr;
             SkVector corners[4] = {
@@ -978,6 +1019,17 @@ struct ICanvas {
         } else {
             sk_canvas->drawRect(r, ps);
         }
+    }
+
+    void fill(rectd &rect) {
+        SkPaint ps = SkPaint(top->ps);
+        ///
+        ps.setColor(sk_color(top->color));
+        ///
+        if (top->opacity != 1.0f)
+            ps.setAlpha(float(ps.getAlpha()) * float(top->opacity));
+
+        draw_rect(rect, ps);
     }
 
     // we are to put everything in path.
@@ -1102,6 +1154,10 @@ str     Canvas::ellipsis(str text, rectd rect, text_metrics &tm) {
     return data->ellipsis(text, rect, tm);
 }
 
+void    Canvas::image(ion::SVG img, rectd rect, alignment align, vec2d offset) {
+    return data->image(img, rect, align, offset);
+}
+
 void    Canvas::image(ion::image img, rectd rect, alignment align, vec2d offset, bool attach_tx) {
     return data->image(img, rect, align, offset, attach_tx);
 }
@@ -1174,24 +1230,17 @@ void    Canvas::gaussian(vec2d sz, rectd crop) {
     return data->gaussian(sz, crop);
 }
 
-struct iSVG {
-    sk_sp<SkSVGDOM> svg_dom;
-    int             w, h;
-};
+vec2i SVG::sz() { return { data->w, data->h }; }
 
-mx_implement(SVG, mx);
-
-SVG::SVG(path p) : SVG() {
-    SkStream* stream = new SkFILEStream((symbol)p.cs());
-    data->svg_dom = SkSVGDOM::MakeFromStream(*stream);
-    delete stream;
-}
-
-void SVG::render(Canvas &canvas, int w, int h) {
-    if (data->w != w || data->h != h) {
-        data->w  = w;
-        data->h  = h;
-        //data->svg_dom->setContainerSize(SkSize::Make(w, h));
+void SVG::render(SkCanvas *sk_canvas, int w, int h) {
+    if (w == -1) w = data->w;
+    if (h == -1) h = data->h;
+    if (data->rw != w || data->rh != h) {
+        data->rw  = w;
+        data->rh  = h;
+        data->svg_dom->setContainerSize(
+            SkSize::Make(data->rw, data->rh));
     }
-    //data->svg_dom->render(canvas.data->sk_canvas);
+    data->svg_dom->render(sk_canvas);
+}
 }
