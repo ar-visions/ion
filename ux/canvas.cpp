@@ -22,7 +22,7 @@
 #include <skia/effects/SkImageFilters.h>
 #include <skia/effects/SkDashPathEffect.h>
 #include <skia/core/SkStream.h>
-//#include <skia/modules/svg/include/SkSVGDOM.h>
+#include <skia/modules/svg/include/SkSVGDOM.h>
 #include <skia/core/SkAlphaType.h>
 #include <skia/core/SkColor.h>
 #include <skia/core/SkColorType.h>
@@ -1175,16 +1175,16 @@ void    Canvas::gaussian(vec2d sz, rectd crop) {
 }
 
 struct iSVG {
-    //sk_sp<SkSVGDOM> svg_dom;
+    sk_sp<SkSVGDOM> svg_dom;
     int             w, h;
 };
 
 mx_implement(SVG, mx);
 
 SVG::SVG(path p) : SVG() {
-    //SkStream* stream = new SkFILEStream((symbol)p.cs());
-    //data->svg_dom = SkSVGDOM::MakeFromStream(*stream);
-    //delete stream;
+    SkStream* stream = new SkFILEStream((symbol)p.cs());
+    data->svg_dom = SkSVGDOM::MakeFromStream(*stream);
+    delete stream;
 }
 
 void SVG::render(Canvas &canvas, int w, int h) {

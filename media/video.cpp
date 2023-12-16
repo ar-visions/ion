@@ -239,11 +239,6 @@ struct iVideo {
     }
 
     void write_video(mx &data) {
-        static int frames = 0;
-        frames++;
-        static i64 start = millis();
-        float frames_sec = frames / ((millis() - start) / 1000.0f);
-        printf("write_video: %d - %d - %.2f\n", frames, (int)data.count(), frames_sec);
         assert(data.type() == typeof(u8));
         MP4WriteSample(mp4, video_track, data.origin<u8>(), data.count());
     }

@@ -197,7 +197,11 @@ void MStream::start() {
             if (data->start_time) {
                 if (data->frames > 0) {
                     u64 next_dispatch = (u64(data->start_time) * u64(1000)) + (i64)((data->frames + 1) * (u64(1000000) / u64(data->hz)));
+
                     wait_until(next_dispatch);
+
+                    //float frames_sec = (data->frames + 1) / ((millis() - data->start_time) / 1000.0f);
+                    //console.log("write_video: {0} - {1}fps", { data->frames, frames_sec });
                 }
                 dispatch();
             } else {
