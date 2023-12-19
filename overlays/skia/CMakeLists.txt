@@ -14,6 +14,10 @@ if(WIN32)
         COMMENT "running skia build"
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
         VERBATIM)
+
+    file(GLOB LIB_FILES ${CMAKE_CURRENT_SOURCE_DIR}/out/${cfg_lower}/*.lib)
+    list(REMOVE_ITEM LIB_FILES ${CMAKE_CURRENT_SOURCE_DIR}/out/${cfg_lower}/zlib.lib)
+    install(FILES ${LIB_FILES} DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
 else()
     add_custom_target(build
         COMMAND sh "build.sh" ${SDK} ${cfg_lower}
@@ -21,18 +25,19 @@ else()
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
         VERBATIM)
     
-    # install the libs that it makes; it wont install the bootstrap
-    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/out/${cfg_lower}/libskia.a
-        DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
-
-    # without the trailing slash it puts 'include' inside of skia
-    install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
-        DESTINATION ${CMAKE_INSTALL_PREFIX}/include/skia/)
-
-    # needed for svg header
-    install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/modules
-        DESTINATION ${CMAKE_INSTALL_PREFIX}/include/skia/)
+    file(GLOB LIB_FILES ${CMAKE_CURRENT_SOURCE_DIR}/out/${cfg_lower}/*.a)
+    list(REMOVE_ITEM LIB_FILES ${CMAKE_CURRENT_SOURCE_DIR}/out/${cfg_lower}/zlib.a)
+    list(REMOVE_ITEM LIB_FILES ${CMAKE_CURRENT_SOURCE_DIR}/out/${cfg_lower}/libz.a)
+    install(FILES ${LIB_FILES} DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
 endif()
+
+# without the trailing slash it puts 'include' inside of skia
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
+    DESTINATION ${CMAKE_INSTALL_PREFIX}/include/skia/)
+
+# needed for svg header
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/modules
+    DESTINATION ${CMAKE_INSTALL_PREFIX}/include/skia/)
 
 # the bootstrap (made with all) depends on build to run
 add_dependencies(bootstrap build)

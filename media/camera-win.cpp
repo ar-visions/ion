@@ -132,9 +132,6 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
                             hr = MFGetAttributeSize(mediaType, MF_MT_FRAME_SIZE, &width, &height);
                             hr = MFGetAttributeRatio(mediaType, MF_MT_FRAME_RATE, &frameRate, &denominator);
                             if (hr == S_OK) {
-                                printf("frame size: %d %d\n", width, height);
-                                printf("frame rate: %d %d\n", frameRate, denominator);
-                                fflush(stdout);
                                 if (width == rwidth && height == rheight && frameRate == 30) {
                                     selected_media = index;
                                     mediaType->Release();
@@ -244,53 +241,44 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
                     r->pReader->SetCurrentMediaType(r->dwStreamIndex, NULL, r->pType);
                     while (!ms->rt->stop) {
                         DWORD flags = 0;
-                        i64 t = millis();
                         IMFSample* pSample = null;
                         r->pReader->ReadSample(r->dwStreamIndex, 0, null, &flags, null, &pSample);
                         if (flags & MF_SOURCE_READERF_ENDOFSTREAM)
                             break;
                         ///
                         if (pSample) {
-                            IMFMediaBuffer* pBuffer         = null;
-                            BYTE*           pData           = null;
+                            IMFMediaBuffer* mbuffer         = null;
+                            BYTE*           data            = null;
                             DWORD           maxLength       = 0, 
-                                            dataLength      = 0;
-                            pSample->ConvertToContiguousBuffer(&pBuffer);
-                            pBuffer->Lock(&pData, &maxLength, &dataLength);
+                                            data_len        = 0;
+                            pSample->ConvertToContiguousBuffer(&mbuffer);
+                            mbuffer->Lock(&data, &maxLength, &data_len);
                             
-                            /// if this is audio, we need a sub routine to make 
-                            /// sure we have enough data to send, and keep
-                            /// remainder around for next round
                             PCMInfo &pcm = r->pcm;
-                            static i64 start = millis();
-                            static i64 last;
-                            static i64 bytes_received;
-                            last = millis();
                             if (!r->video) {
-                                i64 duration = last - start;
-                                bytes_received += dataLength;
-                                printf("bytes_received per sec = %.2f/s\n", float(bytes_received) / float(duration / 1000));
-                                Media &format = ms->pcm_input->format;
-                                ms.push_audio_packet(pData, dataLength);
+                                if (r->selected_format == Media::PCMf32) {
+                                    array<float> audio(sz_t(data_len) / 4);
+                                    memcpy(audio.data, data, data_len / 4);
+                                    audio.set_size(data_len / 4);
+                                    ms.push_audio(audio);
+                                } else {
+                                    array<short> audio(sz_t(data_len) / 2);
+                                    memcpy(audio.data, data, data_len / 2);
+                                    audio.set_size(data_len / 2);
+                                    ms.push_audio(audio);
+                                }
                             } else {
                                 /// video-based method is to simply send the nalu frames received
-                                array<u8> copy = array<u8>(sz_t(dataLength));
-                                memcpy(copy.data, pData, dataLength);
-                                copy.set_size(dataLength);
-                                static int s_frame_id = 0;
-                                MediaBuffer packet = MediaBuffer(r->selected_format, copy, s_frame_id++);
-                                ms.push(packet);
-                                printf("[camera] pushed video\n");
+                                array<u8> video = array<u8>(sz_t(data_len));
+                                memcpy(video.data, data, data_len);
+                                video.set_size(data_len);
+                                ms.push_video(video);
                             }
 
-                            pBuffer->Unlock();
-                            pBuffer->Release();
+                            mbuffer->Unlock();
+                            mbuffer->Release();
                             pSample->Release();
                         }
-                        i64 t2 = millis();
-                        i64 t3 = t2 - t;
-                        printf("[%s] duration = %d\n", r->video ? "video" : "audio", (int)t3);
-                        fflush(stdout);
                     }
                     return true;
                 });

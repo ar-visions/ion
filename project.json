@@ -117,6 +117,12 @@
             }
         },
         {
+            "name":     "speexdsp",
+            "version":  "1.2.1",
+            "url":      "https://github.com/xiph/speexdsp",
+            "commit":   "1b28a0f"
+        },
+        {
             "name":     "opusenc",
             "version":  "0.21",
             "url":      "https://github.com/xiph/libopusenc",
@@ -247,12 +253,6 @@
             "version":  "3.1.1",
             "url":      "https://github.com/toots/shine",
             "commit":   "97f188e"
-        },
-        {
-            "name":     "speexdsp",
-            "version":  "1.2.1",
-            "url":      "https://github.com/xiph/speexdsp",
-            "commit":   "1b28a0f"
         },
         {
             "name":     "bzip2",
