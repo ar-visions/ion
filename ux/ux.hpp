@@ -566,15 +566,29 @@ struct TextSel {
     bool operator>  (const TextSel &b) { return row > b.row || ((row == b.row) && column > b.column); }
 };
 
+#ifdef CANVAS_IMPL
+    using svgdom_t = sk_sp<SkSVGDOM>*;
+#else
+    using svgdom_t = void*;
+#endif
+
 struct Canvas;
-struct iSVG;
+
 struct SVG:mx {
-    mx_declare(SVG, mx, iSVG);
+    struct M {
+        svgdom_t   svg_dom;
+        int        w, h;
+        int       rw, rh;
+        operator bool();
+        register(M);
+    };
 
     SVG(path p);
     SVG(cstr p);
     void render(SkCanvas *sk_canvas, int w = -1, int h = -1);
     vec2i sz();
+
+    mx_basic(SVG);
 };
 
 struct Canvas;

@@ -1,3 +1,5 @@
+#define CANVAS_IMPL
+
 #include <skia/core/SkImage.h>
 
 #define  SK_VULKAN
@@ -386,18 +388,10 @@ inline SkColor sk_color(rgba8 c) {
     return sk;
 }
 
-struct iSVG {
-    sk_sp<SkSVGDOM> svg_dom;
-    int             w, h;
-    int            rw, rh;
-};
-
-mx_implement(SVG, mx);
-
 SVG::SVG(path p) : SVG() {
     SkStream* stream = new SkFILEStream((symbol)p.cs());
-    data->svg_dom = SkSVGDOM::MakeFromStream(*stream);
-    SkSize size = data->svg_dom->containerSize();
+    data->svg_dom = new sk_sp<SkSVGDOM>(SkSVGDOM::MakeFromStream(*stream));
+    SkSize size = (*data->svg_dom)->containerSize();
     data->w = size.fWidth;
     data->h = size.fHeight;
     delete stream;
@@ -1230,6 +1224,10 @@ void    Canvas::gaussian(vec2d sz, rectd crop) {
     return data->gaussian(sz, crop);
 }
 
+SVG::M::operator bool() {
+    return w > 0;
+}
+
 vec2i SVG::sz() { return { data->w, data->h }; }
 
 void SVG::render(SkCanvas *sk_canvas, int w, int h) {
@@ -1238,9 +1236,9 @@ void SVG::render(SkCanvas *sk_canvas, int w, int h) {
     if (data->rw != w || data->rh != h) {
         data->rw  = w;
         data->rh  = h;
-        data->svg_dom->setContainerSize(
+        (*data->svg_dom)->setContainerSize(
             SkSize::Make(data->rw, data->rh));
     }
-    data->svg_dom->render(sk_canvas);
+    (*data->svg_dom)->render(sk_canvas);
 }
 }

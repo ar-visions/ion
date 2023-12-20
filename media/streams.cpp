@@ -208,28 +208,30 @@ void MStream::start() {
                 usleep(1000);
             }
         }
+        int test = 0;
+        test++;
         return true;
     });
 }
 
 void MStream::dispatch() {
-    data->mtx.lock();
+    data->mtx_.lock();
     int acount = data->audio_queue->count();
     mx  audio  = acount > 0 ? data->audio_queue->shift_v() : mx {};
     Frame frame { .image = data->image, .audio = audio };
     for (Remote &listener: data->listeners)
         listener->callback(frame);
     data->frames++;
-    data->mtx.unlock();
+    data->mtx_.unlock();
 }
 
 /// perform conversion on audio
 bool MStream::push_audio(mx audio) {
     if (data->stop || data->error || !data->ready)
         return false;
-    
-    type_t type = audio.type();
+    data->mtx_.lock();
     i64    t = millis();
+    type_t type = audio.type();
     mx     result;
 
     if (type == typeof(float)) {
@@ -249,7 +251,7 @@ bool MStream::push_audio(mx audio) {
     if ((!data->use_video || data->video) && !data->start_time)
         data->start_time = t;
     
-    data->mtx.unlock();
+    data->mtx_.unlock();
     return true;
 }
 
@@ -262,7 +264,7 @@ bool MStream::push_video(mx video) {
     if (data->stop || data->error || !data->ready)
         return false;
     
-    data->mtx.lock();
+    data->mtx_.lock();
     data->video = video;
     if (data->resolve_image) {
         u8 *src = (u8*)video.origin<u8>();
@@ -289,7 +291,7 @@ bool MStream::push_video(mx video) {
     if ((!data->use_audio || data->audio_queue) && !data->start_time)
         data->start_time = millis();
     
-    data->mtx.unlock();
+    data->mtx_.unlock();
     return true;
 }
 
@@ -297,7 +299,7 @@ void Remote::close() {
     MStream::M *streams = (MStream::M*)data->sdata;
     raw_t       key     = mem->origin;
 
-    streams->mtx.lock();
+    streams->mtx_.lock();
     num i = 0, index = -1;
     for (mx &r: streams->listeners) {
         if (r.mem->origin == key) {
@@ -309,7 +311,7 @@ void Remote::close() {
     assert(index >= 0);
     if (index >= 0)
         streams->listeners->remove(index);
-    streams->mtx.unlock();
+    streams->mtx_.unlock();
 }
 
 }

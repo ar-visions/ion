@@ -232,6 +232,8 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
 
         /// capture loop
         Routine *r_video = routines[0];
+        s.set_video_format(r_video->selected_format);
+
         assert(r_video->selected_format);
 
         for (Routine *r: routines)

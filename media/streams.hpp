@@ -39,7 +39,7 @@ struct Remote:mx {
 struct MStream:mx {
     struct M {
         runtime*             rt;
-        mutex                mtx;
+        mutex                mtx_;
         array<StreamType>    stream_types;
         array<Media>         media;
         Media                video_format;
@@ -88,10 +88,10 @@ struct MStream:mx {
 
     /// Streams SHOULD offer a frame of reference
     Remote listen(lambda<void(Frame&)> callback) {
-        data->mtx.lock();
+        data->mtx_.lock();
         Remote remote = Remote::M { (raw_t)data, callback};
         data->listeners += remote;
-        data->mtx.unlock();
+        data->mtx_.unlock();
         return remote;
     }
 

@@ -128,13 +128,14 @@ void Vulkan::M::init() {
 
     extensions = std::vector<symbol>();
     extensions.push_back("VK_KHR_surface");
-    extensions.push_back("VK_KHR_portability_enumeration"); /// there is a _subset extension too but not sure if thats device
     
     if (is_apple()) {
+        extensions.push_back("VK_KHR_portability_enumeration");
         extensions.push_back("VK_EXT_metal_surface");
     } else if (is_win()) {
         extensions.push_back("VK_KHR_win32_surface");
     } else {
+        extensions.push_back("VK_KHR_portability_enumeration");
         if (false && is_wayland())
             extensions.push_back("VK_KHR_wayland_surface");
         else
