@@ -186,6 +186,10 @@ struct iVideo {
     i64                start_time; /// since iVideo needs to write a certain frame rate, we should wait for the first frame to arrive to set an origin
     /// swap system should come back (in streams)
 
+    operator bool() {
+        return mp4;
+    }
+
     register(iVideo);
 
     void stop() {

@@ -180,6 +180,27 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
                 /// todo: MStream should do so; (simplify this implementation for 1 stream type per request)
                 r->pReader->GetNativeMediaType(r->selected_stream, r->selected_media, &r->pType);
                 if (cat == 1) {
+
+
+                    // Create a new media type for 16-bit PCM audio
+                    // when we load the default device, its distorted f32; its rate seems fine but its quite distorted; its also not BigEndian or anything
+                    IMFMediaType* pNewType = NULL;
+                    MFCreateMediaType(&pNewType);
+                    pNewType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
+                    pNewType->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_PCM);
+                    pNewType->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 16);
+                    pNewType->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, 48000); // or set your desired sample rate
+                    pNewType->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, 1); // or set your desired channel count
+
+                    r->selected_format = Media::PCM;
+
+                    // Set the new media type on the source reader
+                    hr = r->pReader->SetCurrentMediaType(r->selected_stream, NULL, pNewType);
+                    assert(SUCCEEDED(hr));
+
+                    r->pType = pNewType;
+
+
                     GUID audio_type;
                     hr = r->pType->GetGUID(MF_MT_SUBTYPE, &audio_type);
                     assert(SUCCEEDED(hr));
@@ -240,11 +261,11 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
             if (r_video->selected_format != Media::undefined)
                 async(1, [r, s](runtime *rt, int i) -> mx {
                     MStream &ms = (MStream &)s;
-                    r->pReader->SetCurrentMediaType(r->dwStreamIndex, NULL, r->pType);
+                    r->pReader->SetCurrentMediaType(r->selected_stream, NULL, r->pType);
                     while (!ms->rt->stop) {
                         DWORD flags = 0;
                         IMFSample* pSample = null;
-                        r->pReader->ReadSample(r->dwStreamIndex, 0, null, &flags, null, &pSample);
+                        r->pReader->ReadSample(r->selected_stream, 0, null, &flags, null, &pSample);
                         if (flags & MF_SOURCE_READERF_ENDOFSTREAM)
                             break;
                         ///
@@ -259,11 +280,17 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
                             PCMInfo &pcm = r->pcm;
                             if (!r->video) {
                                 if (r->selected_format == Media::PCMf32) {
+                                    assert(data_len % 4 == 0);
                                     array<float> audio(sz_t(data_len) / 4);
                                     memcpy(audio.data, data, data_len / 4);
                                     audio.set_size(data_len / 4);
                                     ms.push_audio(audio);
                                 } else {
+                                    FILE *f = fopen("test2.pcm", "ab");
+                                    fwrite(data, 1, data_len, f);
+                                    fclose(f);
+                                    
+                                    assert(data_len % 2 == 0);
                                     array<short> audio(sz_t(data_len) / 2);
                                     memcpy(audio.data, data, data_len / 2);
                                     audio.set_size(data_len / 2);

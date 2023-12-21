@@ -208,8 +208,6 @@ void MStream::start() {
                 usleep(1000);
             }
         }
-        int test = 0;
-        test++;
         return true;
     });
 }
@@ -235,7 +233,7 @@ bool MStream::push_audio(mx audio) {
     mx     result;
 
     if (type == typeof(float)) {
-        int  n_floats = audio.total_size() / sizeof(float);
+        int  n_floats = audio.count();
         float *floats = audio.origin<float>();
         array<short> shorts(n_floats);
         for (int i = 0; i < n_floats; i++) {
