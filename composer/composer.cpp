@@ -188,8 +188,14 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
                     type_t prop_type = sel.member->type;
                     u8    *prop_dst  = &data_origin[sel.member->offset];
 
-                    assert(prop_type->functions->mix);
-                    raw_t temp = prop_type->functions->mix(sel.from, sel.to, curve);
+                    raw_t temp;
+                    if (prop_type == typeof(double)) {
+                        temp = new double(*(double*)sel.from * (1.0 - curve) + *(double*)sel.to * curve);
+                    } else {
+                        assert(prop_type->functions->mix);
+                        temp = prop_type->functions->mix(sel.from, sel.to, curve);
+                    }
+                    
                     //mixes++;
                     ///
                     if (prop_type->traits & traits::mx_obj) {

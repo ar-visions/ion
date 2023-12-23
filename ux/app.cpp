@@ -89,6 +89,7 @@ static void mouse_move_callback(mx &user, double x, double y) {
         n->Element::data->hover = false;
     
     app->hover = app.select_at(app->cursor, cd->buttons[0]);
+
     Element *last = null;
     for (Element* n: app->hover) {
         n->Element::data->hover  = true;
@@ -130,6 +131,12 @@ static void mouse_button_callback(mx &user, int button, int state, int mods) {
     else
         app->active = {};
 
+    int len = app->active.len();
+    printf("len of active = %d\n", len);
+    if (len == 4) {
+        app->active = app.select_at(app->cursor, false);
+    }
+
     Element* last = null;
     for (Element* n: app->active) {
         n->Element::data->active = true;
@@ -169,13 +176,28 @@ static void mouse_button_callback(mx &user, int button, int state, int mods) {
 
     /// new down states
     for (Element* n: app->active) {
-        if (prev_active.index_of(n) == -1)
+        if (prev_active.index_of(n) == -1) {
             n->down();
+            if (n->data->ev.down) {
+                event e { n };
+                n->data->ev.down(e);
+            }
+        }
     }
-    /// new up states
+    /// new up states & handle click
     for (Element *n: prev_active) {
-        if (app->active.index_of(n) == -1)
+        if (app->active.index_of(n) == -1) {
             n->up();
+            if (n->data->ev.up) {
+                event e { n };
+                n->data->ev.up(e);
+            }
+            bool in_bounds = app->hover.index_of(n) >= 0;
+            if (in_bounds && n->data->ev.click) {
+                event e { n };
+                n->data->ev.click(e);
+            }
+        }
     }
 }
 
@@ -255,8 +277,9 @@ int App::run() {
         e->vk_device->mtx.lock();
 
         rgbad c = { 0.0, 0.0, 0.0, 1.0 };
+        /// todo: background-blur, 1 canvas for each gaussian() call
         canvas->clear(c);
-
+        canvas->save();
         node ee = data->app_fn(*this);
 
         update_all(ee);
@@ -274,7 +297,6 @@ int App::run() {
             auto &bounds = eroot->data->bounds;
             eroot->draw(*canvas);
         }
-
         canvas->flush();
 
         /// we need an array of renderers/presenters; must work with a 3D scene, bloom shading etc

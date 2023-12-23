@@ -72,3 +72,5 @@ src(${bsd}/h264bsd_byte_stream.c
     ${bsd}/h264bsd_vlc.c
     ${bsd}/h264bsd_vui.c
 )
+
+includes(${EXTERN_DIR}/h264bsd/src)

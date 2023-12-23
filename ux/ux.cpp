@@ -44,7 +44,6 @@ void dispatch::operator()(event e) {
         l->cb(e);
 }
 
-/// place text before drawing? or, place text as we draw.
 //void Element::layout()
 
 void Element::scroll(real x, real y) { }
@@ -54,6 +53,7 @@ void Element::unfocused() { }
 void Element::move()      { }
 void Element::down()      { }
 void Element::up()        { }
+void Element::click()     { }
 
 doubly<LineInfo> &Element::get_lines(Canvas *p_canvas) {
 
@@ -207,25 +207,93 @@ void Element::draw_text(Canvas& canvas, rectd& rect) {
     canvas.restore();
 }
 
+/// this may have access to canvas
+vec2d Element::child_offset(Element &child) {
+    Element *b              = null;
+    rectd    bounds         = data->bounds;
+    bool     compute        = false;
+    bool     compute_left   = false,
+             compute_right  = false,
+             compute_top    = false,
+             compute_bottom = false;
+
+    /// left is relative to prior control left
+    if (child->area.tl.x_rel) {
+        compute = true;
+        compute_left = true;
+    }
+    /// top is relative to prior control top
+    if (child->area.tl.y_rel) {
+        compute = true;
+        compute_top = true;
+    }
+
+    /// if child does not have any relative boundary then return parent bounds;
+    if (!compute)
+        return vec2d { 0, 0 };
+    
+    node::edata *edata = ((node*)this)->data;
+    for (node *n: edata->mounts) {
+        Element* c = (Element*)n;
+        /// complex, but bounds is computed on all of these up to child;
+        /// we just need flags given for what is +'d
+        if (c == &child)
+            break;
+        else
+            b = c;
+    }
+    /// first item gets its parent coords
+    if (!b)
+        return vec2d { 0, 0 };
+    
+    rectd &bb = b->data->bounds;
+    if (compute_left) {
+        double px = bounds.x;
+        bounds.x  = bb.x + bb.w;
+        bounds.w += (px - bounds.x);
+    }
+    if (compute_top) {
+        double py = bounds.y;
+        bounds.y  = bb.y + bb.h;
+        bounds.h += (py - bounds.y);
+    }
+    return bounds.xy();
+}
+
 void Element::draw(Canvas& canvas) {
-    type_t         type      = mem->type;
-    node::edata   *edata     = ((node*)this)->data;
-    Element       *eparent   = (Element*)edata->parent;
-    rect<r64>      parent_bounds = eparent ? eparent->data->bounds : 
-        rect<r64> { 0, 0, r64(canvas.get_virtual_width()), r64(canvas.get_virtual_height()) };
+    type_t        type       = mem->type;
+    node::edata  *edata      = ((node*)this)->data;
+    Element      *eparent    = (Element*)edata->parent;
+    if (edata->id == "record") {
+        int test = 0;
+        test++;
+    }
+    vec2d             offset = eparent ? eparent->child_offset(*this) : vec2d { 0, 0 };
+    rectd      parent_bounds = eparent ? eparent->data->bounds : 
+        rectd { 0, 0, r64(canvas.get_virtual_width()), r64(canvas.get_virtual_height()) };
     props::drawing &fill     = data->drawings[operation::fill];
     props::drawing &image    = data->drawings[operation::image];
     props::drawing &text     = data->drawings[operation::text];
     props::drawing &outline  = data->drawings[operation::outline]; /// outline is more AR than border.  and border is a bad idea, badly defined and badly understood. outline is on the 0 pt.  just offset it if you want.
     props::drawing &children = data->drawings[operation::child]; /// outline is more AR than border.  and border is a bad idea, badly defined and badly understood. outline is on the 0 pt.  just offset it if you want.
     
-    canvas.save();
-    if (strcmp(type->name, "Button") == 0) {
+    /// debug the bounds computed on 'record' id
+    if (edata->id == "record") {
+        /// needs a menu option or toolbar option for camera selection
+        /// also lighting output can be in there
+        /// memus can have hotkeys and dictation phrases to loosely match (pretty neat idea in general)
         int test = 0;
         test++;
     }
-
+    canvas.save();
+    
+    /// icons must paint using the new + (offset) syntax in coord/region
     data->bounds      = data->area.relative_rect(parent_bounds);
+    data->bounds.x   += offset.x; 
+    data->bounds.y   += offset.y;
+
+    /// all of the delegate areas should not allow for peer bounds,
+    /// for the obvious reason that these are purely relative to self computed bounds (which allow for peer)
     data->fill_bounds = fill.area.relative_rect(data->bounds); /// use this bounds if we do not have specific areas defined
     
     /// if there is a fill color
@@ -247,7 +315,7 @@ void Element::draw(Canvas& canvas) {
 
     /// if there is fill image
     if (image.img) {
-        image.shape = image.area.relative_rect(data->bounds);
+        image.shape = image.area.relative_rect(data->bounds); // support a area: 50% or so; easy syntax for scaling images
         canvas.save();
         canvas.opacity(effective_opacity());
         canvas.image(image.img, image.shape, image.align, {0,0});
@@ -284,192 +352,194 @@ void Element::draw(Canvas& canvas) {
         Element* c = (Element*)n;
         /// clip to child
         /// translate to child location
-        canvas.translate(c->data->bounds.xy());
+        canvas.save();
+        rectd &bounds = c->data->bounds;
+        canvas.translate(bounds.xy());
         canvas.opacity(effective_opacity());
-        //canvas.clip(0, 0, r.w, r.h);
+        canvas.clip(0, 0, bounds.w, bounds.h);
         c->draw(canvas);
+        canvas.restore();
     }
 
     canvas.restore();
 }
 
-    TextSel Element::get_selection(vec2d pos, bool is_down) {
-        rectd r = data->bounds;
-        Element *n = this;
-        /// localize mouse pos input to this control (should be done by the caller; why would we repeat this differently)
-        while (n) {
-            pos.x -= n->data->bounds.x + n->data->scroll.x;
-            pos.y -= n->data->bounds.y + n->data->scroll.y;
-            n      = (Element*)((node*)n)->data->parent;
-        }
-        ///
-        TextSel res;
-        real    y = data->text_bounds.y;
-        num     row = 0;
+TextSel Element::get_selection(vec2d pos, bool is_down) {
+    rectd r = data->bounds;
+    Element *n = this;
+    /// localize mouse pos input to this control (should be done by the caller; why would we repeat this differently)
+    while (n) {
+        pos.x -= n->data->bounds.x + n->data->scroll.x;
+        pos.y -= n->data->bounds.y + n->data->scroll.y;
+        n      = (Element*)((node*)n)->data->parent;
+    }
+    ///
+    TextSel res;
+    real    y = data->text_bounds.y;
+    num     row = 0;
 
-        ///
-        for (LineInfo &line: data->lines) {
-            if (pos.y >= y && pos.y <= (y + line.bounds.h)) {
-                res.row = row;
-                if (pos.x < line.placement.x)
-                    res.column = 0;
-                else if (pos.x > line.placement.x + line.placement.w)
-                    res.column = line.len;
-                else {
-                    bool col_set = false;
-                    for (num i = 1; i <= line.len; i++) {
-                        real adv0 = line.adv[i - 1];
-                        real adv1 = line.adv[i];
-                        real med  = (adv0 + adv1) / 2.0;
-                        if ((pos.x - line.placement.x) < med) {
-                            res.column = i - 1;
-                            col_set = true;
-                            break;
-                        }
+    ///
+    for (LineInfo &line: data->lines) {
+        if (pos.y >= y && pos.y <= (y + line.bounds.h)) {
+            res.row = row;
+            if (pos.x < line.placement.x)
+                res.column = 0;
+            else if (pos.x > line.placement.x + line.placement.w)
+                res.column = line.len;
+            else {
+                bool col_set = false;
+                for (num i = 1; i <= line.len; i++) {
+                    real adv0 = line.adv[i - 1];
+                    real adv1 = line.adv[i];
+                    real med  = (adv0 + adv1) / 2.0;
+                    if ((pos.x - line.placement.x) < med) {
+                        res.column = i - 1;
+                        col_set = true;
+                        break;
                     }
-                    /// set end-of-last character
-                    if (!col_set)
-                        res.column = line.len;
                 }
+                /// set end-of-last character
+                if (!col_set)
+                    res.column = line.len;
             }
-            y += line.bounds.h;
-            row++;
         }
-        return res;
+        y += line.bounds.h;
+        row++;
+    }
+    return res;
+}
+
+/// Element-based generic text handler; dispatches text
+void Element::on_text(event e) {
+    /// just for Elements which allow text editing
+    if (!data->editable)
+        return;
+
+    /// order the selection, and split the lines (enter retains info of initial line insertion by user)
+    bool       swap = data->sel_start > data->sel_end;
+    TextSel     &ss = swap ? data->sel_end : data->sel_start;
+    TextSel     &se = swap ? data->sel_start : data->sel_end;
+    array<str> text = e->text.split("\n");
+    bool      enter = e->text == "\n";
+    bool       back = e->text == "\b";
+
+    /// do not insert control characters
+    if (back)
+        text = array<str> {""};
+
+    doubly<LineInfo> add;
+    for (str &line: text) {
+        LineInfo &l = add->push();
+        l.data = line;
+        l.len  = line.len();
     }
 
-    /// Element-based generic text handler; dispatches text
-    void Element::on_text(event e) {
-        /// just for Elements which allow text editing
-        if (!data->editable)
-            return;
-
-        /// order the selection, and split the lines (enter retains info of initial line insertion by user)
-        bool       swap = data->sel_start > data->sel_end;
-        TextSel     &ss = swap ? data->sel_end : data->sel_start;
-        TextSel     &se = swap ? data->sel_start : data->sel_end;
-        array<str> text = e->text.split("\n");
-        bool      enter = e->text == "\n";
-        bool       back = e->text == "\b";
-
-        /// do not insert control characters
-        if (back)
-            text = array<str> {""};
-
-        doubly<LineInfo> add;
-        for (str &line: text) {
-            LineInfo &l = add->push();
-            l.data = line;
-            l.len  = line.len();
-        }
-
-        /// handle backspace
-        if (back) {
-            /// shift start back 1 when our len is 0
-            if (ss.row == se.row && ss.column == se.column)
-                ss.column--;
-            
-            /// handle line deletion
-            if (ss.column < 0) {
-                if (ss.row > 0) {
-                    ss.row--;
-                    ss.column = data->lines[ss.row].len;
-                } else {
-                    se.column = 0;
-                    ss.column = 0;
-                }
-            }
-        }
-
-        /// replace and update text sels (all done in TextSel::replace)
-        TextSel::replace(data->lines, ss, se, add);
-
-        if (!back) {
-            if (enter) {
-                se.row++;
-                ss.row++;
+    /// handle backspace
+    if (back) {
+        /// shift start back 1 when our len is 0
+        if (ss.row == se.row && ss.column == se.column)
+            ss.column--;
+        
+        /// handle line deletion
+        if (ss.column < 0) {
+            if (ss.row > 0) {
+                ss.row--;
+                ss.column = data->lines[ss.row].len;
+            } else {
                 se.column = 0;
                 ss.column = 0;
-            } else {
-                se.column++;
-                ss.column++;
             }
         }
+    }
 
-        /// turn off for very large text boxes
-        size_t len = 0;
-        for (LineInfo &li: data->lines)
-            len += li.len;
-        str content { len };
-        for (LineInfo &li: data->lines)
-            content += li.data;
-        data->content = content;
- 
-        /// avoid updating content otherwise
-        if (data->ev.text) {
-            e->text = content;
-            data->ev.text(e);
+    /// replace and update text sels (all done in TextSel::replace)
+    TextSel::replace(data->lines, ss, se, add);
+
+    if (!back) {
+        if (enter) {
+            se.row++;
+            ss.row++;
+            se.column = 0;
+            ss.column = 0;
+        } else {
+            se.column++;
+            ss.column++;
         }
     }
 
-    rgba8 Element::color_with_opacity(rgba8 &input) {
-        rgba8 result = input;
-        Element  *n = (Element*)node::data->parent;
-        double o = 1.0;
-        while (n) {
-            o *= n->data->opacity;
-            n  = (Element*)n->node::data->parent;
-        }
-        result.a = math::round(result.a * o);
-        return result;
-    }
+    /// turn off for very large text boxes
+    size_t len = 0;
+    for (LineInfo &li: data->lines)
+        len += li.len;
+    str content { len };
+    for (LineInfo &li: data->lines)
+        content += li.data;
+    data->content = content;
 
-    double Element::effective_opacity() {
-        Element  *n = this;
-        double o = 1.0;
-        while (n) {
-            o *= n->data->opacity;
-            n  = (Element*)n->node::data->parent;
-        }
-        return o;
+    /// avoid updating content otherwise
+    if (data->ev.text) {
+        e->text = content;
+        data->ev.text(e);
     }
+}
 
-    vec2d Element::offset() {
-        Element *n = (Element*)this;
-        vec2d  o = { 0, 0 };
-        while (n) {
-            o  += n->Element::data->bounds.xy(); /// this is calculated in the generic draw function
-            o  -= n->Element::data->scroll;
-            n   = (Element*)n->node::data->parent;
-        }
-        return o;
+rgba8 Element::color_with_opacity(rgba8 &input) {
+    rgba8 result = input;
+    Element  *n = (Element*)node::data->parent;
+    double o = 1.0;
+    while (n) {
+        o *= n->data->opacity;
+        n  = (Element*)n->node::data->parent;
     }
+    result.a = math::round(result.a * o);
+    return result;
+}
 
-    array<Element*> Element::select(lambda<Element*(Element*)> fn) {
-        array<Element*> result;
-        lambda<Element *(Element *)> recur;
-        recur = [&](Element* n) -> Element* {
-            Element* r = fn(n);
-            if   (r) result += r;
-            /// go through mount fields mx(symbol) -> Element*
-            for (field<node*> &f:n->node::data->mounts)
-                if (f.value) recur((Element*)f.value);
-            return null;
-        };
-        recur(this);
-        return result;
+double Element::effective_opacity() {
+    Element  *n = this;
+    double o = 1.0;
+    while (n) {
+        o *= n->data->opacity;
+        n  = (Element*)n->node::data->parent;
     }
+    return o;
+}
 
-    void Element::exec(lambda<void(node*)> fn) {
-        lambda<node*(node*)> recur;
-        recur = [&](node* n) -> node* {
-            fn(n);
-            for (field<node*> &f: n->node::data->mounts)
-                if (f.value) recur(f.value);
-            return null;
-        };
-        recur(this);
+vec2d Element::offset() {
+    Element *n = (Element*)this;
+    vec2d  o = { 0, 0 };
+    while (n) {
+        o  += n->Element::data->bounds.xy(); /// this is calculated in the generic draw function
+        o  -= n->Element::data->scroll;
+        n   = (Element*)n->node::data->parent;
     }
+    return o;
+}
 
+array<Element*> Element::select(lambda<Element*(Element*)> fn) {
+    array<Element*> result;
+    lambda<Element *(Element *)> recur;
+    recur = [&](Element* n) -> Element* {
+        Element* r = fn(n);
+        if   (r) result += r;
+        /// go through mount fields mx(symbol) -> Element*
+        for (field<node*> &f:n->node::data->mounts)
+            if (f.value) recur((Element*)f.value);
+        return null;
+    };
+    recur(this);
+    return result;
+}
+
+void Element::exec(lambda<void(node*)> fn) {
+    lambda<node*(node*)> recur;
+    recur = [&](node* n) -> node* {
+        fn(n);
+        for (field<node*> &f: n->node::data->mounts)
+            if (f.value) recur(f.value);
+        return null;
+    };
+    recur(this);
+}
 
 }

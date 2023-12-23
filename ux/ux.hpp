@@ -285,8 +285,8 @@ struct coord {
     }
 
     vec2d plot(rectd &rect, vec2d &rel) {
-        double ws = (x_type.value == xalign::width)  ? (rel.x / rect.w) : align.x;
-        double hs = (y_type.value == yalign::height) ? (rel.y / rect.h) : align.y;
+        double ws = align.x; //(x_type.is_percent() ? (align.x * rect.w) : align.x;
+        double hs = align.y; //(y_type.is_percent() ? (align.y * rect.h) : align.y;
         return {
             rect.x + rect.w * ws + offset.x,
             rect.y + rect.h * hs + offset.y
@@ -604,6 +604,7 @@ struct Element:node {
         bool                    active;
         bool                    focus;
         int                     tab_index;
+        str                     group; /// n-depth group binding; node will give you a return of all Elements with a group
         vec2d                   cursor;
 
         /// if we consider events handled contextually and by many users, it makes sense to have dispatch
@@ -611,6 +612,7 @@ struct Element:node {
             callback            hover;
             callback            out;
             callback            down;
+            callback            click;
             callback            up;
             callback            key;
             callback            focus;
@@ -669,6 +671,7 @@ struct Element:node {
                 prop { "on-hover",       ev.hover  },
                 prop { "on-out",         ev.out    },
                 prop { "on-down",        ev.down   },
+                prop { "on-click",       ev.click  },
                 prop { "on-up",          ev.up     },
                 prop { "on-key",         ev.key    },
                 prop { "on-focus",       ev.focus  },
@@ -731,6 +734,8 @@ struct Element:node {
         type_register(props);
     };
 
+
+
     void debug() {
         int test = 0;
         test++;
@@ -752,9 +757,11 @@ struct Element:node {
     virtual void scroll(real x, real y);
     virtual void move();
     virtual void down();
+    virtual void click();
     virtual void up();
     virtual void draw_text(Canvas& canvas, rectd& rect);
     virtual void draw(Canvas& canvas);
+    virtual vec2d child_offset(Element &child);
 
     vec2d offset();
 
@@ -766,6 +773,12 @@ struct Element:node {
 
     Element(symbol id, array<node> ch):node() {
         node::data->id = id;
+        node::data->children = ch;
+    }
+
+    Element(symbol id, array<str> tags, array<node> ch):node() {
+        node::data->id = id;
+        node::data->tags = tags;
         node::data->children = ch;
     }
 

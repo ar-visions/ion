@@ -367,6 +367,7 @@ namespace user {
 struct event:mx {
     ///
     struct edata {
+        node*                   target;
         user::chr               unicode;
         user::key               key;
         str                     text;
@@ -382,6 +383,10 @@ struct event:mx {
     };
 
     mx_object(event, mx, edata);
+
+    event(node* target) : event() {
+        data->target = target;
+    }
     
     event(const mx &a) = delete;
     ///
@@ -492,6 +497,7 @@ struct node:mx {
         type_t                  type;       /// type given
         str                     id;         /// identifier 
         ax                      args;       /// arguments
+        array<str>              tags;       /// style tags
         array<node*>            children;   /// children elements (if provided in children { } pair<mx,mx> inherited data struct; sets key='children')
         node*                   instance;   /// node instance is 1:1 (allocated, then context is copied in place)
         map<node*>              mounts;     /// store instances of nodes in element data, so the cache management can go here where element turns to node
@@ -518,6 +524,18 @@ struct node:mx {
         ///
         type_register(edata);
     };
+
+    /// collect from a group -- lets just use a single depth here
+    array<node*> collect(str group_name, bool include_this) {
+        node *dont_inc = include_this ? this : null;
+        array<node*> res;
+        if (n->data->parent)
+            for (node *c: n->data->parent->data->children) {
+                if (c->data->group == group_name && c != dont_inc)
+                    res += c;
+            }
+        return res;
+    }
 
     /// context works by looking at meta() on the context types polymorphically, and up the parent nodes to the root context (your app)
     template <typename T>

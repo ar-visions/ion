@@ -65,13 +65,13 @@ struct App:composer {
                 node          &n = *(node*)ee;
                 real           x = cur.x, y = cur.y;
                 vec2d          o = ((Element*)n->parent)->offset(); // ee->offset(); // get parent offset
-                vec2d        rel = cur + o;
+                vec2d        rel = cur - o;
                 rectd    &bounds = ee->data->bounds;
 
                 Element::props *eedata = ee->data;
                 
                 bool in = bounds.contains(rel);
-                ee->data->cursor = vec2d(rel.x - bounds.x, rel.y - bounds.y);
+                ee->data->cursor = rel; /// should set centrally once
                 return (in && (!active || !eedata->active)) ? ee : null;
             });
             

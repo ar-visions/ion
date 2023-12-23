@@ -16,6 +16,7 @@
 #include <stdint.h>
 
 extern "C" {
+    #include <h264bsd_decoder.h>
     #include <shine/layer3.h>
 };
 
@@ -153,18 +154,26 @@ bool audio::save_m4a(path dest, i64 bitrate) {
 #endif
 
 struct iVideo {
+    ion::path          playback;
     MP4FileHandle      mp4;
     MP4TrackId         video_track;
     MP4TrackId         audio_track;
     HANDLE_AACENCODER  aac_encoder;
     h264               h264_encoder;
-    
+
+    i64                audio_timescale;
+    i64                video_timescale;
+    i64                video_duration;
+
     int                width, height, hz = 30;
     int                audio_rate        = 48000;
     int                audio_channels    = 1;
     int                audio_frame_size;
     bool               stopped;
     int                pts;
+
+    storage_t          dec;
+    int                last_frame_id = -1000;
 
     AACENC_BufDesc     output_aac;
     AACENC_BufDesc     input_pcm;
@@ -183,7 +192,8 @@ struct iVideo {
     short             *pcm_buffer;
     int                pcm_buffer_len;
     int                pcm_buffer_sz;
-    i64                start_time; /// since iVideo needs to write a certain frame rate, we should wait for the first frame to arrive to set an origin
+    i64                start_time;
+    /// since iVideo needs to write a certain frame rate, we should wait for the first frame to arrive to set an origin
     /// swap system should come back (in streams)
 
     operator bool() {
@@ -191,6 +201,34 @@ struct iVideo {
     }
 
     register(iVideo);
+
+    void load(ion::path p) {
+        playback = p;
+        mp4 = MP4Read(p.cs());
+        video_track = MP4FindTrackId(mp4, 0, MP4_VIDEO_TRACK_TYPE, 0);
+        audio_track = MP4FindTrackId(mp4, 0, MP4_AUDIO_TRACK_TYPE, 0);
+
+        video_duration  = MP4GetTrackDuration (mp4, video_track);
+        video_timescale = MP4GetTrackTimeScale(mp4, video_track);
+        ///
+        audio_timescale = MP4GetTrackTimeScale(mp4, audio_track);
+
+        width  = MP4GetTrackVideoWidth (mp4, video_track);
+        height = MP4GetTrackVideoHeight(mp4, video_track);
+
+        /// verify duration mod timescale is integral
+        assert(video_duration % video_timescale == 0);
+
+        hz         = video_timescale;
+        stopped    = true;
+
+        /// we must load the first sample in before it knows the SPS info; lets verify with the mp4 data
+        /// its important to note that h264 can resize in mid stream with more SPS/PPS.  thats a cool feature
+        h264bsdInit(&dec, 1);
+
+        image temp = fetch_frame(0);
+
+    }
 
     void stop() {
         if (!stopped) {
@@ -265,10 +303,12 @@ struct iVideo {
     }
 
     ~iVideo() {
+        if (playback)
+            h264bsdShutdown(&dec);
         stop();
     }
 
-    void start(path &output) {
+    void start(ion::path &output) {
         assert(audio_channels == 1 || audio_channels == 2);
 
         buffer_aac_sz = 128000 / 8 / hz * audio_channels * 10; /// adequate size for encoder
@@ -321,6 +361,83 @@ struct iVideo {
 
         MP4SetTrackIntegerProperty(mp4, audio_track, "mdia.minf.stbl.stsd.*[0].channels", audio_channels);
     }
+
+    ion::image fetch_frame(int frame_id) {
+        int           cur_frame    = frame_id;
+        bool          found        = false;
+        u8           *sample_data  = null;
+        u32           sample_len   = 0;
+        bool          is_key_frame = false;
+        doubly<mx>    samples;
+
+        bool         sequential = frame_id == (last_frame_id + 1);
+        MP4Timestamp ts     = MP4ConvertToTrackTimestamp(mp4, video_track, cur_frame, hz);
+        MP4SampleId  sample = MP4GetSampleIdFromEditTime(mp4, video_track, ts, null, null);
+
+        while (MP4ReadSample(
+                mp4, video_track, sample,
+                &sample_data, &sample_len, null, null, null, &is_key_frame)) {
+            mx sample = memory::wrap(typeof(u8), sample_data, sz_t(sample_len));
+            samples->insert(0, sample);
+
+            if (is_key_frame || sequential) {
+                found = true;
+                break;
+            }
+            cur_frame--;
+
+            ts     = MP4ConvertToTrackTimestamp(mp4, video_track, frame_id, hz);
+            sample = MP4GetSampleIdFromEditTime(mp4, video_track, ts, null, null);
+            sample_data = null;
+            sample_len  = 0;
+        }
+
+        assert(found);
+
+        u32  pic_id    = cur_frame; /// these can probably be the same unit as our frame_id
+        bool pic_ready = false;
+        for (mx sample: samples) {
+            u32 total  = 0;
+            u8 *nalus = sample.origin<u8>();
+            u32 nsize = sample.count();
+
+            while (total < nsize) {
+                u32 bytes_read = 0;
+                u32 dec_result = h264bsdDecode(&dec, &nalus[total], nsize - total, pic_id, &bytes_read);
+
+                switch (dec_result) {
+                    case H264BSD_RDY:       // decoding finished, nothing special
+                        break;
+                    case H264BSD_PIC_RDY:   // decoding of a picture finished
+                        pic_ready = true;
+                        break;
+                    case H264BSD_HDRS_RDY:  // picture dimensions etc can be read (we read it from the first frame)
+                        break;
+                    case H264BSD_ERROR:
+                    case H264BSD_PARAM_SET_ERROR:
+                        assert(false);
+                        break;
+                }
+                total += bytes_read;
+            }
+
+            pic_id++;
+        }
+
+        assert(pic_ready);
+        assert(h264bsdPicWidth (&dec) * 16 == (u32)std::ceil(width  / 16.0) * 16);
+        assert(h264bsdPicHeight(&dec) * 16 == (u32)std::ceil(height / 16.0) * 16);
+
+        u32   is_idr = 0;
+        u32   num_mb = 0;
+        u32  *pic    = h264bsdNextOutputPictureRGBA(&dec, &pic_id, &is_idr, &num_mb);
+        assert(pic);
+
+        image im     = memory::wrap(typeof(rgba8), pic, width * height); /// wrap the memory, and lightly construct image
+        im.mem->shape = new ion::size { height, width }; /// todo: set this on the stack
+        last_frame_id = frame_id; /// only read backwards if we are going non-sequential, or its the first attempt
+        return im;
+    }
 };
 
 mx_implement(Video, mx);
@@ -331,6 +448,16 @@ Video::Video(int width, int height, int hz, int audio_rate, path output) : Video
     data->hz         = hz;
     data->audio_rate = audio_rate;
     data->start(output);
+}
+
+Video::Video(path file) : Video() {
+    data->load(file);
+}
+
+/// we will fetch all audio on load, along with thumbnails; we want to manage that here; params for such can be passed in
+
+ion::image Video::fetch_frame(int frame_id) {
+    return data->fetch_frame(frame_id);
 }
 
 int Video::write_frame(Frame &frame) {

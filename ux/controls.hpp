@@ -3,16 +3,38 @@
 
 namespace ion {
 
-///
 struct Button:Element {
     enums(Behavior, push,
          push, label, toggle, radio);
     
     struct props {
-        Button::Behavior behavior;
+        Button::Behavior    behavior;
+        bool                selected;
+        callback            change;
         type_register(props);
     };
+
     component(Button, Element, props);
+
+
+    void click() {
+        if (state->behavior == Button::Behavior::radio) {
+            array<node*> buttons = collect(node::data->group, false);
+            for (node *b: buttons) {
+                if (b.type() != typeof(Button))
+                    continue;
+                Button *button = (Button*)b;
+                button->state->selected = button == this;
+            }
+        } else if (state->behavior == Button::Behavior::toggle) {
+            state->selected = !state->selected;
+        }
+
+        if (state->change) {
+            event ev { this }; // set target
+            state->change(ev);
+        }
+    }
 
     node update() {
         return node::update();

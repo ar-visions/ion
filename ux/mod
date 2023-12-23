@@ -12,6 +12,6 @@ dep(ion:vk @Vulkan mx:async ion:regex ion:net ion:ssh ion:media
     skia:sksg     skia:skresources  skia:skottie  skia:skia
     skia:skshaper skia:skunicode)
 
-includes(${INSTALL_PREFIX}/../../extern/skia)
+includes(${EXTERN_DIR}/skia)
 includes(${INSTALL_PREFIX}/include/skia)
 includes(${EXTERN_DIR}/oniguruma/src)

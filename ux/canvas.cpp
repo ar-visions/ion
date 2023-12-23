@@ -1019,6 +1019,7 @@ struct ICanvas {
         SkPaint ps = SkPaint(top->ps);
         ///
         ps.setColor(sk_color(top->color));
+        ps.setAntiAlias(true);
         ///
         if (top->opacity != 1.0f)
             ps.setAlpha(float(ps.getAlpha()) * float(top->opacity));
