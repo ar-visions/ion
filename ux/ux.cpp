@@ -356,7 +356,8 @@ void Element::draw(Canvas& canvas) {
         rectd &bounds = c->data->bounds;
         canvas.translate(bounds.xy());
         canvas.opacity(effective_opacity());
-        canvas.clip(0, 0, bounds.w, bounds.h);
+        rectd clip_bounds = { 0, 0, bounds.w, bounds.h };
+        canvas.clip(clip_bounds);
         c->draw(canvas);
         canvas.restore();
     }

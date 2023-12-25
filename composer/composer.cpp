@@ -281,9 +281,11 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
         node render = instance->update(); /// needs a 'changed' arg
         if (render) {
             node &n = *(node*)instance;
-            if (render->children) {
+            if (render->children || render->type == typeof(map<node>) || render->type == typeof(array<node>)) {
                 /// each child is mounted
                 for (node *e: render->children) {
+                    /// check for null state
+                    if (!e->data->id && !e->data->type) continue;
                     str id = node_id(*e);
                     update(composer, instance, n->mounts[id], *e);
                 }
@@ -636,6 +638,7 @@ style style::init() {
                 s->reloaded = true; /// signal to composer user
                 s->mtx.unlock();
             };
+
             /// spawn watcher (this syncs once before returning)
             st->reloader = watch::spawn({"./style"}, {".css"}, {}, reload);
         }

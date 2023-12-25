@@ -21,7 +21,7 @@ struct Button:Element {
         if (state->behavior == Button::Behavior::radio) {
             array<node*> buttons = collect(node::data->group, false);
             for (node *b: buttons) {
-                if (b.type() != typeof(Button))
+                if (b->type() != typeof(Button))
                     continue;
                 Button *button = (Button*)b;
                 button->state->selected = button == this;

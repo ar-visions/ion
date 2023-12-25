@@ -497,6 +497,7 @@ struct node:mx {
         type_t                  type;       /// type given
         str                     id;         /// identifier 
         ax                      args;       /// arguments
+        str                     group;      /// group used for button behaviors
         array<str>              tags;       /// style tags
         array<node*>            children;   /// children elements (if provided in children { } pair<mx,mx> inherited data struct; sets key='children')
         node*                   instance;   /// node instance is 1:1 (allocated, then context is copied in place)
@@ -529,8 +530,8 @@ struct node:mx {
     array<node*> collect(str group_name, bool include_this) {
         node *dont_inc = include_this ? this : null;
         array<node*> res;
-        if (n->data->parent)
-            for (node *c: n->data->parent->data->children) {
+        if (data->parent)
+            for (node *c: data->parent->data->children) {
                 if (c->data->group == group_name && c != dont_inc)
                     res += c;
             }
@@ -576,6 +577,17 @@ struct node:mx {
         return memory::symbol(symbol(type->name));
     }
 
+    node(str id, array<str> tags, array<node> ch):node() {
+        node::data->id = id;
+        node::data->tags = tags;
+        node::data->children = ch;
+    }
+
+    node(str id, array<node> ch):node() {
+        node::data->id = id;
+        node::data->children = ch;
+    }
+
     node(array<node*> ch) : node() {
         data->children = ch; /// data must be set here
     }
@@ -612,10 +624,11 @@ struct node:mx {
     
     template <typename K, typename V>
     static node each(map<V> m, lambda<node(K &k, V &v)> fn) {
-        node res(typeof(map<node>), m.size);
+        node res(typeof(map<node>), m.len());
         if (res.data->children)
-        for (auto &[v,k]:m) {
-            node r = fn(k, v);
+        for (field<V> f:m) {
+            K key = f.key.grab();
+            node r = fn(key, f.value);
             if  (r) res.data->children += new node(r);
         }
         return res;
@@ -665,6 +678,8 @@ struct node:mx {
     C(memory*         mem) : B(mem), state(mx::data<D>()) { }\
     C(type_t ty, initial<arg>  props) : B(ty,        props), state(defaults<intern>()) { }\
     C(initial<arg>  props) :            B(typeof(C), props), state(defaults<intern>()) { }\
+    C(str id, array<str> tags, array<node> ch):B(id, tags, ch) { }\
+    C(nullptr_t) : C() { }\
     C(mx                o) : C(o.mem->grab())  { }\
     C()                    : C(mx::alloc<C>()) { }\
     intern    *operator->() { return  state; }\

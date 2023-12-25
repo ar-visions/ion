@@ -771,16 +771,9 @@ struct Element:node {
 
     Element(type_t type, initial<arg> args) : node(type, args), data(defaults<props>()) { }
 
-    Element(symbol id, array<node> ch):node() {
-        node::data->id = id;
-        node::data->children = ch;
-    }
+    Element(str id, array<node> ch):node(id, ch) { }
 
-    Element(symbol id, array<str> tags, array<node> ch):node() {
-        node::data->id = id;
-        node::data->tags = tags;
-        node::data->children = ch;
-    }
+    Element(str id, array<str> tags, array<node> ch):node(id, tags, ch) { }
 
     style *fetch_style() const { return  ((Element*)root())->data->root_style; }
 

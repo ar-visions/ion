@@ -467,4 +467,13 @@ int Video::write_frame(Frame &frame) {
 void Video::stop() {
     data->stop();
 }
+
+bool Video::is_recording() {
+    return !data->playback;
+}
+
+bool Video::is_playback() {
+    return data->playback;
+}
+
 }
