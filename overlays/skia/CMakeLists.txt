@@ -26,8 +26,7 @@ else()
         VERBATIM)
     
     file(GLOB LIB_FILES ${CMAKE_CURRENT_SOURCE_DIR}/out/${cfg_lower}/*.a)
-    list(REMOVE_ITEM LIB_FILES ${CMAKE_CURRENT_SOURCE_DIR}/out/${cfg_lower}/zlib.a)
-    list(REMOVE_ITEM LIB_FILES ${CMAKE_CURRENT_SOURCE_DIR}/out/${cfg_lower}/libz.a)
+    list(REMOVE_ITEM LIB_FILES ${CMAKE_CURRENT_SOURCE_DIR}/out/${cfg_lower}/libzlib.a)
     install(FILES ${LIB_FILES} DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
 endif()
 

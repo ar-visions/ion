@@ -10,7 +10,14 @@ struct Button:Element {
     struct props {
         Button::Behavior    behavior;
         bool                selected;
-        callback            change;
+        callback            on_change;
+        properties meta() {
+            return {
+                {"behavior",  behavior},
+                {"on-change", on_change},
+                {"selected",  selected}
+            };
+        }
         type_register(props);
     };
 
@@ -30,9 +37,11 @@ struct Button:Element {
             state->selected = !state->selected;
         }
 
-        if (state->change) {
-            event ev { this }; // set target
-            state->change(ev);
+        if (state->on_change) {
+            event ev { this };
+            // set target to this; the user can then lookup the component and its properties such as selected
+            // we prefer this to throwing new args around
+            state->on_change(ev);
         }
     }
 

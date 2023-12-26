@@ -140,11 +140,13 @@
             "platforms": ["none"]
         },
         {
-            "name":     "gsl",
-            "version":  "2.7",
-            "url":      "https://github.com/ampl/gsl",
-            "commit":   "47862078af4a204c4220f028656a19ddd3922144",
-            "platforms": ["lin", "mac"]
+            "name":     "kissfft",
+            "version":  "131.1.0",
+            "url":      "https://github.com/mborgerding/kissfft",
+            "commit":   "8f47a67",
+            "cmake": {
+                "args": ["-DKISSFFT_STATIC=1", "-DKISSFFT_TEST=0", "-DKISSFFT_TOOLS=0"]
+            }
         },
         {
             "name":     "minih264",

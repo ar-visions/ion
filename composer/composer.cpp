@@ -256,8 +256,7 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
                             arg_type = prop_type;
                         }
                         /// types should match
-                        assert(arg_type == prop_type);
-
+                        assert(arg_type == prop_type || arg_type->ref == prop_type);
                         if (prop_type->traits & traits::mx_obj) {
                             /// set by memory construction (cast conv_inst as mx which it must be)
                             assert(!conv_inst || (arg_type->traits & traits::mx_obj) ||

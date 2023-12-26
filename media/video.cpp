@@ -228,6 +228,8 @@ struct iVideo {
 
         image temp = fetch_frame(0);
 
+        //read_audio_stamps(audio_timescale);
+
     }
 
     void stop() {
@@ -361,6 +363,30 @@ struct iVideo {
 
         MP4SetTrackIntegerProperty(mp4, audio_track, "mdia.minf.stbl.stsd.*[0].channels", audio_channels);
     }
+
+    /// 1 second frames should be ideal
+    /*
+    void read_audio_stamps(int frame_size) {
+        int           cur_frame    = 0;
+        u8           *sample_data  = null;
+        u32           sample_len   = 0;
+        bool          is_key_frame = false;
+        doubly<mx>    samples;
+
+        MP4Timestamp ts     = MP4ConvertToTrackTimestamp(mp4, audio_track, cur_frame, audio_timescale);
+        MP4SampleId  sample = MP4GetSampleIdFromEditTime(mp4, audio_track, ts, null, null);
+
+        while (MP4ReadSample(
+                mp4, audio_track, sample,
+                &sample_data, &sample_len, null, null, null, &is_key_frame)) {
+            sample_data = null;
+            sample_len  = 0;
+            cur_frame++;
+            ts     = MP4ConvertToTrackTimestamp(mp4, audio_track, cur_frame, audio_timescale);
+            sample = MP4GetSampleIdFromEditTime(mp4, audio_track, ts, null, null);
+        }
+    }
+    */
 
     ion::image fetch_frame(int frame_id) {
         int           cur_frame    = frame_id;

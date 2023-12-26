@@ -577,15 +577,13 @@ struct node:mx {
         return memory::symbol(symbol(type->name));
     }
 
-    node(str id, array<str> tags, array<node> ch):node() {
+    node(str id, array<str> tags, array<node> ch):node(ch) {
         node::data->id = id;
         node::data->tags = tags;
-        node::data->children = ch;
     }
 
-    node(str id, array<node> ch):node() {
+    node(str id, array<node> ch):node(ch) {
         node::data->id = id;
-        node::data->children = ch;
     }
 
     node(array<node*> ch) : node() {
@@ -593,7 +591,7 @@ struct node:mx {
     }
 
     node(array<node> ch) : node() {
-        data->children = array<node*>(size(ch.len()), size(0)); /// data must be set here
+        data->children = array<node*>(size(ch.len()), size(0));
         for (auto &child:ch) {
             data->children += new node(child);
         }
@@ -625,7 +623,6 @@ struct node:mx {
     template <typename K, typename V>
     static node each(map<V> m, lambda<node(K &k, V &v)> fn) {
         node res(typeof(map<node>), m.len());
-        if (res.data->children)
         for (field<V> f:m) {
             K key = f.key.grab();
             node r = fn(key, f.value);
@@ -678,7 +675,6 @@ struct node:mx {
     C(memory*         mem) : B(mem), state(mx::data<D>()) { }\
     C(type_t ty, initial<arg>  props) : B(ty,        props), state(defaults<intern>()) { }\
     C(initial<arg>  props) :            B(typeof(C), props), state(defaults<intern>()) { }\
-    C(str id, array<str> tags, array<node> ch):B(id, tags, ch) { }\
     C(nullptr_t) : C() { }\
     C(mx                o) : C(o.mem->grab())  { }\
     C()                    : C(mx::alloc<C>()) { }\

@@ -773,8 +773,6 @@ struct Element:node {
 
     Element(str id, array<node> ch):node(id, ch) { }
 
-    Element(str id, array<str> tags, array<node> ch):node(id, tags, ch) { }
-
     style *fetch_style() const { return  ((Element*)root())->data->root_style; }
 
     void exec(lambda<void(node*)> fn);
