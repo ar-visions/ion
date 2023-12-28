@@ -526,6 +526,18 @@ struct node:mx {
         type_register(edata);
     };
 
+    template <typename T>
+    T *grab() {
+        node *n = data->parent;
+        while (n) {
+            if (n->mem->type == typeof(T)) {
+                return (T*)n;
+            }
+            n = n->data->parent;
+        }
+        return null;
+    }
+
     /// collect from a group -- lets just use a single depth here
     array<node*> collect(str group_name, bool include_this) {
         node *dont_inc = include_this ? this : null;

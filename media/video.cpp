@@ -1,6 +1,10 @@
 #define MP4V2_USE_STATIC_LIB
 #include <mp4v2/mp4v2.h>
 #include <fdk-aac/aacenc_lib.h>
+#include <fdk-aac/aacdecoder_lib.h>
+
+#include <kissfft/kiss_fft.h>
+#include <kissfft/kiss_fftr.h>
 
 #include <media/media.hpp>
 #include <media/h264.hpp>
@@ -228,7 +232,7 @@ struct iVideo {
 
         image temp = fetch_frame(0);
 
-        //read_audio_stamps(audio_timescale);
+        read_audio_stamps(audio_timescale);
 
     }
 
@@ -365,7 +369,7 @@ struct iVideo {
     }
 
     /// 1 second frames should be ideal
-    /*
+    
     void read_audio_stamps(int frame_size) {
         int           cur_frame    = 0;
         u8           *sample_data  = null;
@@ -375,18 +379,64 @@ struct iVideo {
 
         MP4Timestamp ts     = MP4ConvertToTrackTimestamp(mp4, audio_track, cur_frame, audio_timescale);
         MP4SampleId  sample = MP4GetSampleIdFromEditTime(mp4, audio_track, ts, null, null);
+        HANDLE_AACDECODER dec = aacDecoder_Open(TT_MP4_ADTS, 1);
+        assert(dec);
+
+        const size_t fft_size = 1024 * 2;
+        const size_t overlap  = 1024 * 1; /// cannot exceed 50%
+        kiss_fft_cfg cfg      = kiss_fft_alloc(fft_size, 0, NULL, NULL);
+        short        fft_window[fft_size];
+        kiss_fft_cpx f_in [fft_size];
+        kiss_fft_cpx f_out[fft_size];
+        size_t       fft_cur = 0;
+
+        memset(fft_window, 0, sizeof(fft_window));
+        fft_cur = overlap;
 
         while (MP4ReadSample(
                 mp4, audio_track, sample,
                 &sample_data, &sample_len, null, null, null, &is_key_frame)) {
+
+            /// i need to use libaac
+            u8* input[1]    = { sample_data };
+            u32 isz         = sample_len;
+            u32 isz_valid   = sample_len;
+            AAC_DECODER_ERROR  err = aacDecoder_Fill(dec, input, &isz, &isz_valid);
+            assert(err == AAC_DEC_OK);
+
+            // Decode the filled data
+            short output[8 * 1024]; // Adjust buffer size as needed
+            err = aacDecoder_DecodeFrame(dec, output, sizeof(output), 0);
+            assert(err == AAC_DEC_OK);
+
+            CStreamInfo *info = aacDecoder_GetStreamInfo(dec);
+            assert(info);
+            assert(info->numChannels == 1);
+            assert(fft_size % info->frameSize == 0);
+
+            //
+            memcpy(&fft_window[fft_cur], output, sizeof(short) * info->frameSize);
+            fft_cur += info->frameSize;
+
+            // todo: reduce
+            if (fft_cur == fft_size) {
+                for (int i = 0; i < fft_size; i++) {
+                    f_in[i].r = float(fft_window[i]);
+                    f_in[i].i = 0.0f;
+                }
+                kiss_fft(cfg, f_in, f_out);
+                memcpy(fft_window, &fft_window[fft_size - overlap], sizeof(short) * overlap);
+                fft_cur = overlap;
+            }
+
             sample_data = null;
             sample_len  = 0;
             cur_frame++;
             ts     = MP4ConvertToTrackTimestamp(mp4, audio_track, cur_frame, audio_timescale);
             sample = MP4GetSampleIdFromEditTime(mp4, audio_track, ts, null, null);
         }
+        free(cfg);
     }
-    */
 
     ion::image fetch_frame(int frame_id) {
         int           cur_frame    = frame_id;
@@ -480,7 +530,17 @@ Video::Video(path file) : Video() {
     data->load(file);
 }
 
-/// we will fetch all audio on load, along with thumbnails; we want to manage that here; params for such can be passed in
+i64 Video::duration() {
+    return data->video_duration;
+}
+
+i64 Video::timescale() {
+    return data->video_timescale;
+}
+
+i64 Video::audio_timescale() {
+    return data->audio_timescale;
+}
 
 ion::image Video::fetch_frame(int frame_id) {
     return data->fetch_frame(frame_id);

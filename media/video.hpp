@@ -12,6 +12,9 @@ struct Video:mx {
     void       stop();
     bool       is_recording();
     bool       is_playback();
+    i64        duration();
+    i64        timescale();
+    i64        audio_timescale();
 
     Video(int width, int height, int hz, int audio_sample_rate, path output);
     Video(path file);
