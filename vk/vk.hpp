@@ -432,7 +432,7 @@ struct Pipeline:mx {
     /// important to note that Device is not reloaded
     /// if you have 40 pipelines and 1 file changes associated to one of them, we are not rebuilding all 40, just 1.
     Pipeline(Device &device, Graphics graphics):Pipeline() { /// instead of a texture it needs flags for the resources to load
-        data->gmem           = graphics.grab(); /// just so we can hold onto the data; we must drop this in our dtr
+        data->gmem           = graphics.hold(); /// just so we can hold onto the data; we must drop this in our dtr
         data->gfx            = graphics.data;
         data->device         = device;
         data->name           = graphics->name;

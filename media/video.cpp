@@ -165,9 +165,12 @@ struct iVideo {
     HANDLE_AACENCODER  aac_encoder;
     h264               h264_encoder;
 
+    ion::image         spec;
+
     i64                audio_timescale;
     i64                video_timescale;
     i64                video_duration;
+    i64                video_frame_count;
 
     int                width, height, hz = 30;
     int                audio_rate        = 48000;
@@ -214,6 +217,7 @@ struct iVideo {
 
         video_duration  = MP4GetTrackDuration (mp4, video_track);
         video_timescale = MP4GetTrackTimeScale(mp4, video_track);
+        video_frame_count = MP4GetTrackNumberOfSamples(mp4, video_track);
         ///
         audio_timescale = MP4GetTrackTimeScale(mp4, audio_track);
 
@@ -232,7 +236,23 @@ struct iVideo {
 
         image temp = fetch_frame(0);
 
-        read_audio_stamps(audio_timescale);
+        spec       = get_audio_spectrum(2, 1, 128, 0.25,
+            array<rgbad> {
+                {0.0, 0.0, 0.0, 1.0},
+                {1.0, 0.0, 0.0, 1.0},
+                {0.0, 1.0, 0.0, 1.0},
+                {0.0, 0.0, 1.0, 1.0},
+                {1.0, 0.0, 1.0, 1.0},
+                {1.0, 1.0, 0.0, 1.0},
+                {0.0, 1.0, 1.0, 1.0},
+                {1.0, 1.0, 1.0, 1.0}
+            },
+            array<float> {
+                2000.0,
+                1000.0 /// this is magnitude needed to get max color; so we interpolate across the cropped spectrum
+            });
+
+        spec.save("spec.png");
 
     }
 
@@ -368,22 +388,22 @@ struct iVideo {
         MP4SetTrackIntegerProperty(mp4, audio_track, "mdia.minf.stbl.stsd.*[0].channels", audio_channels);
     }
 
-    /// 1 second frames should be ideal
     
-    void read_audio_stamps(int frame_size) {
-        int           cur_frame    = 0;
+    image get_audio_spectrum(
+            int frame_units, int frame_overlap, const int spectral_height, float crop, /// crop value of 0.25 means we are extracting 11khz on 48k
+            array<rgbad> colors, array<float> scales) { /// scales across the color range is a reasonable idea, so one can make use of frequencies often maxed out (by raising scale), and vice versa.
         u8           *sample_data  = null;
         u32           sample_len   = 0;
         bool          is_key_frame = false;
         doubly<mx>    samples;
-
-        MP4Timestamp ts     = MP4ConvertToTrackTimestamp(mp4, audio_track, cur_frame, audio_timescale);
-        MP4SampleId  sample = MP4GetSampleIdFromEditTime(mp4, audio_track, ts, null, null);
+        //MP4Timestamp ts     = MP4ConvertToTrackTimestamp(mp4, audio_track, 0, audio_timescale);
+        MP4SampleId  sample = 0;//MP4GetSampleIdFromEditTime(mp4, audio_track, ts, null, null);
         HANDLE_AACDECODER dec = aacDecoder_Open(TT_MP4_ADTS, 1);
         assert(dec);
+        assert(frame_overlap <= (frame_units / 2));
 
-        const size_t fft_size = 1024 * 2;
-        const size_t overlap  = 1024 * 1; /// cannot exceed 50%
+        const size_t fft_size = 1024 * frame_units; /// needs to be model attribute here (probably stream this data in; with this function adapting the decoding to pcm to a fft)
+        const size_t overlap  = 1024 * frame_overlap; /// cannot exceed 50%
         kiss_fft_cfg cfg      = kiss_fft_alloc(fft_size, 0, NULL, NULL);
         short        fft_window[fft_size];
         kiss_fft_cpx f_in [fft_size];
@@ -393,11 +413,17 @@ struct iVideo {
         memset(fft_window, 0, sizeof(fft_window));
         fft_cur = overlap;
 
-        while (MP4ReadSample(
-                mp4, audio_track, sample,
-                &sample_data, &sample_len, null, null, null, &is_key_frame)) {
+        u64 total_audio_samples = MP4GetTrackNumberOfSamples(mp4, audio_track);
 
-            /// i need to use libaac
+        int result_count = total_audio_samples; //(total_audio_samples - frame_units) / (frame_units - frame_overlap);
+
+        image res(size { spectral_height, result_count }, null);
+        num x_image = 0;
+
+        while (MP4ReadSample(
+                mp4, audio_track, ++sample, &sample_data, &sample_len,
+                null, null, null, &is_key_frame)) {
+
             u8* input[1]    = { sample_data };
             u32 isz         = sample_len;
             u32 isz_valid   = sample_len;
@@ -405,8 +431,8 @@ struct iVideo {
             assert(err == AAC_DEC_OK);
 
             // Decode the filled data
-            short output[8 * 1024]; // Adjust buffer size as needed
-            err = aacDecoder_DecodeFrame(dec, output, sizeof(output), 0);
+            short output[16 * 1024]; // Adjust buffer size as needed
+            err = aacDecoder_DecodeFrame(dec, output, sizeof(output) / sizeof(short), 0);
             assert(err == AAC_DEC_OK);
 
             CStreamInfo *info = aacDecoder_GetStreamInfo(dec);
@@ -425,17 +451,52 @@ struct iVideo {
                     f_in[i].i = 0.0f;
                 }
                 kiss_fft(cfg, f_in, f_out);
+
+                /// average the spectrum (must perform cropping here too)
+                for (int j = 0; j < spectral_height; j++) {
+                    int n_bucket = fft_size / 2 * crop / spectral_height; /// div 2 to crop the negative frequencies
+
+                    double r = 0.0;
+                    for (int i = j * n_bucket; i < (j + 1) * n_bucket; i++) {
+                        kiss_fft_cpx &o = f_out[i];
+                        r += sqrt(o.r * o.r + o.i * o.i);
+                    }
+                    r /= n_bucket;
+                    r = sqrt(r);
+
+                    float       fj = float(j) / (spectral_height - 1);
+                    float   indexf = fj * (scales.count() - 1);
+                    int     index0 = floor(indexf);
+                    int     index1 = indexf >= (scales.count() - 1) ? index0 : (index0 + 1);
+                    float   blend1 = indexf - index0;
+                    float   scale  = scales[index0] * (1.0 - blend1) + scales[index1] * blend1;
+                    float   fscale = math::clamp(r / scale, 0.0, 1.0);
+                    float c_indexf = fscale * (colors.count() - 1);
+                    int   c_index0 = floor(c_indexf);
+                    int   c_index1 = c_indexf >= (colors.count() - 1) ? c_index0 : (c_index0 + 1);
+                    float c_blend1 = c_indexf - c_index0;
+                    rgbad    color = colors[c_index0].mix(colors[c_index1], c_blend1);
+                    rgba8   &pixel = res[size { j, x_image }];
+                    pixel          = rgba8 {
+                        u8(std::round(color.r * 255.0)),
+                        u8(std::round(color.g * 255.0)),
+                        u8(std::round(color.b * 255.0)),
+                        u8(std::round(color.a * 255.0))
+                    };
+                }
+
                 memcpy(fft_window, &fft_window[fft_size - overlap], sizeof(short) * overlap);
                 fft_cur = overlap;
+                x_image++;
             }
 
+            free(sample_data);
             sample_data = null;
             sample_len  = 0;
-            cur_frame++;
-            ts     = MP4ConvertToTrackTimestamp(mp4, audio_track, cur_frame, audio_timescale);
-            sample = MP4GetSampleIdFromEditTime(mp4, audio_track, ts, null, null);
         }
         free(cfg);
+        assert(x_image == res.width());
+        return res;
     }
 
     ion::image fetch_frame(int frame_id) {
@@ -548,6 +609,14 @@ ion::image Video::fetch_frame(int frame_id) {
 
 int Video::write_frame(Frame &frame) {
     return data->write_frame(frame);
+}
+
+image Video::audio_spectrum() {
+    return data->spec;
+}
+
+i64 Video::frame_count() {
+    return data->video_frame_count;
 }
 
 void Video::stop() {

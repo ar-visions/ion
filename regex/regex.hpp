@@ -51,8 +51,8 @@ struct RegEx:mx {
         array<T> matches = exec(input);
         T result = input;
         lambda<T(T, T)> fn = (mx_replacement.type()->traits & traits::lambda) ?
-            mx_replacement.grab() : lambda<T(T, T)> {};
-        T s_replacement = !fn ? mx_replacement.grab() : lambda<T(T, T)> {};
+            mx_replacement.hold() : lambda<T(T, T)> {};
+        T s_replacement = !fn ? mx_replacement.hold() : lambda<T(T, T)> {};
         ///
         for (T& match : matches) {
             int pos = result.index_of(match);

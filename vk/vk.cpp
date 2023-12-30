@@ -1552,7 +1552,7 @@ void Pipeline::M::assemble_graphics(Pipeline::M *pipeline, gltf::Model &m, Graph
                 size_t pcount = 0;
                 size_t vlen = 0;
                 for (field<mx> f: prim->attributes) {
-                    str       prop_bind      = f.key.grab();
+                    str       prop_bind      = f.key.hold();
                     symbol    prop_sym       = symbol(prop_bind);
                     num       accessor_index = num(f.value);
                     Accessor &accessor       = m->accessors[accessor_index];
@@ -1696,7 +1696,7 @@ Pipeline::M::~M() {
 
 void Pipeline::M::createIndexBuffer(mx mx_indices) {
     assert(mx_indices.type() == typeof(u32));
-    array<uint32_t> indices = mx_indices.grab();
+    array<uint32_t> indices = mx_indices.hold();
     VkDeviceSize bufferSize = sizeof(uint32_t) * indices.len();
     VkBuffer stagingBuffer;
     VkDeviceMemory stagingBufferMemory;
@@ -2025,7 +2025,7 @@ void Device::M::drawFrame(array<Pipes>& a_pipes) {
     /// array pipes -> array pipelines -> pipeline
     for (Pipes &pipes: a_pipes) {
         for (Pipeline &pipeline: pipes->pipelines) {
-            memory *mem = pipeline.grab();
+            memory *mem = pipeline.hold();
             pipeline->uniform_update(mem); /// this user function may update textures in sync with the frame
             mem->drop();
             pipeline->updateDescriptorSets(); /// make sure textures are updated

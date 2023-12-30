@@ -50,14 +50,21 @@ struct node;
 
 struct style:mx {
     /// qualifier for style block
-    struct qualifier {
-        type_t    ty; /// its useful to look this up (which we cant by string)
-        str       type;
-        str       id;
-        str       state; /// member to perform operation on (boolean, if not specified)
-        str       oper;  /// if specified, use non-boolean operator
-        str       value;
-        type_register(qualifier);
+    struct Qualifier:mx {
+        struct M {
+            type_t    ty; /// its useful to look this up (which we cant by string)
+            str       type;
+            str       id;
+            str       state; /// member to perform operation on (boolean, if not specified)
+            str       oper;  /// if specified, use non-boolean operator
+            str       value;
+            mx        parent; /// top level is the > one:on-the-end { and parents are-here > not-there {
+            operator bool() {
+                return type || id || state;
+            }
+            register(M)
+        };
+        mx_basic(Qualifier)
     };
 
     ///
@@ -296,18 +303,13 @@ struct style:mx {
     ///
     struct block {
         block*             parent; /// pattern: reduce type rather than create pointer to same type in delegation
-        doubly<qualifier*> quals;  /// an array of qualifiers it > could > be > this:state, or > just > that [it picks the best score, moves up for a given node to match style in]
+        doubly<Qualifier>  quals;  /// an array of qualifiers it > could > be > this:state, or > just > that [it picks the best score, moves up for a given node to match style in]
         map<entry*>        entries;
         doubly<block*>     blocks;
         array<type_t>      types; // if !types then its all types.
 
         size_t score(node *n, bool score_state);
-
-        /// each qualifier is defined as it, and all of the blocked qualifiers below.
-        /// there are more optimal data structures to use for this matching routine
-        /// state > state2 would be a nifty one, no operation indicates bool, as-is current normal syntax
-        double match(node *from, bool match_state);
-
+        
         ///
         inline operator bool() { return quals || entries || blocks; }
     };
@@ -636,7 +638,7 @@ struct node:mx {
     static node each(map<V> m, lambda<node(K &k, V &v)> fn) {
         node res(typeof(map<node>), m.len());
         for (field<V> f:m) {
-            K key = f.key.grab();
+            K key = f.key.hold();
             node r = fn(key, f.value);
             if  (r) res.data->children += new node(r);
         }
@@ -688,7 +690,7 @@ struct node:mx {
     C(type_t ty, initial<arg>  props) : B(ty,        props), state(defaults<intern>()) { }\
     C(initial<arg>  props) :            B(typeof(C), props), state(defaults<intern>()) { }\
     C(nullptr_t) : C() { }\
-    C(mx                o) : C(o.mem->grab())  { }\
+    C(mx                o) : C(o.mem->hold())  { }\
     C()                    : C(mx::alloc<C>()) { }\
     intern    *operator->() { return  state; }\
     type_register(C);

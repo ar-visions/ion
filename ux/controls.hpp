@@ -23,7 +23,6 @@ struct Button:Element {
 
     component(Button, Element, props);
 
-
     void click() {
         if (state->behavior == Button::Behavior::radio) {
             array<node*> buttons = collect(node::data->group, false);
@@ -35,6 +34,7 @@ struct Button:Element {
             }
         } else if (state->behavior == Button::Behavior::toggle) {
             state->selected = !state->selected;
+            data->value = mx(state->selected);
         }
 
         if (state->on_change) {
@@ -222,7 +222,7 @@ struct list_view:node {
         }
         
         /// paint visible rows
-        array<mx> d_array(data.grab());
+        array<mx> d_array(data.hold());
         double  sy = std.scroll.data.y;
         int  limit = sy + fill.h() - (columns ? 2.0 : 0.0);
         for (int i = sy; i < math::min(limit, int(d_array.length())); i++) {

@@ -50,8 +50,8 @@ struct uri:mx {
         str post(size_t(1024));
         if (fields) {
             for (auto& [val, key] : fields) {
-                str s_key = key.grab();
-                str s_val = val.grab();
+                str s_key = key.hold();
+                str s_val = val.hold();
                 if (post)
                     post += "&";
                 post += str::format("{0}={1}", {uri::encode(s_key), uri::encode(s_val)});
@@ -154,7 +154,7 @@ struct uri:mx {
         if (sp.len() >= 3)
             ra.version  = sp[2];
         ///
-        return result.grab();
+        return result.hold();
     }
 
     ///

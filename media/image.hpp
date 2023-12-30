@@ -398,7 +398,7 @@ struct image:array<rgba8> {
 
     image &operator=(const image b) {
         mx::drop();
-        mx::mem = b.mem->grab();
+        mx::mem = b.mem->hold();
         array<rgba8>::data = b.array<rgba8>::data;
         return *this;
     }

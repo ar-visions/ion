@@ -62,7 +62,7 @@ DEFAULT_DEPS_PATH = os.path.normpath(
 
 def usage(deps_file_path = None):
   sys.stderr.write(
-    'Usage: run to grab dependencies, with optional platform support:\n')
+    'Usage: run to hold dependencies, with optional platform support:\n')
   sys.stderr.write('  %s %s' % (sys.executable, __file__))
   if deps_file_path:
     parsed_deps = parse_file_to_dict(deps_file_path)

@@ -548,7 +548,7 @@ message::message(sock &sc) : message() {
         //console.log("received headers:");
         //data->headers.print();
         read_content(sc);
-        str status = data->headers["Status"].grab();
+        str status = data->headers["Status"].hold();
         data->code = int(status.integer_value());
     }
 }
@@ -599,8 +599,8 @@ bool message::read_content(sock &sc) {
     str              te = "Transfer-Encoding";
     str              cl = "Content-Length";
     str              ce = "Content-Encoding";
-    str        encoding =     data->headers->count(te) ? str(data->headers[ce].grab()) : str();
-    int            clen = int(data->headers->count(cl) ? str(data->headers[cl].grab()).integer_value() : -1);
+    str        encoding =     data->headers->count(te) ? str(data->headers[ce].hold()) : str();
+    int            clen = int(data->headers->count(cl) ? str(data->headers[cl].hold()).integer_value() : -1);
     bool        chunked = encoding && data->headers[te] == "chunked";
     num     content_len = clen;
     num            rlen = 0;
@@ -660,10 +660,10 @@ bool message::read_content(sock &sc) {
     }
     ///
     mx    rcv = error ? mx() : mx(v_data);
-    str ctype = data->headers->count("Content-Type") ? str(data->headers["Content-Type"].grab()) : str("");
+    str ctype = data->headers->count("Content-Type") ? str(data->headers["Content-Type"].hold()) : str("");
 
     ///
-    if (ctype.split(";").count("application/json")) {
+    if (ctype.split(";").count_of("application/json")) {
         if (encoding) {
             if (encoding == "gzip") {
                 rcv = ion::inflate(rcv);
@@ -831,7 +831,7 @@ str message::text() { return data->content.to_string(); }
 
 /// structure cookies into usable format
 map<str> message::cookies() {
-    str  dec = uri::decode(data->headers["Set-Cookie"].grab());
+    str  dec = uri::decode(data->headers["Set-Cookie"].hold());
     str  all = dec.split(",")[0];
     auto sep = all.split(";");
     auto res = map<str>();

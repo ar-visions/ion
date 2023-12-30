@@ -525,17 +525,17 @@ void VideoStream::mounted() {
 
         /// take the Client and any negotiated uri channel into account
         state->startStream = [state](Client client) {
-            /// this is a generic mx call, we grab the memory
-            mx   istream = state->stream_select(client).grab();
+            /// this is a generic mx call, we hold the memory
+            mx   istream = state->stream_select(client).hold();
             if (istream.type() == typeof(null_t))
                 return;
 
             Stream stream;
             type_t type = istream.type();
             if (type == typeof(Stream))
-                stream = istream.grab();
+                stream = istream.hold();
             else if (type == typeof(App)) {
-                stream = app_stream(istream.grab());
+                stream = app_stream(istream.hold());
             }
 
             client->stream = stream.mem; // simply weak reference
@@ -553,7 +553,7 @@ void VideoStream::mounted() {
                 // this needs to go only to the clients with this stream attached
                 // makes sense to go have stream -> clients
                 for(field<Client> &id_client: state->clients) {
-                    str id         = id_client.key.grab();
+                    str id         = id_client.key.hold();
                     Client &client = id_client.value;
                     auto optTrackData = getTrackData(client);
                     if (client->state == Client::State::Ready && optTrackData.has_value()) {
@@ -649,10 +649,10 @@ void VideoStream::mounted() {
 		state->wsOnMessage = [state](var message, Configuration config, shared_ptr<WebSocket> ws) {
 			mx *it = message.get("id");
 			if (!it) return;
-			str id = it->grab();
+			str id = it->hold();
 			it = message.get("type");
 			if (!it) return;
-			str type = it->grab();
+			str type = it->hold();
 
 			if (type == "request") {
 				state->clients[id] = state->createPeerConnection(config, make_weak_ptr(ws), id);

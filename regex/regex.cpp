@@ -107,12 +107,12 @@ void RegEx::set_cursor(num from, num to) {
     assert(m);
 
     if (m->type == typeof(str)) {
-        str input = m->grab();
+        str input = m->hold();
         data->last_index = from;
         data->bytes_left = to + (num)input.len() - from;
         assert(data->bytes_left >= 0);
     } else if (m->type == typeof(utf16)) {
-        utf16 input = m->grab();
+        utf16 input = m->hold();
         data->last_index = from;
         data->bytes_left = to + input.len() - from;
         assert(data->bytes_left >= 0);
@@ -125,7 +125,7 @@ array<indexed<utf16>> RegEx::exec(utf16 input) {
         ::drop(data->last_mem);
         data->last_index = 0;
         data->bytes_left = 0;
-        data->last_mem = input.grab();
+        data->last_mem = input.hold();
     }
     for (size_t i = 0; i < data->regex_count; i++) {
         array<indexed<utf16>> result;

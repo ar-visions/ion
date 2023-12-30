@@ -157,6 +157,7 @@ namespace graphics {
 
 enums(nil, none, none);
 
+/// todo: needs ability to set a middle in coord/region
 enums(xalign, left,
      left, middle, right, width);
     
@@ -173,10 +174,13 @@ enums(filter, none,
 /// alignment doesnt use the full enumerate set in xalign/yalign because its use-case is inside of the scope of that
 struct alignment {
     real x, y;
+    bool is_default = false;
 
-    alignment(real x = 0, real y = 0) : x(x), y(y) { }
+    alignment() { is_default = true; }
 
-    alignment(str s) {
+    alignment(real x, real y) : x(x), y(y), is_default(false) { }
+
+    alignment(str s) : is_default(false) {
         array<str> a = s.split();
         str s0 = a[0];
         str s1 = a.len() > 1 ? a[1] : a[0];
@@ -187,7 +191,7 @@ struct alignment {
             xalign xa { s0 };
             switch (xa.value) {
                 case xalign::left:   x = 0.0; break;
-                case xalign::middle: x = 0.5; break;
+                case xalign::middle: x = 0.5; break; /// todo: needs ability to set a middle in coord/region
                 case xalign::right:  x = 1.0; break;
                 default: assert(false);       break;
             }
@@ -199,7 +203,7 @@ struct alignment {
             yalign ya { s1 };
             switch (ya.value) {
                 case yalign::top:    y = 0.0; break;
-                case yalign::middle: y = 0.5; break;
+                case yalign::middle: y = 0.5; break; /// todo: needs ability to set a middle in coord/region
                 case yalign::bottom: y = 1.0; break;
                 default: assert(false);       break;
             }
@@ -221,55 +225,61 @@ struct coord {
     vec2d       offset;
     xalign      x_type;
     yalign      y_type;
-    bool        x_rel;
-    bool        y_rel;
+    bool        x_rel = false; // relative to peer, this is not the standard relative in terms of width or height as they are relative to their own origin
+    bool        y_rel = false;
+    bool        x_per = false;
+    bool        y_per = false;
 
-    coord(alignment &al, vec2d &offset, xalign &xt, yalign &yt, bool &x_rel, bool &y_rel) :
+    coord(alignment &al, vec2d &offset, xalign &xt, yalign &yt, bool &x_rel, bool &y_rel, bool &x_per, bool &y_per) :
         align(al), offset(offset), x_type(xt), y_type(yt), x_rel(x_rel), y_rel(y_rel) { }
 
     coord(str s) {
         array<str> sp = s.split();
-        str       &sx = sp[0];
-        str       &sy = sp[1];
-        assert(sp.len() == 2);
+            str       &sx = sp[0];
+            str       &sy = sp[1];
+            assert(sp.len() == 2);
 
-        x_type = str(sx[0]);
-        y_type = str(sy[0]);
+            x_type = str(sx[0]);
+            y_type = str(sy[0]);
+            str sx_offset = &sx[1];
+            str sy_offset = &sy[1];
 
-        str sx_offset = &sx[1];
-        str sy_offset = &sy[1];
-
-        x_rel = false;
-        y_rel = false;
-        
-        if (sx_offset)
-            if (sx_offset[sx_offset.len() - 1] == '+') {
+            if (sx_offset[sx_offset.len() - 1] == '%') {
                 sx_offset = sx_offset.mid(0, sx_offset.len() - 1);
-                x_rel = true;
+                x_per = true;
             }
-        if (sy_offset)
-            if (sy_offset[sy_offset.len() - 1] == '+') {
+            if (sy_offset[sy_offset.len() - 1] == '%') {
                 sy_offset = sy_offset.mid(0, sy_offset.len() - 1);
-                y_rel = true;
+                y_per = true;
+            }
+            if (sx_offset)
+                if (sx_offset[sx_offset.len() - 1] == '+') {
+                    sx_offset = sx_offset.mid(0, sx_offset.len() - 1);
+                    x_rel = true;
+                }
+            if (sy_offset)
+                if (sy_offset[sy_offset.len() - 1] == '+') {
+                    sy_offset = sy_offset.mid(0, sy_offset.len() - 1);
+                    y_rel = true;
+                }
+
+            offset = { sx_offset.real_value<real>(), sy_offset.real_value<real>() };
+            
+            switch (x_type.value) {
+                case xalign::left:   align.x = 0.0; break;
+                case xalign::middle: align.x = 0.5; break;
+                case xalign::right:  align.x = 1.0; break;
+                case xalign::width:  align.x = 0.0; break;
+                default: break;
             }
 
-        offset = { sx_offset.real_value<real>(), sy_offset.real_value<real>() };
-        
-        switch (x_type.value) {
-            case xalign::left:   align.x = 0.0; break;
-            case xalign::middle: align.x = 0.5; break;
-            case xalign::right:  align.x = 1.0; break;
-            case xalign::width:  align.x = 0.0; break;
-            default: break;
-        }
-
-        switch (y_type.value) {
-            case yalign::top:    align.y = 0.0; break;
-            case yalign::middle: align.y = 0.5; break;
-            case yalign::bottom: align.y = 1.0; break;
-            case yalign::height: align.y = 0.0; break;
-            default: break;
-        }
+            switch (y_type.value) {
+                case yalign::top:    align.y = 0.0; break;
+                case yalign::middle: align.y = 0.5; break;
+                case yalign::bottom: align.y = 1.0; break;
+                case yalign::height: align.y = 0.0; break;
+                default: break;
+            }
     }
 
     coord mix(coord &b, double a) {
@@ -279,18 +289,30 @@ struct coord {
         yalign      y_type = b.y_type;
         bool        x_rel  = b.x_rel;
         bool        y_rel  = b.y_rel;
+        bool        x_per  = b.x_per;
+        bool        y_per  = b.y_per;
         return coord {
-            align, offset, x_type, y_type, x_rel, y_rel
+            align, offset, x_type, y_type, x_rel, y_rel, x_per, y_per
         };
     }
 
     vec2d plot(rectd &rect, vec2d &rel) {
-        double ws = align.x; //(x_type.is_percent() ? (align.x * rect.w) : align.x;
-        double hs = align.y; //(y_type.is_percent() ? (align.y * rect.h) : align.y;
-        return {
-            rect.x + rect.w * ws + offset.x,
-            rect.y + rect.h * hs + offset.y
-        };
+        double x;
+        double y;
+        double ox = x_per ? (offset.x / 100.0) * rect.w : offset.x;
+        double oy = y_per ? (offset.y / 100.0) * rect.h : offset.y;
+
+        if (x_type.value == xalign::width)
+            x = rel.x + ox;
+        else
+            x = rect.x + rect.w * align.x + ox;
+        
+        if (y_type.value == yalign::height)
+            y = rel.y + oy;
+        else
+            y = rect.y + rect.h * align.y + oy;
+
+        return { x, y };
     }
 
     coord(cstr cs) : coord(str(cs)) { }
@@ -302,6 +324,7 @@ struct coord {
 struct region {
     coord tl = (cstr)"l0 t0";
     coord br = (cstr)"r0 b0";
+    double per = -1;
     bool set = false;
 
     region() { }
@@ -310,12 +333,28 @@ struct region {
 
     region(str s) {
         array<str> a = s.split();
-        assert(a.length() == 4);
-        str s0  = a[0] + " " + a[1];
-        str s1  = a[2] + " " + a[3];
-        tl      = s0;
-        br      = s1;
-        set     = true;
+        if (a.length() == 4) {
+            str s0  = a[0] + " " + a[1];
+            str s1  = a[2] + " " + a[3];
+            tl      = s0;
+            br      = s1;
+        } else {
+            assert(a.length() == 1);
+            /// convert to m-H% mH%
+            str a0 = a[0];
+            str suf = "";
+            if (a0[a0.len() - 1] == '%') {
+                a0  = a0.mid(0, a0.len() - 1);
+                suf = "%";
+            }
+            real sv = a0.real_value<real>();
+            str h   = str(sv / 2);
+            str s0  = str("m-") + h + suf + " m-" + h + suf;
+            str s1  = str("m")  + h + suf + " m"  + h + suf;
+            tl      = s0;
+            br      = s1;
+        }
+        set = true;
     }
 
     region(cstr s):region(str(s)) { }
@@ -323,8 +362,10 @@ struct region {
     operator bool() { return set; }
     
     rectd relative_rect(rectd &win) {
-        vec2d rel = win.xy();
-        rectd r { tl.plot(win, rel), br.plot(win, rel) };
+        vec2d rel  = win.xy();
+        vec2d v_tl = tl.plot(win, rel);
+        vec2d v_br = br.plot(win, v_tl);
+        rectd r { v_tl, v_br };
         r.x -= win.x;
         r.y -= win.y;
         return r;
@@ -603,9 +644,11 @@ struct Element:node {
         bool                    hover;
         bool                    active;
         bool                    focus;
+        mx                      value;
         int                     tab_index;
         str                     group; /// n-depth group binding; node will give you a return of all Elements with a group
         vec2d                   cursor;
+        bool                    test1;
 
         /// if we consider events handled contextually and by many users, it makes sense to have dispatch
         struct events {
@@ -690,6 +733,8 @@ struct Element:node {
 
                 prop { "area",           area },
 
+                prop { "test1",          test1 },
+
                 prop { "fill-area",      drawings[operation::fill]   .area    },
                 prop { "image-area",     drawings[operation::image]  .area    },
                 prop { "outline-area",   drawings[operation::outline].area    },
@@ -761,6 +806,7 @@ struct Element:node {
     virtual void up();
     virtual void draw_text(Canvas& canvas, rectd& rect);
     virtual void draw(Canvas& canvas);
+    virtual void update_bounds(Canvas &canvas);
     virtual vec2d child_offset(Element &child);
 
     vec2d offset();

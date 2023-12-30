@@ -77,13 +77,16 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
             instance = e.new_instance();
             str   id = node_id(e); /// needed for style computation of available entries in the style blocks
             (*instance)->parent = parent;
-            (*instance)->id     = id.grab();
+            (*instance)->id     = id.hold();
             (*instance)->composer = composer;
             
             /// compute available properties for this Element given its type, placement, and props styled 
         }
 
         if (style_reload || is_new) {
+            if (instance->data->id == "play-pause") {
+                int test = 0;
+            }
             (*instance)->style_avail = composer->style->compute(instance);
         }
 
@@ -243,7 +246,7 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
                             /// general to_string conversion (memory of char)
                             assert(arg_type->functions->to_string);
                             memory *m_str = arg_type->functions->to_string(arg_src);
-                            conv_inst = (u8*)new str(m_str); /// no grab here
+                            conv_inst = (u8*)new str(m_str); /// no hold here
                             arg_src   = (u8*)conv_inst;
                             arg_type  = typeof(str);
                         }
@@ -297,7 +300,7 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
         /// it can know if a style is different but i dont see major value here
         if (is_new) {
             if (instance->data->ref) {
-                instance->data->ref(mx(instance->mem->grab()));
+                instance->data->ref(mx(instance->mem->hold()));
             }
             instance->mounted();
         }
@@ -347,7 +350,7 @@ bool scan_to(cstr &cursor, array<char> chars) {
     return false;
 }
 
-doubly<style::qualifier*> parse_qualifiers(style::block &bl, cstr *p) {
+doubly<style::Qualifier> parse_qualifiers(style::block &bl, cstr *p) {
     str   qstr;
     cstr start = *p;
     cstr end   = null;
@@ -371,128 +374,77 @@ doubly<style::qualifier*> parse_qualifiers(style::block &bl, cstr *p) {
     
     ///
     auto  quals = qstr.split(",");
-    doubly<style::qualifier*> result;
+    doubly<style::Qualifier> result;
 
     ///
     for (str &qs:quals) {
-        str  q = qs.trim();
-        if (!q) continue;
-        style::qualifier *v = new style::qualifier();
-        result->push(v);
+        str  qq = qs.trim();
+        if (!qq) continue;
+        style::Qualifier vv = style::Qualifier(); /// push new qualifier
+        result->push(vv);
 
-        num idot = q.index_of(".");
-        num icol = q.index_of(":");
-        str tail;
-        ///
-        if (idot >= 0) {
-            array<str> sp = q.split(".");
-            v->type   = sp[0];
-            v->id     = sp[1];
-            if (icol >= 0)
-                tail  = q.mid(icol + 1).trim();
-        } else {
-            if (icol  >= 0) {
-                v->type = q.mid(0, icol);
-                tail   = q.mid(icol + 1).trim();
-            } else
-                v->type = q;
+        /// we need to scan by >
+
+        style::Qualifier v = vv;
+        array<str> parent_to_child = qq.split("/"); /// we choose not to use > because it interferes with ops
+        style::Qualifier *processed = null;
+
+        if (parent_to_child.len() > 1) {
+            int test = 0;
         }
-        if (v->type) {
-            v->ty = types::lookup(v->type);
-            if (bl.types.index_of(v->ty) == -1)
-                bl.types += v->ty;
-        }
-        array<str> ops {"!=",">=","<=",">","<","="};
-        if (tail) {
-            // check for ops
-            bool is_op = false;
-            for (str &op:ops) {
-                if (tail.index_of(op.cs()) >= 0) {
-                    is_op   = true;
-                    auto sp = tail.split(op);
-                    v->state = sp[0].trim();
-                    v->oper  = op;
-                    v->value = tail.mid(sp[0].len() + op.len()).trim();
-                    break;
+        /// iterate through reverse
+        for (int i = parent_to_child.len() - 1; i >= 0; i--) {
+            str q = parent_to_child[i].trim();
+            if (processed) {
+                v->parent = style::Qualifier();
+                v = v->parent.hold(); /// dont need to cast this
+            }
+            num idot = q.index_of(".");
+            num icol = q.index_of(":");
+            str tail;
+            ///
+            if (idot >= 0) {
+                array<str> sp = q.split(".");
+                v->type   = sp[0];
+                v->id     = sp[1].split(":")[0];
+                if (icol >= 0)
+                    tail  = q.mid(icol + 1).trim(); /// likely fine to use the [1] component of the split
+            } else {
+                if (icol  >= 0) {
+                    v->type = q.mid(0, icol);
+                    tail   = q.mid(icol + 1).trim();
+                } else
+                    v->type = q;
+            }
+            if (v->type) {
+                v->ty = types::lookup(v->type);
+                if (bl.types.index_of(v->ty) == -1) {
+                    assert(v->ty); /// type must exist
+                    bl.types += v->ty;
                 }
             }
-            if (!is_op)
-                v->state = tail;
+            array<str> ops {"!=",">=","<=",">","<","="};
+            if (tail) {
+                // check for ops
+                bool is_op = false;
+                for (str &op:ops) {
+                    if (tail.index_of(op.cs()) >= 0) {
+                        is_op   = true;
+                        auto sp = tail.split(op);
+                        v->state = sp[0].trim();
+                        v->oper  = op;
+                        v->value = tail.mid(sp[0].len() + op.len()).trim();
+                        break;
+                    }
+                }
+                if (!is_op)
+                    v->state = tail;
+            }
+            processed = &v;
         }
     }
     *p = end;
     return result;
-}
-
-size_t style::block::score(node *pn, bool score_state) {
-    node &n = *pn;
-    double best_sc = 0;
-    node::edata *edata = ((node*)pn)->data;
-    for (qualifier *q:quals) {
-        qualifier &qd = *q;
-        bool    id_match  = qd.id    &&  qd.id == n->id;
-        bool   id_reject  = qd.id    && !id_match;
-        bool  type_match  = qd.type  &&  strcmp((symbol)qd.type.cs(), (symbol)n.mem->type->name) == 0; /// class names are actual type names
-        bool type_reject  = qd.type  && !type_match;
-        bool state_match  = score_state && qd.state;
-
-        /// now we are looking at all enumerable meta data in property_find
-        /// this was just a base meta check until node became the basic object
-        /// Element data contains things like capture, focus, etc (second level)
-        if (state_match) {
-            prop* member = null;
-            assert(qd.state.len() > 0);
-            u8*   addr   = property_find(pn->mem->origin, pn->mem->type, qd.state, member);
-            if   (addr) state_match = member->type->functions->boolean(null, addr);
-        }
-
-        bool state_reject = score_state && qd.state && !state_match;
-        if (!id_reject && !type_reject && !state_reject) {
-            double sc = size_t(   id_match) << 1 |
-                        size_t( type_match) << 0 |
-                        size_t(state_match) << 2;
-            best_sc = math::max(sc, best_sc);
-        }
-    }
-    return best_sc;
-};
-
-/// each qualifier is defined as it, and all of the blocked qualifiers below.
-/// there are more optimal data structures to use for this matching routine
-/// state > state2 would be a nifty one, no operation indicates bool, as-is current normal syntax
-double style::block::match(node *from, bool match_state) {
-    block          *bl = this;
-    double total_score = 0;
-    int            div = 0;
-    node            *e = from;
-    ///
-    while (bl && e) {
-        bool   is_root = !bl->parent;
-        double score   = 0;
-        ///
-        while (e) { ///
-            auto sc = bl->score(e, match_state);
-            e       = (node*)e->node::data->parent;
-            if (sc == 0 && is_root) {
-                score = 0;
-                break;
-            } else if (sc > 0) {
-                score += double(sc) / ++div;
-                break;
-            }
-        }
-        total_score += score;
-        ///
-        if (score > 0) {
-            /// proceed...
-            bl = bl->parent;
-        } else {
-            /// style not matched
-            bl = null;
-            total_score = 0;
-        }
-    }
-    return total_score;
 }
 
 /// compute available entries for props on a Element
@@ -509,8 +461,11 @@ style::style_map style::impl::compute(node *n) {
         ///
         array<entry *> all(32);
         for (prop &p: *(doubly<prop>*)data->meta) { /// the blocks can contain a map of types with entries associated, with a * key for all
+            if (*p.s_key == "fill-color") {
+                int test = 0;
+            }
             if (applicable(n, &p, all)) {
-                str   s_name  = p.key->grab(); /// it will free if you dont grab it
+                str   s_name  = p.key->hold(); /// it will free if you dont hold it
                 avail[s_name] = all;
                 all = array<entry *>(32);
             }
@@ -548,6 +503,10 @@ void style::impl::load(str code) {
             ws(sc);
             console.test(*sc == '.' || isalpha(*sc), "expected Type[.id], or .id", {});
             bl->quals = parse_qualifiers(*bl, &sc);
+            if (bl->quals[0]->state == "test1") {
+                int test = 0;
+                test++;
+            }
             ws(++sc);
             ///
             while (*sc && *sc != '}') {
@@ -646,39 +605,28 @@ style style::init() {
     return st;
 }
 
-style::entry *style::impl::best_match(node *n, prop *member, array<style::entry*> &entries) {
-    array<style::block*> &blocks = members[*member->s_key]; /// instance function when loading and updating style, managed map of [style::block*]
-    style::entry *match = null; /// key is always a symbol, and maps are keyed by symbol
-    real     best_score = 0;
-
-    /// should narrow down by type used in the various blocks by referring to the qualifier
-    /// find top style pair for this member
-    type_t type = n->mem->type;
-    for (style::entry *e: entries) {
-        block *bl = e->bl;
-        real score = bl->match(n, true); /// fix at tm
-        str &prop = *member->s_key;
-        if (score > 0 && score >= best_score) { /// Edit:focus is eval'd as false?
-            match = bl->entries[prop];
-            assert(match);
-            best_score = score;
-        }
-    }
-    return match;
-}
-
 /// todo: move functions into itype pattern
 bool style::impl::applicable(node *n, prop *member, array<style::entry*> &result) {
     array<style::block*> &blocks = members[*member->s_key]; /// members must be 'sample' on load, and retrieving it should return a block
     type_t type = n->mem->type;
     bool ret = false;
 
+    if (n->data->id == "play-pause" && *member->s_key == "fill-color") { /// annotate should have test1 apply, because it should be a style block
+        int test = 0;
+    }
     for (style::block *block:blocks) {
+        style::Qualifier qual = block->quals[0];
         if (!block->types || block->types.index_of(type) >= 0) {
             auto f = block->entries->lookup(*member->s_key); /// VideoView stored, and then retrieved from members map
-            if (f && block->match(n, false) > 0) {
-                result += f->value;
-                ret = true;
+            if (block->quals[0]->state == "hover") {
+                int test = 0;
+            }
+            if (f) {
+                int test = 0;
+                if (block->score(n, false) > 0) {
+                    result += f->value;
+                    ret = true;
+                }
             }
         }
     }

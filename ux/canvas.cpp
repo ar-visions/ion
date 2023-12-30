@@ -818,11 +818,18 @@ struct ICanvas {
         /// now its just of matter of scaling the little guy to fit in the box.
         real scx = rect.w / isz.x;
         real scy = rect.h / isz.y;
-        real sc  = (scy > scx) ? scx : scy;
         
-        /// no enums were harmed during the making of this function
-        pos.x = mix(rect.x, rect.x + rect.w - isz.x * sc, align.x);
-        pos.y = mix(rect.y, rect.y + rect.h - isz.y * sc, align.y);
+        if (!align.is_default) {
+            scx   = scy = (scy > scx) ? scx : scy;
+            /// no enums were harmed during the making of this function
+            pos.x = mix(rect.x, rect.x + rect.w - isz.x * scx, align.x);
+            pos.y = mix(rect.y, rect.y + rect.h - isz.y * scy, align.y);
+            
+        } else {
+            /// if alignment is default state, scale directly by bounds w/h, position at bounds x/y
+            pos.x = rect.x;
+            pos.y = rect.y;
+        }
         
         sk_canvas->save();
         sk_canvas->translate(pos.x + offset.x, pos.y + offset.y);
@@ -830,7 +837,7 @@ struct ICanvas {
         SkCubicResampler cubicResampler { 1.0f/3, 1.0f/3 };
         SkSamplingOptions samplingOptions(cubicResampler);
 
-        sk_canvas->scale(sc, sc);
+        sk_canvas->scale(scx, scy);
         SkImage *img = im->get();
         sk_canvas->drawImage(img, SkScalar(0), SkScalar(0), samplingOptions);
         sk_canvas->restore();

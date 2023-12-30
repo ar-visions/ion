@@ -22,10 +22,10 @@ yuv420::yuv420(image img) :
 }
 
 /// load an image into 32bit rgba format
-image::image(ion::size sz, rgba8 *px, int scanline) : array() {
+image::image(ion::size sz, rgba8 *px, int scanline) : array() { // scanline not stored atm; if we make use of this we need to store it and use it
     mem->shape  = new ion::size(sz);
-    mem->origin = px;
-    data        = px;
+    mem->origin = px ? px : (rgba8*)calloc(sizeof(rgba8), sz.area());
+    data        = (rgba8*)mem->origin;
     assert(scanline == 0 || scanline == sz[1]);
 }
 

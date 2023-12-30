@@ -87,11 +87,15 @@ static void mouse_move_callback(mx &user, double x, double y) {
 
     for (Element* n: app->hover)
         n->Element::data->hover = false;
+    printf("play-pause hover = false\n");
     
     app->hover = app.select_at(app->cursor, cd->buttons[0]);
 
     Element *last = null;
     for (Element* n: app->hover) {
+        if (n->node::data->id == "play-pause") {
+            printf("play-pause hover = true\n");
+        }
         n->Element::data->hover  = true;
         last = n;
         if (last->data->selectable || last->data->editable) {
@@ -130,12 +134,6 @@ static void mouse_button_callback(mx &user, int button, int state, int mods) {
         app->active = app.select_at(app->cursor, false);
     else
         app->active = {};
-
-    int len = app->active.len();
-    printf("len of active = %d\n", len);
-    if (len == 4) {
-        app->active = app.select_at(app->cursor, false);
-    }
 
     Element* last = null;
     for (Element* n: app->active) {
@@ -206,14 +204,14 @@ void App::shell_server(uri bind) {
     async([bind, data=this->data](runtime *rt, int i) -> mx {
         SSHService ssh;
         logger::service = [p=&ssh](mx msg) -> void {
-            p->send_message(null, msg.grab());
+            p->send_message(null, msg.hold());
         };
         data->services = Services({}, [&](Services &app) {
             return array<node> {
                 SSHService {
                     { "id",   "ssh" },
                     { "bind",  bind },
-                    { "ref",     lambda<void(mx)>           ([&](mx obj)                     { ssh = obj.grab(); })},
+                    { "ref",     lambda<void(mx)>           ([&](mx obj)                     { ssh = obj.hold(); })},
                     { "on-auth", lambda<bool(str, str, str)>([&](str id, str user, str pass) { return user == "admin" && pass == "admin"; })},
                     { "on-peer", lambda<void(SSHPeer)>      ([&](SSHPeer peer)               { console.log("peer connected: {0}", { peer->id }); })},
                     { "on-recv", lambda<void(SSHPeer, str)> ([&](SSHPeer peer, str msg) {
@@ -295,7 +293,10 @@ int App::run() {
                 (real)canvas->get_virtual_height()
             };
             auto &bounds = eroot->data->bounds;
+            eroot->update_bounds(*canvas);
+            canvas->save();
             eroot->draw(*canvas);
+            canvas->restore();
         }
         canvas->flush();
 

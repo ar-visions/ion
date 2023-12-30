@@ -17,7 +17,7 @@ int main(int argc, char **argv) {
                 { "id",      "ssh" },
                 { "bind",    app["ssh"] },
                 { "ref",     lambda<void(mx)>([&](mx obj) {
-                    service = obj.grab();
+                    service = obj.hold();
                 })},
                 { "on-auth", lambda<bool(str, str, str)>([&](str id, str user, str pass) { return user == "admin" && pass == "admin"; })},
                 { "on-peer", lambda<void(SSHPeer)>      ([&](SSHPeer peer)               { console.log("peer connected: {0}", { peer->id }); })},

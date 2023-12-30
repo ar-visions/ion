@@ -58,7 +58,7 @@ void Element::click()     { }
 doubly<LineInfo> &Element::get_lines(Canvas *p_canvas) {
 
     if (data->content && !data->lines) {
-        str         s_content = data->content.grab();
+        str         s_content = data->content.hold();
         array<str>  line_strs = s_content.split("\n");
         int        line_count = (int)line_strs.len();
         ///
@@ -260,77 +260,34 @@ vec2d Element::child_offset(Element &child) {
     return bounds.xy();
 }
 
-void Element::draw(Canvas& canvas) {
-    type_t        type       = mem->type;
+void Element::update_bounds(Canvas &canvas) {
     node::edata  *edata      = ((node*)this)->data;
     Element      *eparent    = (Element*)edata->parent;
-    if (edata->id == "record") {
-        int test = 0;
-        test++;
-    }
-    vec2d             offset = eparent ? eparent->child_offset(*this) : vec2d { 0, 0 };
+    vec2d         offset     = eparent ? eparent->child_offset(*this) : vec2d { 0, 0 };
     rectd      parent_bounds = eparent ? eparent->data->bounds : 
         rectd { 0, 0, r64(canvas.get_virtual_width()), r64(canvas.get_virtual_height()) };
     props::drawing &fill     = data->drawings[operation::fill];
     props::drawing &image    = data->drawings[operation::image];
-    props::drawing &text     = data->drawings[operation::text];
-    props::drawing &outline  = data->drawings[operation::outline]; /// outline is more AR than border.  and border is a bad idea, badly defined and badly understood. outline is on the 0 pt.  just offset it if you want.
-    props::drawing &children = data->drawings[operation::child]; /// outline is more AR than border.  and border is a bad idea, badly defined and badly understood. outline is on the 0 pt.  just offset it if you want.
-    
-    /// debug the bounds computed on 'record' id
-    if (edata->id == "record") {
-        /// needs a menu option or toolbar option for camera selection
-        /// also lighting output can be in there
-        /// memus can have hotkeys and dictation phrases to loosely match (pretty neat idea in general)
-        int test = 0;
-        test++;
-    }
-    canvas.save();
-    
-    /// icons must paint using the new + (offset) syntax in coord/region
+    props::drawing &outline  = data->drawings[operation::outline];
+
     data->bounds      = data->area.relative_rect(parent_bounds);
     data->bounds.x   += offset.x; 
     data->bounds.y   += offset.y;
 
-    /// all of the delegate areas should not allow for peer bounds,
-    /// for the obvious reason that these are purely relative to self computed bounds (which allow for peer)
-    data->fill_bounds = fill.area.relative_rect(data->bounds); /// use this bounds if we do not have specific areas defined
-    
-    /// if there is a fill color
-    if (fill.color) { /// free'd prematurely during style change (not a transition)
-        if (fill.radius) {
-            vec4d r = fill.radius;
-            vec2d tl { r.x, r.x };
-            vec2d tr { r.y, r.y };
-            vec2d br { r.w, r.w };
-            vec2d bl { r.z, r.z };
-            data->fill_bounds.set_rounded(tl, tr, br, bl);
-        }
-        canvas.save();
-        canvas.color(fill.color);
-        canvas.opacity(effective_opacity());
-        canvas.fill(data->fill_bounds);
-        canvas.restore();
+    data->fill_bounds = fill.area.relative_rect(data->bounds);
+    if (fill.radius) {
+        vec4d r = fill.radius;
+        vec2d tl { r.x, r.x };
+        vec2d tr { r.y, r.y };
+        vec2d br { r.w, r.w };
+        vec2d bl { r.z, r.z };
+        data->fill_bounds.set_rounded(tl, tr, br, bl);
     }
 
-    /// if there is fill image
     if (image.img) {
-        image.shape = image.area.relative_rect(data->bounds); // support a area: 50% or so; easy syntax for scaling images
-        canvas.save();
-        canvas.opacity(effective_opacity());
-        canvas.image(image.img, image.shape, image.align, {0,0});
-        canvas.restore();
-    }
-    
-    /// if there is text (its not alpha 0, and there is text)
-    if (data->content && ((data->content.type() == typeof(char)) ||
-                          (data->content.type() == typeof(str)))) {
-        rectd rect = text.area ? text.area.relative_rect(data->bounds) : data->fill_bounds;
-        draw_text(canvas, rect);
-        text.shape = rect;
+        image.shape = image.area.relative_rect(data->bounds);
     }
 
-    /// if there is an effective border to draw
     if (outline.color && outline.border.size > 0.0) {
         rectd outline_rect = outline.area ? outline.area.relative_rect(data->bounds) : data->fill_bounds;
         if (outline.radius) {
@@ -341,14 +298,53 @@ void Element::draw(Canvas& canvas) {
             vec2d bl { r.z, r.z };
             outline_rect.set_rounded(tl, tr, br, bl);
         }
-        canvas.color(outline.color);
-        canvas.opacity(effective_opacity());
-        canvas.outline_sz(outline.border.size);
-        canvas.outline(outline_rect); /// this needs to work with vshape, or border
-        outline.shape = outline_rect; /// updating for interactive logic
+        outline.shape = outline_rect;
     }
 
     for (node *n: edata->mounts) {
+        Element* e = (Element*)n;
+        e->update_bounds(canvas);
+    }
+}
+
+void Element::draw(Canvas& canvas) {
+    props::drawing &fill     = data->drawings[operation::fill];
+    props::drawing &image    = data->drawings[operation::image];
+    props::drawing &text     = data->drawings[operation::text];
+    props::drawing &outline  = data->drawings[operation::outline]; /// outline is more AR than border.  and border is a bad idea, badly defined and badly understood. outline is on the 0 pt.  just offset it if you want.
+
+    if (fill.color) {
+        canvas.save();
+        canvas.color(fill.color);
+        canvas.opacity(effective_opacity());
+        canvas.fill(data->fill_bounds);
+        canvas.restore();
+    }
+
+    if (image.img) {
+        image.shape = image.area.relative_rect(data->bounds); // support simplified area syntax: 50% or so; easy syntax for scaling images
+        canvas.save();
+        canvas.opacity(effective_opacity());
+        canvas.image(image.img, image.shape, image.align, {0,0});
+        canvas.restore();
+    }
+    
+    /// if there is text (its not alpha 0, and there is text)
+    if (data->content && ((data->content.type() == typeof(char)) ||
+                          (data->content.type() == typeof(str)))) {
+        draw_text(canvas, text.shape);
+    }
+
+    /// if there is an effective border to draw
+    if (outline.color && outline.border.size > 0.0) {
+        canvas.color(outline.color);
+        canvas.opacity(effective_opacity());
+        canvas.outline_sz(outline.border.size);
+        rectd &rect = outline.shape;
+        canvas.outline(rect); /// this needs to work with vshape, or border
+    }
+
+    for (node *n: node::data->mounts) {
         Element* c = (Element*)n;
         /// clip to child
         /// translate to child location
@@ -361,8 +357,6 @@ void Element::draw(Canvas& canvas) {
         c->draw(canvas);
         canvas.restore();
     }
-
-    canvas.restore();
 }
 
 TextSel Element::get_selection(vec2d pos, bool is_down) {
@@ -542,5 +536,89 @@ void Element::exec(lambda<void(node*)> fn) {
     };
     recur(this);
 }
+
+/// to debug style, place conditional breakpoint on member->s_key == "your-prop" (used in a style block) and n->data->id == "id-you-are-debugging"
+/// hopefully we dont have to do this anymore.  its simple and it works.  we may be doing our own style across service component and elemental component but having one system for all is preferred,
+/// and brings a sense of orthogonality to the react-like pattern, adds type-based contextual grabs and field lookups with prop accessors
+style::entry *style::impl::best_match(node *n, prop *member, array<style::entry*> &entries) {
+    array<style::block*> &blocks = members[*member->s_key]; /// instance function when loading and updating style, managed map of [style::block*]
+    style::entry *match = null; /// key is always a symbol, and maps are keyed by symbol
+    real     best_score = 0;
+    Element e = n->use<Element>(); /// ideal syntax and gives us control over copyability; default = mx::ref
+    if (n->data->id == "play-pause" && *member->s_key == "fill-color" && e->hover) {
+        int test = 0; /// is it trying to match the blue?
+    }
+
+    /// should narrow down by type used in the various blocks by referring to the qualifier
+    /// find top style pair for this member
+    type_t type = n->mem->type;
+    for (style::entry *e: entries) {
+        block *bl = e->bl;
+        real score = bl->score(n, true);
+        str &prop = *member->s_key;
+        if (score > 0 && score >= best_score) { /// Edit:focus is eval'd as false?
+            match = bl->entries[prop];
+            assert(match);
+            best_score = score;
+        }
+    }
+    return match;
+}
+
+size_t style::block::score(node *pn, bool score_state) {
+    node  &n       = *pn;
+    double best_sc = 0;
+    node   cur     = n;
+
+    for (Qualifier q:quals) {
+        double best_this = 0;
+        for (;;) {
+            bool    id_match  = q->id    &&  q->id == cur->id;
+            bool   id_reject  = q->id    && !id_match;
+            bool  type_match  = q->type  &&  strcmp((symbol)q->type.cs(), (symbol)cur.type()->name) == 0; /// class names are actual type names
+            bool type_reject  = q->type  && !type_match;
+            bool state_match  = score_state && q->state;
+
+            if (pn->data->id == "play-pause" && q->state == "hover") {
+                Element e = pn->mem->hold();
+                if (e->hover) {
+                    int test = 0;
+                    test++;
+                }
+                
+            }
+
+            /// now we are looking at all enumerable meta data in mx::find_prop_value (returns address ptr, and updates reference to a member pointer prop*)
+            /// this was just a base meta check until node became the basic object
+            /// Element data contains things like capture, focus, etc (second level)
+            if (state_match) {
+                prop* member = null;
+                assert(q->state.len() > 0);
+                u8*   addr   = (u8*)cur.find_prop_value(q->state, member);
+                if   (addr) state_match = member->type->functions->boolean(null, addr);
+            }
+
+            bool state_reject = score_state && q->state && !state_match;
+            if (!id_reject && !type_reject && !state_reject) {
+                double sc = size_t(   id_match) << 1 |
+                            size_t( type_match) << 0 |
+                            size_t(state_match) << 2;
+                best_this = math::max(sc, best_this);
+            } else
+                best_this = 0;
+
+            if (q->parent && best_this > 0) {
+                q   = q->parent; // parent qualifier
+                cur = cur->parent ? *cur->parent : node(); // parent node
+            } else
+                break;
+        }
+        best_sc = math::max(best_sc, best_this);
+    }
+    return best_sc > 0 ? 1.0 : 0.0;
+    /// we have ability to sort more like css, 
+    /// but we think its better to be most simple.
+    /// its simple. use the style that applies last.  no !important either.
+};
 
 }

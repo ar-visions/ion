@@ -23,6 +23,10 @@
 		{
 			"name": "orbiter",
 			"path": "../orbiter"
+		},
+		{
+			"name": "ar-visions.com",
+			"path": "../ar-visions.com"
 		}
 	],
 	"settings": {
