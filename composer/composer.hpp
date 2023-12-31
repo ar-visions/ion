@@ -500,6 +500,7 @@ struct node:mx {
         str                     id;         /// identifier 
         ax                      args;       /// arguments
         str                     group;      /// group used for button behaviors
+        mx                      value;
         array<str>              tags;       /// style tags
         array<node*>            children;   /// children elements (if provided in children { } pair<mx,mx> inherited data struct; sets key='children')
         node*                   instance;   /// node instance is 1:1 (allocated, then context is copied in place)
@@ -515,6 +516,9 @@ struct node:mx {
             return {
                 prop { "id",        id        },
                 prop { "children",  children  },
+                prop { "group",     group     },
+                prop { "value",     value     },
+                prop { "tags",      tags      },
                 prop { "ref",       ref       }
             };
         }
@@ -544,11 +548,15 @@ struct node:mx {
     array<node*> collect(str group_name, bool include_this) {
         node *dont_inc = include_this ? this : null;
         array<node*> res;
-        if (data->parent)
-            for (node *c: data->parent->data->children) {
+        console.log("looking for group called {0}", {group_name});
+        if (data->parent) {
+            for (field<node*> &f: data->parent->data->mounts) {
+                node *c = f.value;
+                console.log("found element {0}", {c->data->id});
                 if (c->data->group == group_name && c != dont_inc)
                     res += c;
             }
+        }
         return res;
     }
 

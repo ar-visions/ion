@@ -23,7 +23,7 @@ struct Button:Element {
 
     component(Button, Element, props);
 
-    void click() {
+    void down() {
         if (state->behavior == Button::Behavior::radio) {
             array<node*> buttons = collect(node::data->group, false);
             for (node *b: buttons) {
@@ -31,10 +31,11 @@ struct Button:Element {
                     continue;
                 Button *button = (Button*)b;
                 button->state->selected = button == this;
+                button->node::data->value = mx(button->state->selected);
             }
         } else if (state->behavior == Button::Behavior::toggle) {
             state->selected = !state->selected;
-            data->value = mx(state->selected);
+            node::data->value = state->selected;
         }
 
         if (state->on_change) {

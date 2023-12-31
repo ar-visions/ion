@@ -405,9 +405,9 @@ struct iVideo {
         const size_t fft_size = 1024 * frame_units; /// needs to be model attribute here (probably stream this data in; with this function adapting the decoding to pcm to a fft)
         const size_t overlap  = 1024 * frame_overlap; /// cannot exceed 50%
         kiss_fft_cfg cfg      = kiss_fft_alloc(fft_size, 0, NULL, NULL);
-        short        fft_window[fft_size];
-        kiss_fft_cpx f_in [fft_size];
-        kiss_fft_cpx f_out[fft_size];
+        short        *fft_window = new short[fft_size];
+        kiss_fft_cpx *f_in       = new kiss_fft_cpx[fft_size];
+        kiss_fft_cpx *f_out      = new kiss_fft_cpx[fft_size];
         size_t       fft_cur = 0;
 
         memset(fft_window, 0, sizeof(fft_window));
@@ -494,6 +494,11 @@ struct iVideo {
             sample_data = null;
             sample_len  = 0;
         }
+
+        delete[] fft_window;
+        delete[] f_in;
+        delete[] f_out;
+
         free(cfg);
         assert(x_image == res.width());
         return res;

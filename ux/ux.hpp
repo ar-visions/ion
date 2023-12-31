@@ -718,9 +718,7 @@ struct Element:node {
         bool                    hover;
         bool                    active;
         bool                    focus;
-        mx                      value;
         int                     tab_index;
-        str                     group; /// n-depth group binding; node will give you a return of all Elements with a group
         vec2d                   cursor;
         bool                    test1;
 

@@ -582,15 +582,6 @@ size_t style::block::score(node *pn, bool score_state) {
             bool type_reject  = q->type  && !type_match;
             bool state_match  = score_state && q->state;
 
-            if (pn->data->id == "play-pause" && q->state == "hover") {
-                Element e = pn->mem->hold();
-                if (e->hover) {
-                    int test = 0;
-                    test++;
-                }
-                
-            }
-
             /// now we are looking at all enumerable meta data in mx::find_prop_value (returns address ptr, and updates reference to a member pointer prop*)
             /// this was just a base meta check until node became the basic object
             /// Element data contains things like capture, focus, etc (second level)
@@ -598,7 +589,8 @@ size_t style::block::score(node *pn, bool score_state) {
                 prop* member = null;
                 assert(q->state.len() > 0);
                 u8*   addr   = (u8*)cur.find_prop_value(q->state, member);
-                if   (addr) state_match = member->type->functions->boolean(null, addr);
+                if   (addr)
+                    state_match = member->type->functions->boolean(null, addr);
             }
 
             bool state_reject = score_state && q->state && !state_match;
