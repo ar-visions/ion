@@ -25,6 +25,7 @@
 #include <skia/effects/SkDashPathEffect.h>
 #include <skia/core/SkStream.h>
 #include <skia/modules/svg/include/SkSVGDOM.h>
+#include <skia/modules/svg/include/SkSVGNode.h>
 #include <skia/core/SkAlphaType.h>
 #include <skia/core/SkColor.h>
 #include <skia/core/SkColorType.h>
@@ -1237,6 +1238,26 @@ SVG::M::operator bool() {
 }
 
 vec2i SVG::sz() { return { data->w, data->h }; }
+
+void SVG::set_props(EProps &eprops) {
+    // iterate through fields in map (->eprops)
+    for (field<EStr> &f: eprops->eprops) {
+        str id_attr = f.key.hold();
+        str value   = str(f.value); /// call operator str()
+        array<str> ida = id_attr.split(".");
+        assert(ida.len() == 2);
+
+        symbol id   = ida[0].cs();
+        symbol attr = ida[1].cs();
+        symbol val  = value.cs();
+        
+        sk_sp<SkSVGNode>* n = (*data->svg_dom)->findNodeById(id);
+        assert(n);
+        
+        bool set = (*n)->setAttribute(attr, val);
+        assert(set);
+    }
+}
 
 void SVG::render(SkCanvas *sk_canvas, int w, int h) {
     if (w == -1) w = data->w;

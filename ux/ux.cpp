@@ -218,12 +218,12 @@ vec2d Element::child_offset(Element &child) {
              compute_bottom = false;
 
     /// left is relative to prior control left
-    if (child->area.tl.x_rel) {
+    if (child->area->tl.x_rel) {
         compute = true;
         compute_left = true;
     }
     /// top is relative to prior control top
-    if (child->area.tl.y_rel) {
+    if (child->area->tl.y_rel) {
         compute = true;
         compute_top = true;
     }
@@ -325,6 +325,9 @@ void Element::draw(Canvas& canvas) {
         image.shape = image.area.relative_rect(data->bounds); // support simplified area syntax: 50% or so; easy syntax for scaling images
         canvas.save();
         canvas.opacity(effective_opacity());
+
+        image.img.set_props(data->image_props);
+
         canvas.image(image.img, image.shape, image.align, {0,0});
         canvas.restore();
     }

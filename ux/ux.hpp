@@ -231,7 +231,7 @@ struct coord {
     bool        y_per = false;
 
     coord(alignment &al, vec2d &offset, xalign &xt, yalign &yt, bool &x_rel, bool &y_rel, bool &x_per, bool &y_per) :
-        align(al), offset(offset), x_type(xt), y_type(yt), x_rel(x_rel), y_rel(y_rel) { }
+        align(al), offset(offset), x_type(xt), y_type(yt), x_rel(x_rel), y_rel(y_rel), x_per(x_per), y_per(y_per) { }
 
     coord(str s) {
         array<str> sp = s.split();
@@ -319,25 +319,101 @@ struct coord {
     register(coord);
 };
 
+struct EStr {
+    double value;
+    str    suffix;
+
+    EStr() { }
+
+    EStr(str combined) {
+        for (int i = 0; i < combined.len(); i++) {
+            char ch = combined[i];
+            if ((ch >= 'a' && ch <= 'z') || ch == '%') {
+                suffix = combined.mid(i);
+                value  = combined.mid(0, i).real_value<real>();
+                break;
+            }
+        }
+        if (!suffix)
+            value = combined.real_value<real>();
+    }
+    
+    EStr(double value, str suffix) : value(value), suffix(suffix) { }
+
+    EStr mix(EStr &b, double f) {
+        assert(suffix == b.suffix);
+        return EStr {
+            value * (1.0 - f) + b.value * f, suffix
+        };
+    }
+
+    operator str() {
+        return fmt { "{0}{1}", { value, suffix } };
+    }
+
+    register(EStr);
+};
+
+/// external props, used to manage SVG
+/// may have variable suffix but cannot interpolate between units as they are not known here, so dont do 1px to 3cm or 1% to 100px
+struct EProps:mx {
+    struct M {
+        map<EStr> eprops;
+        operator bool() {
+            return eprops.len() > 0;
+        }
+        register(M)
+    };
+    mx_basic(EProps);
+
+    EProps(str s) : EProps() {
+        array<str> a = s.split("|");
+        for (str &v: a) {
+            array<str> kv = v.split("=");
+            assert(kv.len() == 2);
+            data->eprops[kv[0]] = EStr(kv[1]);
+        }
+    }
+    
+    EProps(cstr cs) : EProps(str(cs)) { }
+
+    EProps mix(EProps &b, double f) {
+        EProps &a = *this;
+        EProps r;
+        assert(a->eprops.len() == b->eprops.len());
+        for(field<EStr> &af: a->eprops) {
+            assert(b->eprops->count(af.key));
+            r->eprops[af.key] = af.value.mix(b->eprops[af.key], f);
+        }
+        return r;
+    }
+};
+
 /// good primitive for ui, implemented in basic canvas ops.
 /// regions can be constructed from rects if area is static or composed in another way
-struct region {
-    coord tl = (cstr)"l0 t0";
-    coord br = (cstr)"r0 b0";
-    double per = -1;
-    bool set = false;
+struct region:mx {
+    struct M {
+        coord tl = (cstr)"l0 t0";
+        coord br = (cstr)"r0 b0";
+        double per = -1;
+        bool set = false;
+        register(M);
+    };
+    mx_basic(region);
 
-    region() { }
+    region(coord &tl, coord &br) : region() {
+        data->tl = tl;
+        data->br = br;
+        data->set = true;
+    }
 
-    region(coord &tl, coord &br) : tl(tl), br(br), set(true) { }
-
-    region(str s) {
+    region(str s) : region() {
         array<str> a = s.split();
         if (a.length() == 4) {
             str s0  = a[0] + " " + a[1];
             str s1  = a[2] + " " + a[3];
-            tl      = s0;
-            br      = s1;
+            data->tl      = s0;
+            data->br      = s1;
         } else {
             assert(a.length() == 1);
             /// convert to m-H% mH%
@@ -351,41 +427,38 @@ struct region {
             str h   = str(sv / 2);
             str s0  = str("m-") + h + suf + " m-" + h + suf;
             str s1  = str("m")  + h + suf + " m"  + h + suf;
-            tl      = s0;
-            br      = s1;
+            data->tl      = s0;
+            data->br      = s1;
         }
-        set = true;
+        data->set = true;
     }
 
     region(cstr s):region(str(s)) { }
 
-    operator bool() { return set; }
+    operator bool() { return data->set; }
     
     rectd relative_rect(rectd &win) {
         vec2d rel  = win.xy();
-        vec2d v_tl = tl.plot(win, rel);
-        vec2d v_br = br.plot(win, v_tl);
+        vec2d v_tl = data->tl.plot(win, rel);
+        vec2d v_br = data->br.plot(win, v_tl);
         rectd r { v_tl, v_br };
         r.x -= win.x;
         r.y -= win.y;
         return r;
     }
-
-    ///
+    
     rectd rect(rectd &win) {
         vec2d rel = win.xy();
-        return rectd { tl.plot(win, rel), br.plot(win, rel) };
+        return rectd { data->tl.plot(win, rel), data->br.plot(win, rel) };
     }
-
+    
     region mix(region &b, double a) {
-        coord m_tl = tl.mix(b.tl, a);
-        coord m_tr = br.mix(b.br, a);
+        coord m_tl = data->tl.mix(b->tl, a);
+        coord m_tr = data->br.mix(b->br, a);
         return region {
             m_tl, m_tr
         };
     }
-
-    type_register(region);
 };
 
 struct Element;
@@ -627,6 +700,7 @@ struct SVG:mx {
     SVG(path p);
     SVG(cstr p);
     void render(SkCanvas *sk_canvas, int w = -1, int h = -1);
+    void set_props(EProps &eprops);
     vec2i sz();
 
     mx_basic(SVG);
@@ -703,7 +777,8 @@ struct Element:node {
         rectd               bounds;     /// local coordinates of this control; xy are relative to parent xy
         rectd               fill_bounds;
         rectd               text_bounds;
-        ion::font           font;  
+        ion::font           font;
+        EProps              image_props;
         bool                editable   = false;
         bool                selectable = true;
         bool                multiline  = false;
@@ -729,7 +804,8 @@ struct Element:node {
                 prop { "font",           font      },
 
                 prop { "text-spacing",   text_spacing },
-                prop { "image-src",      drawings[operation::image]  .img     },
+                prop { "image-src",      drawings[operation::image]  .img },
+                prop { "image-props",    image_props },
 
                 prop { "area",           area },
 
