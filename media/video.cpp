@@ -176,11 +176,10 @@ struct iVideo {
     int                audio_rate        = 48000;
     int                audio_channels    = 1;
     int                audio_frame_size;
-    bool               stopped;
     int                pts;
 
     storage_t          dec;
-    int                last_frame_id = -1000;
+    i64                current_frame_id = -1;
 
     AACENC_BufDesc     output_aac;
     AACENC_BufDesc     input_pcm;
@@ -200,6 +199,11 @@ struct iVideo {
     int                pcm_buffer_len;
     int                pcm_buffer_sz;
     i64                start_time;
+    bool               play_pause;
+    ion::image         current_image;
+    bool               fetching_frames;
+    bool               unloaded;
+
     /// since iVideo needs to write a certain frame rate, we should wait for the first frame to arrive to set an origin
     /// swap system should come back (in streams)
 
@@ -215,11 +219,11 @@ struct iVideo {
         video_track = MP4FindTrackId(mp4, 0, MP4_VIDEO_TRACK_TYPE, 0);
         audio_track = MP4FindTrackId(mp4, 0, MP4_AUDIO_TRACK_TYPE, 0);
 
-        video_duration  = MP4GetTrackDuration (mp4, video_track);
-        video_timescale = MP4GetTrackTimeScale(mp4, video_track);
+        video_duration    = MP4GetTrackDuration (mp4, video_track);
+        video_timescale   = MP4GetTrackTimeScale(mp4, video_track);
         video_frame_count = MP4GetTrackNumberOfSamples(mp4, video_track);
-        ///
-        audio_timescale = MP4GetTrackTimeScale(mp4, audio_track);
+
+        audio_timescale   = MP4GetTrackTimeScale(mp4, audio_track);
 
         width  = MP4GetTrackVideoWidth (mp4, video_track);
         height = MP4GetTrackVideoHeight(mp4, video_track);
@@ -228,13 +232,12 @@ struct iVideo {
         assert(video_duration % video_timescale == 0);
 
         hz         = video_timescale;
-        stopped    = true;
 
         /// we must load the first sample in before it knows the SPS info; lets verify with the mp4 data
         /// its important to note that h264 can resize in mid stream with more SPS/PPS.  thats a cool feature
         h264bsdInit(&dec, 1);
-
-        image temp = fetch_frame(0);
+    
+        current_image = seek_frame(0);
 
         spec       = get_audio_spectrum(2, 1, 128, 0.25,
             array<rgbad> {
@@ -254,16 +257,50 @@ struct iVideo {
 
         spec.save("spec.png");
 
+        fetching_frames = true;
+        async([&](runtime *rt, int index) -> mx {
+            int dispatch_time = 0;
+            while (!unloaded) {
+                i64 t = millis();
+                if (start_time && current_frame_id < (video_frame_count - 1)) {
+                    /// play_pause = true (playing)
+                    u64 next_dispatch = (u64(start_time) * u64(1000)) + (i64)((current_frame_id + 1) * (u64(1000000) / u64(hz)));
+                    wait_until(next_dispatch);
+                    seek_frame(current_frame_id + 1);
+                    if (current_frame_id >= (video_frame_count - 1)) {
+                        play_pause = false;
+                        start_time = 0;
+                    }
+                } else {
+                    /// paused
+                    usleep(100000);
+                }
+            }
+            fetching_frames = false;
+            return true;
+        });
     }
 
-    void stop() {
-        if (!stopped) {
-            mtx_write.lock();
-            stopped = true;
-            aacEncClose(&aac_encoder);
-            MP4Close(mp4);
-            mtx_write.unlock();
+    void play_state(bool state) {
+        if (state ^ play_pause) {
+            play_pause = state;
+            /// set start_time to adjust for origin, we are playing as though we started playing from the start if our current_frame_id is > 0
+            /// seeking should update this
+            if (state && current_frame_id >= (video_frame_count - 1))
+                current_frame_id = 0;
+            start_time = state ? millis() - i64(current_frame_id * (1000.0 / hz)) : 0;
         }
+    }
+
+    void unload() {
+        unloaded = true;
+        while (fetching_frames)
+            usleep(100);
+        
+        mtx_write.lock();
+        aacEncClose(&aac_encoder);
+        MP4Close(mp4);
+        mtx_write.unlock();
     }
 
     void write_audio(mx &audio) {
@@ -317,10 +354,11 @@ struct iVideo {
     }
 
     int write_frame(Frame &frame) {
-        if (frame.image)
+        if (frame.image) {
+            current_image = frame.image;
             write_image(frame.image);
-        else
-            write_video(frame.video);
+        } else
+            write_video(frame.video); /// not handling this case yet.  if we do it might be useful to decode the image
         
         if (frame.audio) /// we need to insert blank audio when this is not set, and we are using audio
             write_audio(frame.audio);
@@ -331,7 +369,7 @@ struct iVideo {
     ~iVideo() {
         if (playback)
             h264bsdShutdown(&dec);
-        stop();
+        unload();
     }
 
     void start(ion::path &output) {
@@ -388,7 +426,6 @@ struct iVideo {
         MP4SetTrackIntegerProperty(mp4, audio_track, "mdia.minf.stbl.stsd.*[0].channels", audio_channels);
     }
 
-    
     image get_audio_spectrum(
             int frame_units, int frame_overlap, const int spectral_height, float crop, /// crop value of 0.25 means we are extracting 11khz on 48k
             array<rgbad> colors, array<float> scales) { /// scales across the color range is a reasonable idea, so one can make use of frequencies often maxed out (by raising scale), and vice versa.
@@ -504,7 +541,15 @@ struct iVideo {
         return res;
     }
 
-    ion::image fetch_frame(int frame_id) {
+    i64 current_frame() {
+        return current_frame_id;
+    }
+
+    ion::image get_current_image() {
+        return current_image;
+    }
+
+    ion::image seek_frame(i64 frame_id) {
         int           cur_frame    = frame_id;
         bool          found        = false;
         u8           *sample_data  = null;
@@ -512,7 +557,7 @@ struct iVideo {
         bool          is_key_frame = false;
         doubly<mx>    samples;
 
-        bool         sequential = frame_id == (last_frame_id + 1);
+        bool         sequential = current_frame_id < 0 ? false : frame_id == (current_frame_id + 1);
         MP4Timestamp ts     = MP4ConvertToTrackTimestamp(mp4, video_track, cur_frame, hz);
         MP4SampleId  sample = MP4GetSampleIdFromEditTime(mp4, video_track, ts, null, null);
 
@@ -577,7 +622,13 @@ struct iVideo {
 
         image im     = memory::wrap(typeof(rgba8), pic, width * height); /// wrap the memory, and lightly construct image
         im.mem->shape = new ion::size { height, width }; /// todo: set this on the stack
-        last_frame_id = frame_id; /// only read backwards if we are going non-sequential, or its the first attempt
+        current_frame_id = frame_id; /// only read backwards if we are going non-sequential, or its the first attempt
+        
+        /// if we seek a non sequential frame we must set our start time to be an offset 
+        /// protect current_frame_id & start_time in a mutex
+        if (play_pause && !sequential) {
+            start_time = millis() - i64(current_frame_id * (1000.0 / hz));
+        }
         return im;
     }
 };
@@ -604,12 +655,28 @@ i64 Video::timescale() {
     return data->video_timescale;
 }
 
+int Video::frame_rate() {
+return data->hz;
+}
+
 i64 Video::audio_timescale() {
     return data->audio_timescale;
 }
 
-ion::image Video::fetch_frame(int frame_id) {
-    return data->fetch_frame(frame_id);
+i64 Video::current_frame() {
+    return data->current_frame();
+}
+
+ion::image Video::get_current_image() {
+    return data->get_current_image();
+}
+
+bool Video::get_play_state() {
+    return data->play_pause;
+}
+
+ion::image Video::seek_frame(i64 frame_id) {
+    return data->seek_frame(frame_id);
 }
 
 int Video::write_frame(Frame &frame) {
@@ -624,8 +691,13 @@ i64 Video::frame_count() {
     return data->video_frame_count;
 }
 
+void Video::play_state(bool play_pause) {
+    data->play_state(play_pause);
+}
+
 void Video::stop() {
-    data->stop();
+    data->play_state(false);
+    data->unload();
 }
 
 bool Video::is_recording() {

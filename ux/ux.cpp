@@ -355,8 +355,23 @@ void Element::draw(Canvas& canvas) {
         rectd &bounds = c->data->bounds;
         canvas.translate(bounds.xy());
         canvas.opacity(effective_opacity());
-        //rectd clip_bounds = { 0, 0, bounds.w, bounds.h };
-        //canvas.clip(clip_bounds);
+        rectd clip_bounds = { 0, 0, bounds.w, bounds.h };
+
+        /// adjust clip for outline if there is one
+        props::drawing &outline  = c->data->drawings[operation::outline];
+        if (outline.color && outline.border.size > 0.0) {
+            rectd  r0   = clip_bounds;
+            rectd  r1   = (rectd &)outline.shape;
+            double minx = math::min(r0.x, r1.x - outline.border.size / 2.0);
+            double miny = math::min(r0.y, r1.y - outline.border.size / 2.0);
+            double maxx = math::max(r0.x, r1.x + r1.w + outline.border.size / 2.0);
+            double maxy = math::max(r0.y, r1.y + r1.h + outline.border.size / 2.0);
+            clip_bounds = rectd {
+                minx, miny, maxx - minx, maxy - miny
+            };
+        }
+        canvas.clip(clip_bounds);
+        canvas.font(c->data->font); /// set effective opacity here too
         c->draw(canvas);
         canvas.restore();
     }

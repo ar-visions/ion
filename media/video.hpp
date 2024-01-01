@@ -7,14 +7,19 @@ struct iVideo;
 struct Video:mx {
     mx_declare(Video, mx, iVideo);
     
-    int        write_frame(Frame &f);
-    ion::image fetch_frame(int frame_id);
+    int        write_frame(Frame &);
+    ion::image seek_frame(i64);
+    ion::image get_current_image();
+    bool       get_play_state();
+    i64        current_frame();
     void       stop();
+    void       play_state(bool);
     bool       is_recording();
     bool       is_playback();
     i64        duration();
     i64        timescale();
     i64        frame_count();
+    int        frame_rate();
     i64        audio_timescale();
     image      audio_spectrum();
 

@@ -87,27 +87,9 @@ struct MStream:mx {
     void start();
 
     /// Streams SHOULD offer a frame of reference
-    Remote listen(lambda<void(Frame&)> callback) {
-        data->mtx_.lock();
-        Remote remote = Remote::M { (raw_t)data, callback};
-        data->listeners += remote;
-        data->mtx_.unlock();
-        return remote;
-    }
+    Remote listen(lambda<void(Frame&)> callback);
 
-    void set_info(int w, int h, int hz, int channels) {
-        data->w  = w;
-        data->h  = h;
-        data->hz = hz;
-        data->channels = channels;
-        if (data->resolve_image) {
-            size sz { h, w };
-            rgba8 *bytes             = (rgba8*)calloc(sizeof(rgba8), sz);
-            data->image              = ion::image(sz, bytes, 0);
-            data->image.mem->count   = data->w * data->h;
-            data->image.mem->reserve = data->image.mem->count;
-        }
-    }
+    void set_info(int w, int h, int hz, int channels);
 
     bool push_audio(mx buffer);
     bool push_video(mx buffer);

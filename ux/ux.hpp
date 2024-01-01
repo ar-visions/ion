@@ -566,7 +566,7 @@ struct Canvas;
 struct font:mx {
     struct fdata {
         real sz = 22;
-        str  name = "Sofia-Sans-Condensed";
+        str  name = "RobotoMono-Regular";
         bool loaded = false;
         void *sk_font = null;
         type_register(fdata);
@@ -581,9 +581,15 @@ struct font:mx {
 
     font(str s):font() {
         array<str> sp = s.split();
-        assert(sp.len() == 2);
-        data->sz  = sp[0].real_value<real>();
-        data->name = sp[1];
+        data->sz   = sp[0].real_value<real>();
+        if (sp.len() > 1)
+            data->name = sp[1];
+    }
+
+    font(cstr s):font(str(s)) { }
+
+    font(real sz):font() {
+        data->sz = sz;
     }
 
     path get_path() {

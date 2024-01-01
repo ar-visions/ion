@@ -882,8 +882,11 @@ struct ICanvas {
                 SkScalar(pos.y + offset.y + skia_y_offset), ps);
     }
 
-    void clip(rectd &path) {
-        assert(false);
+    void clip(rectd &rect) {
+        SkRect   r = SkRect {
+            SkScalar(rect.x),          SkScalar(rect.y),
+            SkScalar(rect.x + rect.w), SkScalar(rect.y + rect.h) };
+        sk_canvas->clipRect(r);
     }
 
     void outline(array<glm::vec2> &line, bool is_fill = false) {
