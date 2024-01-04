@@ -356,14 +356,12 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
         assert(audio.select((str&)audio_alias));
         audio.selected_format = Media::PCMf32;
         audio.sample_rate     = 48000;
-        audio.current_id      = 0;
-        audio.callback        = [&](void* v_audio, sz_t v_audio_size) {
+        audio.callback        = [&](void* data, sz_t data_len) {
             MStream  &streams = (MStream &)s;
-            array<float> packet(v_audio_size / sizeof(float));
-            memcpy(packet.data, v_audio, v_audio_size);
-            packet.set_size(v_audio_size / sizeof(float));
-            streams.push(MediaBuffer(audio.selected_format, packet, audio.current_id++));
-
+            array<float> packet(data_len / sizeof(float));
+            memcpy(packet.data, data, data_len);
+            packet.set_size(data_len / sizeof(float));
+            streams.push_audio(packet);
         };
         audio.start();
 
@@ -375,15 +373,15 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
         camera.height   = height;
         camera.priority = priority;
         camera.rate     = 30;
-        i64 last = millis();
-        camera.callback = [&](void* v_image, sz_t v_image_size) {
+
+        camera.callback = [&](void* data, sz_t data_len) {
             MStream &streams = (MStream &)s;
-            streams.push(MediaBuffer(camera.selected_format, (u8*)v_image, v_image_size));
-            i64 t = millis();
-            printf("duration = %d\n", (int)(t - last));
-            exit(0);
-            last = t;
+            array<u8> video = array<u8>(sz_t(data_len));
+            memcpy(video.data, data, data_len);
+            video.set_size(data_len);
+            streams.push_video(video);
         };
+
         [camera.capture start:&camera];
 
         printf("started camera...\n");
