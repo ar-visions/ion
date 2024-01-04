@@ -157,6 +157,121 @@ bool audio::save_m4a(path dest, i64 bitrate) {
 
 #endif
 
+struct Nalu:mx {
+    enums(Annex, A, A, B);
+    enums(Type, unspecified,
+        unspecified  = 0,
+        non_idr      = 1,
+        part_A       = 2,
+        part_B       = 3,
+        part_C       = 4,
+        idr          = 5,
+        sei          = 6,
+        sps          = 7,
+        pps          = 8,
+        aud          = 9,
+        end_sequence = 10,
+        end_stream   = 11,
+        filler       = 12,
+        sps_ext      = 13,
+        prefix       = 14,
+        subset_sps   = 15);
+
+    struct M {
+        Annex annex;
+        Type  type;
+        mx    payload; /// does not include the type info, we have unframed it; supports either Annex A or B
+        mx    origin; /// we hold onto the origin buffer (the buffer given to extract(mx))
+        operator bool() {
+            return type != Type::unspecified;
+        }
+        register(M);
+    };
+
+    static Nalu find(array<Nalu> nalus, Nalu::Type type) {
+        for (Nalu &n: nalus) if (n->type == type) return n;
+        return {};
+    }
+
+    static array<Nalu> extract(mx nalus, Annex annex = Annex::A) {
+        array<Nalu> res(8);
+
+        u8    *origin = nalus.origin<u8>();
+        size_t count  = nalus.count();
+
+        u8* p = origin;
+
+        if (annex == Annex::A) {
+            while (p < origin + count) {
+                u8 *p_start = p;
+                int nalu_length = 0;
+
+                // Extract length field (1-4 bytes) based on the length field size
+                // (Assume a maximum of 4 bytes for this example)
+                switch (*p & 0x3F) {  // Mask to get the first 6 bits
+                    case 0x00: nalu_length = *p++; break; // 1-byte length field
+                    case 0x01: nalu_length = (p[0] << 8) | p[1]; p += 2; break; // 2-byte length field
+                    case 0x03: nalu_length = (p[0] << 16) | (p[1] << 8) | p[2]; p += 3; break; // 3-byte length field
+                    case 0x07: nalu_length = (p[0] << 24) | (p[1] << 16) | (p[2] << 8) | p[3]; p += 4; break; // 4-byte length field
+                    default:   // Handle invalid length field
+                        // Handle error or skip to the next potential NALU
+                        break;
+                }
+
+                if (nalu_length > 0) {
+                    int nalu_header = *p++;
+                    int nalu_type   = nalu_header & 0x1F;  // Extract NALU type
+                    res += Nalu {
+                        Annex(Annex::A),
+                        Type(nalu_type),
+                        memory::wrap(
+                            typeof(u8), p_start, sz_t(sz_t(p - p_start) + nalu_length)
+                        )
+                    };
+                    p   += nalu_length;  // Skip to the next NALU
+                } else {
+                    throw str("invalid nalu framing");
+                }
+            }
+        } else {
+            Type type_next;
+            u8  *start_of_nalu = null;
+            while (p < origin + count) {
+                u8 *p_start = p - 1;
+                if (*p++ == 0 && *p++ == 0 && *p++ == 0 && *p++ == 1) {
+                    int nalu_next = int(*p++ & 0x1F);
+                    if (start_of_nalu) /// end_of_nalu is valid when this is set
+                        res += Nalu {
+                            Annex(Annex::B),
+                            type_next, memory::wrap(typeof(u8), p_start, sz_t(p_start - start_of_nalu))
+                        };
+                    type_next     = Type(nalu_next);
+                    start_of_nalu = p_start;
+                }
+            }
+            /// if a type_next was read, we get the size of that compared to 
+            sz_t last_sz = type_next ? sz_t(origin + count - start_of_nalu) : 0;
+            if (last_sz)
+                res += Nalu {
+                    Annex(Annex::B), type_next, memory::wrap(typeof(u8), start_of_nalu, last_sz)
+                };
+        }
+        return res;
+    }
+
+    Nalu(Annex a, Type t, mx payload):Nalu() {
+        data->annex   = a;
+        data->type    = t;
+        data->payload = payload;
+    }
+
+    operator bool() {
+        return *data;
+    }
+
+    mx_basic(Nalu);
+};
+
 struct iVideo {
     ion::path          playback;
     MP4FileHandle      mp4;
@@ -550,48 +665,70 @@ struct iVideo {
     }
 
     ion::image seek_frame(i64 frame_id) {
+        if (frame_id == current_frame_id)
+            return current_image;
+        
+        /// sequential is effectively streaming, so why read more -- this does work
+        /// non sequential on the other hand doesnt.  i look backwards to find a key frame, then move forwards until we get to
+        bool          sequential   = current_frame_id < 0 ? false : frame_id == (current_frame_id + 1);
         int           cur_frame    = frame_id;
         bool          found        = false;
         u8           *sample_data  = null;
         u32           sample_len   = 0;
         bool          is_key_frame = false;
-        doubly<mx>    samples;
+        doubly<array<Nalu>> sample_nalus = {};
+        MP4Timestamp  ts           = MP4ConvertToTrackTimestamp(mp4, video_track, cur_frame, hz);
+        MP4SampleId   sample       = MP4GetSampleIdFromEditTime(mp4, video_track, ts, null, null);
 
-        bool         sequential = current_frame_id < 0 ? false : frame_id == (current_frame_id + 1);
-        MP4Timestamp ts     = MP4ConvertToTrackTimestamp(mp4, video_track, cur_frame, hz);
-        MP4SampleId  sample = MP4GetSampleIdFromEditTime(mp4, video_track, ts, null, null);
+        if (!sequential)
+            h264bsdResetStorage(&dec);
 
+        /// read backwards until we get to a keyframe
+        /// isSyncSample is not populated correctly by file (my fault)
+        /// we should support these rogue videos as it may be useful to be lieniant
+        bool is_sync_sample = false; /// not used atm, since its up to the user to set this properly and i didnt
+        /// one may check for keyframes in teh actual data which is not much of a chore
+        /// best to handle the data properly and not pay attention to the sync field
+        if (!sequential) {
+            int test = 0;
+        }
+        
         while (MP4ReadSample(
                 mp4, video_track, sample,
-                &sample_data, &sample_len, null, null, null, &is_key_frame)) {
-            mx sample = memory::wrap(typeof(u8), sample_data, sz_t(sample_len));
-            samples->insert(0, sample);
+                &sample_data, &sample_len, null, null, null, &is_sync_sample)) {
 
-            if (is_key_frame || sequential) {
+            array<u8>   sample = memory::wrap(typeof(u8), sample_data, sz_t(sample_len));
+            bool        A      = sample[0] != 0 && /// use B if its 0001
+                                 sample[1] != 0 &&
+                                 sample[2] != 0 &&
+                                 sample[3] != 1;
+
+            array<Nalu> nalus  = Nalu::extract(sample, A ? Nalu::Annex::A : Nalu::Annex::B);
+            sample_nalus->insert(0, nalus);
+
+            /// find out if this is a keyframe by scanning the Annex B
+            bool is_key_frame = Nalu::find(nalus, Nalu::Type::idr);
+            if  (is_key_frame || sequential) {
                 found = true;
                 break;
             }
-            cur_frame--;
-
-            ts     = MP4ConvertToTrackTimestamp(mp4, video_track, frame_id, hz);
-            sample = MP4GetSampleIdFromEditTime(mp4, video_track, ts, null, null);
+            ts          = MP4ConvertToTrackTimestamp(mp4, video_track, --cur_frame, hz);
+            sample      = MP4GetSampleIdFromEditTime(mp4, video_track, ts, null, null);
             sample_data = null;
             sample_len  = 0;
+            assert(cur_frame != 0);
         }
 
         assert(found);
 
         u32  pic_id    = cur_frame; /// these can probably be the same unit as our frame_id
         bool pic_ready = false;
-        for (mx sample: samples) {
-            u32 total  = 0;
-            u8 *nalus = sample.origin<u8>();
-            u32 nsize = sample.count();
-
-            while (total < nsize) {
+        for (array<Nalu> &nalus: sample_nalus) {
+            for (Nalu &nalu: nalus) {
+                u8* payload    = nalu->payload.origin<u8>();
+                u32 len        = nalu->payload.count();
                 u32 bytes_read = 0;
-                u32 dec_result = h264bsdDecode(&dec, &nalus[total], nsize - total, pic_id, &bytes_read);
-
+                u32 dec_result = h264bsdDecode(&dec, payload, len, pic_id, &bytes_read);
                 switch (dec_result) {
                     case H264BSD_RDY:       // decoding finished, nothing special
                         break;
@@ -605,10 +742,7 @@ struct iVideo {
                         assert(false);
                         break;
                 }
-                total += bytes_read;
             }
-
-            pic_id++;
         }
 
         assert(pic_ready);
@@ -618,10 +752,10 @@ struct iVideo {
         u32   is_idr = 0;
         u32   num_mb = 0;
         u32  *pic    = h264bsdNextOutputPictureRGBA(&dec, &pic_id, &is_idr, &num_mb);
-        assert(pic);
+        assert(pic); /// todo: not building the picture correctly from key frame
 
-        image im     = memory::wrap(typeof(rgba8), pic, width * height); /// wrap the memory, and lightly construct image
-        im.mem->shape = new ion::size { height, width }; /// todo: set this on the stack
+        current_image = memory::wrap(typeof(rgba8), pic, width * height); /// wrap the memory, and lightly construct image
+        current_image.mem->shape = new ion::size { height, width }; /// todo: set this on the stack
         current_frame_id = frame_id; /// only read backwards if we are going non-sequential, or its the first attempt
         
         /// if we seek a non sequential frame we must set our start time to be an offset 
@@ -629,7 +763,7 @@ struct iVideo {
         if (play_pause && !sequential) {
             start_time = millis() - i64(current_frame_id * (1000.0 / hz));
         }
-        return im;
+        return current_image;
     }
 };
 

@@ -8,6 +8,7 @@ struct Video:mx {
     mx_declare(Video, mx, iVideo);
     
     int        write_frame(Frame &);
+    bool       has_keyframe(mx nalus);
     ion::image seek_frame(i64);
     ion::image get_current_image();
     bool       get_play_state();

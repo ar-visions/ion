@@ -623,9 +623,9 @@ struct ICanvas {
                     if (t == typeof(Movement)) {
                         Movement m(o);
                         p.moveTo(m->x, m->y);
-                    } else if (t == typeof(Vec2<double>)) {
-                        Vec2<double> l(o);
-                        p.lineTo(l->x, l->y);
+                    } else if (t == typeof(Line)) {
+                        Line l(o);
+                        p.lineTo(l->origin.x, l->origin.y); /// todo: origin and to are swapped, i believe
                     }
                 }
                 p.close();
