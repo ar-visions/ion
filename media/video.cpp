@@ -26,11 +26,6 @@ extern "C" {
 
 using namespace std;
 
-#define SAMPLE_RATE 48000
-#define CHANNELS    2
-#define DURATION    10  // 10 seconds
-#define FRAME_SIZE  1600  // 48000 (let 1 sample = 1 or 2 channels) / 30 (for video; the frame is the amount of audio in one frame)
-
 namespace ion {
 
 #if 1
