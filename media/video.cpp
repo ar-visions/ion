@@ -180,6 +180,8 @@ struct Nalu:mx {
     struct M {
         Annex annex;
         Type  type;
+        int   frame_id;
+        bool  key_frame;
         mx    payload; /// does not include the type info, we have unframed it; supports either Annex A or B
         mx    origin; /// we hold onto the origin buffer (the buffer given to extract(mx))
         operator bool() {
@@ -237,13 +239,13 @@ struct Nalu:mx {
             Type type_next;
             u8  *start_of_nalu = null;
             while (p < origin + count) {
-                u8 *p_start = p - 1;
+                u8 *p_start = p;
                 if (*p++ == 0 && *p++ == 0 && *p++ == 0 && *p++ == 1) {
                     int nalu_next = int(*p++ & 0x1F);
                     if (start_of_nalu) /// end_of_nalu is valid when this is set
                         res += Nalu {
                             Annex(Annex::B),
-                            type_next, memory::wrap(typeof(u8), p_start, sz_t(p_start - start_of_nalu))
+                            type_next, memory::wrap(typeof(u8), start_of_nalu, sz_t(p_start - start_of_nalu))
                         };
                     type_next     = Type(nalu_next);
                     start_of_nalu = p_start;
@@ -279,6 +281,7 @@ struct iVideo {
     MP4TrackId         audio_track;
     HANDLE_AACENCODER  aac_encoder;
     h264               h264_encoder;
+    mutex              mtx_seek;
 
     ion::image         spec;
 
@@ -381,7 +384,9 @@ struct iVideo {
                     /// play_pause = true (playing)
                     u64 next_dispatch = (u64(start_time) * u64(1000)) + (i64)((current_frame_id + 1) * (u64(1000000) / u64(hz)));
                     wait_until(next_dispatch);
+                    mtx_seek.lock();
                     seek_frame(current_frame_id + 1);
+                    mtx_seek.unlock();
                     if (current_frame_id >= (video_frame_count - 1)) {
                         play_pause = false;
                         start_time = 0;
@@ -668,79 +673,64 @@ struct iVideo {
         if (frame_id == current_frame_id)
             return current_image;
         
-        /// sequential is effectively streaming, so why read more -- this does work
-        /// non sequential on the other hand doesnt.  i look backwards to find a key frame, then move forwards until we get to
-        bool          sequential   = current_frame_id < 0 ? false : frame_id == (current_frame_id + 1);
-        int           cur_frame    = frame_id;
-        bool          found        = false;
-        u8           *sample_data  = null;
-        u32           sample_len   = 0;
-        bool          is_key_frame = false;
+        bool is_sync_sample = false;
+        bool sequential = current_frame_id < 0 ? false : frame_id == (current_frame_id + 1);
         doubly<array<Nalu>> sample_nalus = {};
-        MP4Timestamp  ts           = MP4ConvertToTrackTimestamp(mp4, video_track, cur_frame, hz);
-        MP4SampleId   sample       = MP4GetSampleIdFromEditTime(mp4, video_track, ts, null, null);
 
         if (!sequential)
             h264bsdResetStorage(&dec);
-
-        /// read backwards until we get to a keyframe
-        /// isSyncSample is not populated correctly by file (my fault)
-        /// we should support these rogue videos as it may be useful to be lieniant
-        bool is_sync_sample = false; /// not used atm, since its up to the user to set this properly and i didnt
-        /// one may check for keyframes in teh actual data which is not much of a chore
-        /// best to handle the data properly and not pay attention to the sync field
-        if (!sequential) {
-            int test = 0;
-        }
         
-        while (MP4ReadSample(
-                mp4, video_track, sample,
-                &sample_data, &sample_len, null, null, null, &is_sync_sample)) {
+        for (int cur_frame = frame_id; cur_frame >= 0; cur_frame--) {
+            MP4Timestamp ts          = MP4ConvertToTrackTimestamp(mp4, video_track, cur_frame, hz);
+            MP4SampleId  sample_id   = MP4GetSampleIdFromEditTime(mp4, video_track, ts, null, null);
+            u8*          sample_data = null;
+            u32          sample_len  = 0;
+            bool         read        = MP4ReadSample(mp4, video_track, sample_id, &sample_data,
+                                                     &sample_len, null, null, null, &is_sync_sample);
+            assert(read);
 
             array<u8>   sample = memory::wrap(typeof(u8), sample_data, sz_t(sample_len));
-            bool        A      = sample[0] != 0 && /// use B if its 0001
-                                 sample[1] != 0 &&
-                                 sample[2] != 0 &&
-                                 sample[3] != 1;
+            bool        A      = sample[0] != 0 && sample[1] != 0 &&
+                                 sample[2] != 0 && sample[3] != 1;
+            assert(!A);
 
-            array<Nalu> nalus  = Nalu::extract(sample, A ? Nalu::Annex::A : Nalu::Annex::B);
-            sample_nalus->insert(0, nalus);
-
-            /// find out if this is a keyframe by scanning the Annex B
+            /// mp4 dec should be framing agnostic but it seems to require Annex B
+            array<Nalu> nalus = Nalu::extract(sample, A ? Nalu::Annex::A : Nalu::Annex::B);
             bool is_key_frame = Nalu::find(nalus, Nalu::Type::idr);
-            if  (is_key_frame || sequential) {
-                found = true;
-                break;
+            for (Nalu &n: nalus) {
+                n->frame_id  = sample_id;
+                n->key_frame = is_key_frame;
             }
-            ts          = MP4ConvertToTrackTimestamp(mp4, video_track, --cur_frame, hz);
-            sample      = MP4GetSampleIdFromEditTime(mp4, video_track, ts, null, null);
-            sample_data = null;
-            sample_len  = 0;
-            assert(cur_frame != 0);
+            sample_nalus->insert(0, nalus);
+            
+            if (sequential || is_key_frame) break;
         }
 
-        assert(found);
+        assert(sample_nalus->len() && (sequential || sample_nalus[0][0]->key_frame));
 
-        u32  pic_id    = cur_frame; /// these can probably be the same unit as our frame_id
         bool pic_ready = false;
         for (array<Nalu> &nalus: sample_nalus) {
             for (Nalu &nalu: nalus) {
                 u8* payload    = nalu->payload.origin<u8>();
                 u32 len        = nalu->payload.count();
                 u32 bytes_read = 0;
-                u32 dec_result = h264bsdDecode(&dec, payload, len, pic_id, &bytes_read);
-                switch (dec_result) {
-                    case H264BSD_RDY:       // decoding finished, nothing special
-                        break;
-                    case H264BSD_PIC_RDY:   // decoding of a picture finished
-                        pic_ready = true;
-                        break;
-                    case H264BSD_HDRS_RDY:  // picture dimensions etc can be read (we read it from the first frame)
-                        break;
-                    case H264BSD_ERROR:
-                    case H264BSD_PARAM_SET_ERROR:
-                        assert(false);
-                        break;
+                u32 total      = 0;
+                while (total < len) {
+                    u32 dec_result = h264bsdDecode(&dec, &payload[total], len - total, (u32)nalu->frame_id, &bytes_read);
+                    total += bytes_read;
+                    switch (dec_result) {
+                        case H264BSD_RDY:       // decoding finished, nothing special
+                            break;
+                        case H264BSD_PIC_RDY:   // decoding of a picture finished
+                            pic_ready = true;
+                            break;
+                        case H264BSD_HDRS_RDY:  // picture dimensions etc can be read (we read it from the first frame)
+                            break;
+                        case H264BSD_ERROR:
+                        case H264BSD_PARAM_SET_ERROR:
+                            assert(false);
+                            break;
+                    }
                 }
             }
         }
@@ -751,11 +741,12 @@ struct iVideo {
 
         u32   is_idr = 0;
         u32   num_mb = 0;
+        u32   pic_id = 0;
         u32  *pic    = h264bsdNextOutputPictureRGBA(&dec, &pic_id, &is_idr, &num_mb);
         assert(pic); /// todo: not building the picture correctly from key frame
 
-        current_image = memory::wrap(typeof(rgba8), pic, width * height); /// wrap the memory, and lightly construct image
-        current_image.mem->shape = new ion::size { height, width }; /// todo: set this on the stack
+        ion::image image = memory::wrap(typeof(rgba8), pic, width * height); /// wrap the memory, and lightly construct image
+        image.mem->shape = new ion::size { height, width }; /// todo: set this on the stack
         current_frame_id = frame_id; /// only read backwards if we are going non-sequential, or its the first attempt
         
         /// if we seek a non sequential frame we must set our start time to be an offset 
@@ -763,7 +754,7 @@ struct iVideo {
         if (play_pause && !sequential) {
             start_time = millis() - i64(current_frame_id * (1000.0 / hz));
         }
-        return current_image;
+        return image;
     }
 };
 
@@ -810,7 +801,11 @@ bool Video::get_play_state() {
 }
 
 ion::image Video::seek_frame(i64 frame_id) {
-    return data->seek_frame(frame_id);
+    data->mtx_seek.lock();
+    ion::image image = data->seek_frame(frame_id);
+    data->current_image = image; /// we cant write to this and return this because thats out of sync
+    data->mtx_seek.unlock();
+    return image;
 }
 
 int Video::write_frame(Frame &frame) {
