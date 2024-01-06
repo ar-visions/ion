@@ -59,6 +59,7 @@ struct GLFWwindow;
 typedef void (*FnKey)   (ion::mx&, int, int, int, int);
 typedef void (*FnButton)(ion::mx&, int, int, int);
 typedef void (*FnMove)  (ion::mx&, double, double);
+typedef void (*FnEnter) (ion::mx&, int);
 typedef void (*FnScroll)(ion::mx&, double, double);
 typedef void (*FnChar)  (ion::mx&, unsigned int);
 
@@ -83,6 +84,7 @@ typedef struct _vk_engine_t {
 	FnKey								fn_key;
 	FnButton							fn_button;
 	FnMove								fn_move;
+	FnEnter								fn_enter;
 	FnScroll							fn_scroll;
 	FnChar								fn_char;
 
@@ -113,6 +115,7 @@ void 				vkengine_get_queues_properties     	(VkEngine e, VkQueueFamilyPropertie
 void 				vkengine_key_callback 				(VkEngine e, FnKey fn_key);
 void 				vkengine_button_callback 			(VkEngine e, FnButton button);
 void 				vkengine_move_callback 				(VkEngine e, FnMove move);
+void 				vkengine_enter_callback 			(VkEngine e, FnEnter enter);
 void 				vkengine_scroll_callback 			(VkEngine e, FnScroll scroll);
 void 				vkengine_char_callback 				(VkEngine e, FnChar chr);
 void 				vkengine_wait_idle					(VkEngine e);

@@ -54,6 +54,7 @@ void Element::move()      { }
 void Element::down()      { }
 void Element::up()        { }
 void Element::click()     { }
+void Element::leave()     { }
 
 doubly<LineInfo> &Element::get_lines(Canvas *p_canvas) {
 

@@ -80,19 +80,35 @@ static void char_callback (mx &user, uint32_t c) {
     }
 }
 
+static void mouse_enter_callback(mx &user, int enter) {
+    App app = app_data(user);
+    auto cd = app.composer::data;
+    if (enter == 1)
+        return;
+    /// only handling mouse leave, as we get a 'move' anyway for enter
+    if (app->hover) {
+        Element *n = app->hover;
+        n->data->hover = false;
+        app->hover = null;
+        n->leave();
+    }
+}
+
 static void mouse_move_callback(mx &user, double x, double y) {
     App app = app_data(user);
     auto cd = app.composer::data;
     app->cursor = vec2d { x, y };// / app->data->e->vk_gpu->dpi_scale;
 
-    for (Element* n: app->hover)
-        n->Element::data->hover = false;
+    if (app->hover)
+        app->hover->Element::data->hover = false;
     printf("play-pause hover = false\n");
     
-    app->hover = app.select_at(app->cursor, cd->buttons[0]);
+    array<Element*> hovers = app.select_at(app->cursor, cd->buttons[0]);
+    app->hover = hovers ? hovers[0] : null;
 
     Element *last = null;
-    for (Element* n: app->hover) {
+    if (app->hover) {
+        Element *n = app->hover;
         if (n->node::data->id == "play-pause") {
             printf("play-pause hover = true\n");
         }
@@ -100,7 +116,7 @@ static void mouse_move_callback(mx &user, double x, double y) {
         last = n;
         if (last->data->selectable || last->data->editable) {
             /// compute sel start on mouse click down
-            bool is_down = app->active[0];
+            bool is_down = app->active != null;
             if (is_down) {
                 last->data->sel_end = last->get_selection(app->cursor, is_down);
             }
@@ -113,8 +129,7 @@ static void scroll_callback(mx &user, double x, double y) {
     App app = app_data(user);
     
     if (app->hover) {
-        Element *e = app->hover[app->hover.len() - 1];
-        e->scroll(x, y);
+        app->hover->scroll(x, y);
     }
 }
 
@@ -125,18 +140,20 @@ static void mouse_button_callback(mx &user, int button, int state, int mods) {
     cd->buttons[button] = bool(state);
     
     Element* root = (Element*)app.composer::data->instances; /// for ux this is always single
-    array<Element*> prev_active = app->active;
+    Element* prev_active = app->active;
 
-    for (Element* n: app->active)
-        n->Element::data->active = false;
+    if (app->active)
+        app->active->Element::data->active = false;
     
-    if (state)
-        app->active = app.select_at(app->cursor, false);
-    else
-        app->active = {};
+    if (state) {
+        array<Element*> all_active = app.select_at(app->cursor, false);
+        app->active = all_active ? all_active[0] : null;
+    } else
+        app->active = null;
 
     Element* last = null;
-    for (Element* n: app->active) {
+    if (app->active) {
+        Element *n = app->active;
         n->Element::data->active = true;
         if (n->Element::data->tab_index >= 0)
             last = n;
@@ -173,8 +190,9 @@ static void mouse_button_callback(mx &user, int button, int state, int mods) {
     }
 
     /// new down states
-    for (Element* n: app->active) {
-        if (prev_active.index_of(n) == -1) {
+    if (app->active) {
+        Element *n = app->active;
+        if (prev_active != n) {
             n->down();
             if (n->data->ev.down) {
                 event e { n };
@@ -182,19 +200,19 @@ static void mouse_button_callback(mx &user, int button, int state, int mods) {
             }
         }
     }
+    
     /// new up states & handle click
-    for (Element *n: prev_active) {
-        if (app->active.index_of(n) == -1) {
-            n->up();
-            if (n->data->ev.up) {
-                event e { n };
-                n->data->ev.up(e);
-            }
-            bool in_bounds = app->hover.index_of(n) >= 0;
-            if (in_bounds && n->data->ev.click) {
-                event e { n };
-                n->data->ev.click(e);
-            }
+    if (prev_active && app->active != app->active) {
+        Element *n = prev_active;
+        n->up();
+        if (n->data->ev.up) {
+            event e { n };
+            n->data->ev.up(e);
+        }
+        bool in_bounds = app->hover == n;
+        if (in_bounds && n->data->ev.click) {
+            event e { n };
+            n->data->ev.click(e);
         }
     }
 }
@@ -263,6 +281,7 @@ int App::run() {
     vkengine_key_callback    (e,          key_callback);
 	vkengine_button_callback (e, mouse_button_callback);
 	vkengine_move_callback   (e,   mouse_move_callback);
+    vkengine_enter_callback  (e,  mouse_enter_callback);
     vkengine_char_callback   (e,         char_callback);
 	vkengine_scroll_callback (e,       scroll_callback);
 	vkengine_set_title       (e, "ux");

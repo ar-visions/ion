@@ -12,8 +12,8 @@ struct App:composer {
         //GPU               win;
         Canvas             *canvas;
         vec2d               cursor;
-        array<Element*>     active;
-        array<Element*>     hover;
+        Element*            active;
+        Element*            hover;
         VkEngine            e;
         lambda<node(App&)>  app_fn;
         lambda<bool(App&)>  loop_fn;
@@ -32,11 +32,11 @@ struct App:composer {
     }
 
     bool is_hovering(Element *e) {
-        return data->hover.index_of(e) >= 0;
+        return data->hover == e;
     }
 
     bool is_active(Element *e) {
-        return data->active.index_of(e) >= 0;
+        return data->active == e;
     }
 
     void shell_server(uri url);

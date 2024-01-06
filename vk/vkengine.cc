@@ -197,6 +197,11 @@ void glfw_move(GLFWwindow* window, double x, double y) {
 	e->fn_move(e->user, x, y);
 }
 
+void glfw_enter(GLFWwindow* window, int enter) {
+	vk_engine_t *e = (vk_engine_t*)glfwGetWindowUserPointer(window);
+	e->fn_enter(e->user, enter);
+}
+
 void glfw_scroll(GLFWwindow* window, double x, double y) {
 	vk_engine_t *e = (vk_engine_t*)glfwGetWindowUserPointer(window);
 	e->fn_scroll(e->user, x, y);
@@ -243,6 +248,7 @@ VkEngine vkengine_create (
 	glfwSetKeyCallback (e->window, glfw_key);
 	glfwSetMouseButtonCallback(e->window, glfw_button);
 	glfwSetCursorPosCallback(e->window, glfw_move);
+	glfwSetCursorEnterCallback(e->window, glfw_enter);
 	glfwSetScrollCallback(e->window, glfw_scroll);
 	glfwSetCharCallback(e->window, glfw_char);
 	glfwSetWindowUserPointer(e->window, (void*)e);
@@ -396,7 +402,7 @@ void vkengine_wait_idle (VkEngine e) {
 void vkengine_key_callback 		(VkEngine e, FnKey fn_key) 	  { e->fn_key    = fn_key; }
 void vkengine_button_callback 	(VkEngine e, FnButton button) { e->fn_button = button; }
 void vkengine_move_callback 	(VkEngine e, FnMove move)	  { e->fn_move   = move;   }
-
+void vkengine_enter_callback 	(VkEngine e, FnEnter enter)	  { e->fn_enter  = enter;  }
 void vkengine_scroll_callback   (VkEngine e, FnScroll scroll) {
 	e->fn_scroll = scroll;
 }

@@ -881,6 +881,7 @@ struct Element:node {
     virtual void unfocused();
     virtual void scroll(real x, real y);
     virtual void move();
+    virtual void leave();
     virtual void down();
     virtual void click();
     virtual void up();
