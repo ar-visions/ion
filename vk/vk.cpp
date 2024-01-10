@@ -446,7 +446,7 @@ void Device::M::createDescriptorPool() {
     poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
     poolInfo.pPoolSizes = poolSizes.data();
     poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
-
+    poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
     if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
         throw std::runtime_error("failed to create descriptor pool!");
     }
@@ -1886,13 +1886,14 @@ void Pipeline::M::createDescriptorSetLayout() {
 }
 
 void Pipeline::M::updateDescriptorSets() {
-    bool updated = false;
-    for (int a = 0; a < Asset::count; a++) { /// todo: remove 'undefined' Texture enum; very confusing idea!
-        if (textures[a]->updated) {
-            updated = true;
-            break;
+    bool updated = this->updated;
+    if (!updated)
+        for (int a = 0; a < Asset::count; a++) { /// todo: remove 'undefined' Texture enum; very confusing idea!
+            if (textures[a]->updated) {
+                updated = true;
+                break;
+            }
         }
-    }
     if (!updated)
         return;
     
@@ -1934,9 +1935,9 @@ void Pipeline::M::updateDescriptorSets() {
 
     for (int a = 0; a < Asset::count; a++)
         textures[a]->updated = false;
+    this->updated = false;
 }
 
-/// get this working, test this
 void Pipeline::M::createDescriptorSets() {
     std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descriptorSetLayout);
     VkDescriptorSetAllocateInfo allocInfo {};

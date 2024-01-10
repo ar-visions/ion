@@ -291,6 +291,7 @@ enums(ShadeModule, undefined,
      undefined, vertex, fragment, compute);
 
 /// never support 16bit indices for obvious reasons.  you do 1 cmclark section too many and there it goes
+/// ^- no control over the exporting of this one; blender uses 8bit, 16bit or 32bit based on the counts
 struct ngon {
     size_t size;
     u32   *indices;
@@ -393,6 +394,7 @@ struct Pipeline:mx {
         lambda<void(memory*)>       uniform_update;
         bool                        init;
         watch                       watcher;
+        bool                        updated;
 
         std::vector<VkDescriptorSet>                   descriptorSets;
         VkVertexInputBindingDescription                binding_desc;
@@ -497,9 +499,11 @@ struct Pipes:mx {
             reload_textures();
 
             /// load texture assets for all enumerables (minus undefined)
-            for (size_t i = 0; i < Asset::count; i++) /// todo: check against usage map to see if the texture applies and should be loaded
+            for (size_t i = 0; i < Asset::count; i++) { /// todo: check against usage map to see if the texture applies and should be loaded
                 p.textures[i] = data->textures[i];
-            
+            }
+
+            p.updated = true;
             Pipeline::M::assemble_graphics(&p, data->m, p.gfx);
             p.createDescriptorSets();
         };
