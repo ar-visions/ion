@@ -283,14 +283,17 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
         node render = instance->update(); /// needs a 'changed' arg
         if (render) {
             node &n = *(node*)instance;
-            if (render->children || render->type == typeof(map<node>) || render->type == typeof(array<node>)) {
-                /// each child is mounted
+            /// nodes have a children container
+            if (render->children) {
                 for (node *e: render->children) {
-                    /// check for null state
                     if (!e->data->id && !e->data->type) continue;
                     str id = node_id(*e);
                     update(composer, instance, n->mounts[id], *e);
                 }
+            /// can also be stored in a map
+            } else if (render->type == typeof(map<node>)) {
+            } else if (render->type == typeof(array<node>)) {
+
             } else {
                 str id = node_id(render);
                 update(composer, instance, n->mounts[id], render);

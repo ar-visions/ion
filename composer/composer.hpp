@@ -648,7 +648,8 @@ struct node:mx {
         for (field<V> f:m) {
             K key = f.key.hold();
             node r = fn(key, f.value);
-            if  (r) res.data->children += new node(r);
+            if  (r)
+                res.data->children += new node(r);
         }
         return res;
     }

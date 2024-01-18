@@ -1396,13 +1396,14 @@ void Texture::M::create_image(vec2i size) {
 
 ion::image Texture::asset_image(symbol name, Asset type) {
     array<ion::path> paths = {
-        fmt {"textures/{0}.{1}.png", { name, type.symbol() }},
-        fmt {"textures/{0}.png",     { type.symbol() }}
+        fmt {"models/{0}.{1}.png", { name, type.symbol() }},
+        fmt {"models/{0}.png",     { type.symbol() }}
     };
     for (ion::path &p: paths) {
         if (p.exists())
             return ion::image(p);
     }
+    assert(type != Asset::color); /// color is required asset; todo: normal should create a 255, 128, 0 constant upon failure
     return null;
 }
 
