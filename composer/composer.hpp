@@ -609,10 +609,11 @@ struct node:mx {
     }
 
     node(array<node*> ch) : node() {
-        data->children = ch; /// data must be set here
+        data->children = ch;
     }
 
     node(array<node> ch) : node() {
+        /// these are unrolled in the iterators
         data->children = array<node*>(size(ch.len()), size(0));
         for (auto &child:ch) {
             data->children += new node(child);
@@ -648,8 +649,15 @@ struct node:mx {
         for (field<V> f:m) {
             K key = f.key.hold();
             node r = fn(key, f.value);
-            if  (r)
-                res.data->children += new node(r);
+            if  (r) {
+                /// unroll any array<node> here
+                if (!r->id) {
+                    assert(r->children);
+                    for (node* c: r->children)
+                        res.data->children += c; /// transfer ownership here
+                } else
+                    res.data->children += new node(r);
+            }
         }
         return res;
     }
