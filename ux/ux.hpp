@@ -235,51 +235,51 @@ struct coord {
 
     coord(str s) {
         array<str> sp = s.split();
-            str       &sx = sp[0];
-            str       &sy = sp[1];
-            assert(sp.len() == 2);
+        str       &sx = sp[0];
+        str       &sy = sp[1];
+        assert(sp.len() == 2);
 
-            x_type = str(sx[0]);
-            y_type = str(sy[0]);
-            str sx_offset = &sx[1];
-            str sy_offset = &sy[1];
+        x_type = str(sx[0]);
+        y_type = str(sy[0]);
+        str sx_offset = &sx[1];
+        str sy_offset = &sy[1];
 
-            if (sx_offset[sx_offset.len() - 1] == '%') {
+        if (sx_offset[sx_offset.len() - 1] == '%') {
+            sx_offset = sx_offset.mid(0, sx_offset.len() - 1);
+            x_per = true;
+        }
+        if (sy_offset[sy_offset.len() - 1] == '%') {
+            sy_offset = sy_offset.mid(0, sy_offset.len() - 1);
+            y_per = true;
+        }
+        if (sx_offset)
+            if (sx_offset[sx_offset.len() - 1] == '+') {
                 sx_offset = sx_offset.mid(0, sx_offset.len() - 1);
-                x_per = true;
+                x_rel = true;
             }
-            if (sy_offset[sy_offset.len() - 1] == '%') {
+        if (sy_offset)
+            if (sy_offset[sy_offset.len() - 1] == '+') {
                 sy_offset = sy_offset.mid(0, sy_offset.len() - 1);
-                y_per = true;
-            }
-            if (sx_offset)
-                if (sx_offset[sx_offset.len() - 1] == '+') {
-                    sx_offset = sx_offset.mid(0, sx_offset.len() - 1);
-                    x_rel = true;
-                }
-            if (sy_offset)
-                if (sy_offset[sy_offset.len() - 1] == '+') {
-                    sy_offset = sy_offset.mid(0, sy_offset.len() - 1);
-                    y_rel = true;
-                }
-
-            offset = { sx_offset.real_value<real>(), sy_offset.real_value<real>() };
-            
-            switch (x_type.value) {
-                case xalign::left:   align.x = 0.0; break;
-                case xalign::middle: align.x = 0.5; break;
-                case xalign::right:  align.x = 1.0; break;
-                case xalign::width:  align.x = 0.0; break;
-                default: break;
+                y_rel = true;
             }
 
-            switch (y_type.value) {
-                case yalign::top:    align.y = 0.0; break;
-                case yalign::middle: align.y = 0.5; break;
-                case yalign::bottom: align.y = 1.0; break;
-                case yalign::height: align.y = 0.0; break;
-                default: break;
-            }
+        offset = { sx_offset.real_value<real>(), sy_offset.real_value<real>() };
+        
+        switch (x_type.value) {
+            case xalign::left:   align.x = 0.0; break;
+            case xalign::middle: align.x = 0.5; break;
+            case xalign::right:  align.x = 1.0; break;
+            case xalign::width:  align.x = 0.0; break;
+            default: break;
+        }
+
+        switch (y_type.value) {
+            case yalign::top:    align.y = 0.0; break;
+            case yalign::middle: align.y = 0.5; break;
+            case yalign::bottom: align.y = 1.0; break;
+            case yalign::height: align.y = 0.0; break;
+            default: break;
+        }
     }
 
     coord mix(coord &b, double a) {
@@ -400,6 +400,13 @@ struct region:mx {
         register(M);
     };
     mx_basic(region);
+
+    /// simple rect
+    region(rectd r) : region() {
+        data->tl  = fmt { "l{0} t{1}", { r.x, r.y }};
+        data->br  = fmt { "w{0} h{1}", { r.w, r.h }};
+        data->set = true;
+    }
 
     region(coord &tl, coord &br) : region() {
         data->tl = tl;
