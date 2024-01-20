@@ -548,11 +548,11 @@ struct node:mx {
     array<node*> collect(str group_name, bool include_this) {
         node *dont_inc = include_this ? this : null;
         array<node*> res;
-        console.log("looking for group called {0}", {group_name});
+        //console.log("looking for group called {0}", {group_name});
         if (data->parent) {
             for (field<node*> &f: data->parent->data->mounts) {
                 node *c = f.value;
-                console.log("found element {0}", {c->data->id});
+                //console.log("found element {0}", {c->data->id});
                 if (c->data->group == group_name && c != dont_inc)
                     res += c;
             }

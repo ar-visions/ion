@@ -211,7 +211,7 @@ void Element::draw_text(Canvas& canvas, rectd& rect) {
 /// this may have access to canvas
 vec2d Element::child_offset(Element &child) {
     Element *b              = null;
-    rectd    bounds         = data->bounds;
+    vec2d    offset         = { 0, 0 };
     bool     compute        = false;
     bool     compute_left   = false,
              compute_right  = false,
@@ -230,35 +230,25 @@ vec2d Element::child_offset(Element &child) {
     }
 
     /// if child does not have any relative boundary then return parent bounds;
-    if (!compute)
-        return vec2d { 0, 0 };
-    
-    node::edata *edata = ((node*)this)->data;
-    for (node *n: edata->mounts) {
-        Element* c = (Element*)n;
-        /// complex, but bounds is computed on all of these up to child;
-        /// we just need flags given for what is +'d
-        if (c == &child)
-            break;
-        else
-            b = c;
+    if (compute) {
+        node::edata *edata = ((node*)this)->data;
+        for (node *n: edata->mounts) {
+            Element* c = (Element*)n;
+            /// complex, but bounds is computed on all of these up to child;
+            /// we just need flags given for what is +'d
+            if (c == &child)
+                break;
+            else
+                b = c;
+        }
+        /// first item gets its parent coords
+        if (b) {
+            rectd &bb = b->data->bounds;
+            if (compute_left) offset.x = bb.x + bb.w;
+            if (compute_top)  offset.y = bb.y + bb.h;
+        }
     }
-    /// first item gets its parent coords
-    if (!b)
-        return vec2d { 0, 0 };
-    
-    rectd &bb = b->data->bounds;
-    if (compute_left) {
-        double px = bounds.x;
-        bounds.x  = bb.x + bb.w;
-        bounds.w += (px - bounds.x);
-    }
-    if (compute_top) {
-        double py = bounds.y;
-        bounds.y  = bb.y + bb.h;
-        bounds.h += (py - bounds.y);
-    }
-    return bounds.xy();
+    return offset;
 }
 
 void Element::update_bounds(Canvas &canvas) {
@@ -267,11 +257,16 @@ void Element::update_bounds(Canvas &canvas) {
     vec2d         offset     = eparent ? eparent->child_offset(*this) : vec2d { 0, 0 };
     rectd      parent_bounds = eparent ? eparent->data->bounds : 
         rectd { 0, 0, r64(canvas.get_virtual_width()), r64(canvas.get_virtual_height()) };
+
+    /// get void_w/h from parent
+    double void_width  = eparent ? eparent->data->void_width  : 0;
+    double void_height = eparent ? eparent->data->void_height : 0;
+    
     props::drawing &fill     = data->drawings[operation::fill];
     props::drawing &image    = data->drawings[operation::image];
     props::drawing &outline  = data->drawings[operation::outline];
 
-    data->bounds      = data->area.relative_rect(parent_bounds);
+    data->bounds      = data->area.relative_rect(parent_bounds, void_width, void_height);
     data->bounds.x   += offset.x; 
     data->bounds.y   += offset.y;
 
@@ -302,7 +297,28 @@ void Element::update_bounds(Canvas &canvas) {
         outline.shape = outline_rect;
     }
 
+    /// we accumulate void scalers so things like headers
+    /// will not be taken into account for liquid layouts
+    data->void_width  = 0;
+    data->void_height = 0;
     for (node *n: edata->mounts) {
+        Element* e = (Element*)n;
+        if (!e->data->count_width)
+            data->void_width  += e->data->bounds.w;
+        if (!e->data->count_height)
+            data->void_height += e->data->bounds.h;
+    }
+    if (strcmp(type()->name, "Ribbon") == 0) {
+        Element* e0 = (Element*)edata->mounts["side-profile-header"];
+        e0->update_bounds(canvas);
+        Element* e1 = (Element*)edata->mounts["side-profile-content"];
+        e1->update_bounds(canvas);
+        Element* e2 = (Element*)edata->mounts["forward-profile-header"];
+        e2->update_bounds(canvas);
+        Element* e3 = (Element*)edata->mounts["forward-profile-content"];
+        e3->update_bounds(canvas);
+    } else
+    for (node *n: edata->mounts) { /// debug this: for type == Ribbon
         Element* e = (Element*)n;
         e->update_bounds(canvas);
     }
@@ -920,7 +936,8 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
                 for (node *e: render->children) {
                     if (!e->data->id && !e->data->type) continue;
                     str id = node_id(*e);
-                    update(composer, instance, n->mounts[id], *e);
+                    node *&n_mount = n->mounts[id];
+                    update(composer, instance, n_mount, *e);
                 }
             /// can also be stored in a map
             } else if (render->type == typeof(map<node>)) {

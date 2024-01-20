@@ -296,21 +296,21 @@ struct coord {
         };
     }
 
-    vec2d plot(rectd &rect, vec2d &rel) {
+    vec2d plot(rectd &rect, vec2d &rel, double void_width = 0, double void_height = 0) {
         double x;
         double y;
-        double ox = x_per ? (offset.x / 100.0) * rect.w : offset.x;
-        double oy = y_per ? (offset.y / 100.0) * rect.h : offset.y;
+        double ox = x_per ? (offset.x / 100.0) * (rect.w - void_width)  : offset.x;
+        double oy = y_per ? (offset.y / 100.0) * (rect.h - void_height) : offset.y;
 
         if (x_type.value == xalign::width)
             x = rel.x + ox;
         else
-            x = rect.x + rect.w * align.x + ox;
+            x = rect.x + (rect.w - void_width) * align.x + ox;
         
         if (y_type.value == yalign::height)
             y = rel.y + oy;
         else
-            y = rect.y + rect.h * align.y + oy;
+            y = rect.y + (rect.h - void_height) * align.y + oy;
 
         return { x, y };
     }
@@ -444,10 +444,10 @@ struct region:mx {
 
     operator bool() { return data->set; }
     
-    rectd relative_rect(rectd &win) {
+    rectd relative_rect(rectd &win, double void_width = 0, double void_height = 0) {
         vec2d rel  = win.xy();
-        vec2d v_tl = data->tl.plot(win, rel);
-        vec2d v_br = data->br.plot(win, v_tl);
+        vec2d v_tl = data->tl.plot(win, rel, void_width, void_height);
+        vec2d v_br = data->br.plot(win, v_tl, void_width, void_height);
         rectd r { v_tl, v_br };
         r.x -= win.x;
         r.y -= win.y;
@@ -734,6 +734,7 @@ struct Element:node {
         int                     tab_index;
         vec2d                   cursor;
         bool                    test1;
+        double                  void_width, void_height;
 
         /// if we consider events handled contextually and by many users, it makes sense to have dispatch
         struct events {
@@ -794,6 +795,8 @@ struct Element:node {
         bool                selectable = true;
         bool                multiline  = false;
         TextSel             sel_start, sel_end;
+        bool                count_height = true;
+        bool                count_width  = true;
 
         doubly<prop> meta() const {
             return {
@@ -856,11 +859,13 @@ struct Element:node {
                 prop { "child-align",    drawings[operation::child]  .align   },
                 prop { "text-align",     drawings[operation::text]   .align   },
 
-                prop { "capture",   capture   },
-                prop { "hover",     hover     },
-                prop { "active",    active    },
-                prop { "focus",     focus     },
-                prop { "tab-index", tab_index },
+                prop { "capture",      capture      },
+                prop { "hover",        hover        },
+                prop { "active",       active       },
+                prop { "focus",        focus        },
+                prop { "tab-index",    tab_index    },
+                prop { "count-width",  count_width  },
+                prop { "count-height", count_height }
             };
         }
         type_register(props);
