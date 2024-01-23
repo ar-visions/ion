@@ -23,6 +23,11 @@ struct Button:Element {
 
     component(Button, Element, props);
 
+    void mounted() {
+        if (state->selected)
+            node::data->value = mx(true);
+    }
+
     void down() {
         if (state->behavior == Button::Behavior::radio) {
             array<node*> buttons = collect(node::data->group, false);
@@ -31,54 +36,6 @@ struct Button:Element {
                     continue;
                 Button *button = (Button*)b;
                 button->state->selected = button == this;
-                button->node::data->value = mx(button->state->selected);
-            }
-        } else if (state->behavior == Button::Behavior::toggle) {
-            state->selected = !state->selected;
-            node::data->value = state->selected;
-        }
-
-        if (state->on_change) {
-            event ev { this };
-            // set target to this; the user can then lookup the component and its properties such as selected
-            // we prefer this to throwing new args around
-            state->on_change(ev);
-        }
-    }
-
-    node update() {
-        return node::update();
-    }
-};
-
-struct Button2:Element {
-    enums(Behavior, push,
-         push, label, toggle, radio);
-    
-    struct props {
-        Button::Behavior    behavior;
-        bool                selected;
-        callback            on_change;
-        properties meta() {
-            return {
-                {"behavior",  behavior},
-                {"on-change", on_change},
-                {"selected",  selected}
-            };
-        }
-        type_register(props);
-    };
-
-    component(Button2, Element, props);
-
-    void down() {
-        if (state->behavior == Button::Behavior::radio) {
-            array<node*> buttons = collect(node::data->group, false);
-            for (node *b: buttons) {
-                if (b->type() != typeof(Button))
-                    continue;
-                Button *button = (Button*)b;
-                button->state->selected = button == (Button*)this;
                 button->node::data->value = mx(button->state->selected);
             }
         } else if (state->behavior == Button::Behavior::toggle) {
