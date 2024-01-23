@@ -198,10 +198,6 @@ void style::impl::load(str code) {
             ws(sc);
             console.test(*sc == '.' || isalpha(*sc), "expected Type[.id], or .id", {});
             bl->quals = parse_qualifiers(*bl, &sc);
-            if (bl->quals[0]->state == "test1") {
-                int test = 0;
-                test++;
-            }
             ws(++sc);
             ///
             while (*sc && *sc != '}') {

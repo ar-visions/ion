@@ -941,8 +941,6 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
                 }
             /// can also be stored in a map
             } else if (render->type == typeof(map<node>)) {
-                int test = 0;
-                test++;
             } else if (render->type == typeof(array<node>)) {
             } else {
                 str id = node_id(render);

@@ -96,14 +96,6 @@ size_t my_strftme(char *buf, size_t size, const char *format, const time_t *t) {
 
 namespace rtc::mbedtls {
 
-bool check_size() {
-	mbedtls_ssl_context ssl;
-	int sz1 = sizeof(mbedtls_ssl_context);
-	int test = 0;
-	test++;
-	return true;
-}
-
 // Return false on non-fatal error
 bool check(int ret, const string &message) {
 	if (ret < 0) {

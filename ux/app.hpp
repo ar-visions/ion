@@ -55,12 +55,6 @@ struct App:composer {
         array<Element*> result = array<Element*>();
         lambda<void(Element*)> proc;
         proc = [&](Element *e) {
-
-            if (strcmp(e->mem->type->name, "Annotate") == 0) {
-                int test = 0;
-                test++;
-            }
-
             array<Element*> inside = e->select([&](Element *ee) {
                 node          &n = *(node*)ee;
                 real           x = cur.x, y = cur.y;

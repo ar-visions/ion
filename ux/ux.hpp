@@ -874,8 +874,6 @@ struct Element:node {
 
 
     void debug() {
-        int test = 0;
-        test++;
     }
 
     TextSel get_selection(vec2d pos, bool is_down);
