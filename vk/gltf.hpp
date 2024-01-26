@@ -28,6 +28,43 @@ namespace gltf {
         TRIANGLE_FAN = 6
     );
 
+    struct SparseInfo:mx {
+        struct M {
+            size_t        bufferView;
+            ComponentType componentType;
+            /// componentType:
+            /// sub-accessor type for bufferView, only for index types
+            /// for value types, we are using the componentType of the accessor
+            /// we assert that its undefined or set to the same
+            doubly<prop> meta() {
+                return {
+                    { "bufferView",     bufferView    },
+                    { "componentType",  componentType }
+                };
+            }
+            register(M);
+        };
+        mx_basic(SparseInfo);
+    };
+
+    struct Sparse:mx {
+        struct M {
+            size_t        count;
+            SparseInfo    indices;
+            SparseInfo    values;
+            ///
+            doubly<prop> meta() {
+                return {
+                    { "count",          count       },
+                    { "indices",        indices     },
+                    { "values",         values      }
+                };
+            }
+            register(M);
+        };
+        mx_basic(Sparse);
+    };
+
     struct Accessor:mx {
         struct M {
             size_t        bufferView;
@@ -36,6 +73,7 @@ namespace gltf {
             size_t        count;
             array<float>  min;
             array<float>  max;
+            Sparse        sparse;
             ///
             doubly<prop> meta() {
                 return {
@@ -44,7 +82,8 @@ namespace gltf {
                     { "count",          count         },
                     { "type",           type          },
                     { "min",            min           },
-                    { "max",            max           }
+                    { "max",            max           },
+                    { "sparse",         sparse        } /// these are overlays we use to make a copied buffer instance with changes made to it
                 };
             }
             register(M);
@@ -72,20 +111,47 @@ namespace gltf {
         mx_basic(BufferView);
     };
 
+    struct Skin:mx {
+        struct M {
+            str             name;
+            array<int>      joints; /// references the nodes array
+            int             inverseBindMatrices; /// buffer-view index (data type must be matrix 4x4)
+            mx              extras;
+            mx              extensions;
+            ///
+            doubly<prop> meta() {
+                return {
+                    { "name",                name        },
+                    { "joints",              joints      },
+                    { "inverseBindMatrices", inverseBindMatrices },
+                    { "extensions",          extensions  },
+                    { "extras",              extras      }
+                };
+            }
+            register(M);
+        };
+        mx_basic(Skin);
+    };
+
     struct Node:mx {
         struct M {
             str             name;
-            size_t          mesh; /// mesh index
-            array<float>    rotation;
-            array<float>    scale;
-            array<float>    translation;
+            int             skin        = -1; /// armature index
+            int             mesh        = -1; /// mesh index; this is sometimes not set when there are children referenced and its a group-only
+            array<float>    translation = { 0.0, 0.0, 0.0 };
+            array<float>    rotation    = { 0.0, 0.0, 0.0, 1.0 };
+            array<float>    scale       = { 1.0, 1.0, 1.0 };
+            array<int>      children;
             ///
             doubly<prop> meta() {
                 return {
                     { "name",          name        },
-                    { "mesh",          mesh        }
-                    /// no longer planning on supporting the rotation scale and translation.
-                    /// just apply those. also bake your materials.. use SimpleBake and make use of multiple channels
+                    { "mesh",          mesh        },
+                    { "skin",          skin        }, /// armature index: Models::skins 
+                    { "children",      children    },
+                    { "translation",   translation }, /// apply first
+                    { "rotation",      rotation    }, /// apply second
+                    { "scale",         scale       }  /// apply third [these are done on load after json is read in; this is only done in cases where ONE of these are set (we want to set defaults of 1,1,1 for scale, 0,0,0 for translate, etc)]
                 };
             }
             register(M);
@@ -99,7 +165,7 @@ namespace gltf {
             size_t           indices;
             int              material = -1;
             Mode             mode;
-            array<mx>        targets; /// (optional) accessor id for attribute name
+            array<map<mx>>   targets; /// (optional) accessor id for attribute name
             ///
             doubly<prop> meta() {
                 return {
@@ -115,17 +181,33 @@ namespace gltf {
         mx_basic(Primitive);
     };
 
+    struct MeshExtras:mx {
+        struct M {
+            array<str>       target_names;
+            ///
+            doubly<prop> meta() {
+                return {
+                    { "targetNames",  target_names }
+                };
+            }
+            register(M);
+        };
+        mx_basic(MeshExtras);
+    };
+
     struct Mesh:mx {
         struct M {
             str              name;
             array<Primitive> primitives;
             array<float>     weights;
+            MeshExtras       extras;
             ///
             doubly<prop> meta() {
                 return {
                     { "name",         name       },
                     { "primitives",   primitives },
-                    { "weights",      weights    }
+                    { "weights",      weights    },
+                    { "extras",       extras     }
                 };
             }
             register(M);
@@ -186,6 +268,7 @@ namespace gltf {
     struct Model:mx {
         struct M {
             array<Node>       nodes;
+            array<Skin>       skins; /// these are the armatures/bones; why on earth they call it skins is pretty silly; the bones move the model faces, and those faces may or may not be described as skin on the model
             array<Accessor>   accessors;
             array<BufferView> bufferViews;
             array<Mesh>       meshes;
@@ -197,6 +280,7 @@ namespace gltf {
             doubly<prop> meta() {
                 return {
                     { "nodes",       nodes },
+                    { "skins",       skins },
                     { "accessors",   accessors },
                     { "bufferViews", bufferViews },
                     { "meshes",      meshes },
