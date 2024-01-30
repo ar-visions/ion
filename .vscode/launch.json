@@ -31,6 +31,30 @@
             "justMyCode": true
         },
         {
+            "name": "webgpu-test",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/../hyperspace/build/webgpu-test",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/../hyperspace/build",
+            "environment": [],
+            "MIMode": "gdb",
+            "presentation": {
+                "hidden": false,
+                "group": "",
+                "order": 1,
+            },
+            "windows":{
+                "type": "cppvsdbg",
+                "program": "${workspaceFolder}/../hyperspace/build/Debug/webgpu-test",
+                "cwd": "${workspaceFolder}/../hyperspace/build"
+            },
+            "osx": {
+                "MIMode": "lldb"
+            }
+        },
+        {
             "name": "lambda",
             "type": "cppdbg",
             "request": "launch",

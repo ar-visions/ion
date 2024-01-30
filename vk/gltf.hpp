@@ -295,7 +295,7 @@ namespace gltf {
         mx_basic(Model);
 
         static Model load(path p) {
-            return p.read<Model>(); /// gltf uses a subpath for buffers specified in "file.bin" form.
+            return p.read<Model>();
         }
     };
 };

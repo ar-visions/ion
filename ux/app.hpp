@@ -5,28 +5,33 @@
 
 namespace ion {
 
-struct App:composer {
-    struct adata {
-        composer::cmdata*   cmdata;
-        MStream             media; // look!
-        //GPU               win;
-        Canvas             *canvas;
-        vec2d               cursor;
-        Element*            active;
-        Element*            hover;
-        VkEngine            e;
-        lambda<node(App&)>  app_fn;
-        lambda<bool(App&)>  loop_fn;
-        map<mx>             args;
-        Services            services;
-        ///
-        type_register(adata);
-    };
+enums(AppType, undefined,
+    undefined, VulkanOnly)
 
+struct adata {
+    composer::cmdata*   cmdata;
+    MStream             media; // look!
+    //GPU               win;
+    Canvas             *canvas;
+    vec2d               cursor;
+    Element*            active;
+    Element*            hover;
+    VkEngine            e;
+    lambda<node(struct App&)>  app_fn;
+    lambda<bool(struct App&)>  loop_fn;
+    map<mx>             args;
+    Services            services;
+    states<AppType>     app_type;
+    ///
+    type_register(adata);
+};
+
+struct App:composer {
     mx_object(App, composer, adata);
 
-    App(map<mx> args, lambda<node(App&)> app_fn) : App() {
+    App(map<mx> args, states<AppType> app_type, lambda<node(App&)> app_fn) : App() {
         data->args   = args;
+        data->app_type = app_type;
         data->cmdata = composer::data; /// perhaps each data should be wrapped instance with an awareness of its peers
         data->app_fn = app_fn;
     }

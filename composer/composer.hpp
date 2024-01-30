@@ -334,15 +334,16 @@ struct style:mx {
         type_register(impl);
     };
 
-    /// load all style sheets in resources
-    static style init();
+    /// style is loaded from its root Element (AppNameHere.css)
+    void load_from_file(path css_path);
+    style(type_t app_type);
+
     mx_object(style, mx, impl);
 };
 
 /// no reason to have style separated in a single app
 /// if we have multiple styles, just reload
 template <> struct is_singleton<style> : true_type { };
-
 
 enums(keyboard, none,
      none, caps_lock, shift, ctrl, alt, meta);
@@ -496,6 +497,7 @@ struct node:mx {
     };
     ///
     struct edata {
+        struct adata*           app;        /// set on all nodes
         type_t                  type;       /// type given
         str                     id;         /// identifier 
         ax                      args;       /// arguments

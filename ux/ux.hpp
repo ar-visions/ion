@@ -719,11 +719,12 @@ struct SVG:mx {
     mx_basic(SVG);
 };
 
+struct adata *app_instance();
+
 struct Canvas;
 struct Element:node {
     /// standard props
     struct props {
-
         style*                  root_style; /// applied at root for multiple style trees across multiple apps
         Element*                focused;
         Element*                capt;
@@ -897,6 +898,8 @@ struct Element:node {
     virtual void up();
     virtual void draw_text(Canvas& canvas, rectd& rect);
     virtual void draw(Canvas& canvas);
+    virtual array<Pipes> render() { return {}; }
+    virtual void post_render() { }
     virtual void update_bounds(Canvas &canvas);
     virtual vec2d child_offset(Element &child);
 

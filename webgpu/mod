@@ -1,0 +1,5 @@
+dep(
+    mx:mx glfw:glfw3 glm:glm_static
+    skia:dawn_native_static skia:dawn_platform_static skia:dawn_proc_static)
+
+includes(${EXTERN_DIR}/skia/third_party/externals/dawn/include)

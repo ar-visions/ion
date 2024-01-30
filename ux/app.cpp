@@ -11,6 +11,8 @@ extern "C" void AllowKeyRepeats(void);
 
 using namespace ion;
 
+namespace ion {
+
 static cstr cstr_copy(cstr s) {
     size_t len = strlen(s);
     cstr     r = (cstr)malloc(len + 1);
@@ -264,13 +266,21 @@ void App::shell_server(uri bind) {
     
 }
 
+static adata *_app_instance;
+
+adata *app_instance() {
+    return _app_instance;
+}
+
 int App::run() {
-    data->e = vkengine_create(1, 2, "ux",
+
+    _app_instance = data;
+    data->e = vkengine_create(1, 2, "", /// use app config to select a version here
         VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, VK_PRESENT_MODE_FIFO_KHR, VK_SAMPLE_COUNT_4_BIT,
         512, 512, 0, (mx&)*this);
-    
+    bool use_canvas = !data->app_type[AppType::VulkanOnly];
     vk_engine_t *e = data->e;
-    Canvas *canvas = data->canvas = new Canvas(e->renderer);
+    Canvas *canvas = data->canvas = use_canvas ? new Canvas(e->renderer) : null; /// needs to be an option!
 
     /// allows keys to repeat on OSX, and thus allow glfw to function normally for UX
     /// todo: we still need backspace to repeat
@@ -284,7 +294,16 @@ int App::run() {
     vkengine_enter_callback  (e,  mouse_enter_callback);
     vkengine_char_callback   (e,         char_callback);
 	vkengine_scroll_callback (e,       scroll_callback);
-	vkengine_set_title       (e, "ux");
+	
+
+    node ee;
+    auto render_app = [&]() -> void {
+        ee = data->app_fn(*this);
+    };
+    render_app(); /// we call it in prime fashion so we can obtain the type of the app class
+    style root_style { ee->type }; /// this is a singleton, so anyone else doing style s; will get the style. (those should not exec first, though.)
+
+    vkengine_set_title(e, ee->type->name);
 
     shell_server(data->args["debug"]);
 
@@ -293,37 +312,47 @@ int App::run() {
 
         e->vk_device->mtx.lock();
 
-        rgbad c = { 0.0, 0.0, 0.0, 1.0 };
-        /// todo: background-blur, 1 canvas for each gaussian() call
-        canvas->clear(c);
-        canvas->save();
-        node ee = data->app_fn(*this);
-
+        if (canvas) {
+            rgbad c = { 0.0, 0.0, 0.0, 1.0 }; /// todo: background-blur, 1 canvas for each gaussian() call
+            canvas->clear(c);
+            canvas->save();
+        }
+        render_app();
         update_all(ee);
         Element *eroot = (Element*)(
             composer::data->instances->data->children ?
             composer::data->instances->data->children[0] : 
             composer::data->instances);
+        
         if (eroot) {
             /// update rect need to get eroot->children[0]
-            eroot->data->bounds = rectd {
-                0, 0,
-                (real)canvas->get_virtual_width(),
-                (real)canvas->get_virtual_height()
-            };
-            auto &bounds = eroot->data->bounds;
-            eroot->update_bounds(*canvas);
-            canvas->save();
-            eroot->draw(*canvas);
-            canvas->restore();
-        }
-        canvas->flush();
 
-        /// we need an array of renderers/presenters; must work with a 3D scene, bloom shading etc
-		if (!vkh_presenter_draw(e->renderer)) {
-            canvas->app_resize();
-            vkDeviceWaitIdle(e->vkh->device);
-		}
+            if (use_canvas) {
+                eroot->data->bounds = rectd {
+                    0, 0,
+                    (real)canvas->get_virtual_width(),
+                    (real)canvas->get_virtual_height()
+                };
+                eroot->update_bounds(*canvas);
+                canvas->save();
+                eroot->draw(*canvas);
+                canvas->restore();
+            } else {
+                array<Pipes> a_pipes = eroot->render();
+                e->vk_device->drawFrame(a_pipes);
+            }
+        }
+        if (use_canvas) {
+            canvas->flush();
+            if (!vkh_presenter_draw(e->renderer)) {
+                if (use_canvas)
+                    canvas->app_resize();
+            }
+        }
+        vkDeviceWaitIdle(e->vkh->device);
+        if (!use_canvas)
+            eroot->post_render();
+        
         e->vk_device->mtx.unlock();
         if (data->loop_fn)
             if (!data->loop_fn(*this)) {
@@ -332,4 +361,6 @@ int App::run() {
             }
 	}
     return 0;
+}
+
 }

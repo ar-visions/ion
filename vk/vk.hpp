@@ -480,8 +480,7 @@ struct Pipes:mx {
                 loaded = true;
             }
         };
-                
-        /// it would be best to make this one runtime
+        
         data->uniform_update = [data=data](memory *pipeline_mem) {
             Pipeline::M *p   = (Pipeline::M *)pipeline_mem->origin;
             static void *ubo = p->gfx->utype->functions->alloc_new(null, null); /// not a leak.  its a singleton

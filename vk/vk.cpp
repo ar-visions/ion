@@ -894,7 +894,7 @@ void Device::M::transitionImageLayout(VkImage image, VkFormat format, VkImageLay
     VkPipelineStageFlags sourceStage;
     VkPipelineStageFlags destinationStage;
 
-    if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+    if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && (newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL || newLayout == VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)) {
         barrier.srcAccessMask = 0;
         barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 
@@ -1403,7 +1403,7 @@ ion::image Texture::asset_image(symbol name, Asset type) {
         if (p.exists())
             return ion::image(p);
     }
-    assert(type != Asset::color); /// color is required asset; todo: normal should create a 255, 128, 0 constant upon failure
+    //assert(type != Asset::color); /// color is required asset; todo: normal should create a 255, 128, 0 constant upon failure
     return null;
 }
 
@@ -1462,6 +1462,7 @@ std::vector<VkVertexInputAttributeDescription> Pipeline::M::getAttributeDescript
         if (p.type == typeof(glm::vec2)) return VK_FORMAT_R32G32_SFLOAT;
         if (p.type == typeof(glm::vec3)) return VK_FORMAT_R32G32B32_SFLOAT;
         if (p.type == typeof(glm::vec4)) return VK_FORMAT_R32G32B32A32_SFLOAT;
+        if (p.type == typeof(glm::ivec4)) return VK_FORMAT_R32G32B32A32_SINT;
         if (p.type == typeof(float))     return VK_FORMAT_R32_SFLOAT;
         ///
         assert(false);
@@ -1505,20 +1506,20 @@ void Pipeline::M::start() {
                 }
             }
             /// if we already loaded before, cleanup resources
-            data->device->mtx.lock();
-            if (data->init)
+            if (data->init) {
+                data->device->mtx.lock();
                 data->cleanup();
-
-            /// perform reload
+            }
             data->reload((Pipeline::M&)*data);
+            if (data->init)
+                data->device->mtx.unlock();
             data->init = true;
-            data->device->mtx.unlock();
         };
 
         /// spawn watcher
         watcher = watch::spawn(
-            {"./shaders", "./textures", "./models"},
-            {".frag", ".vert", ".png", ".obj"},
+            {"./shaders", "./models"},
+            {".frag", ".vert", ".png", ".gltf"},
             {},
             rld);
     }
@@ -1529,122 +1530,121 @@ void Pipeline::M::assemble_graphics(Pipeline::M *pipeline, gltf::Model &m, Graph
     
     str part = gfx->name;
     type_t vtype = pipeline->gfx->vtype;
-    for (Scene &s: m->scenes) {
-        /// iterate through node indices
-        for (size_t inode: s->nodes) {
-            Node &node = m->nodes [inode];
-            /// load specific node name from node group
-            if (node->name != part) continue;
-            Mesh &mesh = m->meshes[node->mesh];
-            for (Primitive &prim: mesh->primitives) {
+    for (Node &node: m->nodes) {
+        /// load specific node name from node group
+        if (node->name != part) continue;
+        assert(node->mesh >= 0);
 
-                /// for each attrib we fill out the vstride
-                struct vstride {
-                    ion::prop      *prop;
-                    type_t          compound_type;
-                    Accessor::M    *accessor;
-                    Buffer::M      *buffer;
-                    BufferView::M  *buffer_view;
-                    num             offset;
-                };
+        Mesh &mesh = m->meshes[node->mesh];
 
-                ///
-                array<vstride> strides { prim->attributes->count() };
-                size_t pcount = 0;
-                size_t vlen = 0;
-                for (field<mx> f: prim->attributes) {
-                    str       prop_bind      = f.key.hold();
-                    symbol    prop_sym       = symbol(prop_bind);
-                    num       accessor_index = num(f.value);
-                    Accessor &accessor       = m->accessors[accessor_index];
+        for (Primitive &prim: mesh->primitives) {
 
-                    /// the src stride is the size of struct_type[n_components]
-                    assert(vtype->meta_map);
-                    prop*  p = (*vtype->meta_map)[prop_sym];
-                    assert(p);
+            /// for each attrib we fill out the vstride
+            struct vstride {
+                ion::prop      *prop;
+                type_t          compound_type;
+                Accessor::M    *accessor;
+                Buffer::M      *buffer;
+                BufferView::M  *buffer_view;
+                num             offset;
+            };
 
-                    vstride &stride    = strides[pcount++];
-                    stride.prop        = p;
-                    stride.compound_type = p->type; /// native glm-type or float
-                    stride.accessor    = accessor.data;
-                    stride.buffer_view = m->bufferViews[accessor->bufferView].data;
-                    stride.buffer      = m->buffers[stride.buffer_view->buffer].data;
-                    stride.offset      = stride.prop->offset; /// origin at offset and stride by V type
-                    
-                    if (vlen)
-                        assert(vlen == accessor->count);
-                    else
-                        vlen = accessor->count;
-                    
-                    if (stride.compound_type == typeof(float)) {
-                        assert(accessor->componentType == gltf::ComponentType::FLOAT);
-                        assert(accessor->type == gltf::CompoundType::SCALAR);
-                    }
-                    if (stride.compound_type == typeof(glm::vec2)) {
-                        assert(accessor->componentType == gltf::ComponentType::FLOAT);
-                        assert(accessor->type == gltf::CompoundType::VEC2);
-                    }
-                    if (stride.compound_type == typeof(glm::vec3)) {
-                        assert(accessor->componentType == gltf::ComponentType::FLOAT);
-                        assert(accessor->type == gltf::CompoundType::VEC3);
-                    }
-                    if (stride.compound_type == typeof(glm::vec4)) {
-                        assert(accessor->componentType == gltf::ComponentType::FLOAT);
-                        assert(accessor->type == gltf::CompoundType::VEC4);
-                    }
-                }
-                strides.set_size(pcount);
+            ///
+            array<vstride> strides { prim->attributes->count() };
+            size_t pcount = 0;
+            size_t vlen = 0;
+            for (field<mx> f: prim->attributes) {
+                str       prop_bind      = f.key.hold();
+                symbol    prop_sym       = symbol(prop_bind);
+                num       accessor_index = num(f.value);
+                Accessor &accessor       = m->accessors[accessor_index];
 
-                /// allocate entire vertex buffer for this 
-                u8 *vbuf = (u8*)calloc(vlen, vtype->base_sz);
+                /// the src stride is the size of struct_type[n_components]
+                assert(vtype->meta_map);
+                prop*  p = (*vtype->meta_map)[prop_sym];
+                assert(p);
+
+                vstride &stride    = strides[pcount++];
+                stride.prop        = p;
+                stride.compound_type = p->type; /// native glm-type or float
+                stride.accessor    = accessor.data;
+                stride.buffer_view = m->bufferViews[accessor->bufferView].data;
+                stride.buffer      = m->buffers[stride.buffer_view->buffer].data;
+                stride.offset      = stride.prop->offset; /// origin at offset and stride by V type
                 
-
-                /// copy data into vbuf
-                for (vstride &stride: strides) {
-                    /// offset into src buffer
-                    u8 *dst        = vbuf;
-                    num src_offset = stride.buffer_view->byteOffset;
-                    /// size of member / accessor compound-type
-                    num src_stride = stride.compound_type->base_sz;
-                    for (num i = 0; i < vlen; i++) {
-                        /// dst: vertex member position
-                        u8 *member = &dst[stride.offset];
-                        /// src: gltf buffer at offset: 
-                        /// buffer-view + [0...accessor-count] * src-stride (same as our type size)
-                        u8 *src    = &stride.buffer->uri[src_offset + src_stride * i];
-                        memcpy(member, src, src_stride);
-
-                        /// next vertex
-                        dst += vtype->base_sz;
-                    }
+                if (vlen)
+                    assert(vlen == accessor->count);
+                else
+                    vlen = accessor->count;
+                
+                if (stride.compound_type == typeof(float)) {
+                    assert(accessor->componentType == gltf::ComponentType::FLOAT);
+                    assert(accessor->type == gltf::CompoundType::SCALAR);
                 }
-                /// create vertex buffer by wrapping what we've copied from allocation (we have a primitive array)
-                mx verts { memory::wrap(vtype, vbuf, vlen) }; /// load indices (always store 32bit uint)
-                pipeline->createVertexBuffer(verts);
-
-                /// indices data = indexing mesh-primitive->indices
-                Accessor &a_indices = m->accessors[prim->indices];
-                BufferView &view = m->bufferViews[ a_indices->bufferView ];
-                Buffer      &buf = m->buffers    [ view->buffer ];
-                memory *mem_indices;
-
-                pipeline->indicesSize = a_indices->count;
-                if (a_indices->componentType == ComponentType::UNSIGNED_SHORT) {
-                    u16 *u16_window = (u16*)(buf->uri.data + view->byteOffset);
-                    u32 *u32_alloc  = (u32*)calloc(sizeof(u32), a_indices->count);
-                    for (int i = 0; i < a_indices->count; i++)
-                        u32_alloc[i] = u32(u16_window[i]);
-                    mem_indices = memory::wrap(typeof(u32), u32_alloc, a_indices->count);
-                } else {
-                    assert(a_indices->componentType == ComponentType::UNSIGNED_INT);
-                    u32 *u32_window = (u32*)(buf->uri.data + view->byteOffset);
-                    mem_indices = memory::window(typeof(u32), u32_window, a_indices->count);
+                if (stride.compound_type == typeof(glm::vec2)) {
+                    assert(accessor->componentType == gltf::ComponentType::FLOAT);
+                    assert(accessor->type == gltf::CompoundType::VEC2);
                 }
-                pipeline->createIndexBuffer(mx(mem_indices));
-                break;
+                if (stride.compound_type == typeof(glm::vec3)) {
+                    assert(accessor->componentType == gltf::ComponentType::FLOAT);
+                    assert(accessor->type == gltf::CompoundType::VEC3);
+                }
+                if (stride.compound_type == typeof(glm::vec4)) {
+                    assert(accessor->componentType == gltf::ComponentType::FLOAT);
+                    assert(accessor->type == gltf::CompoundType::VEC4);
+                }
             }
+            strides.set_size(pcount);
+
+            /// allocate entire vertex buffer for this 
+            u8 *vbuf = (u8*)calloc(vlen, vtype->base_sz);
+            
+
+            /// copy data into vbuf
+            for (vstride &stride: strides) {
+                /// offset into src buffer
+                u8 *dst        = vbuf;
+                num src_offset = stride.buffer_view->byteOffset;
+                /// size of member / accessor compound-type
+                num src_stride = stride.compound_type->base_sz;
+                for (num i = 0; i < vlen; i++) {
+                    /// dst: vertex member position
+                    u8 *member = &dst[stride.offset];
+                    /// src: gltf buffer at offset: 
+                    /// buffer-view + [0...accessor-count] * src-stride (same as our type size)
+                    u8 *src    = &stride.buffer->uri[src_offset + src_stride * i];
+                    memcpy(member, src, src_stride);
+
+                    /// next vertex
+                    dst += vtype->base_sz;
+                }
+            }
+            /// create vertex buffer by wrapping what we've copied from allocation (we have a primitive array)
+            mx verts { memory::wrap(vtype, vbuf, vlen) }; /// load indices (always store 32bit uint)
+            pipeline->createVertexBuffer(verts);
+
+            /// indices data = indexing mesh-primitive->indices
+            Accessor &a_indices = m->accessors[prim->indices];
+            BufferView &view = m->bufferViews[ a_indices->bufferView ];
+            Buffer      &buf = m->buffers    [ view->buffer ];
+            memory *mem_indices;
+
+            pipeline->indicesSize = a_indices->count;
+            if (a_indices->componentType == ComponentType::UNSIGNED_SHORT) {
+                u16 *u16_window = (u16*)(buf->uri.data + view->byteOffset);
+                u32 *u32_alloc  = (u32*)calloc(sizeof(u32), a_indices->count);
+                for (int i = 0; i < a_indices->count; i++)
+                    u32_alloc[i] = u32(u16_window[i]);
+                mem_indices = memory::wrap(typeof(u32), u32_alloc, a_indices->count);
+            } else {
+                assert(a_indices->componentType == ComponentType::UNSIGNED_INT);
+                u32 *u32_window = (u32*)(buf->uri.data + view->byteOffset);
+                mem_indices = memory::window(typeof(u32), u32_window, a_indices->count);
+            }
+            pipeline->createIndexBuffer(mx(mem_indices));
             break;
         }
+        break;
     }
 }
 
@@ -1780,7 +1780,7 @@ void Pipeline::M::createGraphicsPipeline() {
     rasterizer.rasterizerDiscardEnable = VK_FALSE;
     rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
     rasterizer.lineWidth = 1.0f;
-    rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+    rasterizer.cullMode = VK_CULL_MODE_NONE; //VK_CULL_MODE_BACK_BIT;
     rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     rasterizer.depthBiasEnable = VK_FALSE;
 
@@ -2071,6 +2071,9 @@ void Device::M::drawFrame(array<Pipes>& a_pipes) {
 
     presentInfo.pImageIndices = &imageIndex;
 
+    //transitionImageLayout(swapChainImages[imageIndex],
+    //    VK_FORMAT_B8G8R8A8_UNORM, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, 1);
+
     result = vkQueuePresentKHR(presentQueue, &presentInfo);
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized) {
@@ -2082,8 +2085,6 @@ void Device::M::drawFrame(array<Pipes>& a_pipes) {
 
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
-
-/// test this later!
 
 vec3f average_verts(face& f, array<vec3f>& verts) {
     vec3f sum(0.0f);

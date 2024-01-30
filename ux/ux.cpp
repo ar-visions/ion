@@ -731,12 +731,8 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
             /// compute available properties for this Element given its type, placement, and props styled 
         }
 
-        if (style_reload || is_new) {
-            if (instance->data->id == "play-pause") {
-                int test = 0;
-            }
+        if (style_reload || is_new)
             (*instance)->style_avail = composer->style->compute(instance);
-        }
 
         /// arg set cache
         bool *pset = new bool[args_len];
@@ -953,6 +949,7 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
             if (instance->data->ref) {
                 instance->data->ref(mx(instance->mem->hold()));
             }
+            instance->data->app = app_instance();
             instance->mounted();
         }
     }

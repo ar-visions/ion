@@ -3,9 +3,11 @@
 
 using namespace ion;
 
+static str root_app_class;
+
 void composer::update_all(node e) {
     if (!data->instances)
-        data->style = style::init();
+        data->style = style();
     data->style->mtx.lock();
     update(data, null, data->instances, e); /// 'reloaded' is checked inside the update
     data->style->reloaded = false;
@@ -262,58 +264,39 @@ void style::impl::load(str code) {
     }
 }
 
-style style::init() {
-    style st;
-    if (!st->loaded) {
-        static std::mutex mx; /// more checks, less locks, less time? [ssh server ends up calling this in another thread]
-        mx.lock();
-        if (!st->loaded) {
-            /// if there are no files it doesnt load, or reload.. thats kind of not a bug
-            watch::fn reload = [st](bool first, array<path_op> &ops) {
-                style &s = (style&)st;
-                path base_path = "style";
-                s->mtx.lock();
-                s->root = {};
-                s->members = {size_t(32)};
-                base_path.resources({".css"}, {},
-                    [&](path css_file) -> void {
-                        str style_str = css_file.read<str>();
-                        s->load(style_str);
-                    });
-
-                /// store blocks by member, the interface into all style: style::members[name]
-                s->cache_members();
-                s->loaded = true;
-                s->reloaded = true; /// signal to composer user
-                s->mtx.unlock();
-            };
-
-            /// spawn watcher (this syncs once before returning)
-            st->reloader = watch::spawn({"./style"}, {".css"}, {}, reload);
-        }
-        mx.unlock();
-    }
-    return st;
+void style::load_from_file(path css_path) {
+    assert(css_path.exists());
+    str  style_str  = css_path.read<str>();
+    data->root = {};
+    data->members = {size_t(32)};
+    data->load(style_str);
+    /// store blocks by member, the interface into all style: style::members[name]
+    data->cache_members();
+    data->loaded = true;
+    data->reloaded = true; /// cache validation for composer user
 }
 
-/// todo: move functions into itype pattern
+style::style(type_t app_type) : style() {
+    watch::fn reload = [&](bool first, array<path_op> &ops) {
+        style &s = (style&)*this;
+        str  root_class = app_type->name;
+        path css_path   = fmt { "style/{0}.css", { root_class } };
+        load_from_file(css_path);
+    };
+    /// spawn watcher (this syncs once before returning)
+    data->reloader = watch::spawn({"./style"}, {".css"}, {}, reload);
+}
+
 bool style::impl::applicable(node *n, prop *member, array<style::entry*> &result) {
     array<style::block*> &blocks = members[*member->s_key]; /// members must be 'sample' on load, and retrieving it should return a block
     type_t type = n->mem->type;
     bool ret = false;
 
-    if (n->data->id == "play-pause" && *member->s_key == "fill-color") { /// annotate should have test1 apply, because it should be a style block
-        int test = 0;
-    }
     for (style::block *block:blocks) {
         style::Qualifier qual = block->quals[0];
         if (!block->types || block->types.index_of(type) >= 0) {
-            auto f = block->entries->lookup(*member->s_key); /// VideoView stored, and then retrieved from members map
-            if (block->quals[0]->state == "hover") {
-                int test = 0;
-            }
+            auto f = block->entries->lookup(*member->s_key);
             if (f) {
-                int test = 0;
                 if (block->score(n, false) > 0) {
                     result += f->value;
                     ret = true;
