@@ -4,6 +4,7 @@ setlocal enabledelayedexpansion
 set sdk=%1
 set cfg=%2
 
+third_party\ninja\ninja -C out\%cfg% -t clean
 third_party\ninja\ninja -C out\%cfg%
 
 echo sdk is set to %sdk%
