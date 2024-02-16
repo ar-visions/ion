@@ -192,6 +192,22 @@
             "commit":   "ee78934"
         },
         {
+            "name": "abseil-cpp",
+            "version": "20240116.1",
+            "url": "https://github.com/abseil/abseil-cpp",
+            "commit": "2f9e432",
+            "cmake": {
+                "args": ["-DCMAKE_CXX_STANDARD=14"]
+            }
+        },
+        {
+            "name":     "dawn",
+            "version":  "v6303",
+            "url":      "https://dawn.googlesource.com/dawn",
+            "branch":   "chromium/6303",
+            "install":  "prefix-install.py"
+        },
+        {
             "name":     "skia",
             "version":  "m116",
             "url":      "https://skia.googlesource.com/skia.git",

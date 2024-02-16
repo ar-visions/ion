@@ -15,7 +15,7 @@ if (is_fuchsia) {
 }
 
 if (skia_use_dawn) {
-  import("//third_party/externals/dawn/scripts/dawn_features.gni")
+  import("//../dawn/scripts/dawn_features.gni")
 }
 
 if (defined(skia_settings)) {
@@ -924,18 +924,21 @@ optional("gpu_shared") {
     # When building for WASM, the WebGPU headers are provided by Emscripten. For native builds we
     # have to depend on Dawn directly.
     if (!skia_use_webgpu) {
-      public_deps += [
-        "//third_party/externals/dawn/include/dawn:cpp_headers",
-        "//third_party/externals/dawn/src/dawn:cpp",
-        "//third_party/externals/dawn/src/dawn:proc",
-      ]
-
-      public_deps += [ "//third_party/externals/dawn/src/dawn/utils",
-                       "//third_party/externals/dawn/src/dawn/glfw_util" ]
+      
+      #public_deps += [
+      #  "//../dawn/ion-debug/gen/include/dawn:cpp_headers",
+      #  "//third_party/externals/dawn/src/dawn:cpp",
+      #  "//third_party/externals/dawn/src/dawn:proc",
+      #]
 
       if (dawn_enable_d3d12 || dawn_enable_desktop_gl || dawn_enable_metal ||
           dawn_enable_opengles || dawn_enable_vulkan) {
-        public_deps += [ "//third_party/externals/dawn/src/dawn/native" ]
+        # fn for this
+        libs += [
+          "libdawncpp.a"
+        ]
+        #public_deps += [ "//third_party/externals/dawn/src/dawn/native" ]
+        # needs include path to be registered by users of the dependency, not sure if we are doing that here
       }
       if (dawn_enable_d3d12) {
         libs += [
@@ -997,6 +1000,8 @@ optional("gpu") {
 
   libs = []
   frameworks = []
+
+  include_dirs = ["../../install/native-debug/include"]
 
   if (skia_use_gl) {
     public_defines += [ "SK_GL" ]

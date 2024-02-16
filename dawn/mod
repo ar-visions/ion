@@ -1,0 +1,5 @@
+dep(mx:mx glfw:glfw3 glm:glm_static)
+
+includes(${EXTERN_DIR}/dawn/include
+         ${EXTERN_DIR}/dawn/src
+         ${EXTERN_DIR}/dawn/ion-${cfg_lower}/gen/include)
