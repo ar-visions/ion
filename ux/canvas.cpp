@@ -405,34 +405,19 @@ struct Skia {
 
     Skia(GrDirectContext *sk_context) : sk_context(sk_context) { }
     
-    static Skia *Context(VkEngine e) {
+    static Skia *Context(Window window) {
         static struct Skia *sk = null;
         if (sk) return sk;
+        DawnBackendContext backendContext;
+        wgpu::Device device = window.device();
+        backendContext.fDevice = device.Get();
+        backendContext.fQueue = device.GetQueue().Get();
 
-        //GrBackendFormat gr_conv = GrBackendFormat::MakeVk(VK_FORMAT_R8G8B8_SRGB);
-        Vulkan vk;
-        GrVkBackendContext grc {
-            vk->inst(),
-            e->vk_gpu->phys,
-            e->vk_device->device,
-            e->vk_device->graphicsQueue,
-            e->vk_gpu->indices.graphicsFamily.value(),
-            vk->version
-        };
-        //grc.fVkExtensions -- not sure if we need to populate this with our extensions, but it has no interface to do so
-        grc.fMaxAPIVersion = vk->version;
-
-
-        //grc.fVkExtensions = new GrVkExtensions(); // internal needs population perhaps
-        grc.fGetProc = [](cchar_t *name, VkInstance inst, VkDevice dev) -> PFN_vkVoidFunction {
-            return (dev == VK_NULL_HANDLE) ? vkGetInstanceProcAddr(inst, name) :
-                                             vkGetDeviceProcAddr  (dev,  name);
-        };
-
-        static sk_sp<GrDirectContext> ctx = GrDirectContext::MakeVulkan(grc);
- 
+        ContextOptions options;
+        std::unique_ptr<Context> context = ContextFactory::MakeDawn(backendContext, options);
+        GrDirectContext* ctx = context->directContext();
         assert(ctx);
-        sk = new Skia(ctx.get());
+        sk = new Skia(ctx);
         return sk;
     }
 };
@@ -440,6 +425,7 @@ struct Skia {
 /// canvas renders to image, and can manage the renderer/resizing
 struct ICanvas {
     GrDirectContext     *ctx = null;
+    Window            window = null; /// a window can be glfw-window-less and simply support a backend texture
     VkEngine               e = null;
     VkhPresenter    renderer = null;
     sk_sp<SkSurface> sk_surf = null;
@@ -557,8 +543,8 @@ struct ICanvas {
         
         sz = vec2i { width, height };
         ///
-        ctx                     = Skia::Context(e)->sk_context;
-        auto imi                = GrVkImageInfo { };
+        ctx                     = Skia::Context(window)->sk_context;
+        auto imi                = GrDawnImageInfo { };
         imi.fImage              = vk_image->image;
         imi.fImageTiling        = VK_IMAGE_TILING_OPTIMAL;
         imi.fImageLayout        = VK_IMAGE_LAYOUT_UNDEFINED;

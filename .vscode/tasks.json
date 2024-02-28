@@ -33,6 +33,37 @@
             }
         },
         {
+            "label": "build-ux-test1",
+            "type": "shell",
+			"options": {
+                "cwd": "${workspaceFolder}/../hyperspace/build"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "group": "build0",
+                "clear": true
+            },
+			"isBackground": false,
+			"problemMatcher": ["$gcc"],
+            "windows": {
+                "command": "msbuild hyperspace.sln /t:ux-test1"
+            },
+            "osx": {
+                "command": "make ux-test1 -j16"
+            },
+            "linux": {
+                "command": "make ux-test1 -j16",
+                "options":{
+                    "env":{"VERBOSE":"1"}
+                }
+            }
+        },
+        {
             "label": "build-ux-app",
             "type": "shell",
 			"options": {

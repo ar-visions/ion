@@ -8,7 +8,7 @@ elseif(WIN32)
 endif()
 
 
-dep(ion:vk @Vulkan mx:async ion:regex ion:net ion:ssh ion:media
+dep(ion:dawn @Vulkan mx:async ion:regex ion:net ion:ssh ion:media
     skia:svg      skia:icu          skia:expat    skia:pathkit 
     skia:sksg     skia:skresources  skia:skottie  skia:skia
     skia:skshaper skia:skunicode)

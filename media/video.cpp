@@ -562,7 +562,7 @@ struct iVideo {
         kiss_fft_cpx *f_out      = new kiss_fft_cpx[fft_size];
         size_t       fft_cur = 0;
 
-        memset(fft_window, 0, sizeof(fft_window));
+        memset(fft_window, 0, sizeof(short) * fft_size);
         fft_cur = overlap;
 
         u64 total_audio_samples = MP4GetTrackNumberOfSamples(mp4, audio_track);

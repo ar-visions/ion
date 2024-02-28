@@ -1,7 +1,0 @@
-dep(
-    mx:mx glfw:glfw3 glm:glm_static
-    skia:skia skia:angle_common skia:common skia:dawn_proc_static skia:dawn_native_static skia:dawn_platform_static)
-
-includes(${EXTERN_DIR}/skia/third_party/externals/dawn/include
-         ${EXTERN_DIR}/skia/third_party/externals/dawn/src
-         ${EXTERN_DIR}/skia/out/debug/gen/third_party/externals/dawn/include)

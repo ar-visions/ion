@@ -1,5 +1,188 @@
-dep(mx:mx glfw:glfw3 glm:glm_static)
+dep(mx:mx mx:math mx:async glfw:glfw3 glm:glm_static
+    dawn:dawncpp
+    dawn:absl_strings_internal
+    dawn:absl_string_view
+    dawn:absl_strings
+    dawn:absl_str_format_internal
+    dawn:dawn_native
+    dawn:dawn_glfw
+    dawn:dawn_common
+    dawn:dawn_utils
+    dawn:dawn_platform dawn:dawn_proc dawn:dawn_wire)
+
+dep(ion:media
+    skia:svg      skia:icu          skia:expat    skia:pathkit 
+    skia:sksg     skia:skresources  skia:skottie  skia:skia
+    skia:skshaper skia:skunicode)
+
+includes(${EXTERN_DIR}/skia)
+includes(${INSTALL_PREFIX}/include/skia)
+
+if (APPLE)
+    dep(CoreFoundation IOKit IOSurface QuartzCore Metal AppKit CoreGraphics Cocoa)
+endif()
+
+dep(tint_api
+    tint_api_common
+    tint_api_options
+    tint_cmd_common
+    tint_lang_core
+    tint_lang_core_constant
+    tint_lang_core_intrinsic
+    tint_lang_core_ir
+    tint_lang_core_ir_transform
+    tint_lang_core_type
+    tint_lang_glsl_validate
+    tint_lang_hlsl_writer_common
+    tint_lang_msl
+    tint_lang_msl_intrinsic
+    tint_lang_msl_ir
+    tint_lang_msl_validate
+    tint_lang_msl_writer
+    tint_lang_msl_writer_ast_printer
+    tint_lang_msl_writer_ast_raise
+    tint_lang_msl_writer_common
+    tint_lang_msl_writer_helpers
+    tint_lang_msl_writer_printer
+    tint_lang_msl_writer_raise
+    tint_lang_spirv
+    tint_lang_spirv_intrinsic
+    tint_lang_spirv_ir
+    tint_lang_spirv_reader_lower
+    tint_lang_spirv_type
+    tint_lang_wgsl
+    tint_lang_wgsl_ast
+    tint_lang_wgsl_ast_transform
+    tint_lang_wgsl_common
+    tint_lang_wgsl_features
+    tint_lang_wgsl_helpers
+    tint_lang_wgsl_inspector
+    tint_lang_wgsl_intrinsic
+    tint_lang_wgsl_ir
+    tint_lang_wgsl_program
+    tint_lang_wgsl_reader
+    tint_lang_wgsl_reader_lower
+    tint_lang_wgsl_reader_parser
+    tint_lang_wgsl_reader_program_to_ir
+    tint_lang_wgsl_resolver
+    tint_lang_wgsl_sem
+    tint_lang_wgsl_writer
+    tint_lang_wgsl_writer_ast_printer
+    tint_lang_wgsl_writer_ir_to_program
+    tint_lang_wgsl_writer_raise
+    tint_lang_wgsl_writer_syntax_tree_printer
+    tint_utils_bytes
+    tint_utils_cli
+    tint_utils_command
+    tint_utils_containers
+    tint_utils_debug
+    tint_utils_diagnostic
+    tint_utils_file
+    tint_utils_generator
+    tint_utils_ice
+    tint_utils_id
+    tint_utils_macros
+    tint_utils_math
+    tint_utils_memory
+    tint_utils_reflection
+    tint_utils_result
+    tint_utils_rtti
+    tint_utils_socket
+    tint_utils_strconv
+    tint_utils_symbol
+    tint_utils_text
+    tint_utils_traits
+)
+
+dep(
+    absl_log_severity
+    absl_raw_logging_internal
+    absl_spinlock_wait
+    absl_malloc_internal
+    absl_base
+    absl_throw_delegate
+    absl_scoped_set_env
+    absl_strerror
+    absl_hashtablez_sampler
+    absl_raw_hash_set
+    absl_crc_cpu_detect
+    absl_crc_internal
+    absl_crc32c
+    absl_crc_cord_state
+    absl_stacktrace
+    absl_symbolize
+    absl_examine_stack
+    absl_failure_signal_handler
+    absl_debugging_internal
+    absl_demangle_internal
+    absl_leak_check
+    absl_flags_program_name
+    absl_flags_config
+    absl_flags_marshalling
+    absl_flags_commandlineflag_internal
+    absl_flags_commandlineflag
+    absl_flags_private_handle_accessor
+    absl_flags_reflection
+    absl_flags_internal
+    absl_flags_usage_internal
+    absl_flags_usage
+    absl_flags_parse
+    absl_hash
+    absl_city
+    absl_low_level_hash
+    absl_log_internal_check_op
+    absl_log_internal_conditions
+    absl_log_internal_format
+    absl_log_internal_globals
+    absl_log_internal_proto
+    absl_log_internal_message
+    absl_log_internal_log_sink_set
+    absl_log_internal_nullguard
+    absl_die_if_null
+    absl_log_flags
+    absl_log_globals
+    absl_log_initialize
+    absl_log_entry
+    absl_log_sink
+    absl_log_internal_fnmatch
+    absl_int128
+    absl_exponential_biased
+    absl_periodic_sampler
+    absl_random_distributions
+    absl_random_seed_gen_exception
+    absl_random_seed_sequences
+    absl_random_internal_seed_material
+    absl_random_internal_pool_urbg
+    absl_random_internal_platform
+    absl_random_internal_randen
+    absl_random_internal_randen_slow
+    absl_random_internal_randen_hwaes
+    absl_random_internal_randen_hwaes_impl
+    absl_random_internal_distribution_test_util
+    absl_status
+    absl_statusor
+    absl_string_view
+    absl_strings
+    absl_strings_internal
+    absl_str_format_internal
+    absl_cord_internal
+    absl_cordz_functions
+    absl_cordz_handle
+    absl_cordz_info
+    absl_cordz_sample_token
+    absl_cord
+    absl_graphcycles_internal
+    absl_kernel_timeout_internal
+    absl_synchronization
+    absl_time
+    absl_civil_time
+    absl_time_zone
+    absl_bad_any_cast_impl
+    absl_bad_optional_access
+    absl_bad_variant_access
+)
 
 includes(${EXTERN_DIR}/dawn/include
          ${EXTERN_DIR}/dawn/src
+         ${EXTERN_DIR}/dawn/src/dawn/partition_alloc
          ${EXTERN_DIR}/dawn/ion-${cfg_lower}/gen/include)

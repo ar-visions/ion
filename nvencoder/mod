@@ -2,7 +2,7 @@ if(APPLE)
     skip()
 else()
     cpp(17)
-    dep(ion:vk dl pthread)
+    dep(dl pthread)
     skip()
     #includes(${EXTERN_DIR}/vk_video_samples/vk_video_encoder
     #         ${EXTERN_DIR}/vk_video_samples/common/include)
