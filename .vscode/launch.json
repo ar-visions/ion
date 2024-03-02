@@ -31,10 +31,10 @@
             "justMyCode": true
         },
         {
-            "name": "webgpu-test",
+            "name": "webgpu-test2",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/../hyperspace/build/webgpu-test",
+            "program": "${workspaceFolder}/../hyperspace/build/webgpu-test2",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/../hyperspace/build",
@@ -47,7 +47,31 @@
             },
             "windows":{
                 "type": "cppvsdbg",
-                "program": "${workspaceFolder}/../hyperspace/build/Debug/webgpu-test",
+                "program": "${workspaceFolder}/../hyperspace/build/Debug/webgpu-test2",
+                "cwd": "${workspaceFolder}/../hyperspace/build"
+            },
+            "osx": {
+                "MIMode": "lldb"
+            }
+        },
+        {
+            "name": "canvas-test",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/../hyperspace/build/canvas-test",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/../hyperspace/build",
+            "environment": [],
+            "MIMode": "gdb",
+            "presentation": {
+                "hidden": false,
+                "group": "",
+                "order": 1,
+            },
+            "windows":{
+                "type": "cppvsdbg",
+                "program": "${workspaceFolder}/../hyperspace/build/Debug/canvas-test",
                 "cwd": "${workspaceFolder}/../hyperspace/build"
             },
             "osx": {

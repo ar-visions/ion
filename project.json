@@ -19,6 +19,44 @@
             }
         },
         {
+            "name":     "abseil-cpp",
+            "version":  "v22",
+            "url":      "https://github.com/abseil/abseil-cpp",
+            "commit":   "55d28d4b3b82f9a47b3fa9b811b675a032820621",
+            "resource": true
+        },
+        {
+            "name":     "SPIRV-Headers",
+            "version":  "v22",
+            "commit":   "b73e168ca5e123dcf3dea8a34b19a5130f421ae1",
+            "url":      "https://github.com/KhronosGroup/SPIRV-Headers",
+            "cmake": {
+                "args-win": ["-DCMAKE_C_FLAGS=/MT"]
+            }
+        },
+        {
+            "name":     "SPIRV-Tools",
+            "version":  "v22",
+            "commit":   "75ad1345d4af5268448a9b26797294b48795cd69",
+            "url":      "https://github.com/KhronosGroup/SPIRV-Tools",
+            "cmake": {
+                "args-win": ["-DSPIRV-Headers_SOURCE_DIR=%EXTERN%/SPIRV-Headers", "-DCMAKE_C_FLAGS=/MT"],
+                "args": ["-DSPIRV-Headers_SOURCE_DIR=%EXTERN%/SPIRV-Headers"]
+            }
+        },
+        {
+            "name":    "Vulkan-Headers",
+            "version": "1.2.140",
+            "url":     "https://github.com/KhronosGroup/Vulkan-Headers",
+            "commit":  "9250d5ae8f50202005233dc0512a1d460c8b4833"
+        },
+        {
+            "name":    "Vulkan-Utility-Libraries",
+            "version": "m122",
+            "url":     "https://chromium.googlesource.com/external/github.com/KhronosGroup/Vulkan-Utility-Libraries",
+            "commit":  "4cfc176e3242b4dbdfd3f6c5680c5d8f2cb7db45"
+        },
+        {
             "name":     "glfw",
             "version":  "3.3.8",
             "commit":   "7482de6",
@@ -26,6 +64,43 @@
             "cmake": {
                 "args-win": ["-DCMAKE_C_FLAGS=/MT","-DUSE_MSVC_RUNTIME_LIBRARY_DLL=0"]
             }
+        },
+        {
+            "name":     "dawn",
+            "version":  "m122",
+            "url":      "https://dawn.googlesource.com/dawn",
+            "commit":   "5b45794c2c24c3fa40dc480af92c5284a95423ef",
+            "resource":  true,
+            "recursive": false
+        },
+        {
+            "name":     "harfbuzz",
+            "version":  "8.3.0",
+            "url":      "https://github.com/harfbuzz/harfbuzz",
+            "commit":   "894a1f7"
+        },
+        {
+            
+            "name":     "freetype",
+            "version":  "2.13.2",
+            "url":      "https://github.com/freetype/freetype",
+            "commit":   "2a790a9f4937c3950028bd3de29e63c6b0d419ce"
+        },
+        {
+            "name":     "libexpat",
+            "version":  "2.6.1",
+            "url":      "https://github.com/libexpat/libexpat",
+            "commit":   "a590b2d",
+            "cmake": {
+                "path": "expat"
+            }
+        },
+        {
+            "name":     "skia",
+            "version":  "m122",
+            "url":      "https://skia.googlesource.com/skia.git",
+            "commit":   "c6835e2d5ff641dad9347ce4c2ff79dbc29cf9aa",
+            "resource":  true
         },
         {
             "name":     "fmt",
@@ -190,24 +265,6 @@
             "version":  "nov30-23",
             "url":      "https://github.com/descampsa/yuv2rgb",
             "commit":   "ee78934"
-        },
-        {
-            "name":     "dawn",
-            "version":  "m122",
-            "url":      "https://dawn.googlesource.com/dawn",
-            "commit":   "5b45794c2c24c3fa40dc480af92c5284a95423ef",
-            "recursive": false,
-            "prebuild": "prebuild.py",
-            "install":  "install.py",
-            "cmake": {
-                "args": ["-DCMAKE_CXX_STANDARD=14"]
-            }
-        },
-        {
-            "name":     "skia",
-            "version":  "m122",
-            "url":      "https://skia.googlesource.com/skia.git",
-            "commit":   "c6835e2d5ff641dad9347ce4c2ff79dbc29cf9aa"
         },
         {
             "name":     "pthread-w32",

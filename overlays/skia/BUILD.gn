@@ -15,7 +15,7 @@ if (is_fuchsia) {
 }
 
 if (skia_use_dawn) {
-  import("//third_party/externals/dawn/scripts/dawn_features.gni")
+  #import("//third_party/externals/dawn/scripts/dawn_features.gni")
 }
 
 if (defined(skia_settings)) {
@@ -886,27 +886,32 @@ optional("gpu_shared") {
     # When building for WASM, the WebGPU headers are provided by Emscripten. For native builds we
     # have to depend on Dawn directly.
     if (!skia_use_webgpu) {
-      public_deps += [
-        "//third_party/externals/dawn/include/dawn:cpp_headers",
-        "//third_party/externals/dawn/src/dawn:cpp",
-        "//third_party/externals/dawn/src/dawn:proc",
-      ]
-
-      if (dawn_enable_d3d12 || dawn_enable_d3d11 || dawn_enable_desktop_gl ||
-          dawn_enable_metal || dawn_enable_opengles || dawn_enable_vulkan) {
-        public_deps += [ "//third_party/externals/dawn/src/dawn/native" ]
-      }
-      libs += ["libdawncpp.a", "libdawn_native.a", "libdawn_proc.a"]
-
-      if (dawn_enable_d3d12) {
+      # we build dawn directly
+      # it will be useful to flatten most of skia's DEPS
+      #public_deps += [
+      #  "//third_party/externals/dawn/include/dawn:cpp_headers",
+      #  "//third_party/externals/dawn/src/dawn:cpp",
+      #  "//third_party/externals/dawn/src/dawn:proc",
+      #]
+      #if (dawn_enable_d3d12 || dawn_enable_d3d11 || dawn_enable_desktop_gl ||
+      #    dawn_enable_metal || dawn_enable_opengles || dawn_enable_vulkan) {
+      #  public_deps += [ "//third_party/externals/dawn/src/dawn/native" ]
+      #}
+      
+      if (is_win) {
+        libs += ["dawncpp.lib", "dawn_native.lib", "dawn_proc.lib"]
         libs += [
           "d3d12.lib",
           "dxgi.lib",
           "d3dcompiler.lib",
         ]
-      } else if (dawn_enable_metal) {
-        frameworks += [ "Metal.framework" ]
+      } else {
+        libs += ["libdawncpp.a", "libdawn_native.a", "libdawn_proc.a"]
+        if (is_mac) {
+          frameworks += [ "Metal.framework" ]
+        }
       }
+
     }
   }
 

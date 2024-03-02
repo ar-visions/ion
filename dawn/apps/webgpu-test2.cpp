@@ -20,8 +20,20 @@
 #include "dawn/dawn_proc.h"
 #include "dawn/native/DawnNative.h"
 #include "webgpu/webgpu_glfw.h"
+#include "dawn/dawn_proc.h"
 
+wgpu::Device            device;
+wgpu::Buffer            indexBuffer;
+wgpu::Buffer            vertexBuffer;
+wgpu::Texture           texture;
+wgpu::Sampler           sampler;
+wgpu::Queue             queue;
+wgpu::SwapChain         swapchain;
+wgpu::TextureView       depthStencilView;
+wgpu::RenderPipeline    pipeline;
+wgpu::BindGroup         bindGroup;
 
+/*
 #include "include/gpu/graphite/Context.h"
 #define SK_DAWN
 #include "include/gpu/graphite/Surface.h"
@@ -35,14 +47,7 @@
 #include "include/private/gpu/graphite/ContextOptionsPriv.h"
 #include "tools/gpu/ContextType.h"
 #include "tools/graphite/TestOptions.h"
-
-#include "dawn/dawn_proc.h"
-
-
-
-
 #include <skia/gpu/dawn/GrDawnTypes.h>
-
 #include <skia/core/SkColorSpace.h>
 #include "include/core/SkSurface.h"
 #define SK_DAWN
@@ -54,23 +59,12 @@
 #include "include/gpu/graphite/dawn/DawnBackendContext.h"
 #include "src/gpu/graphite/ContextUtils.h"
 
-
-wgpu::Device            device;
-wgpu::Buffer            indexBuffer;
-wgpu::Buffer            vertexBuffer;
-wgpu::Texture           texture;
-wgpu::Sampler           sampler;
-wgpu::Queue             queue;
-wgpu::SwapChain         swapchain;
-wgpu::TextureView       depthStencilView;
-wgpu::RenderPipeline    pipeline;
-wgpu::BindGroup         bindGroup;
-
-sk_sp<SkSurface>                           sk_surface;
-std::unique_ptr<skgpu::graphite::Recorder> sk_recorder;
-std::unique_ptr<skgpu::graphite::Context>  sk_dawn;
-sk_sp<SkColorSpace>                        color_space;
-skgpu::graphite::BackendTexture *          sk_backend_tx;
+//sk_sp<SkSurface>                           sk_surface;
+//std::unique_ptr<skgpu::graphite::Recorder> sk_recorder;
+//std::unique_ptr<skgpu::graphite::Context>  sk_dawn;
+//sk_sp<SkColorSpace>                        color_space;
+//skgpu::graphite::BackendTexture *          sk_backend_tx;
+*/
 
 void PrintDeviceError(WGPUErrorType errorType, const char* message, void*) {
     const char* errorTypeName = "";
@@ -133,6 +127,8 @@ static GLFWwindow* glfw_window = nullptr;
 static ion::Window window;
 static constexpr uint32_t kWidth = 1024;
 static constexpr uint32_t kHeight = 1024;
+
+using namespace ion;
 
 wgpu::Device CreateCppDawnDevice() {
     dawn::ScopedEnvironmentVar angleDefaultPlatform;
@@ -341,8 +337,8 @@ void update_tx() {
 
     // Initialize the texture with arbitrary data until we can load images
     std::vector<uint8_t> data(4 * kWidth * kHeight, 0);
-    for (size_t i = 0; i < data.size(); ++i) {
-        data[i] = static_cast<uint8_t>(rand() & 127);
+    for (size_t i = 0; i < data.size(); i++) {
+        data[i] = rand::uniform<u8>(0, 128);
     }
 
     wgpu::Buffer stagingBuffer = dawn::utils::CreateBufferFromData(
@@ -364,12 +360,12 @@ void update_tx() {
 void frame() {
     // this does not update the texture, even though the texture is skia's backend render target
     // it is not updated from the test
-    SkCanvas* sk_canvas = sk_surface->getCanvas();
-    SkPaint   paint;
-    paint.setColor(SK_ColorBLUE);
-    sk_canvas->drawRect({0.0f, 0.0f, float(kWidth), float(kHeight)}, paint);
-    skgpu::graphite::Flush(sk_surface);
-    sk_dawn->submit();
+    //SkCanvas* sk_canvas = sk_surface->getCanvas();
+    //SkPaint   paint;
+    //paint.setColor(SK_ColorBLUE);
+    //sk_canvas->drawRect({0.0f, 0.0f, float(kWidth), float(kHeight)}, paint);
+    //skgpu::graphite::Flush(sk_surface);
+    //sk_dawn->submit();
 
     //update_tx();
 
@@ -392,7 +388,7 @@ void frame() {
     glfwPollEvents();
 }
 
-
+/*
 void init_skia() {
     skgpu::graphite::DawnBackendContext backendContext = { device, queue };
     skgpu::graphite::ContextOptions opts;
@@ -411,13 +407,24 @@ void init_skia() {
         nullptr);
 
 }
+*/
 
 int main(int argc, const char* argv[]) {
     init();
-    init_skia();
+    //init_skia();
+    i64 s_last = millis() / 1000;
+    i64 frames_drawn = 0;
+
     while (true) {
         window.process_events();
         frame();
-        dawn::utils::USleep(16000);
+        frames_drawn++;
+        dawn::utils::USleep(1);
+        i64 s_cur = millis() / 1000;
+        if (s_cur != s_last) {
+            console.log("frames_drawn: {0}", { frames_drawn });
+            s_last = s_cur;
+            frames_drawn = 0;
+        }
     }
 }

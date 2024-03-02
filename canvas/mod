@@ -1,0 +1,131 @@
+dep(mx:mx mx:async ion:dawn harfbuzz:harfbuzz libexpat:expat freetype:freetype2)
+
+defines(
+    SK_DAWN
+    SK_GRAPHITE
+    SK_DISABLE_TRACING
+    GR_TEST_UTILS
+    GRAPHITE_TEST_UTILS
+    SK_DISABLE_LEGACY_PNG_WRITEBUFFER
+    SK_DISABLE_LEGACY_IMAGE_READBUFFER
+    SK_SHAPER_HARFBUZZ_AVAILABLE
+    SK_SHAPER_UNICODE_AVAILABLE
+)
+
+if (win)
+    defines(SK_BUILD_FOR_WIN)
+elseif (mac)
+    defines(SK_BUILD_FOR_MAC)
+elseif (linux)
+    defines(SK_BUILD_FOR_UNIX)
+endif()
+
+includes(
+    ${INSTALL_PREFIX}/include/harfbuzz
+    ${INSTALL_PREFIX}/include/freetype2
+)
+
+set(dawn_dir ${EXTERN_DIR}/dawn)
+set(skia_dir ${EXTERN_DIR}/skia)
+set(skia_src ${EXTERN_DIR}/skia/src)
+
+includes(
+    ${dawn_dir}/include
+    ${dawn_dir}/src
+    ${dawn_dir}/ion-${cfg_lower}/include
+    ${dawn_dir}/ion-${cfg_lower}/gen/include
+    ${skia_dir}
+    ${skia_dir}/include
+    ${skia_dir}/modules/svg/include
+    ${skia_src}
+)
+
+# add support software (no ganesh, since we use graphite with dawn, a more limited interface)
+src(
+    #${skia_dir}/tools/*.cpp
+    ${skia_dir}/tools/flags/*.cpp
+    ${skia_dir}/tools/graphite/*.cpp
+    ${skia_dir}/tools/fonts/*.cpp
+    ${skia_dir}/tools/svg/*.cpp
+    #${skia_dir}/tools/gpu/*.cpp
+)
+
+src(
+    ${skia_dir}/modules/svg/src/*.cpp
+    ${skia_dir}/modules/skcms/*.cc
+    ${skia_dir}/modules/skcms/src/*.cc
+    ${skia_dir}/modules/skunicode/src/SkUnicode.cpp
+    ${skia_dir}/modules/skunicode/src/SkUnicode_client.cpp
+    ${skia_dir}/modules/skshaper/src/SkShaper.cpp
+    ${skia_dir}/modules/skshaper/src/SkShaper_primitive.cpp
+    ${skia_dir}/modules/skshaper/src/SkShaper_skunicode.cpp
+    ${skia_dir}/modules/skshaper/src/SkShaper_harfbuzz.cpp
+    ${skia_src}/base/**.cpp
+    ${skia_src}/core/**.cpp
+    ${skia_src}/lazy/*.cpp
+    ${skia_src}/effects/**.cpp
+    ${skia_src}/fonts/**.cpp
+    ${skia_src}/image/**.cpp
+    ${skia_src}/opts/**.cpp
+    ${skia_src}/pathops/**.cpp
+    ${skia_src}/sfnt/**.cpp
+    ${skia_src}/shaders/**.cpp
+    ${skia_src}/svg/**.cpp
+    ${skia_src}/text/*.cpp
+    ${skia_src}/text/gpu/*.cpp
+    ${skia_src}/utils/*.cpp
+    ${skia_src}/sksl/**.cpp
+    ${skia_src}/xml/*.cpp
+    ${skia_src}/gpu/*.cpp
+    ${skia_src}/gpu/graphite/*.cpp
+    ${skia_src}/gpu/graphite/geom/*.cpp
+    ${skia_src}/gpu/graphite/render/*.cpp
+    ${skia_src}/gpu/graphite/surface/*.cpp
+    ${skia_src}/gpu/graphite/text/*.cpp
+    ${skia_src}/gpu/graphite/compute/DispatchGroup.cpp
+    ${skia_src}/gpu/graphite/dawn/*.cpp
+    ${skia_src}/gpu/tessellate/*.cpp
+    ${skia_src}/ports/SkGlobalInitialization_default.cpp
+    ${skia_src}/ports/SkFontHost_FreeType.cpp
+    ${skia_src}/ports/SkFontHost_FreeType_common.cpp
+    ${skia_src}/ports/SkFontMgr_custom.cpp
+    ${skia_src}/ports/SkFontMgr_custom_empty.cpp
+    ${skia_src}/ports/SkMemory_malloc.cpp
+    ${skia_src}/ports/SkOSFile_stdio.cpp
+)
+
+src(
+    -_win.cpp
+    -_fuzz.cpp
+    -_coretext.cpp
+    -public_headers_warnings_check.cpp
+)
+
+if (win)
+    src(
+        ${skia_src}/utils/win/*.cpp
+        ${skia_src}/ports/*_win_dw.cpp
+        ${skia_src}/ports/SkDebug_win.cpp
+        ${skia_src}/ports/SkOSFile_win.cpp
+    )
+else()
+    src(
+        ${skia_src}/ports/SkDebug_stdio.cpp
+        ${skia_src}/ports/SkOSFile_posix.cpp
+    )
+endif()
+
+if (mac)
+    src(
+        ${skia_src}/utils/mac/*.cpp
+        ${skia_src}/ports/*_mac_ct.cpp
+    )
+else()
+
+endif()
+
+if (linux)
+endif()
+
+#string(REPLACE ";" "\n" src_newline "${_src}")
+#message(STATUS "${src_newline}")

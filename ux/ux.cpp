@@ -87,18 +87,6 @@ doubly<LineInfo> &Element::get_lines(Canvas *p_canvas) {
     return data->lines;
 }
 
-array<double> font::advances(Canvas& canvas, str text) {
-    num l = text.len();
-    array<double> res(l+1, l+1);
-    ///
-    for (num i = 0; i <= l; i++) {
-        str    s   = text.mid(0, i);
-        double adv = canvas.measure_advance(s.data, i);
-        res[i]     = adv;
-    }
-    return res;
-}
-
 /// we draw the text and plot its placement; the text() function gives us back effectively aligned text
 void Element::draw_text(Canvas& canvas, rectd& rect) {
     props::drawing &text = data->drawings[operation::text];
