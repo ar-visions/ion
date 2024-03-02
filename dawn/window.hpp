@@ -142,7 +142,9 @@ struct Window:mx {
     void run(lambda<void()> loop);
     void *handle();
     void process_events();
-    
+    void *user_data();
+    void set_user_data(void *);
+
     wgpu::Device device();
     wgpu::SwapChain swap_chain();
     wgpu::TextureView depth_stencil_view();

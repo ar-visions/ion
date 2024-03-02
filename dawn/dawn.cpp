@@ -49,6 +49,7 @@ struct IWindow {
     wgpu::Device device;
     wgpu::SwapChain swap;
     vec2f sz;
+    void *user_data;
 
     static inline int count = 0;
 
@@ -226,7 +227,7 @@ void IWindow::create_dawn_device() {
 
     WGPUSwapChainDescriptor swapChainDesc = {};
     swapChainDesc.usage = WGPUTextureUsage_RenderAttachment;
-    swapChainDesc.format = static_cast<WGPUTextureFormat>(GetPreferredSwapChainTextureFormat());
+    swapChainDesc.format = static_cast<WGPUTextureFormat>(wgpu::TextureFormat::BGRA8Unorm);
     swapChainDesc.width = (u32)sz.x;
     swapChainDesc.height = (u32)sz.y;
     swapChainDesc.presentMode = WGPUPresentMode_Mailbox;
@@ -254,6 +255,14 @@ wgpu::SwapChain Window::swap_chain() {
 
 void Window::process_events() {
     data->dawn.process_events();
+}
+
+void *Window::user_data() {
+    return data->user_data;
+}
+
+void Window::set_user_data(void *user_data) {
+    data->user_data = user_data;
 }
 
 wgpu::TextureView Window::depth_stencil_view() {

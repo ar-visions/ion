@@ -1,188 +1,179 @@
-dep(mx:mx mx:math mx:async glfw:glfw3 glm:glm_static
-    dawn:dawncpp
-    dawn:absl_strings_internal
-    dawn:absl_string_view
-    dawn:absl_strings
-    dawn:absl_str_format_internal
-    dawn:dawn_native
-    dawn:dawn_glfw
-    dawn:dawn_common
-    dawn:dawn_utils
-    dawn:dawn_platform dawn:dawn_proc dawn:dawn_wire)
+# build absl, tint, dawn
+# easier to manage than using their GN build, 
+# especially since skia builds its own dawn and does not let you configure it
+# nor does it compile the support functions for glfw
+# it should not clash for these to be built together, with merged includes
+# i didnt get anywhere in skia-discuss (along with many others) so am providing this basic mod
+dep(
+    glfw:glfw3
+    glm:glm_static
+    mx:mx
+    mx:math
+    mx:async
+    ion:media
+)
 
-dep(ion:media
-    skia:svg      skia:icu          skia:expat    skia:pathkit 
-    skia:sksg     skia:skresources  skia:skottie  skia:skia
-    skia:skshaper skia:skunicode)
+defines(TINT_BUILD_WGSL_READER
+        TINT_BUILD_WGSL_WRITER)
 
-includes(${EXTERN_DIR}/skia)
-includes(${INSTALL_PREFIX}/include/skia)
-
-if (APPLE)
+if (win)
+    dep(d3d12 dxgi d3dcompiler)
+    defines(
+        TINT_BUILD_HLSL_WRITER
+        DAWN_ENABLE_BACKEND_D3D12)
+    
+elseif (mac)
     dep(CoreFoundation IOKit IOSurface QuartzCore Metal AppKit CoreGraphics Cocoa)
+    defines(
+        TINT_BUILD_METAL_WRITER
+        DAWN_ENABLE_BACKEND_METAL)
+elseif (linux)
+    dep(X11 Vulkan)
+    defines(
+        TINT_BUILD_SPV_WRITER
+        DAWN_USE_X11
+        DAWN_ENABLE_BACKEND_VULKAN)
 endif()
 
-dep(tint_api
-    tint_api_common
-    tint_api_options
-    tint_cmd_common
-    tint_lang_core
-    tint_lang_core_constant
-    tint_lang_core_intrinsic
-    tint_lang_core_ir
-    tint_lang_core_ir_transform
-    tint_lang_core_type
-    tint_lang_glsl_validate
-    tint_lang_hlsl_writer_common
-    tint_lang_msl
-    tint_lang_msl_intrinsic
-    tint_lang_msl_ir
-    tint_lang_msl_validate
-    tint_lang_msl_writer
-    tint_lang_msl_writer_ast_printer
-    tint_lang_msl_writer_ast_raise
-    tint_lang_msl_writer_common
-    tint_lang_msl_writer_helpers
-    tint_lang_msl_writer_printer
-    tint_lang_msl_writer_raise
-    tint_lang_spirv
-    tint_lang_spirv_intrinsic
-    tint_lang_spirv_ir
-    tint_lang_spirv_reader_lower
-    tint_lang_spirv_type
-    tint_lang_wgsl
-    tint_lang_wgsl_ast
-    tint_lang_wgsl_ast_transform
-    tint_lang_wgsl_common
-    tint_lang_wgsl_features
-    tint_lang_wgsl_helpers
-    tint_lang_wgsl_inspector
-    tint_lang_wgsl_intrinsic
-    tint_lang_wgsl_ir
-    tint_lang_wgsl_program
-    tint_lang_wgsl_reader
-    tint_lang_wgsl_reader_lower
-    tint_lang_wgsl_reader_parser
-    tint_lang_wgsl_reader_program_to_ir
-    tint_lang_wgsl_resolver
-    tint_lang_wgsl_sem
-    tint_lang_wgsl_writer
-    tint_lang_wgsl_writer_ast_printer
-    tint_lang_wgsl_writer_ir_to_program
-    tint_lang_wgsl_writer_raise
-    tint_lang_wgsl_writer_syntax_tree_printer
-    tint_utils_bytes
-    tint_utils_cli
-    tint_utils_command
-    tint_utils_containers
-    tint_utils_debug
-    tint_utils_diagnostic
-    tint_utils_file
-    tint_utils_generator
-    tint_utils_ice
-    tint_utils_id
-    tint_utils_macros
-    tint_utils_math
-    tint_utils_memory
-    tint_utils_reflection
-    tint_utils_result
-    tint_utils_rtti
-    tint_utils_socket
-    tint_utils_strconv
-    tint_utils_symbol
-    tint_utils_text
-    tint_utils_traits
+
+# include SPIRV-Tools and its build folder, which has some generated data
+includes(${EXTERN_DIR}/SPIRV-Tools)
+includes(${EXTERN_DIR}/SPIRV-Tools/ion-${cfg_lower})
+
+if (linux)
+    includes(${EXTERN_DIR}/Vulkan-Utility-Libraries)
+endif()
+
+# abseil-cpp combined
+# -----------------------------
+set(absl_src ${EXTERN_DIR}/abseil-cpp)
+includes(${absl_src})
+src(${absl_src}/absl/**.cc)
+
+# tint
+# -----------------------------
+set(tint_src ${EXTERN_DIR}/dawn/src/tint)
+
+# all use core, utils/** and wgsl/**
+src(
+    ${tint_src}/lang/core/*.cc
+    ${tint_src}/lang/core/constant/*.cc
+    ${tint_src}/lang/core/intrinsic/*.cc
+    ${tint_src}/lang/core/ir/*.cc
+    # ${tint_src}/lang/core/ir/binary/*.cc
+    ${tint_src}/lang/core/ir/transform/*.cc
+    ${tint_src}/lang/core/type/*.cc
+    ${tint_src}/lang/wgsl/**.cc
+    ${tint_src}/utils/**.cc
+    ${tint_src}/api/**.cc
 )
 
-dep(
-    absl_log_severity
-    absl_raw_logging_internal
-    absl_spinlock_wait
-    absl_malloc_internal
-    absl_base
-    absl_throw_delegate
-    absl_scoped_set_env
-    absl_strerror
-    absl_hashtablez_sampler
-    absl_raw_hash_set
-    absl_crc_cpu_detect
-    absl_crc_internal
-    absl_crc32c
-    absl_crc_cord_state
-    absl_stacktrace
-    absl_symbolize
-    absl_examine_stack
-    absl_failure_signal_handler
-    absl_debugging_internal
-    absl_demangle_internal
-    absl_leak_check
-    absl_flags_program_name
-    absl_flags_config
-    absl_flags_marshalling
-    absl_flags_commandlineflag_internal
-    absl_flags_commandlineflag
-    absl_flags_private_handle_accessor
-    absl_flags_reflection
-    absl_flags_internal
-    absl_flags_usage_internal
-    absl_flags_usage
-    absl_flags_parse
-    absl_hash
-    absl_city
-    absl_low_level_hash
-    absl_log_internal_check_op
-    absl_log_internal_conditions
-    absl_log_internal_format
-    absl_log_internal_globals
-    absl_log_internal_proto
-    absl_log_internal_message
-    absl_log_internal_log_sink_set
-    absl_log_internal_nullguard
-    absl_die_if_null
-    absl_log_flags
-    absl_log_globals
-    absl_log_initialize
-    absl_log_entry
-    absl_log_sink
-    absl_log_internal_fnmatch
-    absl_int128
-    absl_exponential_biased
-    absl_periodic_sampler
-    absl_random_distributions
-    absl_random_seed_gen_exception
-    absl_random_seed_sequences
-    absl_random_internal_seed_material
-    absl_random_internal_pool_urbg
-    absl_random_internal_platform
-    absl_random_internal_randen
-    absl_random_internal_randen_slow
-    absl_random_internal_randen_hwaes
-    absl_random_internal_randen_hwaes_impl
-    absl_random_internal_distribution_test_util
-    absl_status
-    absl_statusor
-    absl_string_view
-    absl_strings
-    absl_strings_internal
-    absl_str_format_internal
-    absl_cord_internal
-    absl_cordz_functions
-    absl_cordz_handle
-    absl_cordz_info
-    absl_cordz_sample_token
-    absl_cord
-    absl_graphcycles_internal
-    absl_kernel_timeout_internal
-    absl_synchronization
-    absl_time
-    absl_civil_time
-    absl_time_zone
-    absl_bad_any_cast_impl
-    absl_bad_optional_access
-    absl_bad_variant_access
+# reader based on dawn's target platform
+# -----------------------------
+if(mac)
+    src(${tint_src}/lang/msl/**.cc)
+elseif(win)
+    src(${tint_src}/lang/hlsl/**.cc)
+elseif(lin)
+    src(${tint_src}/lang/spirv/**.cc)
+endif()
+
+# dawn
+# -----------------------------
+set(dawn_gen ${EXTERN_DIR}/dawn/ion-${cfg_lower}/gen)
+set(dawn_src ${EXTERN_DIR}/dawn/src/dawn)
+
+includes(
+    ${EXTERN_DIR}/dawn
+    ${dawn_gen}/include
+    ${dawn_gen}/src
+    ${dawn_gen}/src/dawn/native
+    ${dawn_gen}/src/dawn/common
+    ${dawn_gen}/src/dawn/wire
+    ${dawn_gen}/src/dawn/wire/server
+    ${dawn_gen}/src/dawn/wire/client
+    ${EXTERN_DIR}/dawn/src
+    ${dawn_src}/partition_alloc
+    ${dawn_src}/native
+    ${dawn_src}/native/utils
+    ${dawn_src}/common
+    ${dawn_src}/utils
+    ${dawn_src}/wire
+    ${dawn_src}/wire/server
+    ${dawn_src}/wire/client
 )
 
-includes(${EXTERN_DIR}/dawn/include
-         ${EXTERN_DIR}/dawn/src
-         ${EXTERN_DIR}/dawn/src/dawn/partition_alloc
-         ${EXTERN_DIR}/dawn/ion-${cfg_lower}/gen/include)
+# add repo-based source
+# -----------------------------
+src(
+    ${dawn_src}/common/**.cpp
+    ${dawn_src}/native/*.cpp
+    ${dawn_src}/native/null/*.cpp
+    ${dawn_src}/native/utils/*.cpp
+    ${dawn_src}/native/stream/*.cpp
+    ${dawn_src}/utils/*.cpp
+    ${dawn_src}/wire/*.cpp
+    ${dawn_src}/glfw/*.cpp
+    ${dawn_src}/platform/**.cpp)
+
+# add generated source (built by .py)
+# -----------------------------
+src(
+    ${dawn_gen}/src/dawn/common/*.cpp
+    ${dawn_gen}/src/dawn/dawn_proc.c
+    ${dawn_gen}/src/dawn/*.cpp
+    ${dawn_gen}/src/dawn/native/*.cpp
+    ${dawn_gen}/src/dawn/wire/**.cpp)
+
+if (win)
+    src(${dawn_src}/native/d3d/**.cpp
+        ${dawn_src}/native/d3d12/**.cpp)
+endif()
+
+if (linux)
+    src(${dawn_src}/native/vulkan/**.cpp)
+endif()
+
+if (mac)
+    src(${dawn_src}/native/metal/**.cpp)
+endif()
+
+# benchmark / test code removal
+# -----------------------------
+src(-_test.cc)
+src(-_testing.cc)
+src(-_bench.cc)
+src(-_benchmark.cc)
+src(-_test_common.cc)
+src(-_mock_log.cc)
+src(-benchmarks.cc)
+src(-test_helpers.cc)
+src(-test_matchers.cc)
+
+# contains typo, and used by Fushia
+# -----------------------------
+src(-SemaphoreServiceImplementationZirconHandle.cpp)
+src(-MemoryServiceImplementationZirconHandle.cpp)
+
+if(NOT android)
+    src(-AHBFunctions.cpp -MemoryServiceImplementationAHardwareBuffer.cpp)
+endif()
+
+if(NOT mac)
+    src(
+        -IOSurfaceUtils.cpp
+        -OSXTimer.cpp
+    )
+endif()
+
+if(NOT win)
+    src(
+        -WindowsUtils.cpp
+        -WindowsTimer.cpp
+        -WindowsDebugLogger.cpp
+        -printer_windows.cc
+        -command_windows.cc
+        -tmpfile_windows.cc
+    )
+endif()
+

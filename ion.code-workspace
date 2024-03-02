@@ -208,7 +208,8 @@
 			"mprealsupport": "cpp",
 			"time.h": "c",
 			"pixdesc.h": "c",
-			"scene_manager.h": "c"
+			"scene_manager.h": "c",
+			"expected": "cpp"
 		},
 		"git.ignoreLimitWarning": true
 	}

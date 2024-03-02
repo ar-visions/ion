@@ -44,11 +44,14 @@ def cp_lib_folders(path, dest):
             p = os.path.join(root, subfolder)
             cp_lib_files(p, dest)
 
-cp_lib_folders(f'{build_root}/third_party/abseil/absl', f'{prefix_install}/lib')
-cp_lib_folders(f'{build_root}/third_party/glfw', f'{prefix_install}/lib')
-cp_lib_folders(f'{build_root}/third_party/glslang', f'{prefix_install}/lib')
-cp_lib_folders(f'{build_root}/src/dawn', f'{prefix_install}/lib')
+cp_lib_files(f'{build_root}/src/dawn', f'{prefix_install}/lib')
 cp_lib_files(f'{build_root}/src/tint', f'{prefix_install}/lib')
 
-cp_includes(f'{build_root}/../include', f'{prefix_install}/include')
+
+cp_lib_folders(f'{build_root}/third_party/abseil/absl', f'{prefix_install}/lib')
+cp_lib_folders(f'{build_root}/third_party/glfw',        f'{prefix_install}/lib')
+cp_lib_folders(f'{build_root}/third_party/glslang',     f'{prefix_install}/lib')
+cp_lib_folders(f'{build_root}/third_party/spirv-tools', f'{prefix_install}/lib')
+
+cp_includes(f'{build_root}/../include',  f'{prefix_install}/include')
 cp_includes(f'{build_root}/gen/include', f'{prefix_install}/include')

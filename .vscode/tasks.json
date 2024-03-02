@@ -2,7 +2,7 @@
 	"version": "2.0.0",
 	"tasks": [
         {
-            "label": "build-webgpu-test",
+            "label": "build-webgpu-test2",
             "type": "shell",
 			"options": {
                 "cwd": "${workspaceFolder}/../hyperspace/build"
@@ -20,13 +20,44 @@
 			"isBackground": false,
 			"problemMatcher": ["$gcc"],
             "windows": {
-                "command": "msbuild hyperspace.sln /t:webgpu-test"
+                "command": "msbuild hyperspace.sln /t:webgpu-test2"
             },
             "osx": {
-                "command": "make webgpu-test -j16"
+                "command": "make webgpu-test2 -j16"
             },
             "linux": {
-                "command": "make webgpu-test -j16",
+                "command": "make webgpu-test2 -j16",
+                "options":{
+                    "env":{"VERBOSE":"1"}
+                }
+            }
+        },
+        {
+            "label": "build-canvas-test",
+            "type": "shell",
+			"options": {
+                "cwd": "${workspaceFolder}/../hyperspace/build"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "group": "build0",
+                "clear": true
+            },
+			"isBackground": false,
+			"problemMatcher": ["$gcc"],
+            "windows": {
+                "command": "msbuild hyperspace.sln /t:canvas-test"
+            },
+            "osx": {
+                "command": "make canvas-test -j16"
+            },
+            "linux": {
+                "command": "make canvas-test -j16",
                 "options":{
                     "env":{"VERBOSE":"1"}
                 }
