@@ -35,14 +35,8 @@
 #include "include/private/gpu/graphite/ContextOptionsPriv.h"
 #include "tools/gpu/ContextType.h"
 #include "tools/graphite/TestOptions.h"
-
 #include "dawn/dawn_proc.h"
-
-
-
-
 #include "include/gpu/dawn/GrDawnTypes.h"
-
 #include "include/core/SkColorSpace.h"
 #include "include/core/SkSurface.h"
 #define SK_DAWN
@@ -53,7 +47,6 @@
 #include "include/gpu/graphite/TextureInfo.h"
 #include "include/gpu/graphite/dawn/DawnBackendContext.h"
 #include "src/gpu/graphite/ContextUtils.h"
-
 
 wgpu::Device            device;
 wgpu::Buffer            indexBuffer;
@@ -127,125 +120,16 @@ static wgpu::BackendType backendType = wgpu::BackendType::OpenGL;
 #endif
 
 static wgpu::AdapterType adapterType = wgpu::AdapterType::Unknown;
-static std::unique_ptr<dawn::native::Instance> instance;
+
 static wgpu::SwapChain swapChain;
 static GLFWwindow* glfw_window = nullptr;
 static ion::Window window;
 static constexpr uint32_t kWidth = 1024;
 static constexpr uint32_t kHeight = 1024;
 
-wgpu::Device CreateCppDawnDevice() {
-    dawn::ScopedEnvironmentVar angleDefaultPlatform;
-    if (dawn::GetEnvironmentVar("ANGLE_DEFAULT_PLATFORM").first.empty()) {
-        angleDefaultPlatform.Set("ANGLE_DEFAULT_PLATFORM", "swiftshader");
-    }
-
-    glfwSetErrorCallback(PrintGLFWError);
-    if (!glfwInit()) {
-        return wgpu::Device();
-    }
-
-    // Create the test window with no client API.
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_COCOA_RETINA_FRAMEBUFFER, GLFW_FALSE);
-    glfw_window = glfwCreateWindow(kWidth, kHeight, "Dawn window", nullptr, nullptr);
-    if (!glfw_window) {
-        return wgpu::Device();
-    }
-
-    WGPUInstanceDescriptor instanceDescriptor{};
-    instanceDescriptor.features.timedWaitAnyEnable = true;
-    instance = std::make_unique<dawn::native::Instance>(&instanceDescriptor);
-
-    wgpu::RequestAdapterOptions options = {};
-    options.backendType = backendType;
-
-    // Get an adapter for the backend to use, and create the device.
-    auto adapters = instance->EnumerateAdapters(&options);
-    wgpu::DawnAdapterPropertiesPowerPreference power_props{};
-    wgpu::AdapterProperties adapterProperties{};
-    adapterProperties.nextInChain = &power_props;
-    // Find the first adapter which satisfies the adapterType requirement.
-    auto isAdapterType = [&adapterProperties](const auto& adapter) -> bool {
-        // picks the first adapter when adapterType is unknown.
-        if (adapterType == wgpu::AdapterType::Unknown) {
-            return true;
-        }
-        adapter.GetProperties(&adapterProperties);
-        return adapterProperties.adapterType == adapterType;
-    };
-    auto preferredAdapter = std::find_if(adapters.begin(), adapters.end(), isAdapterType);
-    if (preferredAdapter == adapters.end()) {
-        fprintf(stderr, "Failed to find an adapter! Please try another adapter type.\n");
-        return wgpu::Device();
-    }
-
-    std::vector<const char*> enableToggleNames;
-    std::vector<const char*> disabledToggleNames;
-
-    WGPUDawnTogglesDescriptor toggles;
-    toggles.chain.sType = WGPUSType_DawnTogglesDescriptor;
-    toggles.chain.next = nullptr;
-    toggles.enabledToggles = enableToggleNames.data();
-    toggles.enabledToggleCount = enableToggleNames.size();
-    toggles.disabledToggles = disabledToggleNames.data();
-    toggles.disabledToggleCount = disabledToggleNames.size();
-
-    WGPUDeviceDescriptor deviceDesc = {};
-    deviceDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&toggles);
-
-    WGPUDevice backendDevice = preferredAdapter->CreateDevice(&deviceDesc);
-    DawnProcTable backendProcs = dawn::native::GetProcs();
-
-    // Create the swapchain
-    auto surfaceChainedDesc = wgpu::glfw::SetupWindowAndGetSurfaceDescriptor(glfw_window);
-    WGPUSurfaceDescriptor surfaceDesc;
-    surfaceDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(surfaceChainedDesc.get());
-    WGPUSurface surface = backendProcs.instanceCreateSurface(instance->Get(), &surfaceDesc);
-
-    WGPUSwapChainDescriptor swapChainDesc = {};
-    swapChainDesc.usage = WGPUTextureUsage_RenderAttachment;
-    swapChainDesc.format = static_cast<WGPUTextureFormat>(GetPreferredSwapChainTextureFormat());
-    swapChainDesc.width = kWidth;
-    swapChainDesc.height = kHeight;
-    swapChainDesc.presentMode = WGPUPresentMode_Mailbox;
-    WGPUSwapChain backendSwapChain =
-        backendProcs.deviceCreateSwapChain(backendDevice, surface, &swapChainDesc);
-
-    // Choose whether to use the backend procs and devices/swapchains directly, or set up the wire.
-    WGPUDevice cDevice = nullptr;
-    DawnProcTable procs;
-
-    procs = backendProcs;
-    cDevice = backendDevice;
-    swapChain = wgpu::SwapChain::Acquire(backendSwapChain);
-
-    dawnProcSetProcs(&procs);
-    procs.deviceSetUncapturedErrorCallback(cDevice, PrintDeviceError, nullptr);
-    procs.deviceSetDeviceLostCallback(cDevice, DeviceLostCallback, nullptr);
-    procs.deviceSetLoggingCallback(cDevice, DeviceLogCallback, nullptr);
-    return wgpu::Device::Acquire(cDevice);
-}
-
 wgpu::TextureFormat GetPreferredSwapChainTextureFormat() {
     // TODO(dawn:1362): Return the adapter's preferred format when implemented.
     return wgpu::TextureFormat::BGRA8Unorm;
-}
-
-wgpu::SwapChain GetSwapChain() {
-    return swapChain;
-}
-
-bool ShouldQuit() {
-    return glfwWindowShouldClose(glfw_window);
-}
-
-GLFWwindow* GetGLFWWindow() {
-    return glfw_window;
-}
-
-void ProcessEvents() {
-    dawn::native::InstanceProcessEvents(instance->Get());
 }
 
 void initBuffers() {
@@ -280,16 +164,17 @@ void initTextures() {
     texture = device.CreateTexture(&descriptor);
     sampler = device.CreateSampler();
 
-    /// this works; the data is random
+    /// this works; the data pattern is rendered from the texture to screen
+    /// however it is not updated by skia
     update_tx();
 }
 
 void init() {
     window = ion::Window::create("dawn", {kWidth, kHeight});
-    device = window.device();//CreateCppDawnDevice();
+    device = window.device();
 
     queue = device.GetQueue();
-    swapchain = window.swap_chain();//GetSwapChain();
+    swapchain = window.swap_chain();
 
     initBuffers();
     initTextures();
@@ -331,20 +216,19 @@ void init() {
     descriptor.EnableDepthStencil(wgpu::TextureFormat::Depth24PlusStencil8);
 
     pipeline = device.CreateRenderPipeline(&descriptor);
-
     wgpu::TextureView view = texture.CreateView();
-
     bindGroup = dawn::utils::MakeBindGroup(device, bgl, {{0, sampler}, {1, view}});
 }
 
 void update_tx() {
 
-    // Initialize the texture with arbitrary data until we can load images
+    // set bit pattern on data (so we know its this state)
     std::vector<uint8_t> data(4 * kWidth * kHeight, 0);
     for (size_t i = 0; i < data.size(); ++i) {
         data[i] = static_cast<uint8_t>(rand() & 127);
     }
 
+    /// staged buffer creation, copy to update texture
     wgpu::Buffer stagingBuffer = dawn::utils::CreateBufferFromData(
         device, data.data(), static_cast<uint32_t>(data.size()), wgpu::BufferUsage::CopySrc);
     wgpu::ImageCopyBuffer imageCopyBuffer =
@@ -352,27 +236,27 @@ void update_tx() {
     wgpu::ImageCopyTexture imageCopyTexture =
         dawn::utils::CreateImageCopyTexture(texture, 0, {0, 0, 0});
     wgpu::Extent3D copySize = {kWidth, kHeight, 1};
-
     wgpu::CommandEncoder encoder = device.CreateCommandEncoder();
     encoder.CopyBufferToTexture(&imageCopyBuffer, &imageCopyTexture, &copySize);
 
-    // Finish and submit command
+    // finish and submit command
     wgpu::CommandBuffer commands = encoder.Finish();
     queue.Submit(1, &commands);
 }
 
 void frame() {
-    // this does not update the texture, even though the texture is skia's backend render target
-    // it is not updated from the test
+    
+    /// render to skia texture (instance by dawn)
     SkCanvas* sk_canvas = sk_surface->getCanvas();
     SkPaint   paint;
     paint.setColor(SK_ColorBLUE);
     sk_canvas->drawRect({0.0f, 0.0f, float(kWidth), float(kHeight)}, paint);
+    
+    /// flush drawing operations in sync (not working?)
     skgpu::graphite::Flush(sk_surface);
     sk_dawn->submit();
-
-    //update_tx();
-
+    
+    /// draw triangle with our skia texture in it (not at all updated from the bit pattern we set on init)
     wgpu::TextureView backbufferView = swapchain.GetCurrentTextureView();
     dawn::utils::ComboRenderPassDescriptor renderPass({backbufferView}, depthStencilView);
     wgpu::CommandEncoder encoder = device.CreateCommandEncoder();
