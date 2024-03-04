@@ -25,13 +25,14 @@
 wgpu::Device            device;
 wgpu::Buffer            indexBuffer;
 wgpu::Buffer            vertexBuffer;
-wgpu::Texture           texture;
+WGPUTexture             texture;
 wgpu::Sampler           sampler;
 wgpu::Queue             queue;
 wgpu::SwapChain         swapchain;
 wgpu::TextureView       depthStencilView;
 wgpu::RenderPipeline    pipeline;
 wgpu::BindGroup         bindGroup;
+ion::Canvas             canvas;
 
 void PrintDeviceError(WGPUErrorType errorType, const char* message, void*) {
     const char* errorTypeName = "";
@@ -126,10 +127,11 @@ void initTextures() {
     descriptor.mipLevelCount = 1;
     descriptor.usage = wgpu::TextureUsage::CopyDst | wgpu::TextureUsage::TextureBinding | wgpu::TextureUsage::RenderAttachment;
 
-    texture = device.CreateTexture(&descriptor);
+    //texture = device.CreateTexture(&descriptor);
     sampler = device.CreateSampler();
 
     /// this works; the data is random
+    texture = canvas.texture();
     update_tx();
 }
 
@@ -139,6 +141,8 @@ void init() {
 
     queue = device.GetQueue();
     swapchain = window.swap_chain();//GetSwapChain();
+
+    canvas = Canvas(window);
 
     initBuffers();
     initTextures();
@@ -180,12 +184,12 @@ void init() {
     descriptor.EnableDepthStencil(wgpu::TextureFormat::Depth24PlusStencil8);
 
     pipeline = device.CreateRenderPipeline(&descriptor);
-    wgpu::TextureView view = texture.CreateView();
+    wgpu::TextureView view = ((wgpu::Texture*)&texture)->CreateView();
     bindGroup = dawn::utils::MakeBindGroup(device, bgl, {{0, sampler}, {1, view}});
 }
 
 void update_tx() {
-
+    wgpu::Texture *tx = (wgpu::Texture*)&texture;
     std::vector<uint8_t> data(4 * kWidth * kHeight, 0);
     for (size_t i = 0; i < data.size(); i++) {
         data[i] = rand::uniform<u8>(0, 128);
@@ -196,7 +200,7 @@ void update_tx() {
     wgpu::ImageCopyBuffer imageCopyBuffer =
         dawn::utils::CreateImageCopyBuffer(stagingBuffer, 0, 4 * kWidth);
     wgpu::ImageCopyTexture imageCopyTexture =
-        dawn::utils::CreateImageCopyTexture(texture, 0, {0, 0, 0});
+        dawn::utils::CreateImageCopyTexture(*tx, 0, {0, 0, 0});
     wgpu::Extent3D copySize = {kWidth, kHeight, 1};
 
     wgpu::CommandEncoder encoder = device.CreateCommandEncoder();
@@ -218,6 +222,11 @@ void frame() {
     //sk_dawn->submit();
 
     //update_tx();
+
+    rectd area { 0, 0, kWidth, kHeight };
+    canvas.color((cstr)"#ffff");
+    canvas.fill(area);
+    canvas.flush();
 
     wgpu::TextureView backbufferView = swapchain.GetCurrentTextureView();
     dawn::utils::ComboRenderPassDescriptor renderPass({backbufferView}, depthStencilView);
@@ -265,8 +274,6 @@ int main(int argc, const char* argv[]) {
     
     i64 s_last = millis() / 1000;
     i64 frames_drawn = 0;
-
-    Canvas canvas(window);
 
     while (true) {
         window.process_events();

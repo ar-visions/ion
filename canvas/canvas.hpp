@@ -1,6 +1,6 @@
 #pragma once
 #include <media/media.hpp>
-
+#include <webgpu/webgpu.h>
 struct SkCanvas;
 struct GLFWwindow;
 
@@ -435,6 +435,7 @@ struct SVG:mx {
 
 struct ICanvas;
 struct iSVG;
+struct Window;
 
 struct Canvas:mx {
     mx_declare(Canvas, mx, ICanvas);
@@ -443,6 +444,11 @@ struct Canvas:mx {
     /// so Texture, and Window (most likely)
     //Canvas(VkhImage image);
     //Canvas(VkhPresenter renderer);
+
+    Canvas(int width, int height, bool use_hidpi);
+    Canvas(Window &win);
+
+    WGPUTexture texture();
 
     u32 get_virtual_width();
     u32 get_virtual_height();

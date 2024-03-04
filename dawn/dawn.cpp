@@ -48,7 +48,7 @@ struct IWindow {
     lambda<void()> loop;
     wgpu::Device device;
     wgpu::SwapChain swap;
-    vec2f sz;
+    vec2i sz;
     void *user_data;
 
     static inline int count = 0;
@@ -112,7 +112,7 @@ void *Window::handle() {
     return data->handle;
 }
 
-Window Window::create(str title, vec2f sz) {
+Window Window::create(str title, vec2i sz) {
     static bool init;
     if (!init) {
         assert(glfwInit());
@@ -128,6 +128,10 @@ Window Window::create(str title, vec2f sz) {
     IWindow::count++;
     w->create_dawn_device();
     return w;
+}
+
+Window::operator bool() {
+    return bool(data->device);
 }
 
 wgpu::Device Window::device() {
@@ -220,7 +224,9 @@ void IWindow::create_dawn_device() {
     DawnProcTable backendProcs = dawn::native::GetProcs();
 
     // Create the swapchain
-    auto surfaceChainedDesc = wgpu::glfw::SetupWindowAndGetSurfaceDescriptor(handle);
+    static std::unique_ptr<wgpu::ChainedStruct> surfaceChainedDesc;
+    surfaceChainedDesc = wgpu::glfw::SetupWindowAndGetSurfaceDescriptor(handle); // this memory is not referenced properly by skia
+
     WGPUSurfaceDescriptor surfaceDesc;
     surfaceDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(surfaceChainedDesc.get());
     WGPUSurface surface = backendProcs.instanceCreateSurface(dawn->instance->Get(), &surfaceDesc);
@@ -265,6 +271,10 @@ void Window::set_user_data(void *user_data) {
     data->user_data = user_data;
 }
 
+vec2i Window::size() {
+    return data->sz;
+}
+
 wgpu::TextureView Window::depth_stencil_view() {
     wgpu::TextureDescriptor descriptor;
     descriptor.dimension = wgpu::TextureDimension::e2D;
@@ -281,6 +291,15 @@ wgpu::TextureView Window::depth_stencil_view() {
 
 void Dawn::process_events() {
     dawn::native::InstanceProcessEvents(data->instance->Get());
+}
+
+float Dawn::get_dpi() {
+    glfwInit();
+    GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+
+    float xscale, yscale;
+    glfwGetMonitorContentScale(monitor, &xscale, &yscale);
+    return xscale;
 }
 
 }

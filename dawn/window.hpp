@@ -131,7 +131,7 @@ enums(Key, undefined,
 
 struct IWindow;
 struct Window:mx {
-    static Window create(str title, vec2f sz);
+    static Window create(str title, vec2i sz);
     void set_visibility(bool v);
     void close();
     str  title();
@@ -144,6 +144,9 @@ struct Window:mx {
     void process_events();
     void *user_data();
     void set_user_data(void *);
+    vec2i size();
+
+    operator bool();
 
     wgpu::Device device();
     wgpu::SwapChain swap_chain();

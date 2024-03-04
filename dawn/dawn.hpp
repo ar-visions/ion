@@ -14,6 +14,7 @@ namespace ion {
 struct IDawn;
 struct Dawn:mx {
     void process_events();
+    static float get_dpi();
     mx_declare(Dawn, mx, IDawn);
 };
 
