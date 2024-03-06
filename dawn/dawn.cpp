@@ -1,3 +1,5 @@
+void dawn() { }
+#if 0
 
 #include <algorithm>
 #include <cstring>
@@ -303,3 +305,4 @@ float Dawn::get_dpi() {
 }
 
 }
+#endif

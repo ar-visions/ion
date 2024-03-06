@@ -1,3 +1,6 @@
+
+#if 0
+
 #define CANVAS_IMPL
 
 #include <dawn/dawn.hpp>
@@ -65,6 +68,8 @@
 #include "include/gpu/graphite/dawn/DawnBackendContext.h"
 #include "src/gpu/graphite/ContextUtils.h"
 
+#include "tools/window/WindowContext.h"
+#include "tools/window/GraphiteDawnWindowContext.h"
 
 #include <media/media.hpp>
 #include <canvas/canvas.hpp>
@@ -649,6 +654,7 @@ struct ICanvas {
     void    flush() {
         Skia *ctx = Skia::Context(window);
         skgpu::graphite::Flush(sk_surf);
+        ctx->sk_context->submit(skgpu::graphite::SyncToCpu::kYes);
         //ctx->sk_context->submit();
     }
 
@@ -1242,3 +1248,4 @@ array<double> font::advances(Canvas& canvas, str text) {
 }
 
 }
+#endif

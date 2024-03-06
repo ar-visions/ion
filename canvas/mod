@@ -2,7 +2,9 @@ dep(mx:mx mx:async ion:dawn harfbuzz:harfbuzz libexpat:expat freetype:freetype2)
 
 defines(
     SK_DAWN
+    SK_VULKAN
     SK_GRAPHITE
+    SK_GANESH
     SK_DISABLE_TRACING
     GR_TEST_UTILS
     GRAPHITE_TEST_UTILS
@@ -10,6 +12,7 @@ defines(
     SK_DISABLE_LEGACY_IMAGE_READBUFFER
     SK_SHAPER_HARFBUZZ_AVAILABLE
     SK_SHAPER_UNICODE_AVAILABLE
+    VK_USE_PLATFORM_XCB_KHR
 )
 
 if (win)
@@ -77,6 +80,21 @@ src(
     ${skia_src}/sksl/**.cpp
     ${skia_src}/xml/*.cpp
     ${skia_src}/gpu/*.cpp
+    ${skia_src}/gpu/vk/*.cpp
+    ${skia_src}/gpu/MutableTextureState.cpp
+    ${skia_src}/gpu/ganesh/*.cpp
+    ${skia_src}/gpu/ganesh/vk/*.cpp
+    ${skia_src}/gpu/ganesh/geometry/*.cpp
+    ${skia_src}/gpu/ganesh/ops/*.cpp
+    ${skia_src}/gpu/ganesh/effects/*.cpp
+    ${skia_src}/gpu/ganesh/tessellate/*.cpp
+    ${skia_src}/gpu/ganesh/text/*.cpp
+    ${skia_src}/gpu/ganesh/surface/*.cpp
+    ${skia_src}/gpu/ganesh/mock/*.cpp
+    ${skia_src}/gpu/ganesh/glsl/*.cpp
+    ${skia_src}/gpu/ganesh/image/*.cpp
+    ${skia_src}/gpu/ganesh/gradients/*.cpp
+    ${skia_src}/text/gpu/*.cpp
     ${skia_src}/gpu/graphite/*.cpp
     ${skia_src}/gpu/graphite/geom/*.cpp
     ${skia_src}/gpu/graphite/render/*.cpp
@@ -92,6 +110,10 @@ src(
     ${skia_src}/ports/SkFontMgr_custom_empty.cpp
     ${skia_src}/ports/SkMemory_malloc.cpp
     ${skia_src}/ports/SkOSFile_stdio.cpp
+    ${skia_dir}/tools/GpuToolUtils.cpp
+    ${skia_dir}/tools/window/WindowContext.cpp
+    ${skia_dir}/tools/window/GraphiteDawnWindowContext.cpp
+    ${skia_dir}/tools/window/unix/GraphiteDawnVulkanWindowContext_unix.cpp
 )
 
 src(
