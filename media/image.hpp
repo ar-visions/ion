@@ -45,6 +45,7 @@ struct rgba {
 
     rgba(T r, T g, T b, T a) : r(r), g(g), b(b), a(a) { }
 
+    rgba(symbol h) : rgba((cstr)h) { }
     rgba(cstr h) {
         size_t sz = strlen(h);
         i32    ir = 0, ig = 0,
@@ -189,6 +190,10 @@ struct rect {
     bool rounded = false;
 
     inline rect(T x = 0, T y = 0, T w = 0, T h = 0) : x(x), y(y), w(w), h(h) { }
+
+    template <typename U, typename V, typename W, typename H>
+    inline rect(U x = 0, V y = 0, W w = 0, H h = 0) : x(T(x)), y(T(y)), w(T(w)), h(T(h)) { }
+
     inline rect(vec2 p0, vec2 p1) : x(p0.x), y(p0.y), w(p1.x - p0.x), h(p1.y - p0.y) { }
 
     inline rect  offset(T a)                const { return { x - a, y - a, w + (a * 2), h + (a * 2) }; }

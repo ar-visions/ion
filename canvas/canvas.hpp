@@ -1,12 +1,107 @@
-#if 0
-
 #pragma once
+#include <dawn/webgpu_cpp.h>
+#include <dawn/native/DawnNative.h>
+
 #include <media/media.hpp>
+#include <async/async.hpp>
 #include <webgpu/webgpu.h>
+
 struct SkCanvas;
 struct GLFWwindow;
 
+#pragma once
+
 namespace ion {
+
+struct IDawn;
+struct Dawn:mx {
+    void process_events();
+    static float get_dpi();
+    mx_declare(Dawn, mx, IDawn);
+};
+
+template <> struct is_singleton<IDawn> : true_type { };
+template <> struct is_singleton<Dawn> : true_type { };
+
+enums(Key, undefined,
+    undefined=0, Space=32, Apostrophe=39, Comma=44, Minus=45, Period=46, Slash=47,
+    k_0=48, k_1=49, k_2=50, k_3=51, k_4=52, k_5=53, k_6=54, k_7=55, k_8=56, k_9=57,
+    SemiColon=59, Equal=61,
+    A=65, B=66, C=67, D=68, E=69, F=70, G=71, H=72, I=73, J=74, K=75, L=76, M=77,
+    N=78, O=79, P=80, Q=81, R=82, S=83, T=84, U=85, V=86, W=87, X=88, Y=89, Z=90,
+    LeftBracket=91, BackSlash=92, RightBracket=93, GraveAccent=96, World1 = 161, World2 = 162,
+    Escape=256, ENTER=257, TAB=258, BACKSPACE=259, INSERT=260, DELETE=261, RIGHT=262, LEFT=263, DOWN=264, UP=265,
+    PAGE_UP=266, PAGE_DOWN=267, HOME=268, END=269, CAPS_LOCK=280, SCROLL_LOCK=281, NUM_LOCK=282, PRINT_SCREEN=283, PAUSE=284,
+    F1=290,  F2=291,  F3=292,  F4=293,  F5=294,  F6=295,  F7=296,  F8=297,  F9=298,  F10=299, F11=300, F12=301, F13=302, F14=303,
+    F15=304, F16=305, F17=306, F18=307, F19=308, F20=309, F21=310, F22=311, F23=312, F24=313, F25=314,
+    KP_0=320, KP_1=321, KP_2=322, KP_3=323, KP_4=324, KP_5=325, KP_6=326, KP_7=327, KP_8=328, KP_9=329,
+    KP_DECIMAL=330, KP_DIVIDE=331, KP_MULTIPLY=332, KP_SUBTRACT=333, KP_ADD=334, KP_ENTER=335, KP_EQUAL=336,
+    LEFT_SHIFT=340, LEFT_CONTROL=341, LEFT_ALT=342, LEFT_SUPER=343,
+    RIGHT_SHIFT=344, RIGHT_CONTROL=345, RIGHT_ALT=346, RIGHT_SUPER=347, MENU=348
+)
+
+// not working somehow:
+//using RenderPass = dawn::utils::ComboRenderPassDescriptor;
+struct RenderPass : public wgpu::RenderPassDescriptor {
+    static inline const int kMaxColorAttachments = 8;
+    RenderPass(const std::vector<wgpu::TextureView>& colorAttachmentInfo = {},
+                              wgpu::TextureView depthStencil = wgpu::TextureView());
+    ~RenderPass();
+
+    RenderPass(const RenderPass& otherRenderPass);
+    const RenderPass& operator=(const RenderPass& otherRenderPass);
+
+    void UnsetDepthStencilLoadStoreOpsForFormat(wgpu::TextureFormat format);
+
+    std::array<wgpu::RenderPassColorAttachment, kMaxColorAttachments> cColorAttachments;
+    wgpu::RenderPassDepthStencilAttachment cDepthStencilAttachmentInfo = {};
+};
+
+struct Canvas;
+struct IWindow;
+struct Window:mx {
+    using OnResize       = ion::lambda<void(int width, int height)>;
+    using OnCursorPos    = ion::lambda<void(double x, double y)>;
+    using OnCursorButton = ion::lambda<void(int button, int action, int mods)>;
+    using OnKeyChar      = ion::lambda<void(u32 code, int mods)>;
+    using OnKeyScanCode  = ion::lambda<void(int key, int scancode, int action, int mods)>;
+    using OnCanvasRender = ion::lambda<void(Canvas&)>;
+    using OnSceneRender  = ion::lambda<void(RenderPass&, wgpu::CommandEncoder&)>;
+
+    enums(Render, Texture,
+        Texture, SwapChain);
+    
+    static Window create(Render render_mode, str title, vec2i sz);
+
+    void set_visibility(bool v);
+    void close();
+    str  title();
+    void set_title(str title);
+
+    Canvas get_canvas();
+
+    void set_on_canvas_render   (OnCanvasRender canvas_render);
+    void set_on_scene_render    (OnSceneRender scene_render);
+    void set_on_resize          (OnResize resize);
+    void set_on_cursor_pos      (OnCursorPos cursor_pos);
+    void set_on_cursor_button   (OnCursorButton cursor_button);
+    void set_on_key_char        (OnKeyChar key_char);
+    void set_on_key_scancode    (OnKeyScanCode key_scancode) ;
+
+    void  run();
+    void *handle();
+    void  process();
+    void *user_data();
+    void  set_user_data(void *);
+    vec2i size();
+
+    operator bool();
+
+    wgpu::Device    device();
+    wgpu::SwapChain swap_chain();
+
+    mx_declare(Window, mx, IWindow)
+};
 
 struct text_metrics {
     real            w = 0,
@@ -442,20 +537,13 @@ struct Window;
 struct Canvas:mx {
     mx_declare(Canvas, mx, ICanvas);
 
-    /// handle these with Dawn; presenter is associated with a Window
-    /// so Texture, and Window (most likely)
-    //Canvas(VkhImage image);
-    //Canvas(VkhPresenter renderer);
-
-    Canvas(int width, int height, bool use_hidpi);
-    Canvas(Window &win);
+    Canvas(wgpu::Device device, wgpu::Texture texture, bool use_hidpi);
 
     WGPUTexture texture();
 
     u32 get_virtual_width();
     u32 get_virtual_height();
-    //void canvas_resize(VkhImage image, int width, int height);
-    void app_resize();
+
     void font(ion::font f);
     void save();
     void clear();
@@ -491,5 +579,3 @@ struct Canvas:mx {
 };
 
 }
-
-#endif

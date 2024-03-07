@@ -1,16 +1,53 @@
-
-#if 0
-
 #define CANVAS_IMPL
 
 #include <dawn/dawn.hpp>
 
-#include "core/SkImage.h"
-#include "gpu/GrBackendSurface.h"
-#include "gpu/GrDirectContext.h"
-#include "gpu/graphite/dawn/DawnBackendContext.h"
-#include "gpu/graphite/Context.h"
-#include "gpu/graphite/dawn/DawnUtils.h"
+#include <GLFW/glfw3.h>
+
+#ifdef __linux__
+#define GLFW_EXPOSE_NATIVE_X11
+#include <GLFW/glfw3native.h>
+/// X11 globals that conflict with Dawn
+#undef None
+#undef Success
+#undef Always
+#undef Bool
+#endif
+
+#include <vector>
+#include <algorithm>
+#include <cstring>
+#include <memory>
+#include <string>
+#include <string_view>
+
+#include "dawn/samples/SampleUtils.h"
+#include "dawn/utils/ComboRenderPipelineDescriptor.h"
+#include "dawn/utils/SystemUtils.h"
+#include "dawn/utils/WGPUHelpers.h"
+
+#include <dawn/webgpu_cpp.h>
+#include "dawn/common/Assert.h"
+#include "dawn/common/Log.h"
+#include "dawn/common/Platform.h"
+#include "dawn/common/SystemUtils.h"
+#include "dawn/common/Constants.h"
+#include "dawn/dawn_proc.h"
+#include "webgpu/webgpu_glfw.h"
+#include <dawn/native/DawnNative.h>
+
+#include "include/gpu/graphite/dawn/DawnUtils.h"
+#include "include/gpu/graphite/dawn/DawnTypes.h"
+#include <tools/window/unix/WindowContextFactory_unix.h>
+#include <tools/window/WindowContext.h>
+#include <gpu/graphite/BackendTexture.h>
+#include <gpu/graphite/dawn/DawnBackendContext.h>
+#include <gpu/graphite/Context.h>
+#include <gpu/graphite/ContextOptions.h>
+#include <gpu/graphite/Surface.h>
+#include <gpu/graphite/Surface_Graphite.h>
+#include <tools/GpuToolUtils.h>
+
 
 #include "tools/graphite/ContextFactory.h"
 #include "gpu/graphite/ContextOptions.h"
@@ -41,40 +78,612 @@
 #include "core/SkRefCnt.h"
 #include "core/SkTypes.h"
 
-
-#include "include/gpu/graphite/Context.h"
-#define SK_DAWN
-#include "include/gpu/graphite/Surface.h"
-#include "src/gpu/graphite/Surface_Graphite.h"
-#include "include/gpu/graphite/TextureInfo.h"
-#include "gpu/graphite/BackendTexture.h"
-#include "include/gpu/graphite/ContextOptions.h"
-#include "include/gpu/graphite/dawn/DawnTypes.h"
-#include "include/gpu/graphite/dawn/DawnUtils.h"
-#include "include/private/base/SkOnce.h"
-#include "include/private/gpu/graphite/ContextOptionsPriv.h"
-#include "tools/gpu/ContextType.h"
-#include "tools/graphite/TestOptions.h"
-#include "dawn/dawn_proc.h"
-#include "gpu/graphite/dawn/DawnTypes.h"
-#include "include/core/SkColorSpace.h"
-#include "include/core/SkSurface.h"
-#define SK_DAWN
-#include "include/gpu/GrBackendSurface.h"
-#include "include/core/SkCanvas.h"
-#include "include/gpu/graphite/Context.h"
-#include "include/gpu/graphite/Recorder.h"
-#include "include/gpu/graphite/TextureInfo.h"
-#include "include/gpu/graphite/dawn/DawnBackendContext.h"
-#include "src/gpu/graphite/ContextUtils.h"
-
-#include "tools/window/WindowContext.h"
-#include "tools/window/GraphiteDawnWindowContext.h"
-
-#include <media/media.hpp>
 #include <canvas/canvas.hpp>
 
+using namespace ion;
+
 namespace ion {
+
+
+RenderPass::RenderPass(
+    const std::vector<wgpu::TextureView>& colorAttachmentInfo,
+    wgpu::TextureView depthStencil) {
+    for (uint32_t i = 0; i < kMaxColorAttachments; ++i) {
+        cColorAttachments[i].loadOp = wgpu::LoadOp::Clear;
+        cColorAttachments[i].storeOp = wgpu::StoreOp::Store;
+        cColorAttachments[i].clearValue = {0.0f, 0.0f, 0.0f, 0.0f};
+    }
+
+    cDepthStencilAttachmentInfo.depthClearValue = 1.0f;
+    cDepthStencilAttachmentInfo.stencilClearValue = 0;
+    cDepthStencilAttachmentInfo.depthLoadOp = wgpu::LoadOp::Clear;
+    cDepthStencilAttachmentInfo.depthStoreOp = wgpu::StoreOp::Store;
+    cDepthStencilAttachmentInfo.stencilLoadOp = wgpu::LoadOp::Clear;
+    cDepthStencilAttachmentInfo.stencilStoreOp = wgpu::StoreOp::Store;
+
+    colorAttachmentCount = colorAttachmentInfo.size();
+    uint32_t colorAttachmentIndex = 0;
+    for (const wgpu::TextureView& colorAttachment : colorAttachmentInfo) {
+        if (colorAttachment.Get() != nullptr) {
+            cColorAttachments[colorAttachmentIndex].view = colorAttachment;
+        }
+        ++colorAttachmentIndex;
+    }
+    colorAttachments = cColorAttachments.data();
+
+    if (depthStencil.Get() != nullptr) {
+        cDepthStencilAttachmentInfo.view = depthStencil;
+        depthStencilAttachment = &cDepthStencilAttachmentInfo;
+    } else {
+        depthStencilAttachment = nullptr;
+    }
+}
+
+RenderPass::~RenderPass() = default;
+
+RenderPass::RenderPass(const RenderPass& other) {
+    *this = other;
+}
+
+const RenderPass& RenderPass::operator=(
+    const RenderPass& otherRenderPass) {
+    cDepthStencilAttachmentInfo = otherRenderPass.cDepthStencilAttachmentInfo;
+    cColorAttachments = otherRenderPass.cColorAttachments;
+    colorAttachmentCount = otherRenderPass.colorAttachmentCount;
+
+    colorAttachments = cColorAttachments.data();
+
+    if (otherRenderPass.depthStencilAttachment != nullptr) {
+        // Assign desc.depthStencilAttachment to this->depthStencilAttachmentInfo;
+        depthStencilAttachment = &cDepthStencilAttachmentInfo;
+    } else {
+        depthStencilAttachment = nullptr;
+    }
+
+    return *this;
+}
+void RenderPass::UnsetDepthStencilLoadStoreOpsForFormat(wgpu::TextureFormat format) {
+    switch (format) {
+        case wgpu::TextureFormat::Depth24Plus:
+        case wgpu::TextureFormat::Depth32Float:
+        case wgpu::TextureFormat::Depth16Unorm:
+            cDepthStencilAttachmentInfo.stencilLoadOp = wgpu::LoadOp::Undefined;
+            cDepthStencilAttachmentInfo.stencilStoreOp = wgpu::StoreOp::Undefined;
+            break;
+        case wgpu::TextureFormat::Stencil8:
+            cDepthStencilAttachmentInfo.depthLoadOp = wgpu::LoadOp::Undefined;
+            cDepthStencilAttachmentInfo.depthStoreOp = wgpu::StoreOp::Undefined;
+            break;
+        default:
+            break;
+    }
+}
+
+struct IDawn {
+    #if defined(WIN32)
+        wgpu::BackendType backend_type = wgpu::BackendType::D3D12;
+    #elif defined(__APPLE__)
+        wgpu::BackendType backend_type = wgpu::BackendType::Metal;
+    #elif defined(__linux__)
+        wgpu::BackendType backend_type = wgpu::BackendType::Vulkan;
+    #endif
+    std::unique_ptr<dawn::native::Instance> instance;
+    register(IDawn);
+};
+
+struct IWindow {
+    Dawn dawn;
+    ion::str title;
+    GLFWwindow* handle;
+    Window::Render              render_mode;
+    wgpu::AdapterType           adapter_type = wgpu::AdapterType::Unknown;
+    Window::OnResize            resize;
+    Window::OnCursorPos         cursor_pos;
+    Window::OnCursorButton      cursor_button;
+    Window::OnKeyChar           key_char;
+    Window::OnKeyScanCode       key_scancode;
+    Window::OnCanvasRender      fn_canvas_render;
+    Window::OnSceneRender       fn_scene_render;
+
+    DawnProcTable               procs;
+    WGPUDevice                  gpu;
+    wgpu::Device                device;
+    wgpu::Buffer                indexBuffer;
+    wgpu::Buffer                vertexBuffer;
+    wgpu::Texture               texture;
+    wgpu::Sampler               sampler;
+    wgpu::Queue                 queue;
+    wgpu::SwapChain             swapchain;
+    wgpu::TextureView           depthStencilView;
+    wgpu::RenderPipeline        pipeline;
+    wgpu::BindGroup             bindGroup;
+    wgpu::BindGroupLayout       bgl;
+    wgpu::TextureView           view;
+
+    sk_sp<SkSurface>            sk_surfaces[2];
+    Canvas                      canvas;
+
+    static wgpu::TextureFormat preferred_swapchain_format() {
+        return wgpu::TextureFormat::BGRA8Unorm;
+    }
+
+    struct Attribs {
+        glm::vec4 pos;
+        glm::vec2 uv;
+    };
+
+    vec2i                       sz;
+    void                       *user_data;
+    int                         swap_id;
+
+    static void PrintDeviceError(WGPUErrorType errorType, const char* message, void*) {
+        const char* errorTypeName = "";
+        switch (errorType) {
+            case WGPUErrorType_Validation:
+                errorTypeName = "Validation";
+                break;
+            case WGPUErrorType_OutOfMemory:
+                errorTypeName = "Out of memory";
+                break;
+            case WGPUErrorType_Unknown:
+                errorTypeName = "Unknown";
+                break;
+            case WGPUErrorType_DeviceLost:
+                errorTypeName = "Device lost";
+                break;
+            default:
+                DAWN_UNREACHABLE();
+                return;
+        }
+        dawn::ErrorLog() << errorTypeName << " error: " << message;
+    }
+
+    static void DeviceLostCallback(WGPUDeviceLostReason reason, const char* message, void*) {
+        dawn::ErrorLog() << "Device lost: " << message;
+    }
+
+    static void PrintGLFWError(int code, const char* message) {
+        dawn::ErrorLog() << "GLFW error: " << code << " - " << message;
+    }
+
+    static void DeviceLogCallback(WGPULoggingType type, const char* message, void*) {
+        dawn::ErrorLog() << "Device log: " << message;
+    }
+
+    static IWindow *iwindow(GLFWwindow *window) {
+        return (IWindow*)glfwGetWindowUserPointer(window);
+    }
+
+    static void on_resize(GLFWwindow* window, int width, int height) {
+        IWindow *iwin = iwindow(window);
+        iwin->sz.x = width;
+        iwin->sz.y = height;
+        iwin->update_swap();
+        iwin->update_texture();
+        if (iwin->resize) iwin->resize(width, height);
+    }
+
+    static void on_cursor_pos(GLFWwindow* window, double x, double y) {
+        IWindow *iwin = iwindow(window);
+        if (iwin->cursor_pos) iwin->cursor_pos(x, y);
+    }
+
+    static void on_cursor_button(GLFWwindow* window, int button, int action, int mods) {
+        IWindow *iwin = iwindow(window);
+        if (iwin->cursor_button) iwin->cursor_button(button, action, mods);
+    }
+
+    static void on_key_char(GLFWwindow* window, u32 code, int mods) {
+        IWindow *iwin = iwindow(window);
+        if (iwin->key_char) iwin->key_char(code, mods);
+    }
+
+    static void on_key_scancode(GLFWwindow *window, int key, int scancode, int action, int mods) {
+        IWindow *iwin = iwindow(window);
+        if (iwin->key_scancode) iwin->key_scancode(key, scancode, action, mods);
+    }
+
+    int get_swap_id() {
+        int  id = Window::Render::SwapChain ? swap_id : 0;
+        return id;
+    }
+
+    wgpu::TextureView depth_stencil_view() {
+        wgpu::TextureDescriptor descriptor;
+        descriptor.dimension = wgpu::TextureDimension::e2D;
+        descriptor.size.width = (u32)sz.x;
+        descriptor.size.height = (u32)sz.y;
+        descriptor.size.depthOrArrayLayers = 1;
+        descriptor.sampleCount = 1;
+        descriptor.format = wgpu::TextureFormat::Depth24PlusStencil8;
+        descriptor.mipLevelCount = 1;
+        descriptor.usage = wgpu::TextureUsage::RenderAttachment;
+        auto depthStencilTexture = device.CreateTexture(&descriptor);
+        return depthStencilTexture.CreateView();
+    }
+
+    void update_texture() {
+        if (render_mode == Window::Render::Texture) {
+            wgpu::TextureDescriptor tx_desc;
+            tx_desc.dimension               = wgpu::TextureDimension::e2D;
+            tx_desc.size.width              = (u32)sz.x;
+            tx_desc.size.height             = (u32)sz.y;
+            tx_desc.size.depthOrArrayLayers = 1;
+            tx_desc.sampleCount             = 1;
+            tx_desc.format                  = preferred_swapchain_format();
+            tx_desc.mipLevelCount           = 1;
+            tx_desc.usage                   = wgpu::TextureUsage::CopyDst | 
+                                              wgpu::TextureUsage::TextureBinding | 
+                                              wgpu::TextureUsage::RenderAttachment;
+
+            texture = device.CreateTexture(&tx_desc);
+            view    = texture.CreateView();
+            
+        } else {
+            texture = swapchain.GetCurrentTexture();
+            view    = swapchain.GetCurrentTextureView();
+        }
+
+        canvas    = Canvas(device, texture, true);
+        sampler   = device.CreateSampler();
+        bindGroup = dawn::utils::MakeBindGroup(device, bgl, {{0, sampler}, {1, view}});
+    }
+
+    void update_swap() {
+        static std::unique_ptr<wgpu::ChainedStruct> surfaceChainedDesc;
+        surfaceChainedDesc = wgpu::glfw::SetupWindowAndGetSurfaceDescriptor(handle); /// this needs some work because this is called more than once.
+
+        WGPUSurfaceDescriptor surfaceDesc;
+        surfaceDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(surfaceChainedDesc.get());
+        WGPUSurface surface = procs.instanceCreateSurface(dawn->instance->Get(), &surfaceDesc);
+
+        WGPUSwapChainDescriptor swapChainDesc = {};
+        swapChainDesc.usage = WGPUTextureUsage_RenderAttachment;
+        swapChainDesc.format = static_cast<WGPUTextureFormat>(preferred_swapchain_format());
+        swapChainDesc.width = (u32)sz.x;
+        swapChainDesc.height = (u32)sz.y;
+        swapChainDesc.presentMode = WGPUPresentMode_Mailbox;
+        WGPUSwapChain backendSwapChain =
+            procs.deviceCreateSwapChain(gpu, surface, &swapChainDesc);
+        swapchain = wgpu::SwapChain::Acquire(backendSwapChain);
+        swap_id = 0;
+    }
+
+    void create_resources() {
+        if (!dawn->instance) {
+            WGPUInstanceDescriptor instanceDescriptor{};
+            instanceDescriptor.features.timedWaitAnyEnable = true;
+            dawn->instance = std::make_unique<dawn::native::Instance>(&instanceDescriptor);
+        }
+        wgpu::RequestAdapterOptions options = {};
+        options.backendType = dawn->backend_type;
+
+        // Get an adapter for the backend to use, and create the device.
+        auto adapters = dawn->instance->EnumerateAdapters(&options);
+        wgpu::DawnAdapterPropertiesPowerPreference power_props{};
+        wgpu::AdapterProperties adapterProperties{};
+        adapterProperties.nextInChain = &power_props;
+        // Find the first adapter which satisfies the adapterType requirement.
+        auto isAdapterType = [&](const auto& adapter) -> bool {
+            // picks the first adapter when adapterType is unknown.
+            if (adapter_type == wgpu::AdapterType::Unknown) {
+                return true;
+            }
+            adapter.GetProperties(&adapterProperties);
+            return adapterProperties.adapterType == adapter_type;
+        };
+        auto preferredAdapter = std::find_if(adapters.begin(), adapters.end(), isAdapterType);
+        if (preferredAdapter == adapters.end()) {
+            fprintf(stderr, "Failed to find an adapter! Please try another adapter type.\n");
+            return;
+        }
+
+        std::vector<const char*> enableToggleNames = {
+            "allow_unsafe_apis",  "use_user_defined_labels_in_backend" // allow_unsafe_apis = Needed for dual-source blending, BufferMapExtendedUsages.
+        };
+        std::vector<const char*> disabledToggleNames;
+        WGPUDawnTogglesDescriptor toggles;
+        toggles.chain.sType = WGPUSType_DawnTogglesDescriptor;
+        toggles.chain.next = nullptr;
+        toggles.enabledToggles = enableToggleNames.data();
+        toggles.enabledToggleCount = enableToggleNames.size();
+        toggles.disabledToggles = disabledToggleNames.data();
+        toggles.disabledToggleCount = disabledToggleNames.size();
+
+        WGPUDeviceDescriptor deviceDesc = {};
+
+        std::vector<wgpu::FeatureName> requiredFeatures;
+        requiredFeatures.push_back(wgpu::FeatureName::SurfaceCapabilities);
+        //if (adapter.HasFeature(wgpu::FeatureName::BufferMapExtendedUsages)) {
+        //    requiredFeatures.push_back(wgpu::FeatureName::BufferMapExtendedUsages);
+        //}
+
+        deviceDesc.requiredFeatures = (WGPUFeatureName*)requiredFeatures.data();
+        deviceDesc.requiredFeatureCount = requiredFeatures.size();
+
+        deviceDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&toggles);
+
+        gpu = preferredAdapter->CreateDevice(&deviceDesc);
+
+        procs = dawn::native::GetProcs();
+        dawnProcSetProcs(&procs);
+        procs.deviceSetUncapturedErrorCallback(gpu, PrintDeviceError, nullptr);
+        procs.deviceSetDeviceLostCallback(gpu, DeviceLostCallback, nullptr);
+        procs.deviceSetLoggingCallback(gpu, DeviceLogCallback, nullptr);
+        device = wgpu::Device::Acquire(gpu);
+        queue  = device.GetQueue();
+
+        update_swap();
+
+        static const uint32_t indexData[6] = {
+            0, 1, 2,
+            2, 1, 3
+        };
+        indexBuffer = dawn::utils::CreateBufferFromData(
+            device, indexData, sizeof(indexData),
+            wgpu::BufferUsage::Index);
+
+        static const Attribs vertexData[4] = {
+            {{ -1.0f, -1.0f, 0.0f, 1.0f }, {  0.0f, 0.0f }},
+            {{  1.0f, -1.0f, 0.0f, 1.0f }, {  1.0f, 0.0f }},
+            {{ -1.0f,  1.0f, 0.0f, 1.0f }, { -1.0f, 1.0f }},
+            {{  1.0f,  1.0f, 0.0f, 1.0f }, {  1.0f, 1.0f }}
+        };
+        vertexBuffer = dawn::utils::CreateBufferFromData(
+            device, vertexData, sizeof(vertexData),
+            wgpu::BufferUsage::Vertex);
+
+        wgpu::ShaderModule mod = dawn::utils::CreateShaderModule(device, R"(
+            struct args {
+                @builtin(position) pos : vec4f,
+                @location(0)       uv  : vec2f
+            };
+            
+            @vertex
+            fn vertex_main(
+                    @location(0) pos1 : vec4f, 
+                    @location(1) uv  : vec2f) -> args {
+                var a : args;
+                a.pos = pos1;
+                a.uv  = uv;
+                return a;
+            }
+
+            @group(0) @binding(0) var mySampler : sampler;
+            @group(0) @binding(1) var myTexture : texture_2d<f32>;
+
+            @fragment
+            fn fragment_main(a : args) -> @location(0) vec4f {
+                return textureSample(myTexture, mySampler, a.uv);
+            })");
+
+        bgl = dawn::utils::MakeBindGroupLayout(
+            device, {
+                {0, wgpu::ShaderStage::Fragment, wgpu::SamplerBindingType::Filtering},
+                {1, wgpu::ShaderStage::Fragment, wgpu::TextureSampleType::Float},
+            });
+
+        wgpu::PipelineLayout pl = dawn::utils::MakeBasicPipelineLayout(device, &bgl);
+        depthStencilView = depth_stencil_view();
+
+        dawn::utils::ComboRenderPipelineDescriptor descriptor;
+        descriptor.layout = dawn::utils::MakeBasicPipelineLayout(device, &bgl);
+        descriptor.vertex.module = mod;
+        descriptor.vertex.bufferCount = 1;
+        descriptor.cBuffers[0].arrayStride = sizeof(Attribs);
+
+        /// attributes here (use simple meta iteration for this)
+        descriptor.cBuffers[0].attributeCount = 2;
+        descriptor.cAttributes = std::array<wgpu::VertexAttribute, dawn::kMaxVertexAttributes> {
+            // Position attribute
+            wgpu::VertexAttribute {
+                wgpu::VertexFormat::Float32x4, offsetof(Attribs, pos), 0
+            },
+            // UV attribute
+            wgpu::VertexAttribute {
+                wgpu::VertexFormat::Float32x2, offsetof(Attribs, uv), 1
+            }
+        };
+        descriptor.cFragment.module = mod;
+        descriptor.cTargets[0].format = preferred_swapchain_format();
+        descriptor.EnableDepthStencil(wgpu::TextureFormat::Depth24PlusStencil8);
+
+        pipeline = device.CreateRenderPipeline(&descriptor);
+
+        update_texture();
+    }
+
+    void process() {
+        glfwPollEvents();
+        dawn.process_events();
+
+        wgpu::TextureView backbufferView = swapchain.GetCurrentTextureView();
+        RenderPass render({backbufferView}, depthStencilView);
+        wgpu::CommandEncoder encoder = device.CreateCommandEncoder();
+
+        /// render webgpu
+        if (fn_scene_render) {
+            fn_scene_render(render, encoder);
+            wgpu::CommandBuffer commands = encoder.Finish();
+            queue.Submit(1, &commands);
+        }
+        
+        /// render skia texture to window
+        if (fn_canvas_render) {
+            fn_canvas_render(canvas);
+            canvas.flush();
+
+            wgpu::RenderPassEncoder pass = encoder.BeginRenderPass(&render);
+            pass.SetPipeline(pipeline);
+            pass.SetBindGroup(0, bindGroup);
+            pass.SetVertexBuffer(0, vertexBuffer);
+            pass.SetIndexBuffer(indexBuffer, wgpu::IndexFormat::Uint32);
+            pass.DrawIndexed(6);
+            pass.End();
+            wgpu::CommandBuffer commands = encoder.Finish();
+            queue.Submit(1, &commands);
+        }
+        swapchain.Present();
+        swap_id = (swap_id + 1) % 2;
+    }
+
+    void create(Window::Render render_mode, str title, vec2i sz) {
+        static bool init;
+        if (!init) {
+            assert(glfwInit());
+            glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+            glfwWindowHint(GLFW_COCOA_RETINA_FRAMEBUFFER, GLFW_FALSE);
+            glfwSetErrorCallback(PrintGLFWError);
+            init = true;
+        }
+        this->sz = sz;
+        this->title = title;
+        this->handle = glfwCreateWindow(sz.x, sz.y, title.cs(), null, null);
+        this->render_mode = render_mode;
+        glfwSetWindowUserPointer        (handle, this);
+        glfwSetKeyCallback              (handle, IWindow::on_key_scancode);
+        glfwSetCharModsCallback         (handle, IWindow::on_key_char);
+        glfwSetMouseButtonCallback      (handle, IWindow::on_cursor_button);
+        glfwSetFramebufferSizeCallback  (handle, IWindow::on_resize);
+        glfwSetCursorPosCallback        (handle, IWindow::on_cursor_pos);
+        count++;
+        create_resources();
+    }
+
+    static inline int count = 0;
+
+    ~IWindow() {
+        close();
+    }
+
+    void close() {
+        //device.release();
+        glfwDestroyWindow(handle);
+        if (--count == 0)
+            glfwTerminate();
+    }
+
+    register(IWindow);
+};
+
+mx_implement(Window, mx);
+mx_implement(Dawn, mx);
+
+Canvas Window::get_canvas() {
+    return data->canvas;
+}
+
+void Window::set_on_canvas_render(OnCanvasRender fn_canvas_render) {
+    data->fn_canvas_render = fn_canvas_render;
+}
+
+void Window::set_on_scene_render(OnSceneRender fn_scene_render) {
+    data->fn_scene_render = fn_scene_render;
+}
+
+void Window::set_on_resize(OnResize resize) {
+    data->resize = resize;
+}
+
+void Window::set_on_cursor_pos(OnCursorPos cursor_pos) {
+    data->cursor_pos = cursor_pos;
+}
+
+void Window::set_on_cursor_button(OnCursorButton cursor_button) {
+    data->cursor_button = cursor_button;
+}
+
+void Window::set_on_key_char(OnKeyChar key_char) {
+    data->key_char = key_char;
+}
+
+void Window::set_on_key_scancode(OnKeyScanCode key_scancode) {
+    data->key_scancode = key_scancode;
+}
+
+void *Window::handle() {
+    return data->handle;
+}
+
+Window Window::create(Render render_mode, str title, vec2i sz) {
+    Window w;
+    w->create(render_mode, title, sz);
+    return w;
+}
+
+Window::operator bool() {
+    return bool(data->device);
+}
+
+wgpu::Device Window::device() {
+    return data->device;
+}
+
+void Window::set_visibility(bool v) {
+    if (v)
+        glfwShowWindow(data->handle);
+    else
+        glfwHideWindow(data->handle);
+}
+
+void Window::close() {
+    data->close();
+}
+
+str Window::title() {
+    return data->title;
+}
+
+void Window::set_title(str title) {
+    glfwSetWindowTitle(data->handle, title.cs());
+    data->title = title;
+}
+
+void Window::run() {
+    while (!glfwWindowShouldClose(data->handle)) {
+        data->process();
+    }
+}
+
+wgpu::SwapChain Window::swap_chain() {
+    return data->swapchain;
+}
+
+void Window::process() {
+    data->process();
+}
+
+void *Window::user_data() {
+    return data->user_data;
+}
+
+void Window::set_user_data(void *user_data) {
+    data->user_data = user_data;
+}
+
+ion::vec2i Window::size() {
+    return data->sz;
+}
+
+void Dawn::process_events() {
+    dawn::native::InstanceProcessEvents(data->instance->Get());
+}
+
+float Dawn::get_dpi() {
+    glfwInit();
+    GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+
+    float xscale, yscale;
+    glfwGetMonitorContentScale(monitor, &xscale, &yscale);
+    return xscale;
+}
+
+
+/// canvas
+
+
+
+
 
 static SkPoint rotate90(const SkPoint& p) { return {p.fY, -p.fX}; }
 static SkPoint rotate180(const SkPoint& p) { return p * -1; }
@@ -426,46 +1035,18 @@ SVG::SVG(path p) : SVG() {
 
 SVG::SVG(cstr p) : SVG(path(p)) { }
 
-using GraphiteContext = std::unique_ptr<skgpu::graphite::Context>;
-
-struct Skia {
-    GraphiteContext sk_context;
-
-    Skia(skgpu::graphite::Context *raw_ctx) : sk_context(raw_ctx) { }
-    
-    static Skia *Context(Window window) {
-        Skia *sk = (Skia*)window.user_data();
-        if (sk) return sk;
-        skgpu::graphite::DawnBackendContext backendContext;
-        wgpu::Device device = window.device();
-        backendContext.fDevice = device;
-        backendContext.fQueue = device.GetQueue();
-
-        skgpu::graphite::ContextOptions options;
-        static GraphiteContext ctx;
-        ctx = skgpu::graphite::ContextFactory::MakeDawn(backendContext, options);
-        assert(ctx);
-        sk = new Skia(ctx.get());
-        window.set_user_data(sk);
-        return sk;
-    }
-};
-
-/// canvas renders to image, and can manage the renderer/resizing
 struct ICanvas {
-    skgpu::graphite::Context *ctx = null;
-    skgpu::graphite::BackendTexture backend_tx;
-    std::unique_ptr<skgpu::graphite::Recorder> recorder;
+    std::unique_ptr<skgpu::graphite::Context>  fGraphiteContext;
+    std::unique_ptr<skgpu::graphite::Recorder> fGraphiteRecorder;
+    //DisplayParams     params;
+
     bool use_hidpi;
 
-    Window            window; /// a window can be glfw-window-less and simply support a backend texture
-    //VkEngine               e = null;
-    //VkhPresenter    renderer = null;
+    wgpu::Texture     texture;
     sk_sp<SkSurface> sk_surf = null;
     SkCanvas      *sk_canvas = null;
     vec2i                 sz = { 0, 0 };
     vec2i             sz_raw;
-    //VkhImage        vk_image = null;
     vec2d          dpi_scale = { 1, 1 };
     wgpu::Texture    wgpu_tx;
 
@@ -499,44 +1080,8 @@ struct ICanvas {
     }
 
     void canvas_new_texture(int width, int height) {
-
-        ctx = Skia::Context(window)->sk_context.get();
-        if (!recorder) {
-             recorder = ctx->makeRecorder();
-        }
-
-        skgpu::graphite::DawnTextureInfo textureInfo;
-        textureInfo.fSampleCount = 1;
-        textureInfo.fMipmapped = skgpu::Mipmapped::kNo;
-        textureInfo.fFormat = wgpu::TextureFormat::BGRA8Unorm;
-        textureInfo.fUsage = wgpu::TextureUsage::TextureBinding | wgpu::TextureUsage::RenderAttachment | wgpu::TextureUsage::CopyDst;
-
-        if (backend_tx.isValid())
-            recorder->deleteBackendTexture(backend_tx);
-        
-        float dpi_sc = use_hidpi ? Dawn::get_dpi() : 1.0;
-        sz     = vec2i { width, height };
-        sz_raw = vec2i { int(width * dpi_sc), int(height * dpi_sc) };
-        backend_tx = recorder->createBackendTexture(
-            SkISize::Make(sz_raw.x, sz_raw.y), textureInfo);
-
-        SkSurfaceProps surfaceProps(0, kBGR_H_SkPixelGeometry);
-        auto color_space = SkColorSpace::MakeSRGB();
-        sk_surf = SkSurfaces::WrapBackendTexture(recorder.get(), backend_tx,
-                    kBGRA_8888_SkColorType, // kN32_SkColorType
-                    color_space, &surfaceProps);
-        sk_canvas = sk_surf->getCanvas();
-
-        auto recorder2 = sk_surf->recorder();
-        dpi_scale = dpi_sc;
-        
-
+        dpi_scale = 1.0f;
         identity();
-    }
-
-    void app_resize() {
-        vec2i sz = window.size();
-        canvas_new_texture(sz.x, sz.y);
     }
 
     SkPath *sk_path(graphics::shape &sh) {
@@ -652,10 +1197,14 @@ struct ICanvas {
     void    clear(rgbad c) { sk_canvas->clear(sk_color(c)); }
 
     void    flush() {
-        Skia *ctx = Skia::Context(window);
-        skgpu::graphite::Flush(sk_surf);
-        ctx->sk_context->submit(skgpu::graphite::SyncToCpu::kYes);
-        //ctx->sk_context->submit();
+        /// this is what i wasnt doing:
+        std::unique_ptr<skgpu::graphite::Recording> recording = fGraphiteRecorder->snap();
+        if (recording) {
+            skgpu::graphite::InsertRecordingInfo info;
+            info.fRecording = recording.get();
+            fGraphiteContext->insertRecording(info);
+            fGraphiteContext->submit(skgpu::graphite::SyncToCpu::kNo);
+        }
     }
 
     void  restore() {
@@ -1040,23 +1589,86 @@ struct ICanvas {
 
 mx_implement(Canvas, mx);
 
-/* add support for Texture + Window (dawn module classes) */
 
-Canvas::Canvas(int width, int height, bool use_hidpi) : Canvas() {
-    data->use_hidpi = use_hidpi;
-    data->canvas_new_texture(width, height);
-    data->save();
+/// swap handling usage:
+/*
+sk_sp<SkSurface> GraphiteDawnWindowContext::getBackbufferSurface() {
+    auto texture = fSwapChain.GetCurrentTexture();
+    skgpu::graphite::DawnTextureInfo info(1,
+                                          skgpu::Mipmapped::kNo,
+                                          fSwapChainFormat,
+                                          texture.GetUsage(),
+                                          wgpu::TextureAspect::All);
+    skgpu::graphite::BackendTexture backendTex(texture.Get());
+    SkASSERT(this->graphiteRecorder());
+    auto surface = SkSurfaces::WrapBackendTexture(this->graphiteRecorder(),
+                                                  backendTex,
+                                                  kBGRA_8888_SkColorType,
+                                                  fDisplayParams.fColorSpace,
+                                                  &fDisplayParams.fSurfaceProps);
+    SkASSERT(surface);
+    return surface;
 }
 
-Canvas::Canvas(Window &window) : Canvas() {
-    data->use_hidpi = true;
-    data->window = window;
-    data->app_resize();
-    data->save();
+void GraphiteDawnWindowContext::onSwapBuffers() {
+    if (fGraphiteContext) {
+        SkASSERT(fGraphiteRecorder);
+        std::unique_ptr<skgpu::graphite::Recording> recording = fGraphiteRecorder->snap();
+        if (recording) {
+            skgpu::graphite::InsertRecordingInfo info;
+            info.fRecording = recording.get();
+            fGraphiteContext->insertRecording(info);
+            fGraphiteContext->submit(skgpu::graphite::SyncToCpu::kNo);
+        }
+    }
+
+    fSwapChain.Present();
 }
 
-WGPUTexture Canvas::texture() {
-    return data->backend_tx.getDawnTexturePtr();
+*/
+
+/// create Canvas with a texture
+Canvas::Canvas(wgpu::Device device, wgpu::Texture texture, bool use_hidpi) : Canvas() {
+    data->texture = texture;
+
+    skwindow::DisplayParams params { };
+    params.fColorType = kRGBA_8888_SkColorType;
+    params.fColorSpace = SkColorSpace::MakeSRGB();
+    params.fMSAASampleCount = 0;
+    params.fGrContextOptions = GrContextOptions();
+    params.fSurfaceProps = SkSurfaceProps(0, kBGR_H_SkPixelGeometry);
+    params.fDisableVsync = false;
+    params.fDelayDrawableAcquisition = false;
+    params.fEnableBinaryArchive = false;
+    params.fCreateProtectedNativeBackend = false;
+    params.fGraphiteContextOptions.fPriv.fStoreContextRefInRecorder = true; // Needed to make synchronous readPixels work:
+
+    skgpu::graphite::DawnBackendContext backendContext;
+    backendContext.fDevice = device;
+    backendContext.fQueue = device.GetQueue();
+
+    data->fGraphiteContext = skgpu::graphite::ContextFactory::MakeDawn(
+            backendContext, params.fGraphiteContextOptions.fOptions);
+    data->fGraphiteRecorder = data->fGraphiteContext->makeRecorder(ToolUtils::CreateTestingRecorderOptions());
+
+    skgpu::graphite::BackendTexture backend_texture(texture.Get());
+    data->sk_surf = SkSurfaces::WrapBackendTexture(
+        data->fGraphiteRecorder.get(),
+        backend_texture,
+        kBGRA_8888_SkColorType,
+        params.fColorSpace,
+        &params.fSurfaceProps);
+
+    float xscale = 1.0f, yscale = 1.0f;
+    if (use_hidpi)
+        glfwGetMonitorContentScale(glfwGetPrimaryMonitor(), &xscale, &yscale);
+
+    data->dpi_scale.x = xscale;
+    data->dpi_scale.y = yscale;
+    data->sz          = vec2i { int(texture.GetWidth() / xscale), int(texture.GetHeight() / yscale) };
+    data->sk_canvas   = data->sk_surf->getCanvas();
+    data->use_hidpi   = use_hidpi;
+    data->save();
 }
 
 
@@ -1066,10 +1678,6 @@ u32 Canvas::get_virtual_height() { return data->sz.y / data->dpi_scale.y; }
 //void Canvas::canvas_resize(VkhImage image, int width, int height) {
 //    return data->canvas_resize(image, width, height);
 //}
-
-void Canvas::app_resize() {
-    return data->app_resize();
-}
 
 void Canvas::font(ion::font f) {
     return data->font(f);
@@ -1248,4 +1856,3 @@ array<double> font::advances(Canvas& canvas, str text) {
 }
 
 }
-#endif
