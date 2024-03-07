@@ -608,6 +608,10 @@ void init() {
     descriptor.vertex.module = mod;
     descriptor.vertex.bufferCount = 1;
     descriptor.cBuffers[0].arrayStride = sizeof(Attribs);
+
+
+    /// attributes here (use simple meta iteration for this)
+
     descriptor.cBuffers[0].attributeCount = 2;
     descriptor.cAttributes = std::array<wgpu::VertexAttribute, dawn::kMaxVertexAttributes> {
         // Position attribute
