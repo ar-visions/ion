@@ -199,8 +199,7 @@ struct IWindow {
     wgpu::BindGroup             bindGroup;
     wgpu::BindGroupLayout       bgl;
     wgpu::TextureView           view;
-
-    sk_sp<SkSurface>            sk_surfaces[2];
+    
     Canvas                      canvas;
 
     static wgpu::TextureFormat preferred_swapchain_format() {
