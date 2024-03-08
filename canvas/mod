@@ -1,5 +1,5 @@
-# build absl, tint, dawn, and skia
-
+# build absl, spirv-tools, tint, dawn, and skia
+# -----------------------------
 dep(
     glfw:glfw3
     glm:glm_static
@@ -9,11 +9,13 @@ dep(
     ion:media
 )
 
+cpp(20)
+
 defines(TINT_BUILD_WGSL_READER
         TINT_BUILD_WGSL_WRITER)
 
 if (win)
-    dep(d3d12 dxgi d3dcompiler)
+    dep(d3d12 dxgi d3dcompiler libcmt)
     defines(
         TINT_BUILD_HLSL_WRITER
         DAWN_ENABLE_BACKEND_D3D12)
@@ -31,12 +33,11 @@ elseif (linux)
         DAWN_ENABLE_BACKEND_VULKAN)
 endif()
 
-
-# include SPIRV-Tools and its build folder, which has some generated data
-includes(${EXTERN_DIR}/SPIRV-Tools)
-includes(${EXTERN_DIR}/SPIRV-Tools/ion-${cfg_lower})
-
-if (linux)
+if(linux)
+    # spriv tools
+    # -----------------------------
+    includes(${EXTERN_DIR}/SPIRV-Tools)
+    includes(${EXTERN_DIR}/SPIRV-Tools/ion-${cfg_lower})
     includes(${EXTERN_DIR}/Vulkan-Utility-Libraries)
 endif()
 
@@ -136,20 +137,18 @@ endif()
 
 # benchmark / test code removal
 # -----------------------------
-src(-_test.cc)
-src(-_testing.cc)
-src(-_bench.cc)
-src(-_benchmark.cc)
-src(-_test_common.cc)
-src(-_mock_log.cc)
-src(-benchmarks.cc)
-src(-test_helpers.cc)
-src(-test_matchers.cc)
-
-# contains typo, and used by Fushia
-# -----------------------------
-src(-SemaphoreServiceImplementationZirconHandle.cpp)
-src(-MemoryServiceImplementationZirconHandle.cpp)
+src(-_test.cc
+    -_testing.cc
+    -_bench.cc
+    -_benchmark.cc
+    -_test_common.cc
+    -_mock_log.cc
+    -benchmarks.cc
+    -test_helpers.cc
+    -test_matchers.cc
+    -SemaphoreServiceImplementationZirconHandle.cpp
+    -MemoryServiceImplementationZirconHandle.cpp
+)
 
 if(NOT android)
     src(-AHBFunctions.cpp -MemoryServiceImplementationAHardwareBuffer.cpp)
@@ -172,10 +171,6 @@ if(NOT win)
         -tmpfile_windows.cc
     )
 endif()
-
-
-
-
 
 # section for skia
 # -----------------------------
@@ -323,12 +318,4 @@ if (mac)
         ${skia_src}/utils/mac/*.cpp
         ${skia_src}/ports/*_mac_ct.cpp
     )
-else()
-
 endif()
-
-if (linux)
-endif()
-
-#string(REPLACE ";" "\n" src_newline "${_src}")
-#message(STATUS "${src_newline}")

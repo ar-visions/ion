@@ -32,7 +32,8 @@
             "url":      "https://github.com/KhronosGroup/SPIRV-Headers",
             "cmake": {
                 "args-win": ["-DCMAKE_C_FLAGS=/MT"]
-            }
+            },
+            "platforms": ["lin"]
         },
         {
             "name":     "SPIRV-Tools",
@@ -42,19 +43,22 @@
             "cmake": {
                 "args-win": ["-DSPIRV-Headers_SOURCE_DIR=%EXTERN%/SPIRV-Headers", "-DCMAKE_C_FLAGS=/MT"],
                 "args": ["-DSPIRV-Headers_SOURCE_DIR=%EXTERN%/SPIRV-Headers"]
-            }
+            },
+            "platforms": ["lin"]
         },
         {
             "name":    "Vulkan-Headers",
             "version": "1.2.140",
             "url":     "https://github.com/KhronosGroup/Vulkan-Headers",
-            "commit":  "9250d5ae8f50202005233dc0512a1d460c8b4833"
+            "commit":  "9250d5ae8f50202005233dc0512a1d460c8b4833",
+            "platforms": ["lin"]
         },
         {
             "name":    "Vulkan-Utility-Libraries",
             "version": "m122",
             "url":     "https://chromium.googlesource.com/external/github.com/KhronosGroup/Vulkan-Utility-Libraries",
-            "commit":  "4cfc176e3242b4dbdfd3f6c5680c5d8f2cb7db45"
+            "commit":  "4cfc176e3242b4dbdfd3f6c5680c5d8f2cb7db45",
+            "platforms": ["lin"]
         },
         {
             "name":     "glfw",
@@ -77,10 +81,12 @@
             "name":     "harfbuzz",
             "version":  "8.3.0",
             "url":      "https://github.com/harfbuzz/harfbuzz",
-            "commit":   "894a1f7"
+            "commit":   "894a1f7",
+            "cmake": {
+                "args-win": ["-DCMAKE_CXX_FLAGS=/bigobj"]
+            }
         },
         {
-            
             "name":     "freetype",
             "version":  "2.13.2",
             "url":      "https://github.com/freetype/freetype",
