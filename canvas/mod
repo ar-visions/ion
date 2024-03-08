@@ -9,13 +9,14 @@ dep(
     ion:media
 )
 
-cpp(20)
+cpp(17)
 
 defines(TINT_BUILD_WGSL_READER
         TINT_BUILD_WGSL_WRITER)
 
 if (win)
-    dep(d3d12 dxgi d3dcompiler libcmt)
+    dep(d3d12 dxgi d3dcompiler libcmt libucrt msvcrt)
+    #cxxflags(/showIncludes)
     defines(
         TINT_BUILD_HLSL_WRITER
         DAWN_ENABLE_BACKEND_D3D12)

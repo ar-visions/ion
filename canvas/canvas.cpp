@@ -1,7 +1,5 @@
 #define CANVAS_IMPL
 
-#include <dawn/dawn.hpp>
-
 #include <GLFW/glfw3.h>
 
 #ifdef __linux__
