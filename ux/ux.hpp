@@ -2,13 +2,10 @@
 
 #include <async/async.hpp>
 #include <net/net.hpp>
+#include <math/math.hpp>
 #include <media/media.hpp>
-#include <vk/vk.hpp>
-#include <vk/vkh.h>
-//#include <camera/camera.hpp>
-#include <math.h>
 #include <composer/composer.hpp>
-#include <canvas/canvas.hpp>
+#include <ux/canvas.hpp>
 
 struct GLFWwindow;
 
@@ -477,8 +474,6 @@ struct Element:node {
     virtual void up();
     virtual void draw_text(Canvas& canvas, rectd& rect);
     virtual void draw(Canvas& canvas);
-    virtual array<Pipes> render() { return {}; }
-    virtual void post_render() { }
     virtual void update_bounds(Canvas &canvas);
     virtual vec2d child_offset(Element &child);
 

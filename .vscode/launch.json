@@ -131,7 +131,7 @@
             "name": "ux-app",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/../ion/build/ux-app",
+            "program": "${workspaceFolder}/../hyperspace/build/ux-app",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/../ion/build",
@@ -145,8 +145,8 @@
             },
             "windows":{
                 "type": "cppvsdbg",
-                "program": "${workspaceFolder}/../ion/build/Debug/ux-app",
-                "cwd": "${workspaceFolder}/../ion/build"
+                "program": "${workspaceFolder}/../hyperspace/build/Debug/ux-app",
+                "cwd": "${workspaceFolder}/../hyperspace/build"
             },
             "osx": {
                 "MIMode": "lldb"

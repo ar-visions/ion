@@ -2,9 +2,12 @@
 #include <dawn/webgpu_cpp.h>
 #include <dawn/native/DawnNative.h>
 
-#include <media/media.hpp>
 #include <async/async.hpp>
+#include <watch/watch.hpp>
+#include <media/media.hpp>
+#include <media/image.hpp>
 #include <webgpu/webgpu.h>
+#include <ux/gltf.hpp>
 
 struct SkCanvas;
 struct GLFWwindow;
@@ -57,21 +60,120 @@ struct RenderPass : public wgpu::RenderPassDescriptor {
     wgpu::RenderPassDepthStencilAttachment cDepthStencilAttachmentInfo = {};
 };
 
+/// texture is using this; todo: make a dawn module
+enums(Asset, undefined, 
+     color, normal, material, reflect, env, undefined); /// populate from objects normal map first, and then adjust by equirect if its provided
+
+struct IDevice;
+struct Device:mx {
+    mx_declare(Device, mx, IDevice)
+};
+
+struct Texture:mx {
+    mx_declare(Texture, mx, struct ITexture);
+
+    static Texture    load(Device &dev, symbol name, Asset type);
+    static ion::image asset_image(symbol name, Asset type);
+    static Texture    from_image(Device &dev, image img, Asset type);
+
+    void update(image img);
+};
+
+struct Pipeline;
+struct Pipes;
+
+enums(ShaderModule, undefined,
+     undefined, vertex, fragment, compute);
+
+using GraphicsGen = lambda<void(mx&,mx&,array<image>&)>;
+
+struct GraphicsData {
+    str         name;
+    symbol      shader;
+    type_t      vtype;
+    GraphicsGen gen;
+    array<mx>   bindings;
+    ///
+    type_register(GraphicsData);
+};
+
+struct Graphics:mx {
+    Graphics(symbol name, type_t vtype, array<mx> bindings, symbol shader = "pbr", GraphicsGen gen = null) : Graphics() {
+        data->name      = name;
+        data->shader    = shader;
+        data->vtype     = vtype;
+        data->gen       = gen;
+        data->bindings  = bindings;
+    }
+    mx_object(Graphics, mx, GraphicsData);
+};
+
+enums(Sampling, nearest, nearest, linear, ansio);
+
+using MG = map<Graphics>;
+
+struct Pipeline2:mx {
+    mx_declare(Pipeline2, mx, struct IPipeline2)
+};
+
+struct Pipeline:mx {
+    mx_declare(Pipeline, mx, struct IPipeline)
+
+    Pipeline(Device &device, Graphics graphics);
+    static void assemble_graphics(IPipeline *pipeline, ion::gltf::Model &m, Graphics &gfx);
+};
+
+/// for Daniel to call back.. they got tired of calling
+struct Pipes:mx {
+    struct M {
+        Device                      device;
+        ion::gltf::Model            m;
+        symbol                      model;
+        array<Texture>              textures { Asset::count };
+        array<Pipeline>             pipelines;
+        lambda<void(IPipeline&)>    reload;
+        lambda<void(memory*)>       uniform_update;
+        register(M);
+    };
+
+    mx_basic(Pipes);
+
+    Pipes(Device &device, symbol model, array<Graphics> parts);
+
+    Pipeline &operator[](str s);
+};
+
+using Scene = array<Pipes>;
+
+struct ngon {
+    size_t size;
+    u32   *indices;
+};
+
+using mesh  = array<ngon>;
+using face  = ngon;
+using vpair = std::pair<int, int>;
+
+struct vpair_hash {
+    std::size_t operator()(const vpair& p) const {
+        return std::hash<int>()(p.first) ^ std::hash<int>()(p.second);
+    }
+};
+
 struct Canvas;
 struct IWindow;
 struct Window:mx {
     using OnResize       = ion::lambda<void(int width, int height)>;
+    using OnCursorEnter  = ion::lambda<void(int enter)>;
     using OnCursorPos    = ion::lambda<void(double x, double y)>;
+    using OnCursorScroll = ion::lambda<void(double x, double y)>;
     using OnCursorButton = ion::lambda<void(int button, int action, int mods)>;
     using OnKeyChar      = ion::lambda<void(u32 code, int mods)>;
     using OnKeyScanCode  = ion::lambda<void(int key, int scancode, int action, int mods)>;
     using OnCanvasRender = ion::lambda<void(Canvas&)>;
-    using OnSceneRender  = ion::lambda<void(RenderPass&, wgpu::CommandEncoder&)>;
-
-    enums(Render, Texture,
-        Texture, SwapChain);
+    using OnSceneRender  = ion::lambda<Scene()>;
     
-    static Window create(Render render_mode, str title, vec2i sz);
+    static Window create(str title, vec2i sz);
 
     void set_visibility(bool v);
     void close();
@@ -83,22 +185,23 @@ struct Window:mx {
     void set_on_canvas_render   (OnCanvasRender canvas_render);
     void set_on_scene_render    (OnSceneRender scene_render);
     void set_on_resize          (OnResize resize);
+    void set_on_cursor_enter    (OnCursorEnter cursor_enter);
     void set_on_cursor_pos      (OnCursorPos cursor_pos);
+    void set_on_cursor_scroll   (OnCursorScroll cursor_scroll);
     void set_on_cursor_button   (OnCursorButton cursor_button);
     void set_on_key_char        (OnKeyChar key_char);
     void set_on_key_scancode    (OnKeyScanCode key_scancode) ;
 
     void  run();
     void *handle();
-    void  process();
+    bool  process();
     void *user_data();
     void  set_user_data(void *);
     vec2i size();
 
     operator bool();
 
-    wgpu::Device    device();
-    wgpu::SwapChain swap_chain();
+    Device device();
 
     mx_declare(Window, mx, IWindow)
 };
@@ -537,7 +640,7 @@ struct Window;
 struct Canvas:mx {
     mx_declare(Canvas, mx, ICanvas);
 
-    Canvas(wgpu::Device device, wgpu::Texture texture, bool use_hidpi);
+    Canvas(Device device, Texture texture, bool use_hidpi);
 
     WGPUTexture texture();
 

@@ -1,7 +1,7 @@
 # we define our own module for an external resource of source, libssh (LGPL).
 # we also define our own config.h, not generated but hand written; this pattern is better for modular build
 cpp(20)
-dep(ion:net zlib:zlib)
+dep(ion:net zlib:zlib ion:composer)
 
 includes(${module_path}
          ${EXTERN_DIR}/libssh/include)

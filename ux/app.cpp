@@ -1,9 +1,7 @@
 #include <ux/app.hpp>
 #include <ssh/ssh.hpp>
-#include <vk/vkh.h>
-#include <vk/vkh_device.h>
-#include <vk/vkh_image.h>
-#include <vk/vkh_presenter.h>
+#include <ux/canvas.hpp>
+#include <ux/webgpu.hpp>
 
 #ifdef __APPLE__
 extern "C" void AllowKeyRepeats(void);
@@ -27,196 +25,6 @@ static void glfw_error(int code, symbol cstr) {
 
 void App::resize(vec2i &sz, App *app) {
     printf("resized: %d, %d\n", sz.x, sz.y);
-}
-
-inline App app_data(mx &user) {
-    return App(user);
-}
-
-static void key_callback(mx &user, int key, int scancode, int action, int mods) {
-    App      app   = app_data(user);
-    Element* root  = (Element*)app.composer::data->instances; /// for ux this is always single
-    Element* focus = root->Element::data->focused;
-    auto        cd = app.composer::data;
-
-    cd->shift = mods & GLFW_MOD_SHIFT;
-    printf("shift = %d\n", cd->shift);
-    
-	if (action != GLFW_PRESS && action != GLFW_REPEAT)
-		return;
-    
-    int code = 0;
-	switch (key) {
-        case GLFW_KEY_ENTER: {
-            code = 10;
-            break;
-        }
-        case GLFW_KEY_SPACE: {
-            // this is given as 'char' in glfw
-            //code = 32
-            break;
-        }
-        case GLFW_KEY_BACKSPACE: {
-            code = 8;
-            break;
-        }
-        case GLFW_KEY_ESCAPE:
-            vkengine_close(app->e);
-            break;
-	}
-    if (code && focus) {
-        event e;
-        e->text = str::from_code(code);
-        focus->on_text(e);
-    }
-}
-
-static void char_callback (mx &user, uint32_t c) {
-    App app = app_data(user);
-    Element* root  = (Element*)app.composer::data->instances;
-    Element* focus = root->Element::data->focused;
-    if (focus) {
-        event e;
-        e->text = str::from_code(c);
-        focus->on_text(e);
-    }
-}
-
-static void mouse_enter_callback(mx &user, int enter) {
-    App app = app_data(user);
-    auto cd = app.composer::data;
-    if (enter == 1)
-        return;
-    /// only handling mouse leave, as we get a 'move' anyway for enter
-    if (app->hover) {
-        Element *n = app->hover;
-        n->data->hover = false;
-        app->hover = null;
-        n->leave();
-    }
-}
-
-static void mouse_move_callback(mx &user, double x, double y) {
-    App app = app_data(user);
-    auto cd = app.composer::data;
-    app->cursor = vec2d { x, y };// / app->data->e->vk_gpu->dpi_scale;
-
-    if (app->hover)
-        app->hover->Element::data->hover = false;
-    printf("play-pause hover = false\n");
-    
-    array<Element*> hovers = app.select_at(app->cursor, cd->buttons[0]);
-    app->hover = hovers ? hovers[0] : null;
-
-    Element *last = null;
-    if (app->hover) {
-        Element *n = app->hover;
-        if (n->node::data->id == "play-pause") {
-            printf("play-pause hover = true\n");
-        }
-        n->Element::data->hover  = true;
-        last = n;
-        if (last->data->selectable || last->data->editable) {
-            /// compute sel start on mouse click down
-            bool is_down = app->active != null;
-            if (is_down) {
-                last->data->sel_end = last->get_selection(app->cursor, is_down);
-            }
-        }
-        n->move();
-    }
-}
-
-static void scroll_callback(mx &user, double x, double y) {
-    App app = app_data(user);
-    
-    if (app->hover) {
-        app->hover->scroll(x, y);
-    }
-}
-
-static void mouse_button_callback(mx &user, int button, int state, int mods) {
-    App  app   = app_data(user);
-    auto cd    = app.composer::data;
-
-    cd->buttons[button] = bool(state);
-    
-    Element* root = (Element*)app.composer::data->instances; /// for ux this is always single
-    Element* prev_active = app->active;
-
-    if (app->active)
-        app->active->Element::data->active = false;
-    
-    if (state) {
-        array<Element*> all_active = app.select_at(app->cursor, false);
-        app->active = all_active ? all_active[0] : null;
-    } else
-        app->active = null;
-
-    Element* last = null;
-    if (app->active) {
-        Element *n = app->active;
-        n->Element::data->active = true;
-        if (n->Element::data->tab_index >= 0)
-            last = n;
-    }
-    Element *prev = root->Element::data->focused; // identifying your data members is important and you do that with member<> .... you can further meta describe in the type itself; you may also describe outside, but thats not strong because its distant from the implementation
-    if (last && prev != last) {
-        if (prev) {
-            prev->Element::data->focus = false;
-            prev->unfocused();
-        }
-        last->Element::data->focus = true;
-        root->Element::data->focused = last;
-        last->focused();
-    }
-    /// set mouse cursel on editable nodes
-    if (last) {
-        bool is_down = app->active[0];
-        if (last->data->selectable || last->data->editable) {
-            /// compute sel start on mouse click down
-            TextSel s = last->get_selection(app->cursor, is_down);
-
-            /// we are either setting the sel_start, or sel_end (with a swap potential for out of sync selection)
-            if (is_down) {
-                /// if shift key, you alter between swapping start and end based on if its before or after
-                last->data->sel_start = s;
-                if (!cd->shift)
-                    last->data->sel_end = s;
-            } else {
-                last->data->sel_end   = s;
-                if (!cd->shift)
-                    last->data->sel_start = s;
-            }
-        }
-    }
-
-    /// new down states
-    if (app->active) {
-        Element *n = app->active;
-        if (prev_active != n) {
-            n->down();
-            if (n->data->ev.down) {
-                event e { n };
-                n->data->ev.down(e);
-            }
-        }
-    }
-    
-    /// new up states & handle click
-    if (prev_active && app->active != app->active) {
-        Element *n = prev_active;
-        n->up();
-        if (n->data->ev.up) {
-            event e { n };
-            n->data->ev.up(e);
-        }
-        bool in_bounds = app->hover == n;
-        if (in_bounds && n->data->ev.click) {
-            event e { n };
-            n->data->ev.click(e);
-        }
-    }
 }
 
 void App::shell_server(uri bind) {
@@ -273,51 +81,219 @@ adata *app_instance() {
 }
 
 int App::run() {
+    App &app = *this;
 
     _app_instance = data;
-    data->e = vkengine_create(1, 2, "", /// use app config to select a version here
-        VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, VK_PRESENT_MODE_FIFO_KHR, VK_SAMPLE_COUNT_4_BIT,
-        512, 512, 0, (mx&)*this);
-    bool use_canvas = !data->app_type[AppType::VulkanOnly];
-    vk_engine_t *e = data->e;
-    Canvas *canvas = data->canvas = use_canvas ? new Canvas(e->renderer) : null; /// needs to be an option!
+    data->window = Window::create("", vec2i {512, 512});
 
-    /// allows keys to repeat on OSX, and thus allow glfw to function normally for UX
-    /// todo: we still need backspace to repeat
-    #ifdef __APPLE__
-    //AllowKeyRepeats();
-    #endif
+    Window &window = data->window;
+    window.set_on_key_char([&](uint32_t c, int mods) {
+        Element* root  = (Element*)app.composer::data->instances;
+        Element* focus = root->Element::data->focused;
+        if (focus) {
+            event e;
+            e->text = str::from_code(c);
+            focus->on_text(e);
+        }
+    });
 
-    vkengine_key_callback    (e,          key_callback);
-	vkengine_button_callback (e, mouse_button_callback);
-	vkengine_move_callback   (e,   mouse_move_callback);
-    vkengine_enter_callback  (e,  mouse_enter_callback);
-    vkengine_char_callback   (e,         char_callback);
-	vkengine_scroll_callback (e,       scroll_callback);
-	
+    window.set_on_cursor_enter([&](int enter) {
+        auto cd = app.composer::data;
+        if (enter == 1)
+            return;
+        /// only handling mouse leave, as we get a 'move' anyway for enter
+        if (app->hover) {
+            Element *n = app->hover;
+            n->data->hover = false;
+            app->hover = null;
+            n->leave();
+        }
+    });
 
-    node ee;
-    auto render_app = [&]() -> void {
-        ee = data->app_fn(*this);
-    };
-    render_app(); /// we call it in prime fashion so we can obtain the type of the app class
+    window.set_on_cursor_pos([&](double x, double y) {
+        auto cd = app.composer::data;
+        app->cursor = vec2d { x, y };// / app->data->e->vk_gpu->dpi_scale;
+
+        if (app->hover)
+            app->hover->Element::data->hover = false;
+        printf("play-pause hover = false\n");
+        
+        array<Element*> hovers = app.select_at(app->cursor, cd->buttons[0]);
+        app->hover = hovers ? hovers[0] : null;
+
+        Element *last = null;
+        if (app->hover) {
+            Element *n = app->hover;
+            if (n->node::data->id == "play-pause") {
+                printf("play-pause hover = true\n");
+            }
+            n->Element::data->hover  = true;
+            last = n;
+            if (last->data->selectable || last->data->editable) {
+                /// compute sel start on mouse click down
+                bool is_down = app->active != null;
+                if (is_down) {
+                    last->data->sel_end = last->get_selection(app->cursor, is_down);
+                }
+            }
+            n->move();
+        }
+    });
+
+    window.set_on_cursor_scroll([&](double x, double y) {
+        if (app->hover) {
+            app->hover->scroll(x, y);
+        }
+    });
+
+    window.set_on_cursor_button([&](int button, int state, int mods) {
+        auto cd    = app.composer::data;
+        cd->buttons[button] = bool(state);
+        
+        Element* root = (Element*)app.composer::data->instances; /// for ux this is always single
+        Element* prev_active = app->active;
+
+        if (app->active)
+            app->active->Element::data->active = false;
+        
+        if (state) {
+            array<Element*> all_active = app.select_at(app->cursor, false);
+            app->active = all_active ? all_active[0] : null;
+        } else
+            app->active = null;
+
+        Element* last = null;
+        if (app->active) {
+            Element *n = app->active;
+            n->Element::data->active = true;
+            if (n->Element::data->tab_index >= 0)
+                last = n;
+        }
+        Element *prev = root->Element::data->focused; // identifying your data members is important and you do that with member<> .... you can further meta describe in the type itself; you may also describe outside, but thats not strong because its distant from the implementation
+        if (last && prev != last) {
+            if (prev) {
+                prev->Element::data->focus = false;
+                prev->unfocused();
+            }
+            last->Element::data->focus = true;
+            root->Element::data->focused = last;
+            last->focused();
+        }
+        /// set mouse cursel on editable nodes
+        if (last) {
+            bool is_down = app->active[0];
+            if (last->data->selectable || last->data->editable) {
+                /// compute sel start on mouse click down
+                TextSel s = last->get_selection(app->cursor, is_down);
+
+                /// we are either setting the sel_start, or sel_end (with a swap potential for out of sync selection)
+                if (is_down) {
+                    /// if shift key, you alter between swapping start and end based on if its before or after
+                    last->data->sel_start = s;
+                    if (!cd->shift)
+                        last->data->sel_end = s;
+                } else {
+                    last->data->sel_end   = s;
+                    if (!cd->shift)
+                        last->data->sel_start = s;
+                }
+            }
+        }
+
+        /// new down states
+        if (app->active) {
+            Element *n = app->active;
+            if (prev_active != n) {
+                n->down();
+                if (n->data->ev.down) {
+                    event e { n };
+                    n->data->ev.down(e);
+                }
+            }
+        }
+        
+        /// new up states & handle click
+        if (prev_active && app->active != app->active) {
+            Element *n = prev_active;
+            n->up();
+            if (n->data->ev.up) {
+                event e { n };
+                n->data->ev.up(e);
+            }
+            bool in_bounds = app->hover == n;
+            if (in_bounds && n->data->ev.click) {
+                event e { n };
+                n->data->ev.click(e);
+            }
+        }
+    });
+
+    window.set_on_key_scancode([&](int key, int scancode, int action, int mods) {
+        Element* root  = (Element*)app.composer::data->instances; /// for ux this is always single
+        Element* focus = root->Element::data->focused;
+        auto        cd = app.composer::data;
+
+        cd->shift = mods & GLFW_MOD_SHIFT;
+        printf("shift = %d\n", cd->shift);
+        
+        if (action != GLFW_PRESS && action != GLFW_REPEAT)
+            return;
+        
+        int code = 0;
+        switch (key) {
+            case GLFW_KEY_ENTER: {
+                code = 10;
+                break;
+            }
+            case GLFW_KEY_SPACE: {
+                // this is given as 'char' in glfw
+                //code = 32
+                break;
+            }
+            case GLFW_KEY_BACKSPACE: {
+                code = 8;
+                break;
+            }
+            case GLFW_KEY_ESCAPE:
+                app->window.close();
+                break;
+        }
+        if (code && focus) {
+            event e;
+            e->text = str::from_code(code);
+            focus->on_text(e);
+        }
+    });
+
+    /// we call it in prime fashion so we can obtain the type of the app class
+    node ee = data->app_fn(*this);
     style root_style { ee->type }; /// this is a singleton, so anyone else doing style s; will get the style. (those should not exec first, though.)
 
-    vkengine_set_title(e, ee->type->name);
+    window.set_title(ee->type->name);
 
-    shell_server(data->args["debug"]);
+    //shell_server(data->args["debug"]);
 
-	while (!vkengine_should_close(e)) {
-        vkengine_poll_events(e);
+    // needs to return 'Pipes'
+    //data->window.set_on_scene_render([]() {
+    //});
 
-        e->vk_device->mtx.lock();
+    window.set_on_canvas_render([&](Canvas &canvas) {
+        /*
+        vec2i sz = canvas.size();
+        rectd rect { 0, 0, sz.x, sz.y };
+        canvas.color("#00f");
+        canvas.fill(rect);
 
-        if (canvas) {
-            rgbad c = { 0.0, 0.0, 0.0, 1.0 }; /// todo: background-blur, 1 canvas for each gaussian() call
-            canvas->clear(c);
-            canvas->save();
-        }
-        render_app();
+        rectd top { 0, 0, sz.x, sz.y / 2 };
+        canvas.color("#ff0");
+        canvas.fill(top);
+        */
+
+        rgbad c = { 0.0, 0.0, 0.0, 1.0 }; /// todo: background-blur, 1 canvas for each gaussian() call
+        canvas.clear(c);
+        canvas.save();
+
+        node ee = data->app_fn(*this);
         update_all(ee);
         Element *eroot = (Element*)(
             composer::data->instances->data->children ?
@@ -325,40 +301,22 @@ int App::run() {
             composer::data->instances);
         
         if (eroot) {
-            /// update rect need to get eroot->children[0]
+            eroot->data->bounds = rectd {
+                0, 0,
+                (real)canvas.get_virtual_width(),
+                (real)canvas.get_virtual_height()
+            };
+            eroot->update_bounds(canvas);
+            canvas.save();
+            eroot->draw(canvas);
+            canvas.restore();
+        }
 
-            if (use_canvas) {
-                eroot->data->bounds = rectd {
-                    0, 0,
-                    (real)canvas->get_virtual_width(),
-                    (real)canvas->get_virtual_height()
-                };
-                eroot->update_bounds(*canvas);
-                canvas->save();
-                eroot->draw(*canvas);
-                canvas->restore();
-            } else {
-                array<Pipes> a_pipes = eroot->render();
-                e->vk_device->drawFrame(a_pipes);
-            }
-        }
-        if (use_canvas) {
-            canvas->flush();
-            if (!vkh_presenter_draw(e->renderer)) {
-                if (use_canvas)
-                    canvas->app_resize();
-            }
-        }
-        vkDeviceWaitIdle(e->vkh->device);
-        if (!use_canvas)
-            eroot->post_render();
-        
-        e->vk_device->mtx.unlock();
-        if (data->loop_fn)
-            if (!data->loop_fn(*this)) {
-                glfwDestroyWindow(e->window);
-                break;
-            }
+        canvas.flush();
+    });
+
+    while (window.process()) {
+        usleep(1);
 	}
     return 0;
 }

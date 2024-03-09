@@ -2,7 +2,6 @@
 
 #include <mx/mx.hpp>
 #include <async/async.hpp>
-#include <composer/composer.hpp>
 
 struct sockaddr_in;
 
@@ -300,88 +299,6 @@ struct message:mx {
     map<str> cookies();
     mx &operator[](symbol key);
     mx &header(mx key);
-};
-
-
-/// these should be read by the context api; although, the parent chain will not go this far back (nor should it?)
-/// todo: set composer as parent to first node!
-/// todo: scratch that, not type safe.
-struct Services:composer {
-    struct internal {
-        composer::cmdata*        cmdata;
-        bool                     running;
-        lambda<node(Services&)>  service_fn;
-        map<mx>                  args;
-        bool                     stop, stopped;
-        ///
-        type_register(internal);
-    };
-    mx_object(Services, composer, internal);
-
-    Services(map<mx> args, lambda<node(Services&)> service_fn) : Services() {
-        data->args = args;
-        data->cmdata = composer::data;
-        data->cmdata->app = mem;
-        data->service_fn = service_fn;
-    }
-
-    int  run();
-    bool stop() {
-        data->stop = true;
-        while (!data->stopped) { usleep(1000); }
-        return true;
-    }
-
-    operator int() {
-        return run();
-    }
-
-    mx operator[](symbol s) { return data->args[s]; }
-};
-
-struct WebService:node {
-    struct props {
-        uri url;
-        lambda<message(message)> on_message;
-
-        type_register(WebService);
-
-		doubly<prop> meta() {
-			return {
-				prop { "url", url },
-				prop { "on-message", on_message }
-			};
-		}
-    };
-
-    component(WebService, node, props);
-
-    void mounted() {
-        /// https is all we support for a listening service, no raw protocols without encryption in this stack per design
-        sock::listen(state->url, [state=state](sock &sc) -> bool {
-            bool close = false;
-            for (close = false; !close;) {
-                close  = true;
-                ///
-                message request(sc);
-                if (!request)
-                    break;
-                
-                console.log("(https) {0} -> {1}", { request->query->mtype, request->query->query });
-
-                message response(
-                    state->on_message(request)
-                );
-                response.write(sc);
-
-                /// default is keep-alive on HTTP/1.1
-                const char *F = "Connection";
-                close = (request[F] == "close" && !response[F]) ||
-                       (response[F] == "close");
-            }
-            return close;
-        });
-    }
 };
 
 //void test_wolf();

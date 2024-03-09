@@ -261,3 +261,12 @@ void SSHService::mounted() {
     }
 }
 
+int Services::run() {
+    node e = data->service_fn(*this);
+    update_all(e);
+    for (;!data->stop;) {
+        usleep(10000);
+    }
+    data->stopped = true;
+    return 0;
+}

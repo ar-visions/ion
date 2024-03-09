@@ -2,21 +2,19 @@
 
 using namespace ion;
 
-/// @brief ux apps are both gfx and 3D context.  the 3D background can be reality or a game or a picture of both.
+/// @brief
+/// ux apps are both Canvas and 3D Scene.
+/// the 3D can be reality or a game or a picture of both.
+/// its a spatial app construct but thats also mostly 
+/// compatible with any kind of app or game in the above
+/// described contexts
 
-/// all of the scenes are staged differently
-/// issue is accessing the members of their View, perhaps not a deal at all?
-/// 
 struct View:Element {
     struct props {
-        int         sample;
-        int         sample2;
         callback    clicked;
         ///
         doubly<prop> meta() {
             return {
-                prop { "sample",  sample },
-                prop { "sample2", sample2 },
                 prop { "clicked", clicked}
             };
         }

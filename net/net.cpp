@@ -205,7 +205,7 @@ struct iTLS {
     type_register(iTLS);
 };
 
-mx_implement(TLS, mx);
+mx_implement(TLS, mx, iTLS);
 
 TLS::TLS(uri url) : TLS(new iTLS(url)) {
 }
@@ -416,7 +416,7 @@ struct Session {
     type_register(Session);
 };
 
-mx_implement(sock, mx);
+mx_implement(sock, mx, Session);
 
 /// how do avoid a default allocation?
 /// what argument/type performs an allocation? construct with type_t
@@ -923,18 +923,6 @@ future json(uri addr, map<mx> args, map<mx> headers) {
     });
     ///
     return future(c);
-}
-
-/// can update in real time 1/hz or through polling, but not needed at the moment
-int Services::run() {
-    node e = data->service_fn(*this);
-    update_all(e);
-    for (;!data->stop;) {
-        /// the only thing you woud lwant to monitor here is for updates forced and changes made to args?
-        usleep(10000);
-    }
-    data->stopped = true;
-    return 0;
 }
 
 }

@@ -753,7 +753,7 @@ struct iVideo {
     }
 };
 
-mx_implement(Video, mx);
+mx_implement(Video, mx, iVideo);
 
 Video::Video(int width, int height, int hz, int audio_rate, path output) : Video() {
     data->width      = width;

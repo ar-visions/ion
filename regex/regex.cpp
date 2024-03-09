@@ -3,8 +3,6 @@
 
 using namespace ion;
 
-mx_implement(RegEx, mx)
-
 /// currently 'behaviour' broadcast across all states
 struct oniguruma {
     regex_t         *regex;
@@ -180,3 +178,5 @@ array<indexed<utf16>> RegEx::exec(utf16 input) {
 array<indexed<str>> RegEx::exec(str input) {
     return {};
 }
+
+mx_implement(RegEx, mx, iRegEx)

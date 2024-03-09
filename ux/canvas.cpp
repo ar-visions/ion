@@ -76,12 +76,106 @@
 #include "core/SkRefCnt.h"
 #include "core/SkTypes.h"
 
-#include <canvas/canvas.hpp>
+#include <mx/mx.hpp>
+#include <media/image.hpp>
+#include <ux/webgpu.hpp>
+#include <ux/gltf.hpp>
+#include <ux/canvas.hpp>
 
 using namespace ion;
 
 namespace ion {
 
+struct IDevice {
+    wgpu::Device device;
+    register(IDevice)
+};
+
+/// for now leave these in here; it should eventually go in a Dawn module
+struct ITexture {
+    wgpu::Device        device;
+    wgpu::Texture       texture;
+    wgpu::TextureView   view;
+    wgpu::Sampler       sampler;
+    vec2i               sz;
+    Asset               asset_type;
+    bool                updated;
+
+    ITexture() { }
+
+    void update_image(ion::image &img) {
+        updated = true;
+    }
+
+    /// image can be created with nothing specified, in which case we produce an rgba8 based on Asset
+    void set_content(mx content, Asset type = Asset::undefined) {
+        /// otherwise create a blank image; based on asset type, it will be black or white
+        ion::image img;
+        if (content.type() == typeof(ion::image))
+            img = content.hold();
+        else if (content.type() == typeof(ion::Canvas)) {
+            /// get screenshot of the Canvas
+            assert(false);
+        }
+        if (!img) {
+            img = ion::size { 2, 2 };
+            ion::rgba8 *pixels = img.data;
+            if (type == Asset::env) /// a light map contains white by default
+                memset(pixels, 255, sizeof(ion::rgba8) * (img.width() * img.height()));
+        }
+        ion::rgba8 *pixels = img.data;
+        vec2i       sz     = { int(img.width()), int(img.height()) };
+
+        update_image(img);
+        asset_type = type;
+    }
+
+    /// needs a format specifier
+    void create_image(vec2i size) {
+        sz = size;
+    }
+
+    operator bool() { return bool(texture); }
+    type_register(ITexture);
+};
+
+static wgpu::TextureFormat preferred_swapchain_format() {
+    return wgpu::TextureFormat::BGRA8Unorm;
+}
+
+static bool is_wayland() {
+    const char* session_type = std::getenv("XDG_SESSION_TYPE");
+    return session_type && strcmp(session_type, "wayland") == 0;
+}
+
+ion::image Texture::asset_image(symbol name, Asset type) {
+    array<ion::path> paths = {
+        fmt {"models/{0}.{1}.png", { name, type.symbol() }},
+        fmt {"models/{0}.png",     { type.symbol() }}
+    };
+    for (ion::path &p: paths) {
+        if (p.exists())
+            return ion::image(p);
+    }
+    //assert(type != Asset::color); /// color is required asset; todo: normal should create a 255, 128, 0 constant upon failure
+    return null;
+}
+
+Texture Texture::from_image(Device &dev, image img, Asset type) {
+    Texture tx;
+    tx->device = dev->device;
+    tx->set_content(img, type);
+    return tx;
+}
+
+/// make this not a static method; change the texture already in memory
+Texture Texture::load(Device &dev, symbol name, Asset type) {
+    return from_image(dev, asset_image(name, type), type);
+}
+
+void Texture::update(image img) {
+    data->update_image(img);
+}
 
 RenderPass::RenderPass(
     const std::vector<wgpu::TextureView>& colorAttachmentInfo,
@@ -169,13 +263,556 @@ struct IDawn {
     register(IDawn);
 };
 
+
+struct IPipeline2 {
+    mx                          uniform_data;
+    type_register(IPipeline2)
+};
+
+struct IPipeline {
+    mx                          uniform_data;
+    type_t                      vertex_type;
+    mx                          user; // user data
+
+    wgpu::RenderPipeline        pipeline;
+    wgpu::BindGroup             bind_group;
+    wgpu::BindGroupLayout       bgl;
+    wgpu::Buffer                index_buffer;
+    wgpu::Buffer                vertex_buffer;
+    wgpu::PipelineLayout        pl;
+
+    str                         name; // Pipelines represent 'parts' of models and must have a name
+    Device                      device;
+    wgpu::Buffer                uniform_buffer;
+    memory*                     gmem; // graphics memory (grabbed)
+    Graphics                    gfx;
+    size_t                      indices_count;
+    lambda<void(IPipeline&)>    reload;
+    lambda<void(memory*)>       uniform_update;
+    bool                        init;
+    watch                       watcher;
+    bool                        updated;
+    Texture                     textures[Asset::count - 1];
+
+    /// load shader, textures, create vbo/ibo
+    void assemble_graphics(gltf::Model &m, Graphics &gfx) {
+        using namespace gltf;
+
+        str part = gfx->name;
+        type_t vtype = gfx->vtype;
+        wgpu::Device device = this->device->device;
+
+        mx              mx_vbuffer;
+        mx              mx_ibuffer;
+        array<image>    images;
+        
+        /// load shaders (cache these modules)
+        path shader_path = fmt { "shaders/{0}.wgl", { gfx->shader } };
+        str  shader_code = shader_path.read<str>();
+        wgpu::ShaderModule mod = dawn::utils::CreateShaderModule(device, shader_code);
+
+        /// load vbo/ibo data:
+        /// if gen is set, we load from this, otherwise its a part from gltf model
+        if (gfx->gen) {
+            gfx->gen(mx_vbuffer, mx_ibuffer, images);
+        } else {
+            /// must have been loaded
+            assert(m->nodes);
+
+            /// load from gltf (single object)
+            for (Node &node: m->nodes) {
+                /// load specific node name from node group
+                if (node->name != part) continue;
+                assert(node->mesh >= 0);
+
+                Mesh &mesh = m->meshes[node->mesh];
+
+                for (Primitive &prim: mesh->primitives) {
+                    /// for each attrib we fill out the vstride
+                    struct vstride {
+                        ion::prop      *prop;
+                        type_t          compound_type;
+                        Accessor::M    *accessor;
+                        Buffer::M      *buffer;
+                        BufferView::M  *buffer_view;
+                        num             offset;
+                    };
+
+                    ///
+                    array<vstride> strides { prim->attributes->count() };
+                    size_t pcount = 0;
+                    size_t vlen = 0;
+                    for (field<mx> f: prim->attributes) {
+                        str       prop_bind      = f.key.hold();
+                        symbol    prop_sym       = symbol(prop_bind);
+                        num       accessor_index = num(f.value);
+                        Accessor &accessor       = m->accessors[accessor_index];
+
+                        /// the src stride is the size of struct_type[n_components]
+                        assert(vtype->meta_map);
+                        prop*  p = (*vtype->meta_map)[prop_sym];
+                        assert(p);
+
+                        vstride &stride    = strides[pcount++];
+                        stride.prop        = p;
+                        stride.compound_type = p->type; /// native glm-type or float
+                        stride.accessor    = accessor.data;
+                        stride.buffer_view = m->bufferViews[accessor->bufferView].data;
+                        stride.buffer      = m->buffers[stride.buffer_view->buffer].data;
+                        stride.offset      = stride.prop->offset; /// origin at offset and stride by V type
+                        
+                        if (vlen)
+                            assert(vlen == accessor->count);
+                        else
+                            vlen = accessor->count;
+                        
+                        if (stride.compound_type == typeof(float)) {
+                            assert(accessor->componentType == gltf::ComponentType::FLOAT);
+                            assert(accessor->type == gltf::CompoundType::SCALAR);
+                        }
+                        if (stride.compound_type == typeof(glm::vec2)) {
+                            assert(accessor->componentType == gltf::ComponentType::FLOAT);
+                            assert(accessor->type == gltf::CompoundType::VEC2);
+                        }
+                        if (stride.compound_type == typeof(glm::vec3)) {
+                            assert(accessor->componentType == gltf::ComponentType::FLOAT);
+                            assert(accessor->type == gltf::CompoundType::VEC3);
+                        }
+                        if (stride.compound_type == typeof(glm::vec4)) {
+                            assert(accessor->componentType == gltf::ComponentType::FLOAT);
+                            assert(accessor->type == gltf::CompoundType::VEC4);
+                        }
+                    }
+                    strides.set_size(pcount);
+
+                    /// allocate entire vertex buffer for this 
+                    u8 *vbuf = (u8*)calloc(vlen, vtype->base_sz);
+
+                    /// copy data into vbuf
+                    for (vstride &stride: strides) {
+                        /// offset into src buffer
+                        u8 *dst        = vbuf;
+                        num src_offset = stride.buffer_view->byteOffset;
+                        /// size of member / accessor compound-type
+                        num src_stride = stride.compound_type->base_sz;
+                        for (num i = 0; i < vlen; i++) {
+                            /// dst: vertex member position
+                            u8 *member = &dst[stride.offset];
+                            /// src: gltf buffer at offset: 
+                            /// buffer-view + [0...accessor-count] * src-stride (same as our type size)
+                            u8 *src    = &stride.buffer->uri[src_offset + src_stride * i];
+                            memcpy(member, src, src_stride);
+
+                            /// next vertex
+                            dst += vtype->base_sz;
+                        }
+                    }
+                    /// create vertex buffer by wrapping what we've copied from allocation (we have a primitive array)
+                    mx verts { memory::wrap(vtype, vbuf, vlen) }; /// load indices (always store 32bit uint)
+                    mx_vbuffer = verts;
+
+                    /// indices data = indexing mesh-primitive->indices
+                    Accessor &a_indices = m->accessors[prim->indices];
+                    BufferView &view = m->bufferViews[ a_indices->bufferView ];
+                    Buffer      &buf = m->buffers    [ view->buffer ];
+                    memory *mem_indices;
+
+                    if (a_indices->componentType == ComponentType::UNSIGNED_SHORT) {
+                        u16 *u16_window = (u16*)(buf->uri.data + view->byteOffset);
+                        u32 *u32_alloc  = (u32*)calloc(sizeof(u32), a_indices->count);
+                        for (int i = 0; i < a_indices->count; i++)
+                            u32_alloc[i] = u32(u16_window[i]);
+                        mem_indices = memory::wrap(typeof(u32), u32_alloc, a_indices->count);
+                    } else {
+                        assert(a_indices->componentType == ComponentType::UNSIGNED_INT);
+                        u32 *u32_window = (u32*)(buf->uri.data + view->byteOffset);
+                        mem_indices = memory::window(typeof(u32), u32_window, a_indices->count);
+                    }
+                    mx_ibuffer = mx(mem_indices);
+                    break;
+                }
+                break;
+            }
+        }
+
+        index_buffer = dawn::utils::CreateBufferFromData(
+            device, (void*)mx_ibuffer.origin<u32>(), mx_ibuffer.count() * sizeof(u32),
+            wgpu::BufferUsage::Index);
+
+        vertex_buffer = dawn::utils::CreateBufferFromData(
+            device, (void*)mx_vbuffer.mem->origin, mx_vbuffer.count() * mx_vbuffer.type()->base_sz,
+            wgpu::BufferUsage::Vertex);
+
+        indices_count = mx_ibuffer.count();
+        
+        /// setup bindings
+        array<wgpu::BindGroupEntry>       bind_values (gfx->bindings.count());
+        array<wgpu::BindGroupLayoutEntry> bind_entries(gfx->bindings.count());
+        size_t bind_id = 0;
+        Texture tx;
+        for (mx& binding: gfx->bindings) { /// array of mx can tell us what type of data it is
+            wgpu::BindGroupLayoutEntry entry {
+                .binding    = u32(bind_id),
+                .visibility = wgpu::ShaderStage::Vertex | wgpu::ShaderStage::Fragment /// probably best to look through the shader code after @fragment and @vertex
+            };
+            wgpu::BindGroupEntry bind_value {
+                .binding    = u32(bind_id)
+            };
+
+            if (binding.type() == typeof(Texture)) {
+                tx = binding.hold();
+                entry.texture.multisampled  = false;
+                entry.texture.sampleType    = wgpu::TextureSampleType::Float;
+                entry.texture.viewDimension = wgpu::TextureViewDimension::e2D;
+                bind_value.textureView      = tx->view;
+            } else if (binding.type() == typeof(Sampling)) {
+                /// this must be specified immediately after the texture
+                assert(tx);
+                Sampling sampling(binding.hold());
+                entry.sampler.type          = sampling == Sampling::nearest ? wgpu::SamplerBindingType::NonFiltering : wgpu::SamplerBindingType::Filtering;
+                bind_value.sampler          = tx->sampler;
+            } else {
+                /// other objects are Uniform buffers
+                entry.buffer.type = wgpu::BufferBindingType::Uniform;
+
+                size_t sz = binding.type()->base_sz; /// was UniformBufferObject
+                wgpu::BufferDescriptor desc = {
+                    .usage = wgpu::BufferUsage::Uniform | wgpu::BufferUsage::CopyDst,
+                    .size = sz
+                };
+                bind_value.buffer = device.CreateBuffer(&desc);
+            }
+
+            bind_entries.push(entry);
+            bind_values.push(bind_value);
+            bind_id++;
+        }
+
+        wgpu::BindGroupLayoutDescriptor ld {
+            .entryCount         = size_t(bind_id),
+            .entries            = bind_entries.data
+        };
+        bgl = device.CreateBindGroupLayout(&ld);
+
+        wgpu::BindGroupDescriptor bg {
+            .layout             = bgl,
+            .entryCount         = size_t(bind_id),
+            .entries            = bind_values.data
+        };
+        bind_group = device.CreateBindGroup(&bg);
+
+        /*
+        bgl = dawn::utils::MakeBindGroupLayout(
+            device, {
+                {0, wgpu::ShaderStage::Fragment, wgpu::SamplerBindingType::Filtering},
+                {1, wgpu::ShaderStage::Fragment, wgpu::TextureSampleType::Float},
+            });
+        dawn::utils::MakeBindGroup(device, bgl, {{0, sampler}, {1, view}});
+
+        descriptor.cAttributes = array<wgpu::VertexAttribute> {
+            // Position attribute
+            wgpu::VertexAttribute {
+                wgpu::VertexFormat::Float32x4, offsetof(Attribs, pos), 0
+            },
+            // UV attribute
+            wgpu::VertexAttribute {
+                wgpu::VertexFormat::Float32x2, offsetof(Attribs, uv), 1
+            }
+        };*/
+
+        pl = dawn::utils::MakeBasicPipelineLayout(device, &bgl);
+
+        /// get meta attributes on the Vertex type (all must be used in shader)
+        dawn::utils::ComboRenderPipelineDescriptor render_desc;
+        render_desc.layout = pl;
+        render_desc.vertex.module = mod;
+        render_desc.vertex.bufferCount = 1;
+        render_desc.cBuffers[0].arrayStride = vtype->base_sz;// sizeof(Attribs);
+        size_t        attrib_count = 0;
+        doubly<prop> &props = *(doubly<prop>*)vtype->meta;
+
+        auto get_wgpu_format = [](prop &p) {
+            if (p.type == typeof(glm::vec2))  return wgpu::VertexFormat::Float32x2;
+            if (p.type == typeof(glm::vec3))  return wgpu::VertexFormat::Float32x3;
+            if (p.type == typeof(glm::vec4))  return wgpu::VertexFormat::Float32x4;
+            if (p.type == typeof(glm::ivec4)) return wgpu::VertexFormat::Sint32x4;
+            if (p.type == typeof(float))      return wgpu::VertexFormat::Float32;
+            ///
+            assert(false);
+            return wgpu::VertexFormat::Undefined;
+        };
+
+        for (prop &p: props) {
+            render_desc.cAttributes[attrib_count].shaderLocation = attrib_count;
+            render_desc.cAttributes[attrib_count].format         = get_wgpu_format(p);
+            render_desc.cAttributes[attrib_count].offset         = p.offset;
+            attrib_count++;
+        }
+        render_desc.cBuffers[0].attributeCount = attrib_count;
+        render_desc.cFragment.module = mod;
+        render_desc.cTargets[0].format = preferred_swapchain_format();
+        render_desc.EnableDepthStencil(wgpu::TextureFormat::Depth24PlusStencil8);
+
+        pipeline = device.CreateRenderPipeline(&render_desc);
+    }
+
+    void submit(RenderPass &render) {
+        wgpu::Queue queue = device->device.GetQueue();
+        wgpu::CommandEncoder encoder = device->device.CreateCommandEncoder();
+        wgpu::RenderPassEncoder pass = encoder.BeginRenderPass(&render);
+        pass.SetPipeline(pipeline);
+        pass.SetBindGroup(0, bind_group);
+        pass.SetVertexBuffer(0, vertex_buffer);
+        pass.SetIndexBuffer(index_buffer, wgpu::IndexFormat::Uint32);
+        pass.DrawIndexed(indices_count);
+        pass.End();
+        wgpu::CommandBuffer commands = encoder.Finish();
+        queue.Submit(1, &commands);
+    }
+
+    void start() {
+        if (!is_debug()) {
+            reload(*this);
+            init = true;
+        } else {
+            // while debugging we can adjust resources at runtime
+            // compile .spv on load if its not there
+            static lambda<void(bool, array<path_op> &)> rld;
+            rld = [data=this](bool first, array<path_op> &ops) {
+                console.log("compiling shaders");
+                for (path_op &op: ops) {
+                    str ext = op->path.ext4();
+                    if (ext == ".wgsl") {
+                        str s_path = op->path;
+                        // we want to update an instance of this shader name op->path.stem() as identity
+                    }
+                }
+                /// if we already loaded before, cleanup resources
+                if (data->init) {
+                    data->cleanup();
+                }
+                data->reload((IPipeline&)*data);
+                data->init = true;
+            };
+
+            /// spawn watcher
+            watcher = watch::spawn(
+                {"./shaders", "./models"},
+                {".wgl", ".png", ".gltf"},
+                {},
+                rld);
+        }
+    }
+
+    void cleanup() {
+        for (int i = 0; i < Asset::count; i++)
+            textures[i] = Texture();
+    }
+
+    ~IPipeline() {
+        cleanup();
+        gmem->drop();
+    }
+
+    register(IPipeline);
+};
+
+Pipeline::Pipeline(Device &device, Graphics graphics):Pipeline() { /// instead of a texture it needs flags for the resources to load
+    data->gmem           = graphics.hold(); /// just so we can hold onto the data; we must drop this in our dtr
+    data->gfx            = graphics.data;
+    data->device         = device;
+    data->name           = graphics->name;
+}
+
+Pipes::Pipes(Device &device, symbol model, array<Graphics> parts):Pipes() {
+    using namespace gltf;
+    data->device = device;
+    data->model = model;
+    if (model) {
+        path gltf_path = fmt {"models/{0}.gltf", { model }};
+        data->m = Model::load(gltf_path);
+    }
+
+    /// all pipelines must use same Device
+    for (Graphics &gfx: parts)
+        data->pipelines += Pipeline(device, gfx);
+
+    auto reload_textures = [data=data, model=model]() {
+        static bool loaded = false;
+        if (!loaded) { /// add watch ability back to this with a cache
+            for (size_t i = 0; i < Asset::count; i++) /// todo: check against usage map to see if the texture applies and should be loaded
+                data->textures[i] = Texture::load(data->device, model, Asset(i));
+            loaded = true;
+        }
+    };
+
+    data->reload = [data=data, reload_textures=reload_textures](IPipeline &p) { /// this will need a proper cleanup proc in itsself
+        reload_textures();
+        p.updated = true;
+        p.assemble_graphics(data->m, p.gfx);
+    };
+
+    for (Pipeline &p: data->pipelines) {
+        p->reload = data->reload;
+        p->start();
+    }
+    reload_textures();
+}
+
+Pipeline &Pipes::operator[](str s) {
+    for (Pipeline &p: data->pipelines) {
+        if (s == p->name)
+            return p;
+    }
+    assert(false);
+    static Pipeline def;
+    return def;
+}
+
+vec3f average_verts(face& f, array<vec3f>& verts) {
+    vec3f sum(0.0f);
+    for (size_t i = 0; i < f.size; ++i)
+        sum += verts[f.indices[i]];
+    return sum / r32(f.size);
+}
+
+mesh subdiv(mesh& input_mesh, array<vec3f>& verts) {
+    mesh sdiv_mesh;
+    std::unordered_map<vpair, vec3f, vpair_hash> face_points;
+    std::unordered_map<vpair, vec3f, vpair_hash> edge_points;
+    array<vec3f> new_verts = verts;
+    const size_t vlen = verts.len();
+
+    /// Compute face points
+    for (face& f: input_mesh) {
+        vec3f face_point = average_verts(f, verts);
+        for (u32 i = 0; i < f.size; ++i) {
+            int vertex_index1 = f.indices[i];
+            int vertex_index2 = f.indices[(i + 1) % f.size];
+            vpair edge(vertex_index1, vertex_index2);
+            face_points[edge] = face_point;
+        }
+    }
+
+    /// Compute edge points
+    for (auto& fp: face_points) {
+        const  vpair &edge = fp.first;
+        vec3f       midpoint = (verts[edge.first] + verts[edge.second]) / 2.0f;
+        vec3f face_point_avg = (face_points[edge] + face_points[vpair(edge.second, edge.first)]) / 2.0f;
+        ///
+        edge_points[edge]  = (midpoint + face_point_avg) / 2.0f;
+    }
+
+    /// Update original verts
+    for (size_t i = 0; i < verts.len(); ++i) {
+        vec3f sum_edge_points(0.0f);
+        vec3f sum_face_points(0.0f);
+        u32 n = 0;
+
+        for (const auto& ep : edge_points) {
+            vpair edge = ep.first;
+            if (edge.first == i || edge.second == i) {
+                sum_edge_points += ep.second;
+                sum_face_points += face_points[edge];
+                n++;
+            }
+        }
+
+        vec3f avg_edge_points = sum_edge_points / r32(n);
+        vec3f avg_face_points = sum_face_points / r32(n);
+        vec3f original_vertex = verts[i];
+
+        new_verts[i] = (avg_face_points + avg_edge_points * 2.0f + original_vertex * (n - 3.0f)) / r32(n);
+    }
+
+    /// create new faces
+    for (const face& f : input_mesh) {
+        
+        /// for each vertex in face
+        for (u32 i = 0; i < f.size; ++i) {
+            face new_face;
+            new_face.size = 4;
+            u32 new_indices[4];
+
+            new_indices[0] = f.indices[i];
+            new_indices[1] = u32(vlen + std::distance(edge_points.begin(), edge_points.find(vpair(f.indices[i], f.indices[(i + 1) % f.size]))));
+            new_indices[2] = u32(vlen + std::distance(edge_points.begin(), edge_points.find(vpair(f.indices[(i + 1) % f.size], f.indices[(i + 2) % f.size]))));
+            new_indices[3] = u32(vlen + std::distance(edge_points.begin(), edge_points.find(vpair(f.indices[(i + 2) % f.size], f.indices[i]))));
+
+            new_face.indices = new_indices;
+            sdiv_mesh       += new_face;
+        }
+    }
+
+    return sdiv_mesh;
+}
+
+mesh subdiv_cube() {
+    array<vec3f> verts = {
+        // Front face
+        { -0.5f, -0.5f,  0.5f },
+        {  0.5f, -0.5f,  0.5f },
+        {  0.5f,  0.5f,  0.5f },
+        { -0.5f,  0.5f,  0.5f },
+
+        // Back face
+        { -0.5f, -0.5f, -0.5f },
+        { -0.5f,  0.5f, -0.5f },
+        {  0.5f,  0.5f, -0.5f },
+        {  0.5f, -0.5f, -0.5f },
+
+        // Top face
+        { -0.5f,  0.5f, -0.5f },
+        { -0.5f,  0.5f,  0.5f },
+        {  0.5f,  0.5f,  0.5f },
+        {  0.5f,  0.5f, -0.5f },
+
+        // Bottom face
+        { -0.5f, -0.5f, -0.5f },
+        {  0.5f, -0.5f, -0.5f },
+        {  0.5f, -0.5f,  0.5f },
+        { -0.5f, -0.5f,  0.5f },
+
+        // Right face
+        {  0.5f, -0.5f, -0.5f },
+        {  0.5f,  0.5f, -0.5f },
+        {  0.5f,  0.5f,  0.5f },
+        {  0.5f, -0.5f,  0.5f },
+
+        // Left face
+        { -0.5f, -0.5f, -0.5f },
+        { -0.5f, -0.5f,  0.5f },
+        { -0.5f,  0.5f,  0.5f },
+        { -0.5f,  0.5f, -0.5f }
+    };
+
+    mesh input_mesh = {
+        /* Size: */ 24,
+        /* Indices: */ {
+            0,  1,  2,  0,  2,  3,  // Front face
+            4,  5,  6,  4,  6,  7,  // Back face
+            8,  9,  10, 8,  10, 11, // Top face
+            12, 13, 14, 12, 14, 15, // Bottom face
+            16, 17, 18, 16, 18, 19, // Right face
+            20, 21, 22, 20, 22, 23  // Left face
+        }
+    };
+
+    return subdiv(input_mesh, verts);
+}
+
+#ifdef __APPLE__
+extern "C" void AllowKeyRepeats(void);
+#endif
+
 struct IWindow {
     Dawn dawn;
     ion::str title;
     GLFWwindow* handle;
-    Window::Render              render_mode;
     wgpu::AdapterType           adapter_type = wgpu::AdapterType::Unknown;
     Window::OnResize            resize;
+    Window::OnCursorEnter       cursor_enter;
+    Window::OnCursorScroll      cursor_scroll;
     Window::OnCursorPos         cursor_pos;
     Window::OnCursorButton      cursor_button;
     Window::OnKeyChar           key_char;
@@ -185,24 +822,16 @@ struct IWindow {
 
     DawnProcTable               procs;
     WGPUDevice                  gpu;
-    wgpu::Device                device;
-    wgpu::Buffer                indexBuffer;
-    wgpu::Buffer                vertexBuffer;
-    wgpu::Texture               texture;
-    wgpu::Sampler               sampler;
+    Device                      device;
+    Texture                     texture;
+    wgpu::Sampler               sampler; /// 'device' default sampler
     wgpu::Queue                 queue;
     wgpu::SwapChain             swapchain;
     wgpu::TextureView           depthStencilView;
-    wgpu::RenderPipeline        pipeline;
-    wgpu::BindGroup             bindGroup;
-    wgpu::BindGroupLayout       bgl;
-    wgpu::TextureView           view;
     
+    Pipeline                    canvas_pipeline;
     Canvas                      canvas;
-
-    static wgpu::TextureFormat preferred_swapchain_format() {
-        return wgpu::TextureFormat::BGRA8Unorm;
-    }
+    Scene                       scene;
 
     struct Attribs {
         glm::vec4 pos;
@@ -211,7 +840,12 @@ struct IWindow {
 
     vec2i                       sz;
     void                       *user_data;
-    int                         swap_id;
+
+    /// no need to expose a 'device' but we can configure it through window
+    void process_scene() {
+        if (fn_scene_render)
+            scene = fn_scene_render();
+    }
 
     static void PrintDeviceError(WGPUErrorType errorType, const char* message, void*) {
         const char* errorTypeName = "";
@@ -260,6 +894,16 @@ struct IWindow {
         if (iwin->resize) iwin->resize(width, height);
     }
 
+    static void on_cursor_scroll(GLFWwindow* window, double x, double y) {
+        IWindow *iwin = iwindow(window);
+        if (iwin->cursor_scroll) iwin->cursor_scroll(x, y);
+    }
+
+    static void on_cursor_enter(GLFWwindow* window, int enter) {
+        IWindow *iwin = iwindow(window);
+        if (iwin->cursor_enter) iwin->cursor_enter(enter);
+    }
+
     static void on_cursor_pos(GLFWwindow* window, double x, double y) {
         IWindow *iwin = iwindow(window);
         if (iwin->cursor_pos) iwin->cursor_pos(x, y);
@@ -280,11 +924,6 @@ struct IWindow {
         if (iwin->key_scancode) iwin->key_scancode(key, scancode, action, mods);
     }
 
-    int get_swap_id() {
-        int  id = Window::Render::SwapChain ? swap_id : 0;
-        return id;
-    }
-
     wgpu::TextureView depth_stencil_view() {
         wgpu::TextureDescriptor descriptor;
         descriptor.dimension = wgpu::TextureDimension::e2D;
@@ -295,35 +934,30 @@ struct IWindow {
         descriptor.format = wgpu::TextureFormat::Depth24PlusStencil8;
         descriptor.mipLevelCount = 1;
         descriptor.usage = wgpu::TextureUsage::RenderAttachment;
-        auto depthStencilTexture = device.CreateTexture(&descriptor);
+        auto depthStencilTexture = device->device.CreateTexture(&descriptor);
         return depthStencilTexture.CreateView();
     }
 
     void update_texture() {
-        if (render_mode == Window::Render::Texture) {
-            wgpu::TextureDescriptor tx_desc;
-            tx_desc.dimension               = wgpu::TextureDimension::e2D;
-            tx_desc.size.width              = (u32)sz.x;
-            tx_desc.size.height             = (u32)sz.y;
-            tx_desc.size.depthOrArrayLayers = 1;
-            tx_desc.sampleCount             = 1;
-            tx_desc.format                  = preferred_swapchain_format();
-            tx_desc.mipLevelCount           = 1;
-            tx_desc.usage                   = wgpu::TextureUsage::CopyDst | 
-                                              wgpu::TextureUsage::TextureBinding | 
-                                              wgpu::TextureUsage::RenderAttachment;
+        wgpu::TextureDescriptor tx_desc;
+        tx_desc.dimension               = wgpu::TextureDimension::e2D;
+        tx_desc.size.width              = (u32)sz.x;
+        tx_desc.size.height             = (u32)sz.y;
+        tx_desc.size.depthOrArrayLayers = 1;
+        tx_desc.sampleCount             = 1;
+        tx_desc.format                  = preferred_swapchain_format();
+        tx_desc.mipLevelCount           = 1;
+        tx_desc.usage                   = wgpu::TextureUsage::CopyDst | 
+                                          wgpu::TextureUsage::TextureBinding | 
+                                          wgpu::TextureUsage::RenderAttachment;
 
-            texture = device.CreateTexture(&tx_desc);
-            view    = texture.CreateView();
-            
-        } else {
-            texture = swapchain.GetCurrentTexture();
-            view    = swapchain.GetCurrentTextureView();
-        }
-
+        texture->device  = device->device;
+        texture->texture = device->device.CreateTexture(&tx_desc);
+        texture->view    = texture->texture.CreateView();
+        texture->sz      = sz;
+        texture->sampler = device->device.CreateSampler();
+        
         canvas    = Canvas(device, texture, true);
-        sampler   = device.CreateSampler();
-        bindGroup = dawn::utils::MakeBindGroup(device, bgl, {{0, sampler}, {1, view}});
     }
 
     void update_swap() {
@@ -343,7 +977,6 @@ struct IWindow {
         WGPUSwapChain backendSwapChain =
             procs.deviceCreateSwapChain(gpu, surface, &swapChainDesc);
         swapchain = wgpu::SwapChain::Acquire(backendSwapChain);
-        swap_id = 0;
     }
 
     void create_resources() {
@@ -407,126 +1040,70 @@ struct IWindow {
         procs.deviceSetUncapturedErrorCallback(gpu, PrintDeviceError, nullptr);
         procs.deviceSetDeviceLostCallback(gpu, DeviceLostCallback, nullptr);
         procs.deviceSetLoggingCallback(gpu, DeviceLogCallback, nullptr);
-        device = wgpu::Device::Acquire(gpu);
-        queue  = device.GetQueue();
+        device->device = wgpu::Device::Acquire(gpu);
+        queue  = device->device.GetQueue();
 
         update_swap();
 
-        static const uint32_t indexData[6] = {
-            0, 1, 2,
-            2, 1, 3
-        };
-        indexBuffer = dawn::utils::CreateBufferFromData(
-            device, indexData, sizeof(indexData),
-            wgpu::BufferUsage::Index);
-
-        static const Attribs vertexData[4] = {
-            {{ -1.0f, -1.0f, 0.0f, 1.0f }, {  0.0f, 0.0f }},
-            {{  1.0f, -1.0f, 0.0f, 1.0f }, {  1.0f, 0.0f }},
-            {{ -1.0f,  1.0f, 0.0f, 1.0f }, { -1.0f, 1.0f }},
-            {{  1.0f,  1.0f, 0.0f, 1.0f }, {  1.0f, 1.0f }}
-        };
-        vertexBuffer = dawn::utils::CreateBufferFromData(
-            device, vertexData, sizeof(vertexData),
-            wgpu::BufferUsage::Vertex);
-
-        wgpu::ShaderModule mod = dawn::utils::CreateShaderModule(device, R"(
-            struct args {
-                @builtin(position) pos : vec4f,
-                @location(0)       uv  : vec2f
-            };
-            
-            @vertex
-            fn vertex_main(
-                    @location(0) pos1 : vec4f, 
-                    @location(1) uv  : vec2f) -> args {
-                var a : args;
-                a.pos = pos1;
-                a.uv  = uv;
-                return a;
-            }
-
-            @group(0) @binding(0) var mySampler : sampler;
-            @group(0) @binding(1) var myTexture : texture_2d<f32>;
-
-            @fragment
-            fn fragment_main(a : args) -> @location(0) vec4f {
-                return textureSample(myTexture, mySampler, a.uv);
-            })");
-
-        bgl = dawn::utils::MakeBindGroupLayout(
-            device, {
-                {0, wgpu::ShaderStage::Fragment, wgpu::SamplerBindingType::Filtering},
-                {1, wgpu::ShaderStage::Fragment, wgpu::TextureSampleType::Float},
-            });
-
-        wgpu::PipelineLayout pl = dawn::utils::MakeBasicPipelineLayout(device, &bgl);
         depthStencilView = depth_stencil_view();
-
-        dawn::utils::ComboRenderPipelineDescriptor descriptor;
-        descriptor.layout = dawn::utils::MakeBasicPipelineLayout(device, &bgl);
-        descriptor.vertex.module = mod;
-        descriptor.vertex.bufferCount = 1;
-        descriptor.cBuffers[0].arrayStride = sizeof(Attribs);
-
-        /// attributes here (use simple meta iteration for this)
-        descriptor.cBuffers[0].attributeCount = 2;
-        descriptor.cAttributes = std::array<wgpu::VertexAttribute, dawn::kMaxVertexAttributes> {
-            // Position attribute
-            wgpu::VertexAttribute {
-                wgpu::VertexFormat::Float32x4, offsetof(Attribs, pos), 0
-            },
-            // UV attribute
-            wgpu::VertexAttribute {
-                wgpu::VertexFormat::Float32x2, offsetof(Attribs, uv), 1
-            }
-        };
-        descriptor.cFragment.module = mod;
-        descriptor.cTargets[0].format = preferred_swapchain_format();
-        descriptor.EnableDepthStencil(wgpu::TextureFormat::Depth24PlusStencil8);
-
-        pipeline = device.CreateRenderPipeline(&descriptor);
-
         update_texture();
+
+        canvas_pipeline = Pipeline(device, Graphics {
+            "canvas", typeof(Attribs), { Sampling(Sampling::linear), texture }, "canvas", [](mx &vbo, mx &ibo, array<image> &images) {
+                static const uint32_t indexData[6] = {
+                    0, 1, 2,
+                    2, 1, 3
+                };
+                static const Attribs vertexData[4] = {
+                    {{ -1.0f, -1.0f, 0.0f, 1.0f }, {  0.0f, 0.0f }},
+                    {{  1.0f, -1.0f, 0.0f, 1.0f }, {  1.0f, 0.0f }},
+                    {{ -1.0f,  1.0f, 0.0f, 1.0f }, { -1.0f, 1.0f }},
+                    {{  1.0f,  1.0f, 0.0f, 1.0f }, {  1.0f, 1.0f }}
+                };
+
+                ibo = mx::wrap<u32>((void*)indexData, 6);
+                vbo = mx::wrap<Attribs>((void*)vertexData, 4);
+                // set vbo and ibo
+            }
+
+        });
     }
 
-    void process() {
+    bool process() {
+        if (!glfwWindowShouldClose(handle))
+            return false;
         glfwPollEvents();
         dawn.process_events();
 
         wgpu::TextureView backbufferView = swapchain.GetCurrentTextureView();
         RenderPass render({backbufferView}, depthStencilView);
-        wgpu::CommandEncoder encoder = device.CreateCommandEncoder();
+        
 
         /// render webgpu
         if (fn_scene_render) {
-            fn_scene_render(render, encoder);
-            wgpu::CommandBuffer commands = encoder.Finish();
-            queue.Submit(1, &commands);
+            Scene scene = fn_scene_render();
+            for (Pipes &p: scene) {
+                for (Pipeline &pipeline: p->pipelines)
+                    pipeline->submit(render);
+            }
         }
         
         /// render skia texture to window
         if (fn_canvas_render) {
             fn_canvas_render(canvas);
             canvas.flush();
-
-            wgpu::RenderPassEncoder pass = encoder.BeginRenderPass(&render);
-            pass.SetPipeline(pipeline);
-            pass.SetBindGroup(0, bindGroup);
-            pass.SetVertexBuffer(0, vertexBuffer);
-            pass.SetIndexBuffer(indexBuffer, wgpu::IndexFormat::Uint32);
-            pass.DrawIndexed(6);
-            pass.End();
-            wgpu::CommandBuffer commands = encoder.Finish();
-            queue.Submit(1, &commands);
+            canvas_pipeline->submit(render);
         }
         swapchain.Present();
-        swap_id = (swap_id + 1) % 2;
+        return true;
     }
 
-    void create(Window::Render render_mode, str title, vec2i sz) {
+    void create(str title, vec2i sz) {
         static bool init;
         if (!init) {
+            #ifdef __APPLE__
+            AllowKeyRepeats();
+            #endif
             assert(glfwInit());
             glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
             glfwWindowHint(GLFW_COCOA_RETINA_FRAMEBUFFER, GLFW_FALSE);
@@ -536,13 +1113,15 @@ struct IWindow {
         this->sz = sz;
         this->title = title;
         this->handle = glfwCreateWindow(sz.x, sz.y, title.cs(), null, null);
-        this->render_mode = render_mode;
+        
         glfwSetWindowUserPointer        (handle, this);
         glfwSetKeyCallback              (handle, IWindow::on_key_scancode);
         glfwSetCharModsCallback         (handle, IWindow::on_key_char);
         glfwSetMouseButtonCallback      (handle, IWindow::on_cursor_button);
         glfwSetFramebufferSizeCallback  (handle, IWindow::on_resize);
         glfwSetCursorPosCallback        (handle, IWindow::on_cursor_pos);
+        glfwSetScrollCallback           (handle, IWindow::on_cursor_scroll);
+        glfwSetCursorEnterCallback      (handle, IWindow::on_cursor_enter);
         count++;
         create_resources();
     }
@@ -563,9 +1142,6 @@ struct IWindow {
     register(IWindow);
 };
 
-mx_implement(Window, mx);
-mx_implement(Dawn, mx);
-
 Canvas Window::get_canvas() {
     return data->canvas;
 }
@@ -582,8 +1158,16 @@ void Window::set_on_resize(OnResize resize) {
     data->resize = resize;
 }
 
+void Window::set_on_cursor_enter(OnCursorEnter cursor_enter) {
+    data->cursor_enter = cursor_enter;
+}
+
 void Window::set_on_cursor_pos(OnCursorPos cursor_pos) {
     data->cursor_pos = cursor_pos;
+}
+
+void Window::set_on_cursor_scroll(OnCursorScroll cursor_scroll) {
+    data->cursor_scroll = cursor_scroll;
 }
 
 void Window::set_on_cursor_button(OnCursorButton cursor_button) {
@@ -602,9 +1186,14 @@ void *Window::handle() {
     return data->handle;
 }
 
-Window Window::create(Render render_mode, str title, vec2i sz) {
+Window Window::create(str title, vec2i sz) {
+    type_t test = Pipeline::intern_t;
+    Texture tx;
+    Pipeline2 p2;
+    Pipeline p;
+    typeof(Pipeline);
     Window w;
-    w->create(render_mode, title, sz);
+    w->create(title, sz);
     return w;
 }
 
@@ -612,7 +1201,7 @@ Window::operator bool() {
     return bool(data->device);
 }
 
-wgpu::Device Window::device() {
+Device Window::device() {
     return data->device;
 }
 
@@ -621,6 +1210,10 @@ void Window::set_visibility(bool v) {
         glfwShowWindow(data->handle);
     else
         glfwHideWindow(data->handle);
+}
+
+bool Window::process() {
+    return data->process();
 }
 
 void Window::close() {
@@ -640,14 +1233,6 @@ void Window::run() {
     while (!glfwWindowShouldClose(data->handle)) {
         data->process();
     }
-}
-
-wgpu::SwapChain Window::swap_chain() {
-    return data->swapchain;
-}
-
-void Window::process() {
-    data->process();
 }
 
 void *Window::user_data() {
@@ -1039,13 +1624,13 @@ struct ICanvas {
 
     bool use_hidpi;
 
-    wgpu::Texture     texture;
+    Texture texture;
     sk_sp<SkSurface> sk_surf = null;
     SkCanvas      *sk_canvas = null;
     vec2i                 sz = { 0, 0 };
     vec2i             sz_raw;
     vec2d          dpi_scale = { 1, 1 };
-    wgpu::Texture    wgpu_tx;
+
 
     struct state {
         ion::image  img;
@@ -1584,7 +2169,7 @@ struct ICanvas {
     type_register(ICanvas);
 };
 
-mx_implement(Canvas, mx);
+mx_implement(Canvas, mx, ICanvas);
 
 
 /// swap handling usage:
@@ -1625,7 +2210,7 @@ void GraphiteDawnWindowContext::onSwapBuffers() {
 */
 
 /// create Canvas with a texture
-Canvas::Canvas(wgpu::Device device, wgpu::Texture texture, bool use_hidpi) : Canvas() {
+Canvas::Canvas(Device device, Texture texture, bool use_hidpi) : Canvas() {
     data->texture = texture;
 
     skwindow::DisplayParams params { };
@@ -1641,14 +2226,14 @@ Canvas::Canvas(wgpu::Device device, wgpu::Texture texture, bool use_hidpi) : Can
     params.fGraphiteContextOptions.fPriv.fStoreContextRefInRecorder = true; // Needed to make synchronous readPixels work:
 
     skgpu::graphite::DawnBackendContext backendContext;
-    backendContext.fDevice = device;
-    backendContext.fQueue = device.GetQueue();
+    backendContext.fDevice = device->device;
+    backendContext.fQueue = device->device.GetQueue();
 
     data->fGraphiteContext = skgpu::graphite::ContextFactory::MakeDawn(
             backendContext, params.fGraphiteContextOptions.fOptions);
     data->fGraphiteRecorder = data->fGraphiteContext->makeRecorder(ToolUtils::CreateTestingRecorderOptions());
 
-    skgpu::graphite::BackendTexture backend_texture(texture.Get());
+    skgpu::graphite::BackendTexture backend_texture(texture->texture.Get());
     data->sk_surf = SkSurfaces::WrapBackendTexture(
         data->fGraphiteRecorder.get(),
         backend_texture,
@@ -1657,12 +2242,19 @@ Canvas::Canvas(wgpu::Device device, wgpu::Texture texture, bool use_hidpi) : Can
         &params.fSurfaceProps);
 
     float xscale = 1.0f, yscale = 1.0f;
-    if (use_hidpi)
-        glfwGetMonitorContentScale(glfwGetPrimaryMonitor(), &xscale, &yscale);
 
+    int mcount;
+    static int dpi_index = 0;
+	GLFWmonitor** monitors = glfwGetMonitors(&mcount);
+    if (mcount > 0 && use_hidpi) {
+        glfwGetMonitorContentScale(monitors[0], &xscale, &yscale);
+    } else if (use_hidpi) {
+        xscale = 2.0f;
+        yscale = 2.0f;
+    }
     data->dpi_scale.x = xscale;
     data->dpi_scale.y = yscale;
-    data->sz          = vec2i { int(texture.GetWidth() / xscale), int(texture.GetHeight() / yscale) };
+    data->sz          = vec2i { int(texture->texture.GetWidth()), int(texture->texture.GetHeight()) }; // use virtual functions to obtain the virtual size
     data->sk_canvas   = data->sk_surf->getCanvas();
     data->use_hidpi   = use_hidpi;
     data->save();
@@ -1851,5 +2443,12 @@ array<double> font::advances(Canvas& canvas, str text) {
     }
     return res;
 }
+
+mx_implement(Dawn, mx, IDawn);
+mx_implement(Device, mx, IDevice);
+mx_implement(Texture, mx, ITexture);
+mx_implement(Pipeline, mx, IPipeline);
+mx_implement(Pipeline2, mx, IPipeline2);
+mx_implement(Window, mx, IWindow);
 
 }

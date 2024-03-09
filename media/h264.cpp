@@ -318,7 +318,7 @@ MStream h264bsd_test() {
 }
 */
 
-mx_implement(h264, mx);
+mx_implement(h264, mx, i264);
 
 array<u8> h264::encode(yuv420 image) { /// its not a ref, so we can pass image and have it auto convert to yuv420
     return data->encode(image); /// handles resize with the proper nalu packet here, so the controller doesnt need to

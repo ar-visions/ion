@@ -1,4 +1,5 @@
 #pragma once
+#include <composer/composer.hpp>
 #include <net/net.hpp>
 
 namespace ion {
@@ -97,5 +98,38 @@ struct SSHService:node {
 
     bool send_message(SSHPeer peer, str msg);
     void mounted();
+};
+
+struct Services:composer {
+    struct internal {
+        composer::cmdata*        cmdata;
+        bool                     running;
+        lambda<node(Services&)>  service_fn;
+        map<mx>                  args;
+        bool                     stop, stopped;
+        ///
+        type_register(internal);
+    };
+    mx_object(Services, composer, internal);
+
+    Services(map<mx> args, lambda<node(Services&)> service_fn) : Services() {
+        data->args = args;
+        data->cmdata = composer::data;
+        data->cmdata->app = mem;
+        data->service_fn = service_fn;
+    }
+
+    int  run();
+    bool stop() {
+        data->stop = true;
+        while (!data->stopped) { usleep(1000); }
+        return true;
+    }
+
+    operator int() {
+        return run();
+    }
+
+    mx operator[](symbol s) { return data->args[s]; }
 };
 }

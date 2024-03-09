@@ -1,37 +1,76 @@
 #include <ux/ux.hpp>
-#include <ux/canvas.hpp>
 #include <ux/controls.hpp>
+#include <ux/canvas.hpp>
+#include <ssh/ssh.hpp>
 #include <media/streams.hpp>
 
 namespace ion {
 
-enums(AppType, undefined,
-    undefined, VulkanOnly)
-
 struct adata {
     composer::cmdata*   cmdata;
     MStream             media; // look!
-    //GPU               win;
+    Window              window;
     Canvas             *canvas;
     vec2d               cursor;
     Element*            active;
     Element*            hover;
-    VkEngine            e;
     lambda<node(struct App&)>  app_fn;
-    lambda<bool(struct App&)>  loop_fn;
     map<mx>             args;
     Services            services;
-    states<AppType>     app_type;
     ///
     type_register(adata);
+};
+
+struct WebService:node {
+    struct props {
+        uri url;
+        lambda<message(message)> on_message;
+
+        type_register(WebService);
+
+		doubly<prop> meta() {
+			return {
+				prop { "url", url },
+				prop { "on-message", on_message }
+			};
+		}
+    };
+
+    component(WebService, node, props);
+
+    void mounted() {
+        /// https is all we support for a listening service, no raw protocols without encryption in this stack per design
+        sock::listen(state->url, [state=state](sock &sc) -> bool {
+            bool close = false;
+            for (close = false; !close;) {
+                close  = true;
+                ///
+                message request(sc);
+                if (!request)
+                    break;
+                
+                console.log("(https) {0} -> {1}", { request->query->mtype, request->query->query });
+
+                message response(
+                    state->on_message(request)
+                );
+                response.write(sc);
+
+                /// default is keep-alive on HTTP/1.1
+                const char *F = "Connection";
+                close = (request[F] == "close" && !response[F]) ||
+                       (response[F] == "close");
+            }
+            return close;
+        });
+    }
 };
 
 struct App:composer {
     mx_object(App, composer, adata);
 
-    App(map<mx> args, states<AppType> app_type, lambda<node(App&)> app_fn) : App() {
+    App(map<mx> args, lambda<node(App&)> app_fn) : App() {
         data->args   = args;
-        data->app_type = app_type;
         data->cmdata = composer::data; /// perhaps each data should be wrapped instance with an awareness of its peers
         data->app_fn = app_fn;
     }

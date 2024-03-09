@@ -98,7 +98,7 @@
             "label": "build-ux-app",
             "type": "shell",
 			"options": {
-                "cwd": "${workspaceFolder}/../ion/build"
+                "cwd": "${workspaceFolder}/../hyperspace/build"
             },
             "group": {
                 "kind": "build",
@@ -113,7 +113,7 @@
 			"isBackground": false,
 			"problemMatcher": ["$gcc"],
             "windows": {
-                "command": "msbuild ion.sln /t:ux-app"
+                "command": "msbuild hyperspace.sln /t:ux-app"
             },
             "osx": {
                 "command": "make ux-app -j16"

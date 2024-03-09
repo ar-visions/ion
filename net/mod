@@ -7,7 +7,6 @@ endif()
 
 dep(mx:mx
     mx:async
-    ion:composer
     ion:media 
     mbedtls:mbedtls
     mbedtls:mbedx509
