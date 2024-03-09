@@ -48,13 +48,16 @@ enums(Key, undefined,
 struct RenderPass : public wgpu::RenderPassDescriptor {
     static inline const int kMaxColorAttachments = 8;
     RenderPass(const std::vector<wgpu::TextureView>& colorAttachmentInfo = {},
-                              wgpu::TextureView depthStencil = wgpu::TextureView());
+                              wgpu::TextureView depthStencil = wgpu::TextureView(), rgbaf clear_color = {0.0, 0.0, 0.0, 0.0});
     ~RenderPass();
 
     RenderPass(const RenderPass& otherRenderPass);
     const RenderPass& operator=(const RenderPass& otherRenderPass);
 
     void UnsetDepthStencilLoadStoreOpsForFormat(wgpu::TextureFormat format);
+
+    void disable_clear_color();
+    void disable_clear_depth();
 
     std::array<wgpu::RenderPassColorAttachment, kMaxColorAttachments> cColorAttachments;
     wgpu::RenderPassDepthStencilAttachment cDepthStencilAttachmentInfo = {};
@@ -88,7 +91,7 @@ enums(ShaderModule, undefined,
 using GraphicsGen = lambda<void(mx&,mx&,array<image>&)>;
 
 struct GraphicsData {
-    str         name;
+    symbol      name;
     symbol      shader;
     type_t      vtype;
     GraphicsGen gen;
@@ -112,34 +115,16 @@ enums(Sampling, nearest, nearest, linear, ansio);
 
 using MG = map<Graphics>;
 
-struct Pipeline2:mx {
-    mx_declare(Pipeline2, mx, struct IPipeline2)
-};
-
 struct Pipeline:mx {
     mx_declare(Pipeline, mx, struct IPipeline)
-
     Pipeline(Device &device, Graphics graphics);
     static void assemble_graphics(IPipeline *pipeline, ion::gltf::Model &m, Graphics &gfx);
 };
 
 /// for Daniel to call back.. they got tired of calling
 struct Pipes:mx {
-    struct M {
-        Device                      device;
-        ion::gltf::Model            m;
-        symbol                      model;
-        array<Texture>              textures { Asset::count };
-        array<Pipeline>             pipelines;
-        lambda<void(IPipeline&)>    reload;
-        lambda<void(memory*)>       uniform_update;
-        register(M);
-    };
-
-    mx_basic(Pipes);
-
+    mx_declare(Pipes, mx, struct IPipes);
     Pipes(Device &device, symbol model, array<Graphics> parts);
-
     Pipeline &operator[](str s);
 };
 

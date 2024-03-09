@@ -177,13 +177,24 @@ void Texture::update(image img) {
     data->update_image(img);
 }
 
+void RenderPass::disable_clear_color() {
+    for (uint32_t i = 0; i < kMaxColorAttachments; ++i) {
+        cColorAttachments[i].loadOp = wgpu::LoadOp::Load;
+    }
+}
+
+void RenderPass::disable_clear_depth() {
+    cDepthStencilAttachmentInfo.depthLoadOp = wgpu::LoadOp::Load;
+    cDepthStencilAttachmentInfo.stencilLoadOp = wgpu::LoadOp::Load;
+}
+
 RenderPass::RenderPass(
     const std::vector<wgpu::TextureView>& colorAttachmentInfo,
-    wgpu::TextureView depthStencil) {
+    wgpu::TextureView depthStencil, rgbaf clear_color) {
     for (uint32_t i = 0; i < kMaxColorAttachments; ++i) {
         cColorAttachments[i].loadOp = wgpu::LoadOp::Clear;
         cColorAttachments[i].storeOp = wgpu::StoreOp::Store;
-        cColorAttachments[i].clearValue = {0.0f, 0.0f, 0.0f, 0.0f};
+        cColorAttachments[i].clearValue = {clear_color.r, clear_color.g, clear_color.b, clear_color.a};
     }
 
     cDepthStencilAttachmentInfo.depthClearValue = 1.0f;
@@ -261,12 +272,6 @@ struct IDawn {
     #endif
     std::unique_ptr<dawn::native::Instance> instance;
     register(IDawn);
-};
-
-
-struct IPipeline2 {
-    mx                          uniform_data;
-    type_register(IPipeline2)
 };
 
 struct IPipeline {
@@ -465,7 +470,7 @@ struct IPipeline {
                 entry.texture.sampleType    = wgpu::TextureSampleType::Float;
                 entry.texture.viewDimension = wgpu::TextureViewDimension::e2D;
                 bind_value.textureView      = tx->view;
-            } else if (binding.type() == typeof(Sampling)) {
+            } else if (binding.type() == typeof(Sampling::etype)) {
                 /// this must be specified immediately after the texture
                 assert(tx);
                 Sampling sampling(binding.hold());
@@ -553,7 +558,36 @@ struct IPipeline {
         render_desc.cTargets[0].format = preferred_swapchain_format();
         render_desc.EnableDepthStencil(wgpu::TextureFormat::Depth24PlusStencil8);
 
+        /*
+        /// enable alpha blending (disable if not needed, as this reduces performance by about 4-8x in the fill)
+        // Define the blend state
+        wgpu::BlendState blendState = {};
+        blendState.color.srcFactor = wgpu::BlendFactor::SrcAlpha;
+        blendState.color.dstFactor = wgpu::BlendFactor::OneMinusSrcAlpha;
+        blendState.color.operation = wgpu::BlendOperation::Add;
+        blendState.alpha.srcFactor = wgpu::BlendFactor::One;
+        blendState.alpha.dstFactor = wgpu::BlendFactor::OneMinusSrcAlpha;
+        blendState.alpha.operation = wgpu::BlendOperation::Add;
+
+        // Define the color target state, including the blend state
+        wgpu::ColorTargetState colorTargetState = {};
+        colorTargetState.format     = wgpu::TextureFormat::BGRA8Unorm; // Adjust as needed for your render target
+        colorTargetState.blend      = &blendState;
+        colorTargetState.writeMask  = wgpu::ColorWriteMask::All;
+
+        // Define the fragment state, including the color target state
+        wgpu::FragmentState fragmentState = {};
+        fragmentState.module        = mod; // Your compiled shader module
+        fragmentState.entryPoint    = "fragment_main"; // The entry point for your fragment shader
+        fragmentState.targetCount   = 1;
+        fragmentState.targets       = &colorTargetState;
+
+        render_desc.fragment = &fragmentState;
+        */
+       
         pipeline = device.CreateRenderPipeline(&render_desc);
+        Dawn dawn;
+        dawn.process_events();
     }
 
     void submit(RenderPass &render) {
@@ -617,6 +651,23 @@ struct IPipeline {
     register(IPipeline);
 };
 
+struct IPipes {
+    Device                      device;
+    ion::gltf::Model            m;
+    symbol                      model;
+    array<Texture>              textures { Asset::count };
+    array<Pipeline>             pipelines;
+    lambda<void(IPipeline&)>    reload;
+    lambda<void(memory*)>       uniform_update;
+    
+    void submit(RenderPass &render) {
+        for (auto p: pipelines) {
+            p->submit(render);
+        }
+    }
+    register(IPipes);
+};
+
 Pipeline::Pipeline(Device &device, Graphics graphics):Pipeline() { /// instead of a texture it needs flags for the resources to load
     data->gmem           = graphics.hold(); /// just so we can hold onto the data; we must drop this in our dtr
     data->gfx            = graphics.data;
@@ -639,7 +690,7 @@ Pipes::Pipes(Device &device, symbol model, array<Graphics> parts):Pipes() {
 
     auto reload_textures = [data=data, model=model]() {
         static bool loaded = false;
-        if (!loaded) { /// add watch ability back to this with a cache
+        if (!loaded && model) { /// add watch ability back to this with a cache
             for (size_t i = 0; i < Asset::count; i++) /// todo: check against usage map to see if the texture applies and should be loaded
                 data->textures[i] = Texture::load(data->device, model, Asset(i));
             loaded = true;
@@ -829,13 +880,19 @@ struct IWindow {
     wgpu::SwapChain             swapchain;
     wgpu::TextureView           depthStencilView;
     
-    Pipeline                    canvas_pipeline;
+    Pipes                       canvas_pipeline;
     Canvas                      canvas;
     Scene                       scene;
 
     struct Attribs {
         glm::vec4 pos;
         glm::vec2 uv;
+        doubly<prop> meta() {
+            return {
+                { "pos", pos },
+                { "uv",  uv  }
+            };
+        }
     };
 
     vec2i                       sz;
@@ -1048,44 +1105,49 @@ struct IWindow {
         depthStencilView = depth_stencil_view();
         update_texture();
 
-        canvas_pipeline = Pipeline(device, Graphics {
-            "canvas", typeof(Attribs), { Sampling(Sampling::linear), texture }, "canvas", [](mx &vbo, mx &ibo, array<image> &images) {
-                static const uint32_t indexData[6] = {
-                    0, 1, 2,
-                    2, 1, 3
-                };
-                static const Attribs vertexData[4] = {
-                    {{ -1.0f, -1.0f, 0.0f, 1.0f }, {  0.0f, 0.0f }},
-                    {{  1.0f, -1.0f, 0.0f, 1.0f }, {  1.0f, 0.0f }},
-                    {{ -1.0f,  1.0f, 0.0f, 1.0f }, { -1.0f, 1.0f }},
-                    {{  1.0f,  1.0f, 0.0f, 1.0f }, {  1.0f, 1.0f }}
-                };
+        canvas_pipeline = Pipes(device, null, array<Graphics> {
+            Graphics {
+                "canvas", typeof(Attribs), { texture, Sampling::linear }, "canvas", [](mx &vbo, mx &ibo, array<image> &images) {
+                    static const uint32_t indexData[6] = {
+                        0, 1, 2,
+                        2, 1, 3
+                    };
+                    static const Attribs vertexData[4] = {
+                        {{ -1.0f, -1.0f, 0.0f, 1.0f }, {  0.0f, 0.0f }},
+                        {{  1.0f, -1.0f, 0.0f, 1.0f }, {  1.0f, 0.0f }},
+                        {{ -1.0f,  1.0f, 0.0f, 1.0f }, { -1.0f, 1.0f }},
+                        {{  1.0f,  1.0f, 0.0f, 1.0f }, {  1.0f, 1.0f }}
+                    };
 
-                ibo = mx::wrap<u32>((void*)indexData, 6);
-                vbo = mx::wrap<Attribs>((void*)vertexData, 4);
-                // set vbo and ibo
+                    ibo = mx::wrap<u32>((void*)indexData, 6);
+                    vbo = mx::wrap<Attribs>((void*)vertexData, 4);
+                    // set vbo and ibo
+                }
             }
-
         });
     }
 
     bool process() {
-        if (!glfwWindowShouldClose(handle))
+        if (glfwWindowShouldClose(handle))
             return false;
         glfwPollEvents();
         dawn.process_events();
 
-        wgpu::TextureView backbufferView = swapchain.GetCurrentTextureView();
-        RenderPass render({backbufferView}, depthStencilView);
-        
+        wgpu::TextureView swap_view = swapchain.GetCurrentTextureView();
+        RenderPass render({swap_view}, depthStencilView, rgbaf {0.0, 0.0, 0.5, 1.0});
 
         /// render webgpu
         if (fn_scene_render) {
+            bool has_pipeline = false;
             Scene scene = fn_scene_render();
             for (Pipes &p: scene) {
-                for (Pipeline &pipeline: p->pipelines)
+                for (Pipeline &pipeline: p->pipelines) {
                     pipeline->submit(render);
+                    has_pipeline = true;
+                }
             }
+            if (has_pipeline)
+                render.disable_clear_color();
         }
         
         /// render skia texture to window
@@ -1187,11 +1249,6 @@ void *Window::handle() {
 }
 
 Window Window::create(str title, vec2i sz) {
-    type_t test = Pipeline::intern_t;
-    Texture tx;
-    Pipeline2 p2;
-    Pipeline p;
-    typeof(Pipeline);
     Window w;
     w->create(title, sz);
     return w;
@@ -1775,7 +1832,7 @@ struct ICanvas {
     }
 
 
-    void    clear()        { sk_canvas->clear(sk_color(top->color)); }
+    void    clear()        { sk_canvas->clear(SK_ColorTRANSPARENT); }
     void    clear(rgbad c) { sk_canvas->clear(sk_color(c)); }
 
     void    flush() {
@@ -2448,7 +2505,7 @@ mx_implement(Dawn, mx, IDawn);
 mx_implement(Device, mx, IDevice);
 mx_implement(Texture, mx, ITexture);
 mx_implement(Pipeline, mx, IPipeline);
-mx_implement(Pipeline2, mx, IPipeline2);
+mx_implement(Pipes, mx, IPipes);
 mx_implement(Window, mx, IWindow);
 
 }

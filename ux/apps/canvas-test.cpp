@@ -8,9 +8,7 @@ int main(int argc, const char* argv[]) {
     static constexpr uint32_t kHeight = 1024;
 
     Window window = Window::create("dawn", {kWidth, kHeight});
-    window.set_on_scene_render([]() {
 
-    });
     window.set_on_canvas_render([](Canvas &canvas) {
         vec2i sz = canvas.size();
         rectd rect { 0, 0, sz.x, sz.y };
