@@ -86,6 +86,50 @@ using namespace ion;
 
 namespace ion {
 
+/// better form of enum here, even if it is two/three part.
+//enums_define (TextureFormat2, WGPUTextureFormat)
+
+struct WGPUTextureFormatWrapper {
+    WGPUTextureFormat value;
+    WGPUTextureFormatWrapper(WGPUTextureFormat v) : value(v) { }
+    WGPUTextureFormatWrapper(int v) : value((WGPUTextureFormat)v) { }
+};
+
+ion::symbol TextureFormat2::symbol() {\
+    memory *mem = typeof(TextureFormat2)->lookup(i64(value));\
+    if (!mem) printf("symbol: mem is null for value %d\n", (int)value);\
+    assert(mem);\
+    return (char*)mem->origin;\
+}\
+str TextureFormat2::name() { return (char*)symbol(); }\
+memory *TextureFormat2::to_string() { return typeof(TextureFormat2)->lookup(i64(value)); }\
+TextureFormat2::TextureFormat2(enum etype t)           :ex(initialize(this,             t, (ion::symbol)raw.cs(), typeof(TextureFormat2)), this), value(ref<enum etype>()) { }\
+TextureFormat2::TextureFormat2(size_t     t)           :ex(initialize(this, (enum etype)t, (ion::symbol)raw.cs(), typeof(TextureFormat2)), this), value(ref<enum etype>()) { }\
+TextureFormat2::TextureFormat2(int        t)           :ex(initialize(this, (enum etype)t, (ion::symbol)raw.cs(), typeof(TextureFormat2)), this), value(ref<enum etype>()) { }\
+TextureFormat2::TextureFormat2(str sraw):TextureFormat2(ex::convert(sraw, (ion::symbol)TextureFormat2::raw.cs(), (TextureFormat2*)null)) { }\
+TextureFormat2::TextureFormat2(mx  mraw):TextureFormat2(ex::convert(mraw, (ion::symbol)TextureFormat2::raw.cs(), (TextureFormat2*)null)) { }\
+TextureFormat2::TextureFormat2(ion::symbol sym):TextureFormat2(ex::convert(sym, (ion::symbol)TextureFormat2::raw.cs(), (TextureFormat2*)null)) { }\
+TextureFormat2::TextureFormat2(memory* mem):TextureFormat2(mx(mem)) { }\
+        TextureFormat2::operator etype() { return value; }\
+TextureFormat2&      TextureFormat2::operator=  (const TextureFormat2 b)  { return (TextureFormat2&)assign_mx(*this, b); }\
+bool    TextureFormat2::operator== (enum etype v) { return value == v; }\
+bool    TextureFormat2::operator== (ion::symbol v) {\
+    if (!mem && !v)\
+        return true;\
+    memory *m = lookup(v);\
+    return (int)m->id == (int)value;\
+}\
+bool    TextureFormat2::operator!= (enum etype v) { return value != v; }\
+bool    TextureFormat2::operator>  (TextureFormat2 &b)       { return value >  b.value; }\
+bool    TextureFormat2::operator<  (TextureFormat2 &b)       { return value <  b.value; }\
+bool    TextureFormat2::operator>= (TextureFormat2 &b)       { return value >= b.value; }\
+bool    TextureFormat2::operator<= (TextureFormat2 &b)       { return value <= b.value; }\
+TextureFormat2::operator int()         { return int(value); }\
+TextureFormat2::operator i64()         { return i64(value); }\
+TextureFormat2::operator str()         { return symbol(); }\
+TextureFormat2::TextureFormat2(const WGPUTextureFormatWrapper &r):TextureFormat2((enum etype)(int)r.value) { }\
+WGPUTextureFormatWrapper TextureFormat2::convert() { return WGPUTextureFormatWrapper((int)value)}
+
 struct IDevice {
     wgpu::Device device;
     register(IDevice)
@@ -166,6 +210,50 @@ Texture Texture::from_image(Device &dev, image img, Asset type) {
     tx->device = dev->device;
     tx->set_content(img, type);
     return tx;
+}
+
+Texture Texture::of_size(Device &dev, vec2i size, TextureFormat2 f) {
+    WGPUTextureFormat        format = f.convert();
+    WGPUTextureDescriptor   tx_desc {
+        .dimension                  = WGPUTextureDimension_2D,
+        .size.width                 = (u32)size.x,
+        .size.height                = (u32)size.y,
+        .size.depthOrArrayLayers    = 1,
+        .sampleCount                = 1,
+        .format                     = preferred_swapchain_format(),
+        .mipLevelCount              = 1,
+        .usage                      = WGPUTextureUsage_CopyDst        | 
+                                      WGPUTextureUsage_TextureBinding | 
+                                      WGPUTextureUsage_RenderAttachment
+    };
+
+    WGPUTextureViewDescriptor vdesc {
+        .format                     = preferred_swapchain_format(),
+        .dimension                  = WGPUTextureViewDimension_2D,
+        .baseMipLevel               = 0,
+        .mipLevelCount              = 1,
+        .baseArrayLayer             = 0,
+        .arrayLayerCount            = 1
+    };
+
+    device                          = dev->device;
+    sz                              = size;
+    texture                         = WGPUCreateTexture(device, &tx_desc);
+    view                            = WGPUCreateTextureView(texture, &vdesc);
+    
+    WGPUSamplerDescriptor     sdesc {
+        .addressModeU               = WGPUAddressMode_Repeat,
+        .addressModeV               = WGPUAddressMode_Repeat,
+        .addressModeW               = WGPUAddressMode_Repeat,
+        .magFilter                  = WGPUFilterMode_Linear,
+        .minFilter                  = WGPUFilterMode_Linear,
+        .mipmapFilter               = WGPUFilterMode_Linear,
+        .lodMinClamp                = 0.0f,
+        .lodMaxClamp                = FLT_MAX,
+        .compare                    = WGPUCompareFunction_Undefined
+    };
+    
+    sampler                         = wgpuDeviceCreateSampler(device, &sampler_desc);
 }
 
 /// make this not a static method; change the texture already in memory
@@ -589,19 +677,21 @@ struct IPipeline {
         Dawn dawn;
         dawn.process_events();
     }
-
-    void submit(RenderPass &render) {
-        wgpu::Queue queue = device->device.GetQueue();
-        wgpu::CommandEncoder encoder = device->device.CreateCommandEncoder();
-        wgpu::RenderPassEncoder pass = encoder.BeginRenderPass(&render);
-        pass.SetPipeline(pipeline);
-        pass.SetBindGroup(0, bind_group);
-        pass.SetVertexBuffer(0, vertex_buffer);
-        pass.SetIndexBuffer(index_buffer, wgpu::IndexFormat::Uint32);
-        pass.DrawIndexed(indices_count);
-        pass.End();
-        wgpu::CommandBuffer commands = encoder.Finish();
-        queue.Submit(1, &commands);
+    void submit(WGPUQueue queue, WGPURenderPassEncoder encoder) {
+        
+        WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device->device.Get(), NULL);
+        WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, render.Get());
+        wgpuRenderPassEncoderSetPipeline(pass, pipeline.Get());
+        wgpuRenderPassEncoderSetBindGroup(pass, 0, bind_group.Get(), 0, NULL);
+        wgpuRenderPassEncoderSetVertexBuffer(pass, 0, vertex_buffer.Get(), 0, WGPU_WHOLE_SIZE);
+        wgpuRenderPassEncoderSetIndexBuffer(pass, index_buffer.Get(), WGPUIndexFormat_Uint32, 0, WGPU_WHOLE_SIZE);
+        wgpuRenderPassEncoderDrawIndexed(pass, indices_count, 1, 0, 0, 0);
+        wgpuRenderPassEncoderEnd(pass);
+        WGPUCommandBuffer commands = wgpuCommandEncoderFinish(encoder, NULL);
+        wgpuQueueSubmit(queue, 1, &commands);
+        wgpuCommandBufferRelease(commands);
+        wgpuCommandEncoderRelease(encoder);
+        wgpuQueueRelease(queue);
     }
 
     void start() {
@@ -875,11 +965,13 @@ struct IWindow {
     WGPUDevice                  gpu;
     Device                      device;
     Texture                     texture;
-    wgpu::Sampler               sampler; /// 'device' default sampler
-    wgpu::Queue                 queue;
-    wgpu::SwapChain             swapchain;
-    wgpu::TextureView           depthStencilView;
-    
+
+    WGPUSampler                 sampler; /// 'device' default sampler
+    WGPUQueue                   queue;
+    WGPUSwapChain               swapchain;
+    WGPUTextureView             depthStencilView;
+    WGPUCommandEncoder          encoder;
+
     Pipes                       canvas_pipeline;
     Canvas                      canvas;
     Scene                       scene;
@@ -981,39 +1073,68 @@ struct IWindow {
         if (iwin->key_scancode) iwin->key_scancode(key, scancode, action, mods);
     }
 
-    wgpu::TextureView depth_stencil_view() {
-        wgpu::TextureDescriptor descriptor;
-        descriptor.dimension = wgpu::TextureDimension::e2D;
-        descriptor.size.width = (u32)sz.x;
-        descriptor.size.height = (u32)sz.y;
+    WGPUTextureView depth_stencil_view() {
+        WGPUTextureDescriptor descriptor = {0};
+        descriptor.dimension = WGPUTextureDimension_2D;
+        descriptor.size.width = sz.width;
+        descriptor.size.height = sz.height;
         descriptor.size.depthOrArrayLayers = 1;
         descriptor.sampleCount = 1;
-        descriptor.format = wgpu::TextureFormat::Depth24PlusStencil8;
+        descriptor.format = WGPUTextureFormat_Depth24PlusStencil8;
         descriptor.mipLevelCount = 1;
-        descriptor.usage = wgpu::TextureUsage::RenderAttachment;
-        auto depthStencilTexture = device->device.CreateTexture(&descriptor);
-        return depthStencilTexture.CreateView();
+        descriptor.usage = WGPUTextureUsage_RenderAttachment;
+
+        WGPUTexture depthStencilTexture = wgpuDeviceCreateTexture(device, &descriptor);
+        WGPUTextureViewDescriptor viewDescriptor = {0};
+        viewDescriptor.format = descriptor.format;
+        viewDescriptor.dimension = WGPUTextureViewDimension_2D;
+        viewDescriptor.baseMipLevel = 0;
+        viewDescriptor.mipLevelCount = 1;
+        viewDescriptor.baseArrayLayer = 0;
+        viewDescriptor.arrayLayerCount = 1;
+        WGPUTextureView depthStencilView = wgpuTextureCreateView(depthStencilTexture, &viewDescriptor);
+        wgpuTextureRelease(depthStencilTexture);
+        return depthStencilView;
     }
 
     void update_texture() {
-        wgpu::TextureDescriptor tx_desc;
-        tx_desc.dimension               = wgpu::TextureDimension::e2D;
+        WGPUTextureDescriptor tx_desc {};
+        tx_desc.dimension               = WGPUTextureDimension_2D;
         tx_desc.size.width              = (u32)sz.x;
         tx_desc.size.height             = (u32)sz.y;
         tx_desc.size.depthOrArrayLayers = 1;
         tx_desc.sampleCount             = 1;
         tx_desc.format                  = preferred_swapchain_format();
         tx_desc.mipLevelCount           = 1;
-        tx_desc.usage                   = wgpu::TextureUsage::CopyDst | 
-                                          wgpu::TextureUsage::TextureBinding | 
-                                          wgpu::TextureUsage::RenderAttachment;
+        tx_desc.usage                   = WGPUTextureUsage_CopyDst | 
+                                          WGPUTextureUsage_TextureBinding | 
+                                          WGPUTextureUsage_RenderAttachment;
+
+        WGPUTextureViewDescriptor vdesc = {0};
+        vdesc.format          = preferred_swapchain_format();
+        vdesc.dimension       = WGPUTextureViewDimension_2D;
+        vdesc.baseMipLevel    = 0;
+        vdesc.mipLevelCount   = 1;
+        vdesc.baseArrayLayer  = 0;
+        vdesc.arrayLayerCount = 1;
 
         texture->device  = device->device;
-        texture->texture = device->device.CreateTexture(&tx_desc);
-        texture->view    = texture->texture.CreateView();
+        texture->texture = WGPUCreateTexture(texture->device, &tx_desc);
+        texture->view    = WGPUCreateTextureView(texture->texture, &vdesc);
         texture->sz      = sz;
-        texture->sampler = device->device.CreateSampler();
-        
+
+        WGPUSamplerDescriptor sampler_desc = {
+            .addressModeU   = WGPUAddressMode_Repeat,
+            .addressModeV   = WGPUAddressMode_Repeat,
+            .addressModeW   = WGPUAddressMode_Repeat,
+            .magFilter      = WGPUFilterMode_Linear,
+            .minFilter      = WGPUFilterMode_Linear,
+            .mipmapFilter   = WGPUFilterMode_Linear,
+            .lodMinClamp    = 0.0f,
+            .lodMaxClamp    = FLT_MAX,
+            .compare        = WGPUCompareFunction_Undefined
+        };
+        texture->sampler = wgpuDeviceCreateSampler(texture->device, &sampler_desc);
         canvas    = Canvas(device, texture, true);
     }
 
@@ -1135,6 +1256,8 @@ struct IWindow {
 
         wgpu::TextureView swap_view = swapchain.GetCurrentTextureView();
         RenderPass render({swap_view}, depthStencilView, rgbaf {0.0, 0.0, 0.5, 1.0});
+        
+        WGPUQueue queue = wgpuDeviceGetQueue(device->device.Get());
 
         /// render webgpu
         if (fn_scene_render) {
@@ -1142,7 +1265,7 @@ struct IWindow {
             Scene scene = fn_scene_render();
             for (Pipes &p: scene) {
                 for (Pipeline &pipeline: p->pipelines) {
-                    pipeline->submit(render);
+                    pipeline->submit(queue.Get(), encoder);
                     has_pipeline = true;
                 }
             }

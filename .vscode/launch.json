@@ -31,10 +31,10 @@
             "justMyCode": true
         },
         {
-            "name": "webgpu-test2",
+            "name": "webgpu-test",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/../hyperspace/build/webgpu-test2",
+            "program": "${workspaceFolder}/../hyperspace/build/webgpu-test",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/../hyperspace/build",

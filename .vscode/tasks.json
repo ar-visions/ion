@@ -2,7 +2,7 @@
 	"version": "2.0.0",
 	"tasks": [
         {
-            "label": "build-webgpu-test2",
+            "label": "build-webgpu-test",
             "type": "shell",
 			"options": {
                 "cwd": "${workspaceFolder}/../hyperspace/build"
@@ -20,13 +20,13 @@
 			"isBackground": false,
 			"problemMatcher": ["$gcc"],
             "windows": {
-                "command": "msbuild hyperspace.sln /t:webgpu-test2"
+                "command": "msbuild hyperspace.sln /t:webgpu-test"
             },
             "osx": {
-                "command": "make webgpu-test2 -j16"
+                "command": "make webgpu-test -j16"
             },
             "linux": {
-                "command": "make webgpu-test2 -j16",
+                "command": "make webgpu-test -j16",
                 "options":{
                     "env":{"VERBOSE":"1"}
                 }

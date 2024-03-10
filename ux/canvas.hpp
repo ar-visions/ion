@@ -1,12 +1,13 @@
 #pragma once
-#include <dawn/webgpu_cpp.h>
-#include <dawn/native/DawnNative.h>
+
+//#include <dawn/webgpu_cpp.h>
+//#include <dawn/native/DawnNative.h>
+//#include <webgpu/webgpu.h>
 
 #include <async/async.hpp>
 #include <watch/watch.hpp>
 #include <media/media.hpp>
 #include <media/image.hpp>
-#include <webgpu/webgpu.h>
 #include <ux/gltf.hpp>
 
 struct SkCanvas;
@@ -43,29 +44,158 @@ enums(Key, undefined,
     RIGHT_SHIFT=344, RIGHT_CONTROL=345, RIGHT_ALT=346, RIGHT_SUPER=347, MENU=348
 )
 
-// not working somehow:
-//using RenderPass = dawn::utils::ComboRenderPassDescriptor;
-struct RenderPass : public wgpu::RenderPassDescriptor {
-    static inline const int kMaxColorAttachments = 8;
-    RenderPass(const std::vector<wgpu::TextureView>& colorAttachmentInfo = {},
-                              wgpu::TextureView depthStencil = wgpu::TextureView(), rgbaf clear_color = {0.0, 0.0, 0.0, 0.0});
-    ~RenderPass();
-
-    RenderPass(const RenderPass& otherRenderPass);
-    const RenderPass& operator=(const RenderPass& otherRenderPass);
-
-    void UnsetDepthStencilLoadStoreOpsForFormat(wgpu::TextureFormat format);
-
-    void disable_clear_color();
-    void disable_clear_depth();
-
-    std::array<wgpu::RenderPassColorAttachment, kMaxColorAttachments> cColorAttachments;
-    wgpu::RenderPassDepthStencilAttachment cDepthStencilAttachmentInfo = {};
-};
-
 /// texture is using this; todo: make a dawn module
 enums(Asset, undefined, 
      color, normal, material, reflect, env, undefined); /// populate from objects normal map first, and then adjust by equirect if its provided
+
+struct WGPUTextureFormatWrapper;
+struct TextureFormat2:ex {
+    enum etype {
+        Undefined = 0x00000000,
+        BGRA8Unorm = 0x00000017
+     };
+    enum etype&    value;
+    inline static const type_t intern_t = typeof(etype);
+    static memory* lookup(symbol sym) { return typeof(TextureFormat2)->lookup(sym); }
+    static memory* lookup(i64     id) { return typeof(TextureFormat2)->lookup(id);  }
+    static doubly<memory*> &symbols() { return typeof(TextureFormat2)->symbols->list; }
+    inline static const int count = num_args(Undefined = 0x00000000, BGRA8Unorm = 0x00000017);
+    inline static const str raw   = str_args(Undefined = 0x00000000, BGRA8Unorm = 0x00000017);
+    ion::symbol symbol();
+    str name();
+    memory *to_string();
+    TextureFormat2(enum etype t = etype::Undefined);
+    TextureFormat2(size_t     t);
+    TextureFormat2(int        t);
+    TextureFormat2(str sraw);
+    TextureFormat2(mx  mraw);
+    TextureFormat2(ion::symbol sym);
+    TextureFormat2(memory* mem);
+    inline  operator etype();
+    TextureFormat2&      operator=  (const TextureFormat2 b);
+    bool    operator== (enum etype v);
+    bool    operator== (ion::symbol v);
+    bool    operator!= (enum etype v);
+    bool    operator>  (TextureFormat2 &b);
+    bool    operator<  (TextureFormat2 &b);
+    bool    operator>= (TextureFormat2 &b);
+    bool    operator<= (TextureFormat2 &b);
+    explicit operator int();
+    explicit operator i64();
+    operator str();
+    TextureFormat2(const WGPUTextureFormatWrapper &r);
+    WGPUTextureFormatWrapper convert();
+    type_register(TextureFormat2);
+};
+
+/*
+enums_declare(TextureFormat2, Undefined, WGPUTextureFormat,
+    Undefined = 0x00000000,
+    R8Unorm = 0x00000001,
+    R8Snorm = 0x00000002,
+    R8Uint = 0x00000003,
+    R8Sint = 0x00000004,
+    R16Uint = 0x00000005,
+    R16Sint = 0x00000006,
+    R16Float = 0x00000007,
+    RG8Unorm = 0x00000008,
+    RG8Snorm = 0x00000009,
+    RG8Uint = 0x0000000A,
+    RG8Sint = 0x0000000B,
+    R32Float = 0x0000000C,
+    R32Uint = 0x0000000D,
+    R32Sint = 0x0000000E,
+    RG16Uint = 0x0000000F,
+    RG16Sint = 0x00000010,
+    RG16Float = 0x00000011,
+    RGBA8Unorm = 0x00000012,
+    RGBA8UnormSrgb = 0x00000013,
+    RGBA8Snorm = 0x00000014,
+    RGBA8Uint = 0x00000015,
+    RGBA8Sint = 0x00000016,
+    BGRA8Unorm = 0x00000017,
+    BGRA8UnormSrgb = 0x00000018,
+    RGB10A2Uint = 0x00000019,
+    RGB10A2Unorm = 0x0000001A,
+    RG11B10Ufloat = 0x0000001B,
+    RGB9E5Ufloat = 0x0000001C,
+    RG32Float = 0x0000001D,
+    RG32Uint = 0x0000001E,
+    RG32Sint = 0x0000001F,
+    RGBA16Uint = 0x00000020,
+    RGBA16Sint = 0x00000021,
+    RGBA16Float = 0x00000022,
+    RGBA32Float = 0x00000023,
+    RGBA32Uint = 0x00000024,
+    RGBA32Sint = 0x00000025,
+    Stencil8 = 0x00000026,
+    Depth16Unorm = 0x00000027,
+    Depth24Plus = 0x00000028,
+    Depth24PlusStencil8 = 0x00000029,
+    Depth32Float = 0x0000002A,
+    Depth32FloatStencil8 = 0x0000002B,
+    BC1RGBAUnorm = 0x0000002C,
+    BC1RGBAUnormSrgb = 0x0000002D,
+    BC2RGBAUnorm = 0x0000002E,
+    BC2RGBAUnormSrgb = 0x0000002F,
+    BC3RGBAUnorm = 0x00000030,
+    BC3RGBAUnormSrgb = 0x00000031,
+    BC4RUnorm = 0x00000032,
+    BC4RSnorm = 0x00000033,
+    BC5RGUnorm = 0x00000034,
+    BC5RGSnorm = 0x00000035,
+    BC6HRGBUfloat = 0x00000036,
+    BC6HRGBFloat = 0x00000037,
+    BC7RGBAUnorm = 0x00000038,
+    BC7RGBAUnormSrgb = 0x00000039,
+    ETC2RGB8Unorm = 0x0000003A,
+    ETC2RGB8UnormSrgb = 0x0000003B,
+    ETC2RGB8A1Unorm = 0x0000003C,
+    ETC2RGB8A1UnormSrgb = 0x0000003D,
+    ETC2RGBA8Unorm = 0x0000003E,
+    ETC2RGBA8UnormSrgb = 0x0000003F,
+    EACR11Unorm = 0x00000040,
+    EACR11Snorm = 0x00000041,
+    EACRG11Unorm = 0x00000042,
+    EACRG11Snorm = 0x00000043,
+    ASTC4x4Unorm = 0x00000044,
+    ASTC4x4UnormSrgb = 0x00000045,
+    ASTC5x4Unorm = 0x00000046,
+    ASTC5x4UnormSrgb = 0x00000047,
+    ASTC5x5Unorm = 0x00000048,
+    ASTC5x5UnormSrgb = 0x00000049,
+    ASTC6x5Unorm = 0x0000004A,
+    ASTC6x5UnormSrgb = 0x0000004B,
+    ASTC6x6Unorm = 0x0000004C,
+    ASTC6x6UnormSrgb = 0x0000004D,
+    ASTC8x5Unorm = 0x0000004E,
+    ASTC8x5UnormSrgb = 0x0000004F,
+    ASTC8x6Unorm = 0x00000050,
+    ASTC8x6UnormSrgb = 0x00000051,
+    ASTC8x8Unorm = 0x00000052,
+    ASTC8x8UnormSrgb = 0x00000053,
+    ASTC10x5Unorm = 0x00000054,
+    ASTC10x5UnormSrgb = 0x00000055,
+    ASTC10x6Unorm = 0x00000056,
+    ASTC10x6UnormSrgb = 0x00000057,
+    ASTC10x8Unorm = 0x00000058,
+    ASTC10x8UnormSrgb = 0x00000059,
+    ASTC10x10Unorm = 0x0000005A,
+    ASTC10x10UnormSrgb = 0x0000005B,
+    ASTC12x10Unorm = 0x0000005C,
+    ASTC12x10UnormSrgb = 0x0000005D,
+    ASTC12x12Unorm = 0x0000005E,
+    ASTC12x12UnormSrgb = 0x0000005F,
+    R16Unorm = 0x00000060,
+    RG16Unorm = 0x00000061,
+    RGBA16Unorm = 0x00000062,
+    R16Snorm = 0x00000063,
+    RG16Snorm = 0x00000064,
+    RGBA16Snorm = 0x00000065,
+    R8BG8Biplanar420Unorm = 0x00000066,
+    R10X6BG10X6Biplanar420Unorm = 0x00000067,
+    R8BG8A8Triplanar420Unorm = 0x00000068)
+*/
 
 struct IDevice;
 struct Device:mx {
@@ -78,6 +208,7 @@ struct Texture:mx {
     static Texture    load(Device &dev, symbol name, Asset type);
     static ion::image asset_image(symbol name, Asset type);
     static Texture    from_image(Device &dev, image img, Asset type);
+    static Texture    of_size(Device &, vec2i, TextureFormat2 = TextureFormat2::BGRA8Unorm);
 
     void update(image img);
 };
@@ -627,7 +758,7 @@ struct Canvas:mx {
 
     Canvas(Device device, Texture texture, bool use_hidpi);
 
-    WGPUTexture texture();
+    Texture texture();
 
     u32 get_virtual_width();
     u32 get_virtual_height();
