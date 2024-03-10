@@ -114,6 +114,9 @@ src(
     ${dawn_src}/native/null/*.cpp
     ${dawn_src}/native/utils/*.cpp
     ${dawn_src}/native/stream/*.cpp
+    ${dawn_src}/samples/SampleUtils.cpp
+    ${dawn_src}/wire/client/*.cpp
+    ${dawn_src}/wire/server/*.cpp
     ${dawn_src}/utils/*.cpp
     ${dawn_src}/wire/*.cpp
     ${dawn_src}/glfw/*.cpp
@@ -299,6 +302,7 @@ src(
 )
 
 src(
+    -_mock.cpp
     -_win.cpp
     -_fuzz.cpp
     -_coretext.cpp

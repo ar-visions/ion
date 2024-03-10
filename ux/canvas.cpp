@@ -584,7 +584,7 @@ struct IPipeline {
 
         render_desc.fragment = &fragmentState;
         */
-       
+
         pipeline = device.CreateRenderPipeline(&render_desc);
         Dawn dawn;
         dawn.process_events();
