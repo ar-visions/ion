@@ -90,16 +90,12 @@ includes(
     ${EXTERN_DIR}/dawn
     ${dawn_gen}/include
     ${dawn_gen}/src
-    ${dawn_gen}/src/dawn/native
-    ${dawn_gen}/src/dawn/common
     ${dawn_gen}/src/dawn/wire
     ${dawn_gen}/src/dawn/wire/server
     ${dawn_gen}/src/dawn/wire/client
     ${EXTERN_DIR}/dawn/src
     ${dawn_src}/partition_alloc
-    ${dawn_src}/native
     ${dawn_src}/native/utils
-    ${dawn_src}/common
     ${dawn_src}/utils
     ${dawn_src}/wire
     ${dawn_src}/wire/server
@@ -296,9 +292,6 @@ src(
     ${skia_src}/ports/SkMemory_malloc.cpp
     ${skia_src}/ports/SkOSFile_stdio.cpp
     ${skia_dir}/tools/GpuToolUtils.cpp
-    ${skia_dir}/tools/window/WindowContext.cpp
-    ${skia_dir}/tools/window/GraphiteDawnWindowContext.cpp
-    ${skia_dir}/tools/window/unix/GraphiteDawnVulkanWindowContext_unix.cpp
 )
 
 src(

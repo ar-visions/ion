@@ -36,8 +36,7 @@
 
 #include "include/gpu/graphite/dawn/DawnUtils.h"
 #include "include/gpu/graphite/dawn/DawnTypes.h"
-#include <tools/window/unix/WindowContextFactory_unix.h>
-#include <tools/window/WindowContext.h>
+
 #include <gpu/graphite/BackendTexture.h>
 #include <gpu/graphite/dawn/DawnBackendContext.h>
 #include <gpu/graphite/Context.h>
@@ -93,6 +92,9 @@ struct WGPUTextureFormatWrapper {
     WGPUTextureFormat value;
     WGPUTextureFormatWrapper(WGPUTextureFormat v) : value(v) { }
     WGPUTextureFormatWrapper(int v) : value((WGPUTextureFormat)v) { }
+    operator WGPUTextureFormat() {
+        return value;
+    }
 };
 
 ion::symbol TextureFormat2::symbol() {\
@@ -128,7 +130,9 @@ TextureFormat2::operator int()         { return int(value); }\
 TextureFormat2::operator i64()         { return i64(value); }\
 TextureFormat2::operator str()         { return symbol(); }\
 TextureFormat2::TextureFormat2(const WGPUTextureFormatWrapper &r):TextureFormat2((enum etype)(int)r.value) { }\
-WGPUTextureFormatWrapper TextureFormat2::convert() { return WGPUTextureFormatWrapper((int)value)}
+WGPUTextureFormatWrapper TextureFormat2::convert() {\
+    return WGPUTextureFormatWrapper((int)value);\
+}\
 
 struct IDevice {
     wgpu::Device device;
@@ -183,8 +187,8 @@ struct ITexture {
     type_register(ITexture);
 };
 
-static wgpu::TextureFormat preferred_swapchain_format() {
-    return wgpu::TextureFormat::BGRA8Unorm;
+static WGPUTextureFormat preferred_swapchain_format() {
+    return WGPUTextureFormat_BGRA8Unorm;
 }
 
 static bool is_wayland() {
