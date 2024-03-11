@@ -48,47 +48,6 @@ enums(Key, undefined,
 enums(Asset, undefined, 
      color, normal, material, reflect, env, undefined); /// populate from objects normal map first, and then adjust by equirect if its provided
 
-struct WGPUTextureFormatWrapper;
-struct TextureFormat2:ex {
-    enum etype {
-        Undefined = 0x00000000,
-        BGRA8Unorm = 0x00000017
-     };
-    enum etype&    value;
-    inline static const type_t intern_t = typeof(etype);
-    static memory* lookup(symbol sym) { return typeof(TextureFormat2)->lookup(sym); }
-    static memory* lookup(i64     id) { return typeof(TextureFormat2)->lookup(id);  }
-    static doubly<memory*> &symbols() { return typeof(TextureFormat2)->symbols->list; }
-    inline static const int count = num_args(Undefined = 0x00000000, BGRA8Unorm = 0x00000017);
-    inline static const str raw   = str_args(Undefined = 0x00000000, BGRA8Unorm = 0x00000017);
-    ion::symbol symbol();
-    str name();
-    memory *to_string();
-    TextureFormat2(enum etype t = etype::Undefined);
-    TextureFormat2(size_t     t);
-    TextureFormat2(int        t);
-    TextureFormat2(str sraw);
-    TextureFormat2(mx  mraw);
-    TextureFormat2(ion::symbol sym);
-    TextureFormat2(memory* mem);
-    inline  operator etype();
-    TextureFormat2&      operator=  (const TextureFormat2 b);
-    bool    operator== (enum etype v);
-    bool    operator== (ion::symbol v);
-    bool    operator!= (enum etype v);
-    bool    operator>  (TextureFormat2 &b);
-    bool    operator<  (TextureFormat2 &b);
-    bool    operator>= (TextureFormat2 &b);
-    bool    operator<= (TextureFormat2 &b);
-    explicit operator int();
-    explicit operator i64();
-    operator str();
-    TextureFormat2(const WGPUTextureFormatWrapper &r);
-    WGPUTextureFormatWrapper convert();
-    type_register(TextureFormat2);
-};
-
-/*
 enums_declare(TextureFormat2, Undefined, WGPUTextureFormat,
     Undefined = 0x00000000,
     R8Unorm = 0x00000001,
@@ -194,8 +153,8 @@ enums_declare(TextureFormat2, Undefined, WGPUTextureFormat,
     RGBA16Snorm = 0x00000065,
     R8BG8Biplanar420Unorm = 0x00000066,
     R10X6BG10X6Biplanar420Unorm = 0x00000067,
-    R8BG8A8Triplanar420Unorm = 0x00000068)
-*/
+    R8BG8A8Triplanar420Unorm = 0x00000068
+)
 
 struct IDevice;
 struct Device:mx {

@@ -43,11 +43,11 @@
 #include <gpu/graphite/ContextOptions.h>
 #include <gpu/graphite/Surface.h>
 #include <gpu/graphite/Surface_Graphite.h>
+#include <gpu/GrContextOptions.h>
 #include <tools/GpuToolUtils.h>
+#include <tools/window/WindowContext.h>
+#include <tools/graphite/ContextFactory.h>
 
-
-#include "tools/graphite/ContextFactory.h"
-#include "gpu/graphite/ContextOptions.h"
 #include "core/SkPath.h"
 #include "core/SkFont.h"
 #include "core/SkRRect.h"
@@ -83,68 +83,25 @@
 
 using namespace ion;
 
+#define MAX_ATTRIBUTES 8
+
 namespace ion {
 
 /// better form of enum here, even if it is two/three part.
-//enums_define (TextureFormat2, WGPUTextureFormat)
-
-struct WGPUTextureFormatWrapper {
-    WGPUTextureFormat value;
-    WGPUTextureFormatWrapper(WGPUTextureFormat v) : value(v) { }
-    WGPUTextureFormatWrapper(int v) : value((WGPUTextureFormat)v) { }
-    operator WGPUTextureFormat() {
-        return value;
-    }
-};
-
-ion::symbol TextureFormat2::symbol() {\
-    memory *mem = typeof(TextureFormat2)->lookup(i64(value));\
-    if (!mem) printf("symbol: mem is null for value %d\n", (int)value);\
-    assert(mem);\
-    return (char*)mem->origin;\
-}\
-str TextureFormat2::name() { return (char*)symbol(); }\
-memory *TextureFormat2::to_string() { return typeof(TextureFormat2)->lookup(i64(value)); }\
-TextureFormat2::TextureFormat2(enum etype t)           :ex(initialize(this,             t, (ion::symbol)raw.cs(), typeof(TextureFormat2)), this), value(ref<enum etype>()) { }\
-TextureFormat2::TextureFormat2(size_t     t)           :ex(initialize(this, (enum etype)t, (ion::symbol)raw.cs(), typeof(TextureFormat2)), this), value(ref<enum etype>()) { }\
-TextureFormat2::TextureFormat2(int        t)           :ex(initialize(this, (enum etype)t, (ion::symbol)raw.cs(), typeof(TextureFormat2)), this), value(ref<enum etype>()) { }\
-TextureFormat2::TextureFormat2(str sraw):TextureFormat2(ex::convert(sraw, (ion::symbol)TextureFormat2::raw.cs(), (TextureFormat2*)null)) { }\
-TextureFormat2::TextureFormat2(mx  mraw):TextureFormat2(ex::convert(mraw, (ion::symbol)TextureFormat2::raw.cs(), (TextureFormat2*)null)) { }\
-TextureFormat2::TextureFormat2(ion::symbol sym):TextureFormat2(ex::convert(sym, (ion::symbol)TextureFormat2::raw.cs(), (TextureFormat2*)null)) { }\
-TextureFormat2::TextureFormat2(memory* mem):TextureFormat2(mx(mem)) { }\
-        TextureFormat2::operator etype() { return value; }\
-TextureFormat2&      TextureFormat2::operator=  (const TextureFormat2 b)  { return (TextureFormat2&)assign_mx(*this, b); }\
-bool    TextureFormat2::operator== (enum etype v) { return value == v; }\
-bool    TextureFormat2::operator== (ion::symbol v) {\
-    if (!mem && !v)\
-        return true;\
-    memory *m = lookup(v);\
-    return (int)m->id == (int)value;\
-}\
-bool    TextureFormat2::operator!= (enum etype v) { return value != v; }\
-bool    TextureFormat2::operator>  (TextureFormat2 &b)       { return value >  b.value; }\
-bool    TextureFormat2::operator<  (TextureFormat2 &b)       { return value <  b.value; }\
-bool    TextureFormat2::operator>= (TextureFormat2 &b)       { return value >= b.value; }\
-bool    TextureFormat2::operator<= (TextureFormat2 &b)       { return value <= b.value; }\
-TextureFormat2::operator int()         { return int(value); }\
-TextureFormat2::operator i64()         { return i64(value); }\
-TextureFormat2::operator str()         { return symbol(); }\
-TextureFormat2::TextureFormat2(const WGPUTextureFormatWrapper &r):TextureFormat2((enum etype)(int)r.value) { }\
-WGPUTextureFormatWrapper TextureFormat2::convert() {\
-    return WGPUTextureFormatWrapper((int)value);\
-}\
+enums_define (TextureFormat2, WGPUTextureFormat)
 
 struct IDevice {
-    wgpu::Device device;
+    WGPUDevice device;
+    WGPUQueue  queue;
     register(IDevice)
 };
 
 /// for now leave these in here; it should eventually go in a Dawn module
 struct ITexture {
-    wgpu::Device        device;
-    wgpu::Texture       texture;
-    wgpu::TextureView   view;
-    wgpu::Sampler       sampler;
+    WGPUDevice          device;
+    WGPUTexture         texture;
+    WGPUTextureView     view;
+    WGPUSampler         sampler;
     vec2i               sz;
     Asset               asset_type;
     bool                updated;
@@ -217,20 +174,19 @@ Texture Texture::from_image(Device &dev, image img, Asset type) {
 }
 
 Texture Texture::of_size(Device &dev, vec2i size, TextureFormat2 f) {
-    WGPUTextureFormat        format = f.convert();
+    WGPUDevice              device  = dev->device;
+    Texture                 texture;
+    WGPUTextureFormat       format  = f.convert();
     WGPUTextureDescriptor   tx_desc {
-        .dimension                  = WGPUTextureDimension_2D,
-        .size.width                 = (u32)size.x,
-        .size.height                = (u32)size.y,
-        .size.depthOrArrayLayers    = 1,
-        .sampleCount                = 1,
-        .format                     = preferred_swapchain_format(),
-        .mipLevelCount              = 1,
         .usage                      = WGPUTextureUsage_CopyDst        | 
                                       WGPUTextureUsage_TextureBinding | 
-                                      WGPUTextureUsage_RenderAttachment
+                                      WGPUTextureUsage_RenderAttachment,
+        .dimension                  = WGPUTextureDimension_2D,
+        .size                       = { (u32)size.x, (u32)size.y, 1 },
+        .format                     = preferred_swapchain_format(),
+        .mipLevelCount              = 1,
+        .sampleCount                = 1
     };
-
     WGPUTextureViewDescriptor vdesc {
         .format                     = preferred_swapchain_format(),
         .dimension                  = WGPUTextureViewDimension_2D,
@@ -240,24 +196,25 @@ Texture Texture::of_size(Device &dev, vec2i size, TextureFormat2 f) {
         .arrayLayerCount            = 1
     };
 
-    device                          = dev->device;
-    sz                              = size;
-    texture                         = WGPUCreateTexture(device, &tx_desc);
-    view                            = WGPUCreateTextureView(texture, &vdesc);
+    texture->device                 = device;
+    texture->sz                     = size;
+    texture->texture                = wgpuDeviceCreateTexture(device, &tx_desc);
+    texture->view                   = wgpuTextureCreateView(texture->texture, &vdesc);
     
-    WGPUSamplerDescriptor     sdesc {
+    WGPUSamplerDescriptor sampler_desc {
         .addressModeU               = WGPUAddressMode_Repeat,
         .addressModeV               = WGPUAddressMode_Repeat,
         .addressModeW               = WGPUAddressMode_Repeat,
         .magFilter                  = WGPUFilterMode_Linear,
         .minFilter                  = WGPUFilterMode_Linear,
-        .mipmapFilter               = WGPUFilterMode_Linear,
+        .mipmapFilter               = WGPUMipmapFilterMode_Linear,
         .lodMinClamp                = 0.0f,
         .lodMaxClamp                = FLT_MAX,
         .compare                    = WGPUCompareFunction_Undefined
     };
     
-    sampler                         = wgpuDeviceCreateSampler(device, &sampler_desc);
+    texture->sampler                = wgpuDeviceCreateSampler(device, &sampler_desc);
+    return texture;
 }
 
 /// make this not a static method; change the texture already in memory
@@ -269,100 +226,16 @@ void Texture::update(image img) {
     data->update_image(img);
 }
 
-void RenderPass::disable_clear_color() {
-    for (uint32_t i = 0; i < kMaxColorAttachments; ++i) {
-        cColorAttachments[i].loadOp = wgpu::LoadOp::Load;
-    }
-}
-
-void RenderPass::disable_clear_depth() {
-    cDepthStencilAttachmentInfo.depthLoadOp = wgpu::LoadOp::Load;
-    cDepthStencilAttachmentInfo.stencilLoadOp = wgpu::LoadOp::Load;
-}
-
-RenderPass::RenderPass(
-    const std::vector<wgpu::TextureView>& colorAttachmentInfo,
-    wgpu::TextureView depthStencil, rgbaf clear_color) {
-    for (uint32_t i = 0; i < kMaxColorAttachments; ++i) {
-        cColorAttachments[i].loadOp = wgpu::LoadOp::Clear;
-        cColorAttachments[i].storeOp = wgpu::StoreOp::Store;
-        cColorAttachments[i].clearValue = {clear_color.r, clear_color.g, clear_color.b, clear_color.a};
-    }
-
-    cDepthStencilAttachmentInfo.depthClearValue = 1.0f;
-    cDepthStencilAttachmentInfo.stencilClearValue = 0;
-    cDepthStencilAttachmentInfo.depthLoadOp = wgpu::LoadOp::Clear;
-    cDepthStencilAttachmentInfo.depthStoreOp = wgpu::StoreOp::Store;
-    cDepthStencilAttachmentInfo.stencilLoadOp = wgpu::LoadOp::Clear;
-    cDepthStencilAttachmentInfo.stencilStoreOp = wgpu::StoreOp::Store;
-
-    colorAttachmentCount = colorAttachmentInfo.size();
-    uint32_t colorAttachmentIndex = 0;
-    for (const wgpu::TextureView& colorAttachment : colorAttachmentInfo) {
-        if (colorAttachment.Get() != nullptr) {
-            cColorAttachments[colorAttachmentIndex].view = colorAttachment;
-        }
-        ++colorAttachmentIndex;
-    }
-    colorAttachments = cColorAttachments.data();
-
-    if (depthStencil.Get() != nullptr) {
-        cDepthStencilAttachmentInfo.view = depthStencil;
-        depthStencilAttachment = &cDepthStencilAttachmentInfo;
-    } else {
-        depthStencilAttachment = nullptr;
-    }
-}
-
-RenderPass::~RenderPass() = default;
-
-RenderPass::RenderPass(const RenderPass& other) {
-    *this = other;
-}
-
-const RenderPass& RenderPass::operator=(
-    const RenderPass& otherRenderPass) {
-    cDepthStencilAttachmentInfo = otherRenderPass.cDepthStencilAttachmentInfo;
-    cColorAttachments = otherRenderPass.cColorAttachments;
-    colorAttachmentCount = otherRenderPass.colorAttachmentCount;
-
-    colorAttachments = cColorAttachments.data();
-
-    if (otherRenderPass.depthStencilAttachment != nullptr) {
-        // Assign desc.depthStencilAttachment to this->depthStencilAttachmentInfo;
-        depthStencilAttachment = &cDepthStencilAttachmentInfo;
-    } else {
-        depthStencilAttachment = nullptr;
-    }
-
-    return *this;
-}
-void RenderPass::UnsetDepthStencilLoadStoreOpsForFormat(wgpu::TextureFormat format) {
-    switch (format) {
-        case wgpu::TextureFormat::Depth24Plus:
-        case wgpu::TextureFormat::Depth32Float:
-        case wgpu::TextureFormat::Depth16Unorm:
-            cDepthStencilAttachmentInfo.stencilLoadOp = wgpu::LoadOp::Undefined;
-            cDepthStencilAttachmentInfo.stencilStoreOp = wgpu::StoreOp::Undefined;
-            break;
-        case wgpu::TextureFormat::Stencil8:
-            cDepthStencilAttachmentInfo.depthLoadOp = wgpu::LoadOp::Undefined;
-            cDepthStencilAttachmentInfo.depthStoreOp = wgpu::StoreOp::Undefined;
-            break;
-        default:
-            break;
-    }
-}
-
 struct IDawn {
     #if defined(WIN32)
-        wgpu::BackendType backend_type = wgpu::BackendType::D3D12;
+        WGPUBackendType backend_type = WGPUBackendType_D3D12;
     #elif defined(__APPLE__)
-        wgpu::BackendType backend_type = wgpu::BackendType::Metal;
+        WGPUBackendType backend_type = WGPUBackendType_Metal;
     #elif defined(__linux__)
-        wgpu::BackendType backend_type = wgpu::BackendType::Vulkan;
+        WGPUBackendType backend_type = WGPUBackendType_Vulkan;
     #endif
-    std::unique_ptr<dawn::native::Instance> instance;
+    DawnProcTable   procs;
+    WGPUInstance    instance;
     register(IDawn);
 };
 
@@ -371,16 +244,15 @@ struct IPipeline {
     type_t                      vertex_type;
     mx                          user; // user data
 
-    wgpu::RenderPipeline        pipeline;
-    wgpu::BindGroup             bind_group;
-    wgpu::BindGroupLayout       bgl;
-    wgpu::Buffer                index_buffer;
-    wgpu::Buffer                vertex_buffer;
-    wgpu::PipelineLayout        pl;
+    WGPURenderPipeline          pipeline;
+    WGPUBindGroup               bind_group;
+    WGPUBindGroupLayout         bgl;
+    WGPUBuffer                  index_buffer;
+    WGPUBuffer                  vertex_buffer;
+    WGPUPipelineLayout          pl;
 
     str                         name; // Pipelines represent 'parts' of models and must have a name
     Device                      device;
-    wgpu::Buffer                uniform_buffer;
     memory*                     gmem; // graphics memory (grabbed)
     Graphics                    gfx;
     size_t                      indices_count;
@@ -391,13 +263,37 @@ struct IPipeline {
     bool                        updated;
     Texture                     textures[Asset::count - 1];
 
+    static WGPUBuffer create_index_buffer(WGPUDevice device, mx indexData) {
+        WGPUBufferDescriptor descriptor = {};
+        descriptor.usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst;
+        descriptor.size = indexData.count() * indexData.type()->base_sz;
+        descriptor.mappedAtCreation = true;
+        WGPUBuffer buffer = wgpuDeviceCreateBuffer(device, &descriptor);
+        void* mappedMemory = wgpuBufferGetMappedRange(buffer, 0, descriptor.size);
+        memcpy(mappedMemory, indexData.mem->origin, descriptor.size);
+        wgpuBufferUnmap(buffer);
+        return buffer;
+    }
+
+    static WGPUBuffer create_vertex_buffer(WGPUDevice device, mx vertexData) {
+        WGPUBufferDescriptor descriptor = {};
+        descriptor.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
+        descriptor.size = vertexData.count() * vertexData.type()->base_sz;
+        descriptor.mappedAtCreation = true;
+        WGPUBuffer buffer = wgpuDeviceCreateBuffer(device, &descriptor);
+        void* mappedMemory = wgpuBufferGetMappedRange(buffer, 0, descriptor.size);
+        memcpy(mappedMemory, vertexData.mem->origin, descriptor.size);
+        wgpuBufferUnmap(buffer);
+        return buffer;
+    }
+
     /// load shader, textures, create vbo/ibo
     void assemble_graphics(gltf::Model &m, Graphics &gfx) {
         using namespace gltf;
 
         str part = gfx->name;
         type_t vtype = gfx->vtype;
-        wgpu::Device device = this->device->device;
+        WGPUDevice device = this->device->device;
 
         mx              mx_vbuffer;
         mx              mx_ibuffer;
@@ -406,7 +302,16 @@ struct IPipeline {
         /// load shaders (cache these modules)
         path shader_path = fmt { "shaders/{0}.wgl", { gfx->shader } };
         str  shader_code = shader_path.read<str>();
-        wgpu::ShaderModule mod = dawn::utils::CreateShaderModule(device, shader_code);
+        //wgpu::ShaderModule mod = dawn::utils::CreateShaderModule(device, shader_code);
+
+        WGPUShaderModuleDescriptor descriptor {};
+        WGPUShaderModuleWGSLDescriptor wgslDescriptor {
+            .chain = { .sType = WGPUSType_ShaderModuleWGSLDescriptor },
+            .code  = (const char *)shader_code.cs()
+        };
+
+        descriptor.nextInChain = reinterpret_cast<const WGPUChainedStruct*>(&wgslDescriptor);
+        WGPUShaderModule mod = wgpuDeviceCreateShaderModule(device, &descriptor);
 
         /// load vbo/ibo data:
         /// if gen is set, we load from this, otherwise its a part from gltf model
@@ -532,52 +437,46 @@ struct IPipeline {
             }
         }
 
-        index_buffer = dawn::utils::CreateBufferFromData(
-            device, (void*)mx_ibuffer.origin<u32>(), mx_ibuffer.count() * sizeof(u32),
-            wgpu::BufferUsage::Index);
-
-        vertex_buffer = dawn::utils::CreateBufferFromData(
-            device, (void*)mx_vbuffer.mem->origin, mx_vbuffer.count() * mx_vbuffer.type()->base_sz,
-            wgpu::BufferUsage::Vertex);
-
+        index_buffer  = create_index_buffer(device, mx_ibuffer);
+        vertex_buffer = create_vertex_buffer(device, mx_vbuffer);
         indices_count = mx_ibuffer.count();
         
         /// setup bindings
-        array<wgpu::BindGroupEntry>       bind_values (gfx->bindings.count());
-        array<wgpu::BindGroupLayoutEntry> bind_entries(gfx->bindings.count());
+        array<WGPUBindGroupEntry>       bind_values (gfx->bindings.count()); // this creates with a reserve
+        array<WGPUBindGroupLayoutEntry> bind_entries(gfx->bindings.count()); //
         size_t bind_id = 0;
         Texture tx;
         for (mx& binding: gfx->bindings) { /// array of mx can tell us what type of data it is
-            wgpu::BindGroupLayoutEntry entry {
+            WGPUBindGroupLayoutEntry entry {
                 .binding    = u32(bind_id),
-                .visibility = wgpu::ShaderStage::Vertex | wgpu::ShaderStage::Fragment /// probably best to look through the shader code after @fragment and @vertex
+                .visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment /// probably best to look through the shader code after @fragment and @vertex
             };
-            wgpu::BindGroupEntry bind_value {
+            WGPUBindGroupEntry bind_value {
                 .binding    = u32(bind_id)
             };
 
             if (binding.type() == typeof(Texture)) {
                 tx = binding.hold();
                 entry.texture.multisampled  = false;
-                entry.texture.sampleType    = wgpu::TextureSampleType::Float;
-                entry.texture.viewDimension = wgpu::TextureViewDimension::e2D;
+                entry.texture.sampleType    = WGPUTextureSampleType_Float;
+                entry.texture.viewDimension = WGPUTextureViewDimension_2D;
                 bind_value.textureView      = tx->view;
             } else if (binding.type() == typeof(Sampling::etype)) {
                 /// this must be specified immediately after the texture
                 assert(tx);
                 Sampling sampling(binding.hold());
-                entry.sampler.type          = sampling == Sampling::nearest ? wgpu::SamplerBindingType::NonFiltering : wgpu::SamplerBindingType::Filtering;
+                entry.sampler.type          = sampling == Sampling::nearest ? WGPUSamplerBindingType_NonFiltering : WGPUSamplerBindingType_Filtering;
                 bind_value.sampler          = tx->sampler;
             } else {
                 /// other objects are Uniform buffers
-                entry.buffer.type = wgpu::BufferBindingType::Uniform;
+                entry.buffer.type = WGPUBufferBindingType_Uniform;
 
                 size_t sz = binding.type()->base_sz; /// was UniformBufferObject
-                wgpu::BufferDescriptor desc = {
-                    .usage = wgpu::BufferUsage::Uniform | wgpu::BufferUsage::CopyDst,
+                WGPUBufferDescriptor desc = {
+                    .usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst,
                     .size = sz
                 };
-                bind_value.buffer = device.CreateBuffer(&desc);
+                bind_value.buffer = wgpuDeviceCreateBuffer(device, &desc);
             }
 
             bind_entries.push(entry);
@@ -585,117 +484,129 @@ struct IPipeline {
             bind_id++;
         }
 
-        wgpu::BindGroupLayoutDescriptor ld {
+        WGPUBindGroupLayoutDescriptor ld {
             .entryCount         = size_t(bind_id),
             .entries            = bind_entries.data
         };
-        bgl = device.CreateBindGroupLayout(&ld);
+        bgl = wgpuDeviceCreateBindGroupLayout(device, &ld);
 
-        wgpu::BindGroupDescriptor bg {
+        WGPUBindGroupDescriptor bg {
             .layout             = bgl,
             .entryCount         = size_t(bind_id),
             .entries            = bind_values.data
         };
-        bind_group = device.CreateBindGroup(&bg);
+        bind_group = wgpuDeviceCreateBindGroup(device, &bg);
 
-        /*
-        bgl = dawn::utils::MakeBindGroupLayout(
-            device, {
-                {0, wgpu::ShaderStage::Fragment, wgpu::SamplerBindingType::Filtering},
-                {1, wgpu::ShaderStage::Fragment, wgpu::TextureSampleType::Float},
-            });
-        dawn::utils::MakeBindGroup(device, bgl, {{0, sampler}, {1, view}});
+        WGPUPipelineLayoutDescriptor pldesc = {};
+        pldesc.bindGroupLayoutCount = 1;
+        pldesc.bindGroupLayouts = &bgl;
+        pl = wgpuDeviceCreatePipelineLayout(device, &pldesc);
 
-        descriptor.cAttributes = array<wgpu::VertexAttribute> {
-            // Position attribute
-            wgpu::VertexAttribute {
-                wgpu::VertexFormat::Float32x4, offsetof(Attribs, pos), 0
-            },
-            // UV attribute
-            wgpu::VertexAttribute {
-                wgpu::VertexFormat::Float32x2, offsetof(Attribs, uv), 1
-            }
-        };*/
+        WGPUVertexAttribute attributes[MAX_ATTRIBUTES]; // Adjust MAX_ATTRIBUTES as needed
+        WGPUVertexBufferLayout buffer_layout = {
+            .arrayStride = vtype->base_sz,
+            .attributeCount = 0,
+            .attributes = attributes
+        };
 
-        pl = dawn::utils::MakeBasicPipelineLayout(device, &bgl);
+        WGPUDepthStencilState depth_stencil {
+            .format = WGPUTextureFormat_Depth24PlusStencil8,
+            .depthCompare = WGPUCompareFunction_LessEqual
+        };
 
-        /// get meta attributes on the Vertex type (all must be used in shader)
-        dawn::utils::ComboRenderPipelineDescriptor render_desc;
-        render_desc.layout = pl;
-        render_desc.vertex.module = mod;
-        render_desc.vertex.bufferCount = 1;
-        render_desc.cBuffers[0].arrayStride = vtype->base_sz;// sizeof(Attribs);
         size_t        attrib_count = 0;
         doubly<prop> &props = *(doubly<prop>*)vtype->meta;
-
         auto get_wgpu_format = [](prop &p) {
-            if (p.type == typeof(glm::vec2))  return wgpu::VertexFormat::Float32x2;
-            if (p.type == typeof(glm::vec3))  return wgpu::VertexFormat::Float32x3;
-            if (p.type == typeof(glm::vec4))  return wgpu::VertexFormat::Float32x4;
-            if (p.type == typeof(glm::ivec4)) return wgpu::VertexFormat::Sint32x4;
-            if (p.type == typeof(float))      return wgpu::VertexFormat::Float32;
+            if (p.type == typeof(glm::vec2))  return WGPUVertexFormat_Float32x2;
+            if (p.type == typeof(glm::vec3))  return WGPUVertexFormat_Float32x3;
+            if (p.type == typeof(glm::vec4))  return WGPUVertexFormat_Float32x4;
+            if (p.type == typeof(glm::ivec4)) return WGPUVertexFormat_Sint32x4;
+            if (p.type == typeof(float))      return WGPUVertexFormat_Float32;
             ///
             assert(false);
-            return wgpu::VertexFormat::Undefined;
+            return WGPUVertexFormat_Undefined;
         };
 
         for (prop &p: props) {
-            render_desc.cAttributes[attrib_count].shaderLocation = attrib_count;
-            render_desc.cAttributes[attrib_count].format         = get_wgpu_format(p);
-            render_desc.cAttributes[attrib_count].offset         = p.offset;
+            attributes[attrib_count].shaderLocation = attrib_count;
+            attributes[attrib_count].format         = get_wgpu_format(p);
+            attributes[attrib_count].offset         = p.offset;
             attrib_count++;
         }
-        render_desc.cBuffers[0].attributeCount = attrib_count;
-        render_desc.cFragment.module = mod;
-        render_desc.cTargets[0].format = preferred_swapchain_format();
-        render_desc.EnableDepthStencil(wgpu::TextureFormat::Depth24PlusStencil8);
 
-        /*
-        /// enable alpha blending (disable if not needed, as this reduces performance by about 4-8x in the fill)
-        // Define the blend state
-        wgpu::BlendState blendState = {};
-        blendState.color.srcFactor = wgpu::BlendFactor::SrcAlpha;
-        blendState.color.dstFactor = wgpu::BlendFactor::OneMinusSrcAlpha;
-        blendState.color.operation = wgpu::BlendOperation::Add;
-        blendState.alpha.srcFactor = wgpu::BlendFactor::One;
-        blendState.alpha.dstFactor = wgpu::BlendFactor::OneMinusSrcAlpha;
-        blendState.alpha.operation = wgpu::BlendOperation::Add;
+        buffer_layout.attributeCount = attrib_count;
+        WGPUColorTargetState color_target = { .format = preferred_swapchain_format() };
+        WGPUFragmentState fragment {
+            .module = mod, .entryPoint = "fragment_main", .targetCount = 1, .targets = &color_target
+        };
+        WGPURenderPipelineDescriptor render_desc = {
+            .layout         = pl,
+            .vertex         = { .module = mod, .entryPoint = "vertex_main", .bufferCount = 1, .buffers = &buffer_layout },
+            .depthStencil   = &depth_stencil,
+            .multisample    = {
+                .count = 1,
+                .mask = 0xFFFFFFFF,
+                .alphaToCoverageEnabled = false
+            },
+            .fragment       = &fragment
+        };
 
-        // Define the color target state, including the blend state
-        wgpu::ColorTargetState colorTargetState = {};
-        colorTargetState.format     = wgpu::TextureFormat::BGRA8Unorm; // Adjust as needed for your render target
-        colorTargetState.blend      = &blendState;
-        colorTargetState.writeMask  = wgpu::ColorWriteMask::All;
-
-        // Define the fragment state, including the color target state
-        wgpu::FragmentState fragmentState = {};
-        fragmentState.module        = mod; // Your compiled shader module
-        fragmentState.entryPoint    = "fragment_main"; // The entry point for your fragment shader
-        fragmentState.targetCount   = 1;
-        fragmentState.targets       = &colorTargetState;
-
-        render_desc.fragment = &fragmentState;
-        */
-
-        pipeline = device.CreateRenderPipeline(&render_desc);
+        pipeline = wgpuDeviceCreateRenderPipeline(device, &render_desc);
         Dawn dawn;
         dawn.process_events();
     }
-    void submit(WGPUQueue queue, WGPURenderPassEncoder encoder) {
-        
-        WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device->device.Get(), NULL);
-        WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, render.Get());
-        wgpuRenderPassEncoderSetPipeline(pass, pipeline.Get());
-        wgpuRenderPassEncoderSetBindGroup(pass, 0, bind_group.Get(), 0, NULL);
-        wgpuRenderPassEncoderSetVertexBuffer(pass, 0, vertex_buffer.Get(), 0, WGPU_WHOLE_SIZE);
-        wgpuRenderPassEncoderSetIndexBuffer(pass, index_buffer.Get(), WGPUIndexFormat_Uint32, 0, WGPU_WHOLE_SIZE);
-        wgpuRenderPassEncoderDrawIndexed(pass, indices_count, 1, 0, 0, 0);
-        wgpuRenderPassEncoderEnd(pass);
-        WGPUCommandBuffer commands = wgpuCommandEncoderFinish(encoder, NULL);
+    void submit(WGPUTextureView texture_view, WGPUTextureView depthStencilView, bool clear_color, rgbaf color_value) {
+        WGPUDevice device = this->device->device;
+
+        clear_color = false;
+        // RenderPass render({swap_view}, depthStencilView, rgbaf {0.0, 0.0, 0.5, 1.0});
+        WGPURenderPassColorAttachment colorAttachment = {
+            .view       = texture_view,
+            .depthSlice = WGPU_DEPTH_SLICE_UNDEFINED,
+            .loadOp     = clear_color ? WGPULoadOp_Clear : WGPULoadOp_Load, /// set to Load for no clear
+            .storeOp    = WGPUStoreOp_Store,
+            .clearValue = (WGPUColor) {.r = color_value.r, .g = color_value.g, .b = color_value.b, .a = color_value.a}
+        };
+
+        WGPURenderPassDepthStencilAttachment depthStencilAttachment { };
+        if (depthStencilView) {
+            depthStencilAttachment.view              = depthStencilView;
+            depthStencilAttachment.depthLoadOp       = WGPULoadOp_Clear;
+            depthStencilAttachment.depthStoreOp      = WGPUStoreOp_Store;
+            depthStencilAttachment.depthClearValue   = 1.0f;
+            depthStencilAttachment.stencilLoadOp     = WGPULoadOp_Clear;
+            depthStencilAttachment.stencilStoreOp    = WGPUStoreOp_Store;
+            depthStencilAttachment.stencilClearValue = 0;
+        }
+
+        WGPURenderPassDescriptor renderPassDescriptor {
+            .colorAttachmentCount   = 1,
+            .colorAttachments       = &colorAttachment,
+            .depthStencilAttachment = depthStencilView ? &depthStencilAttachment : nullptr
+        };
+
+        // Now you can use the renderPassDescriptor to begin a render pass
+        WGPUCommandEncoder command_encoder = wgpuDeviceCreateCommandEncoder(device, NULL);
+        WGPURenderPassEncoder render_pass = wgpuCommandEncoderBeginRenderPass(command_encoder, &renderPassDescriptor);
+
+        wgpuRenderPassEncoderSetPipeline(render_pass, pipeline);
+        wgpuRenderPassEncoderSetBindGroup(render_pass, 0, bind_group, 0, NULL);
+        wgpuRenderPassEncoderSetVertexBuffer(render_pass, 0, vertex_buffer, 0, WGPU_WHOLE_SIZE);
+        wgpuRenderPassEncoderSetIndexBuffer(render_pass, index_buffer, WGPUIndexFormat_Uint32, 0, WGPU_WHOLE_SIZE);
+        wgpuRenderPassEncoderDrawIndexed(render_pass, indices_count, 1, 0, 0, 0);
+        wgpuRenderPassEncoderEnd(render_pass);
+
+        // submit the command buffer
+        WGPUCommandBuffer commands = wgpuCommandEncoderFinish(command_encoder, nullptr);
+        WGPUQueue queue = wgpuDeviceGetQueue(device);
         wgpuQueueSubmit(queue, 1, &commands);
-        wgpuCommandBufferRelease(commands);
-        wgpuCommandEncoderRelease(encoder);
         wgpuQueueRelease(queue);
+        wgpuCommandBufferRelease(commands);
+        
+        // clean up
+        wgpuRenderPassEncoderRelease(render_pass);
+        wgpuCommandEncoderRelease(command_encoder);
+
     }
 
     void start() {
@@ -754,9 +665,10 @@ struct IPipes {
     lambda<void(IPipeline&)>    reload;
     lambda<void(memory*)>       uniform_update;
     
-    void submit(RenderPass &render) {
+    void submit(WGPUTextureView texture_view, WGPUTextureView depthStencilView, bool clear_color, rgbaf clear_color_value) {
         for (auto p: pipelines) {
-            p->submit(render);
+            p->submit(texture_view, depthStencilView, clear_color, clear_color_value);
+            clear_color = false;
         }
     }
     register(IPipes);
@@ -965,16 +877,16 @@ struct IWindow {
     Window::OnCanvasRender      fn_canvas_render;
     Window::OnSceneRender       fn_scene_render;
 
-    DawnProcTable               procs;
     WGPUDevice                  gpu;
     Device                      device;
     Texture                     texture;
 
+    WGPUSurface                 surface;
     WGPUSampler                 sampler; /// 'device' default sampler
     WGPUQueue                   queue;
     WGPUSwapChain               swapchain;
     WGPUTextureView             depthStencilView;
-    WGPUCommandEncoder          encoder;
+    
 
     Pipes                       canvas_pipeline;
     Canvas                      canvas;
@@ -1078,24 +990,26 @@ struct IWindow {
     }
 
     WGPUTextureView depth_stencil_view() {
-        WGPUTextureDescriptor descriptor = {0};
-        descriptor.dimension = WGPUTextureDimension_2D;
-        descriptor.size.width = sz.width;
-        descriptor.size.height = sz.height;
-        descriptor.size.depthOrArrayLayers = 1;
-        descriptor.sampleCount = 1;
-        descriptor.format = WGPUTextureFormat_Depth24PlusStencil8;
-        descriptor.mipLevelCount = 1;
-        descriptor.usage = WGPUTextureUsage_RenderAttachment;
+        WGPUDevice device = this->device->device;
+        WGPUTextureDescriptor descriptor {
+            .usage          = WGPUTextureUsage_RenderAttachment,
+            .dimension      = WGPUTextureDimension_2D,
+            .size           = { (u32)sz.x, (u32)sz.y, 1 },
+            .format         = WGPUTextureFormat_Depth24PlusStencil8,
+            .mipLevelCount  = 1,
+            .sampleCount    = 1
+        };
 
         WGPUTexture depthStencilTexture = wgpuDeviceCreateTexture(device, &descriptor);
-        WGPUTextureViewDescriptor viewDescriptor = {0};
-        viewDescriptor.format = descriptor.format;
-        viewDescriptor.dimension = WGPUTextureViewDimension_2D;
-        viewDescriptor.baseMipLevel = 0;
-        viewDescriptor.mipLevelCount = 1;
-        viewDescriptor.baseArrayLayer = 0;
-        viewDescriptor.arrayLayerCount = 1;
+        WGPUTextureViewDescriptor viewDescriptor {
+            .format = descriptor.format,
+            .dimension = WGPUTextureViewDimension_2D,
+            .baseMipLevel = 0,
+            .mipLevelCount = 1,
+            .baseArrayLayer = 0,
+            .arrayLayerCount = 1
+        };
+
         WGPUTextureView depthStencilView = wgpuTextureCreateView(depthStencilTexture, &viewDescriptor);
         wgpuTextureRelease(depthStencilTexture);
         return depthStencilView;
@@ -1123,8 +1037,8 @@ struct IWindow {
         vdesc.arrayLayerCount = 1;
 
         texture->device  = device->device;
-        texture->texture = WGPUCreateTexture(texture->device, &tx_desc);
-        texture->view    = WGPUCreateTextureView(texture->texture, &vdesc);
+        texture->texture = wgpuDeviceCreateTexture(texture->device, &tx_desc);
+        texture->view    = wgpuTextureCreateView(texture->texture, &vdesc);
         texture->sz      = sz;
 
         WGPUSamplerDescriptor sampler_desc = {
@@ -1133,106 +1047,113 @@ struct IWindow {
             .addressModeW   = WGPUAddressMode_Repeat,
             .magFilter      = WGPUFilterMode_Linear,
             .minFilter      = WGPUFilterMode_Linear,
-            .mipmapFilter   = WGPUFilterMode_Linear,
+            .mipmapFilter   = WGPUMipmapFilterMode_Linear,
             .lodMinClamp    = 0.0f,
             .lodMaxClamp    = FLT_MAX,
-            .compare        = WGPUCompareFunction_Undefined
+            .compare        = WGPUCompareFunction_Undefined,
+            .maxAnisotropy  = 1
         };
         texture->sampler = wgpuDeviceCreateSampler(texture->device, &sampler_desc);
         canvas    = Canvas(device, texture, true);
     }
 
     void update_swap() {
-        static std::unique_ptr<wgpu::ChainedStruct> surfaceChainedDesc;
-        surfaceChainedDesc = wgpu::glfw::SetupWindowAndGetSurfaceDescriptor(handle); /// this needs some work because this is called more than once.
+        WGPUDevice device = this->device->device;
+        WGPUSurfaceDescriptor baseSurfaceDesc = {};
+        #ifdef __APPLE__
+            WGPUSurfaceDescriptorFromMetalLayer metalSurfaceDesc = {};
+            metalSurfaceDesc.chain.sType = WGPUSType_SurfaceDescriptorFromMetalLayer;
+            metalSurfaceDesc.layer = glfwGetMetalLayer(handle);
+            baseSurfaceDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&metalSurfaceDesc);
+        #elif defined(__linux__)
+            WGPUSurfaceDescriptorFromXlibWindow xlibSurfaceDesc = {};
+            xlibSurfaceDesc.chain.sType = WGPUSType_SurfaceDescriptorFromXlibWindow;
+            xlibSurfaceDesc.display = glfwGetX11Display();
+            xlibSurfaceDesc.window = static_cast<uint64_t>(glfwGetX11Window(handle));
+            baseSurfaceDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&xlibSurfaceDesc);
+        #elif defined(WIN32)
+            WGPUSurfaceDescriptorFromWindowsHWND hwndSurfaceDesc = {};
+            hwndSurfaceDesc.chain.sType = WGPUSType_SurfaceDescriptorFromWindowsHWND;
+            hwndSurfaceDesc.hwnd = glfwGetWin32Window(handle);
+            baseSurfaceDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&hwndSurfaceDesc);
+        #endif
 
-        WGPUSurfaceDescriptor surfaceDesc;
-        surfaceDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(surfaceChainedDesc.get());
-        WGPUSurface surface = procs.instanceCreateSurface(dawn->instance->Get(), &surfaceDesc);
+        WGPUSurface surface = wgpuInstanceCreateSurface(dawn->instance, &baseSurfaceDesc);
+        WGPUSwapChainDescriptor swapChainDesc {
+            .usage = WGPUTextureUsage_RenderAttachment,
+            .format = static_cast<WGPUTextureFormat>(preferred_swapchain_format()),
+            .width = (u32)sz.x,
+            .height = (u32)sz.y,
+            .presentMode = WGPUPresentMode_Mailbox
+        };
+        swapchain = wgpuDeviceCreateSwapChain(device, surface, &swapChainDesc);
+        assert(swapchain);
+    }
 
-        WGPUSwapChainDescriptor swapChainDesc = {};
-        swapChainDesc.usage = WGPUTextureUsage_RenderAttachment;
-        swapChainDesc.format = static_cast<WGPUTextureFormat>(preferred_swapchain_format());
-        swapChainDesc.width = (u32)sz.x;
-        swapChainDesc.height = (u32)sz.y;
-        swapChainDesc.presentMode = WGPUPresentMode_Mailbox;
-        WGPUSwapChain backendSwapChain =
-            procs.deviceCreateSwapChain(gpu, surface, &swapChainDesc);
-        swapchain = wgpu::SwapChain::Acquire(backendSwapChain);
+    static void adapter_callback(WGPURequestAdapterStatus status, WGPUAdapter adapter, const char* message, void* userdata) {
+        if (status == WGPURequestAdapterStatus_Success) {
+            // Store the received adapter in the userdata pointer
+            *(WGPUAdapter*)userdata = adapter;
+        } else {
+            fprintf(stderr, "Failed to get an adapter: %s\n", message);
+        }
     }
 
     void create_resources() {
         if (!dawn->instance) {
-            WGPUInstanceDescriptor instanceDescriptor{};
-            instanceDescriptor.features.timedWaitAnyEnable = true;
-            dawn->instance = std::make_unique<dawn::native::Instance>(&instanceDescriptor);
-        }
-        wgpu::RequestAdapterOptions options = {};
-        options.backendType = dawn->backend_type;
+            dawn->procs = dawn::native::GetProcs();
+            dawnProcSetProcs(&dawn->procs);
 
-        // Get an adapter for the backend to use, and create the device.
-        auto adapters = dawn->instance->EnumerateAdapters(&options);
-        wgpu::DawnAdapterPropertiesPowerPreference power_props{};
-        wgpu::AdapterProperties adapterProperties{};
-        adapterProperties.nextInChain = &power_props;
-        // Find the first adapter which satisfies the adapterType requirement.
-        auto isAdapterType = [&](const auto& adapter) -> bool {
-            // picks the first adapter when adapterType is unknown.
-            if (adapter_type == wgpu::AdapterType::Unknown) {
-                return true;
-            }
-            adapter.GetProperties(&adapterProperties);
-            return adapterProperties.adapterType == adapter_type;
-        };
-        auto preferredAdapter = std::find_if(adapters.begin(), adapters.end(), isAdapterType);
-        if (preferredAdapter == adapters.end()) {
-            fprintf(stderr, "Failed to find an adapter! Please try another adapter type.\n");
-            return;
+            WGPUInstanceDescriptor inst_desc {
+                .features = { .timedWaitAnyEnable = true }
+            };
+            dawn->instance = wgpuCreateInstance(&inst_desc);
         }
 
-        std::vector<const char*> enableToggleNames = {
+        array<const char*> enableToggleNames {
             "allow_unsafe_apis",  "use_user_defined_labels_in_backend" // allow_unsafe_apis = Needed for dual-source blending, BufferMapExtendedUsages.
         };
-        std::vector<const char*> disabledToggleNames;
-        WGPUDawnTogglesDescriptor toggles;
-        toggles.chain.sType = WGPUSType_DawnTogglesDescriptor;
-        toggles.chain.next = nullptr;
-        toggles.enabledToggles = enableToggleNames.data();
-        toggles.enabledToggleCount = enableToggleNames.size();
-        toggles.disabledToggles = disabledToggleNames.data();
-        toggles.disabledToggleCount = disabledToggleNames.size();
+        array<const char*> disabledToggleNames { };
 
-        WGPUDeviceDescriptor deviceDesc = {};
+        WGPURequestAdapterOptions options {
+            .powerPreference        = WGPUPowerPreference_HighPerformance,
+            .backendType            = dawn->backend_type
+        };
+        WGPUAdapter adapter = NULL;
+        wgpuInstanceRequestAdapter(dawn->instance, &options, adapter_callback, &adapter);
 
-        std::vector<wgpu::FeatureName> requiredFeatures;
-        requiredFeatures.push_back(wgpu::FeatureName::SurfaceCapabilities);
-        //if (adapter.HasFeature(wgpu::FeatureName::BufferMapExtendedUsages)) {
-        //    requiredFeatures.push_back(wgpu::FeatureName::BufferMapExtendedUsages);
-        //}
+        WGPUDawnTogglesDescriptor togglesDesc {
+            .chain                  = { .sType = WGPUSType_DawnTogglesDescriptor },
+            .enabledToggleCount     = enableToggleNames.count(),
+            .enabledToggles         = enableToggleNames.data,
+            .disabledToggleCount    = disabledToggleNames.count(),
+            .disabledToggles        = disabledToggleNames.data
+        };
+  
+        array<WGPUFeatureName> requiredFeatures {WGPUFeatureName_SurfaceCapabilities};
+        WGPUDeviceDescriptor deviceDescriptor {
+            .nextInChain            = (WGPUChainedStruct*)&togglesDesc,
+            .requiredFeatureCount   = requiredFeatures.count(),
+            .requiredFeatures       = requiredFeatures.data
+        };
 
-        deviceDesc.requiredFeatures = (WGPUFeatureName*)requiredFeatures.data();
-        deviceDesc.requiredFeatureCount = requiredFeatures.size();
-
-        deviceDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&toggles);
-
-        gpu = preferredAdapter->CreateDevice(&deviceDesc);
-
-        procs = dawn::native::GetProcs();
-        dawnProcSetProcs(&procs);
-        procs.deviceSetUncapturedErrorCallback(gpu, PrintDeviceError, nullptr);
-        procs.deviceSetDeviceLostCallback(gpu, DeviceLostCallback, nullptr);
-        procs.deviceSetLoggingCallback(gpu, DeviceLogCallback, nullptr);
-        device->device = wgpu::Device::Acquire(gpu);
-        queue  = device->device.GetQueue();
+        WGPUDevice device = wgpuAdapterCreateDevice(adapter, &deviceDescriptor);
+        assert(device);
+        this->device->device = device;
+        this->device->queue  = wgpuDeviceGetQueue(device);
+        wgpuDeviceSetUncapturedErrorCallback(device, PrintDeviceError, nullptr);
+        wgpuDeviceSetDeviceLostCallback(device, DeviceLostCallback, nullptr);
+        wgpuDeviceSetLoggingCallback(device, DeviceLogCallback, nullptr);
 
         update_swap();
 
         depthStencilView = depth_stencil_view();
         update_texture();
 
-        canvas_pipeline = Pipes(device, null, array<Graphics> {
+        canvas_pipeline = Pipes(this->device, null, array<Graphics> {
             Graphics {
-                "canvas", typeof(Attribs), { texture, Sampling::linear }, "canvas", [](mx &vbo, mx &ibo, array<image> &images) {
+                "canvas", typeof(Attribs), { texture, Sampling::linear }, "canvas", 
+                [](mx &vbo, mx &ibo, array<image> &images) {
                     static const uint32_t indexData[6] = {
                         0, 1, 2,
                         2, 1, 3
@@ -1258,32 +1179,26 @@ struct IWindow {
         glfwPollEvents();
         dawn.process_events();
 
-        wgpu::TextureView swap_view = swapchain.GetCurrentTextureView();
-        RenderPass render({swap_view}, depthStencilView, rgbaf {0.0, 0.0, 0.5, 1.0});
-        
-        WGPUQueue queue = wgpuDeviceGetQueue(device->device.Get());
+        WGPUTextureView swap_view = wgpuSwapChainGetCurrentTextureView(swapchain);
+        bool clear_color = true;
+        rgbaf clear_color_value { 0.0f, 0.0f, 0.5f, 1.0f };
 
         /// render webgpu
         if (fn_scene_render) {
-            bool has_pipeline = false;
             Scene scene = fn_scene_render();
-            for (Pipes &p: scene) {
-                for (Pipeline &pipeline: p->pipelines) {
-                    pipeline->submit(queue.Get(), encoder);
-                    has_pipeline = true;
-                }
-            }
-            if (has_pipeline)
-                render.disable_clear_color();
+            for (Pipes &p: scene)
+                p->submit(swap_view, depthStencilView, clear_color, clear_color_value);
         }
         
         /// render skia texture to window
         if (fn_canvas_render) {
             fn_canvas_render(canvas);
             canvas.flush();
-            canvas_pipeline->submit(render);
+            canvas_pipeline->submit(swap_view, depthStencilView, clear_color, clear_color_value);
         }
-        swapchain.Present();
+
+        wgpuSwapChainPresent(swapchain);
+        wgpuTextureViewRelease(swap_view);
         return true;
     }
 
@@ -1432,7 +1347,7 @@ ion::vec2i Window::size() {
 }
 
 void Dawn::process_events() {
-    dawn::native::InstanceProcessEvents(data->instance->Get());
+    dawn::native::InstanceProcessEvents(data->instance);
 }
 
 float Dawn::get_dpi() {
@@ -2410,14 +2325,14 @@ Canvas::Canvas(Device device, Texture texture, bool use_hidpi) : Canvas() {
     params.fGraphiteContextOptions.fPriv.fStoreContextRefInRecorder = true; // Needed to make synchronous readPixels work:
 
     skgpu::graphite::DawnBackendContext backendContext;
-    backendContext.fDevice = device->device;
-    backendContext.fQueue = device->device.GetQueue();
+    backendContext.fDevice = wgpu::Device::Acquire(device->device);
+    backendContext.fQueue  = backendContext.fDevice.GetQueue();
 
     data->fGraphiteContext = skgpu::graphite::ContextFactory::MakeDawn(
             backendContext, params.fGraphiteContextOptions.fOptions);
     data->fGraphiteRecorder = data->fGraphiteContext->makeRecorder(ToolUtils::CreateTestingRecorderOptions());
 
-    skgpu::graphite::BackendTexture backend_texture(texture->texture.Get());
+    skgpu::graphite::BackendTexture backend_texture(texture->texture);
     data->sk_surf = SkSurfaces::WrapBackendTexture(
         data->fGraphiteRecorder.get(),
         backend_texture,
@@ -2438,7 +2353,7 @@ Canvas::Canvas(Device device, Texture texture, bool use_hidpi) : Canvas() {
     }
     data->dpi_scale.x = xscale;
     data->dpi_scale.y = yscale;
-    data->sz          = vec2i { int(texture->texture.GetWidth()), int(texture->texture.GetHeight()) }; // use virtual functions to obtain the virtual size
+    data->sz          = texture->sz; // use virtual functions to obtain the virtual size
     data->sk_canvas   = data->sk_surf->getCanvas();
     data->use_hidpi   = use_hidpi;
     data->save();

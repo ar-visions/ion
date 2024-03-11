@@ -9,6 +9,11 @@ int main(int argc, const char* argv[]) {
 
     Window window = Window::create("dawn", {kWidth, kHeight});
 
+    
+
+    window.set_on_scene_render([&]() -> Scene {
+        Scene result;
+    });
     window.set_on_canvas_render([](Canvas &canvas) {
         vec2i sz = canvas.size();
         rectd rect { 0, 0, sz.x, sz.y };
@@ -23,9 +28,7 @@ int main(int argc, const char* argv[]) {
     i64 s_last = millis() / 1000;
     i64 frames_drawn = 0;
 
-    while (true) {
-        window.process();
-
+    while (window.process()) {
         frames_drawn++;
         usleep(1);
         i64 s_cur = millis() / 1000;
