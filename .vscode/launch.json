@@ -62,7 +62,12 @@
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/../hyperspace/build",
-            "environment": [],
+            "environment": [
+                {
+                    "name": "ASAN_OPTIONS",
+                    "value": ""
+                }
+            ],
             "MIMode": "gdb",
             "presentation": {
                 "hidden": false,

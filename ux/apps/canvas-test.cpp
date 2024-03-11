@@ -9,11 +9,43 @@ int main(int argc, const char* argv[]) {
 
     Window window = Window::create("dawn", {kWidth, kHeight});
 
-    
+    struct Attribs {
+        glm::vec4 pos;
+        doubly<prop> meta() {
+            return {
+                { "pos", pos }
+            };
+        }
+    };
 
-    window.set_on_scene_render([&]() -> Scene {
-        Scene result;
+    Device device = window.device();
+    Pipes test_scene = Pipes(device, null, array<Graphics> {
+        Graphics {
+            "test", typeof(Attribs), { }, "test", 
+            [](mx &vbo, mx &ibo, array<image> &images) {
+                static const uint32_t indexData[6] = {
+                    0, 1, 2,
+                    2, 1, 3
+                };
+
+                static const Attribs vertexData[4] = {
+                    {{ -1.0f, -1.0f, 0.0f, 1.0f }},
+                    {{  1.0f, -1.0f, 0.0f, 1.0f }},
+                    {{ -1.0f,  1.0f, 0.0f, 1.0f }},
+                    {{  1.0f,  1.0f, 0.0f, 1.0f }}
+                };
+
+                ibo = mx::wrap<u32>((void*)indexData, 6);
+                vbo = mx::wrap<Attribs>((void*)vertexData, 4);
+            }
+        }
     });
+    
+    window.set_on_scene_render([&]() -> Scene {
+        return Scene { test_scene };
+    });
+
+    /*
     window.set_on_canvas_render([](Canvas &canvas) {
         vec2i sz = canvas.size();
         rectd rect { 0, 0, sz.x, sz.y };
@@ -24,6 +56,7 @@ int main(int argc, const char* argv[]) {
         canvas.color("#ff0");
         canvas.fill(top);
     });
+    */
 
     i64 s_last = millis() / 1000;
     i64 frames_drawn = 0;

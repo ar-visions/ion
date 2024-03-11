@@ -265,7 +265,7 @@ struct IPipeline {
 
     static WGPUBuffer create_index_buffer(WGPUDevice device, mx indexData) {
         WGPUBufferDescriptor descriptor = {};
-        descriptor.usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst;
+        descriptor.usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopySrc | WGPUBufferUsage_CopyDst;
         descriptor.size = indexData.count() * indexData.type()->base_sz;
         descriptor.mappedAtCreation = true;
         WGPUBuffer buffer = wgpuDeviceCreateBuffer(device, &descriptor);
@@ -277,7 +277,7 @@ struct IPipeline {
 
     static WGPUBuffer create_vertex_buffer(WGPUDevice device, mx vertexData) {
         WGPUBufferDescriptor descriptor = {};
-        descriptor.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
+        descriptor.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopySrc | WGPUBufferUsage_CopyDst;
         descriptor.size = vertexData.count() * vertexData.type()->base_sz;
         descriptor.mappedAtCreation = true;
         WGPUBuffer buffer = wgpuDeviceCreateBuffer(device, &descriptor);
@@ -542,7 +542,7 @@ struct IPipeline {
         WGPURenderPipelineDescriptor render_desc = {
             .layout         = pl,
             .vertex         = { .module = mod, .entryPoint = "vertex_main", .bufferCount = 1, .buffers = &buffer_layout },
-            .depthStencil   = &depth_stencil,
+            //.depthStencil   = &depth_stencil,
             .multisample    = {
                 .count = 1,
                 .mask = 0xFFFFFFFF,
@@ -555,10 +555,15 @@ struct IPipeline {
         Dawn dawn;
         dawn.process_events();
     }
+
     void submit(WGPUTextureView texture_view, WGPUTextureView depthStencilView, bool clear_color, rgbaf color_value) {
         WGPUDevice device = this->device->device;
+        WGPUQueue queue = wgpuDeviceGetQueue(device);
 
-        clear_color = false;
+        int szi = wgpuBufferGetSize(index_buffer);
+        int szv = wgpuBufferGetSize(vertex_buffer);
+
+        //clear_color = false;
         // RenderPass render({swap_view}, depthStencilView, rgbaf {0.0, 0.0, 0.5, 1.0});
         WGPURenderPassColorAttachment colorAttachment = {
             .view       = texture_view,
@@ -568,6 +573,7 @@ struct IPipeline {
             .clearValue = (WGPUColor) {.r = color_value.r, .g = color_value.g, .b = color_value.b, .a = color_value.a}
         };
 
+        /*
         WGPURenderPassDepthStencilAttachment depthStencilAttachment { };
         if (depthStencilView) {
             depthStencilAttachment.view              = depthStencilView;
@@ -577,12 +583,12 @@ struct IPipeline {
             depthStencilAttachment.stencilLoadOp     = WGPULoadOp_Clear;
             depthStencilAttachment.stencilStoreOp    = WGPUStoreOp_Store;
             depthStencilAttachment.stencilClearValue = 0;
-        }
+        }*/
 
         WGPURenderPassDescriptor renderPassDescriptor {
             .colorAttachmentCount   = 1,
             .colorAttachments       = &colorAttachment,
-            .depthStencilAttachment = depthStencilView ? &depthStencilAttachment : nullptr
+            .depthStencilAttachment = nullptr //depthStencilView ? &depthStencilAttachment : nullptr
         };
 
         // Now you can use the renderPassDescriptor to begin a render pass
@@ -598,7 +604,6 @@ struct IPipeline {
 
         // submit the command buffer
         WGPUCommandBuffer commands = wgpuCommandEncoderFinish(command_encoder, nullptr);
-        WGPUQueue queue = wgpuDeviceGetQueue(device);
         wgpuQueueSubmit(queue, 1, &commands);
         wgpuQueueRelease(queue);
         wgpuCommandBufferRelease(commands);
@@ -989,6 +994,7 @@ struct IWindow {
         if (iwin->key_scancode) iwin->key_scancode(key, scancode, action, mods);
     }
 
+    /*
     WGPUTextureView depth_stencil_view() {
         WGPUDevice device = this->device->device;
         WGPUTextureDescriptor descriptor {
@@ -1013,7 +1019,7 @@ struct IWindow {
         WGPUTextureView depthStencilView = wgpuTextureCreateView(depthStencilTexture, &viewDescriptor);
         wgpuTextureRelease(depthStencilTexture);
         return depthStencilView;
-    }
+    }*/
 
     void update_texture() {
         WGPUTextureDescriptor tx_desc {};
@@ -1147,7 +1153,7 @@ struct IWindow {
 
         update_swap();
 
-        depthStencilView = depth_stencil_view();
+        //depthStencilView = depth_stencil_view();
         update_texture();
 
         canvas_pipeline = Pipes(this->device, null, array<Graphics> {
