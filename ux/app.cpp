@@ -80,13 +80,99 @@ adata *app_instance() {
     return _app_instance;
 }
 
+struct CanvasAttribs {
+    glm::vec4 pos;
+    glm::vec2 uv;
+    doubly<prop> meta() {
+        return {
+            { "pos", pos },
+            { "uv",  uv  }
+        };
+    }
+};
+
 int App::run() {
     App &app = *this;
 
     _app_instance = data;
     data->window = Window::create("", vec2i {512, 512});
 
-    Window &window = data->window;
+    Window &window  = data->window;
+    Device  device  = window.device();
+    vec2i   size    = window.size();
+    Texture texture = device.create_texture(size);
+
+    /// we call app_fn() right away to obtain app class
+    node ee = data->app_fn(*this);
+    style root_style { ee->type }; /// this is a singleton, so anyone else doing style s; will get the style. (those should not exec first, though.)
+    window.set_title(ee->type->name);
+    
+    Pipes canvas_pipeline = Pipes(device, null, array<Graphics> {
+        Graphics {
+            "canvas", typeof(CanvasAttribs), { texture, Sampling::linear }, "canvas",
+            [](mx &vbo, mx &ibo, array<image> &images) {
+                static const uint32_t indexData[6] = {
+                    0, 1, 2,
+                    2, 1, 3
+                };
+                static const CanvasAttribs vertexData[4] = {
+                    {{ -1.0f, -1.0f, 0.0f, 1.0f }, {  0.0f, 0.0f }},
+                    {{  1.0f, -1.0f, 0.0f, 1.0f }, {  1.0f, 0.0f }},
+                    {{ -1.0f,  1.0f, 0.0f, 1.0f }, { -1.0f, 1.0f }},
+                    {{  1.0f,  1.0f, 0.0f, 1.0f }, {  1.0f, 1.0f }}
+                };
+                // set vbo and ibo
+                ibo = mx::wrap<u32>((void*)indexData, 6);
+                vbo = mx::wrap<CanvasAttribs>((void*)vertexData, 4);
+            }
+        }
+    });
+    
+    Canvas canvas;
+    
+    /// calls OnWindowResize when registered
+    window.register_presentation(
+        /// presentation: returns the pipelines that renders canvas, also updates the canvas (test code)
+        [&]() -> Scene {
+            vec2i sz = canvas.size();
+            rectd rect { 0, 0, sz.x, sz.y };
+            canvas.color("#00f");
+            canvas.fill(rect);
+
+            rectd top { 0, 0, sz.x, sz.y / 2 };
+            canvas.color("#ff0");
+            canvas.fill(top);
+
+            /*
+            rgbad c = { 0.0, 0.0, 0.0, 1.0 }; /// todo: background-blur, 1 canvas for each gaussian() call
+            canvas.clear(c);
+            canvas.save();
+            node ee = data->app_fn(*this);
+            update_all(ee);
+            Element *eroot = (Element*)(
+                composer::data->instances->data->children ?
+                composer::data->instances->data->children[0] : 
+                composer::data->instances);
+            if (eroot) {
+                eroot->data->bounds = rectd {
+                    0, 0,
+                    (real)canvas.get_virtual_width(),
+                    (real)canvas.get_virtual_height()
+                };
+                eroot->update_bounds(canvas);
+                canvas.save();
+                eroot->draw(canvas);
+                canvas.restore();
+            }*/
+            canvas.flush();
+            return Scene { canvas_pipeline };
+        },
+        /// size updated (recreates a texture from device, and canvas)
+        [&](vec2i sz) {
+            texture.resize(sz);
+            canvas = Canvas(device, texture, true);
+        });
+
     window.set_on_key_char([&](uint32_t c, int mods) {
         Element* root  = (Element*)app.composer::data->instances;
         Element* focus = root->Element::data->focused;
@@ -265,55 +351,7 @@ int App::run() {
         }
     });
 
-    /// we call it in prime fashion so we can obtain the type of the app class
-    node ee = data->app_fn(*this);
-    style root_style { ee->type }; /// this is a singleton, so anyone else doing style s; will get the style. (those should not exec first, though.)
-
-    window.set_title(ee->type->name);
-
     //shell_server(data->args["debug"]);
-
-    // needs to return 'Pipes'
-    //data->window.set_on_scene_render([]() {
-    //});
-
-    window.set_on_canvas_render([&](Canvas &canvas) {
-        /*
-        vec2i sz = canvas.size();
-        rectd rect { 0, 0, sz.x, sz.y };
-        canvas.color("#00f");
-        canvas.fill(rect);
-
-        rectd top { 0, 0, sz.x, sz.y / 2 };
-        canvas.color("#ff0");
-        canvas.fill(top);
-        */
-
-        rgbad c = { 0.0, 0.0, 0.0, 1.0 }; /// todo: background-blur, 1 canvas for each gaussian() call
-        canvas.clear(c);
-        canvas.save();
-
-        node ee = data->app_fn(*this);
-        update_all(ee);
-        Element *eroot = (Element*)(
-            composer::data->instances->data->children ?
-            composer::data->instances->data->children[0] : 
-            composer::data->instances);
-        
-        if (eroot) {
-            eroot->data->bounds = rectd {
-                0, 0,
-                (real)canvas.get_virtual_width(),
-                (real)canvas.get_virtual_height()
-            };
-            eroot->update_bounds(canvas);
-            canvas.save();
-            eroot->draw(canvas);
-            canvas.restore();
-        }
-
-        canvas.flush();
-    });
 
     while (window.process()) {
         usleep(1);

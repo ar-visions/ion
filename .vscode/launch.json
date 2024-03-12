@@ -139,7 +139,7 @@
             "program": "${workspaceFolder}/../hyperspace/build/ux-app",
             "args": [],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/../ion/build",
+            "cwd": "${workspaceFolder}/../hyperspace/build",
             "environment": [],
             "MIMode": "gdb",
             "preLaunchTask": "build-ux-app",

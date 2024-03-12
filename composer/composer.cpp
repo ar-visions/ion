@@ -281,6 +281,7 @@ style::style(type_t app_type) : style() {
         style &s = (style&)*this;
         str  root_class = app_type->name;
         path css_path   = fmt { "style/{0}.css", { root_class } };
+        assert(css_path.exists());
         load_from_file(css_path);
     };
     /// spawn watcher (this syncs once before returning)

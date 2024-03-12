@@ -3,61 +3,70 @@
 
 using namespace ion;
 
+struct CanvasAttribs {
+    glm::vec4 pos;
+    glm::vec2 uv;
+    doubly<prop> meta() {
+        return {
+            { "pos", pos },
+            { "uv",  uv  }
+        };
+    }
+};
+
 int main(int argc, const char* argv[]) {
     static constexpr uint32_t kWidth = 1024;
     static constexpr uint32_t kHeight = 1024;
 
-    Window window = Window::create("dawn", {kWidth, kHeight});
-
-    struct Attribs {
-        glm::vec4 pos;
-        doubly<prop> meta() {
-            return {
-                { "pos", pos }
-            };
-        }
-    };
-
-    Device device = window.device();
-    Pipes test_scene = Pipes(device, null, array<Graphics> {
+    Window window   = Window::create("dawn", {kWidth, kHeight});
+    Device  device  = window.device();
+    vec2i   size    = window.size();
+    Texture texture = device.create_texture(size);
+    window.set_title("Canvas Test");
+    
+    Pipes canvas_pipeline = Pipes(device, null, array<Graphics> {
         Graphics {
-            "test", typeof(Attribs), { }, "test", 
+            "canvas", typeof(CanvasAttribs), { texture, Sampling::linear }, "canvas",
             [](mx &vbo, mx &ibo, array<image> &images) {
                 static const uint32_t indexData[6] = {
                     0, 1, 2,
                     2, 1, 3
                 };
-
-                static const Attribs vertexData[4] = {
-                    {{ -1.0f, -1.0f, 0.0f, 1.0f }},
-                    {{  1.0f, -1.0f, 0.0f, 1.0f }},
-                    {{ -1.0f,  1.0f, 0.0f, 1.0f }},
-                    {{  1.0f,  1.0f, 0.0f, 1.0f }}
+                static const CanvasAttribs vertexData[4] = {
+                    {{ -1.0f, -1.0f, 0.0f, 1.0f }, {  0.0f, 0.0f }},
+                    {{  1.0f, -1.0f, 0.0f, 1.0f }, {  1.0f, 0.0f }},
+                    {{ -1.0f,  1.0f, 0.0f, 1.0f }, { -1.0f, 1.0f }},
+                    {{  1.0f,  1.0f, 0.0f, 1.0f }, {  1.0f, 1.0f }}
                 };
-
+                // set vbo and ibo
                 ibo = mx::wrap<u32>((void*)indexData, 6);
-                vbo = mx::wrap<Attribs>((void*)vertexData, 4);
+                vbo = mx::wrap<CanvasAttribs>((void*)vertexData, 4);
             }
         }
     });
     
-    window.set_on_scene_render([&]() -> Scene {
-        return Scene { test_scene };
-    });
+    Canvas canvas;
 
-    /*
-    window.set_on_canvas_render([](Canvas &canvas) {
-        vec2i sz = canvas.size();
-        rectd rect { 0, 0, sz.x, sz.y };
-        canvas.color("#00f");
-        canvas.fill(rect);
-
-        rectd top { 0, 0, sz.x, sz.y / 2 };
-        canvas.color("#ff0");
-        canvas.fill(top);
-    });
-    */
-
+    /// calls OnWindowResize when registered
+    window.register_presentation(
+        /// presentation: returns the pipelines that renders canvas, also updates the canvas (test code)
+        [&]() -> Scene {
+            vec2i sz = canvas.size();
+            rectd rect { 0, 0, sz.x, sz.y };
+            canvas.color("#00f");
+            canvas.fill(rect);
+            rectd top { 0, 0, sz.x, sz.y / 2 };
+            canvas.color("#ff0");
+            canvas.fill(top);
+            canvas.flush();
+            return Scene { canvas_pipeline };
+        },
+        /// size updated (recreates a texture from device, and canvas)
+        [&](vec2i sz) {
+            texture.resize(sz);
+            canvas = Canvas(device, texture, false);
+        });
+    
     i64 s_last = millis() / 1000;
     i64 frames_drawn = 0;
 

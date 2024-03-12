@@ -123,7 +123,7 @@ void frame() {
         // The depthSlice must be initialized with the 'undefined' value for 2d color attachments.
         colorAttachment.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
         colorAttachment.resolveTarget = nullptr;
-        colorAttachment.clearValue = {0.0f, 0.0f, 1.0f, 1.0f};
+        colorAttachment.clearValue = {0.0f, 0.0f, 0.0f, 0.0f};
         colorAttachment.loadOp = WGPULoadOp_Clear;
         colorAttachment.storeOp = WGPUStoreOp_Store;
         renderpassInfo.colorAttachmentCount = 1;

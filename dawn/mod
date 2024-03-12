@@ -1,0 +1,317 @@
+# build absl, spirv-tools, tint, dawn, and skia
+# -----------------------------
+dep(
+    glfw:glfw3
+    mx:mx
+    ion:media
+)
+
+cpp(17)
+
+defines(TINT_BUILD_WGSL_READER
+        TINT_BUILD_WGSL_WRITER)
+
+if (win)
+    dep(d3d12 dxgi d3dcompiler libcmt libucrt msvcrt)
+    #cxxflags(/showIncludes)
+    cxxflags(+/bigobj)
+    defines(
+        TINT_BUILD_HLSL_WRITER
+        DAWN_ENABLE_BACKEND_D3D12)
+    
+elseif (mac)
+    dep(CoreFoundation IOKit IOSurface QuartzCore Metal AppKit CoreGraphics Cocoa)
+    defines(
+        TINT_BUILD_METAL_WRITER
+        DAWN_ENABLE_BACKEND_METAL)
+elseif (linux)
+    dep(X11 Vulkan)
+    defines(
+        TINT_BUILD_SPV_WRITER
+        DAWN_USE_X11
+        DAWN_ENABLE_BACKEND_VULKAN)
+endif()
+
+if(linux)
+    # spriv tools
+    # -----------------------------
+    includes(${EXTERN_DIR}/SPIRV-Tools)
+    includes(${EXTERN_DIR}/SPIRV-Tools/ion-${cfg_lower})
+    includes(${EXTERN_DIR}/Vulkan-Utility-Libraries)
+endif()
+
+# abseil-cpp combined
+# -----------------------------
+set(absl_src ${EXTERN_DIR}/abseil-cpp)
+includes(${absl_src})
+src(${absl_src}/absl/**.cc)
+
+# tint
+# -----------------------------
+set(tint_src ${EXTERN_DIR}/dawn/src/tint)
+
+# all use core, utils/** and wgsl/**
+src(
+    ${tint_src}/lang/core/*.cc
+    ${tint_src}/lang/core/constant/*.cc
+    ${tint_src}/lang/core/intrinsic/*.cc
+    ${tint_src}/lang/core/ir/*.cc
+    # ${tint_src}/lang/core/ir/binary/*.cc
+    ${tint_src}/lang/core/ir/transform/*.cc
+    ${tint_src}/lang/core/type/*.cc
+    ${tint_src}/lang/wgsl/**.cc
+    ${tint_src}/utils/**.cc
+    ${tint_src}/api/**.cc
+)
+
+# reader based on dawn's target platform
+# -----------------------------
+if(mac)
+    src(${tint_src}/lang/msl/**.cc)
+elseif(win)
+    src(${tint_src}/lang/hlsl/**.cc)
+elseif(lin)
+    src(${tint_src}/lang/spirv/**.cc)
+endif()
+
+# dawn
+# -----------------------------
+set(dawn_gen ${EXTERN_DIR}/dawn/ion-${cfg_lower}/gen)
+set(dawn_src ${EXTERN_DIR}/dawn/src/dawn)
+
+includes(
+    ${EXTERN_DIR}/dawn
+    ${dawn_gen}/include
+    ${dawn_gen}/src
+    ${dawn_gen}/src/dawn/wire
+    ${dawn_gen}/src/dawn/wire/server
+    ${dawn_gen}/src/dawn/wire/client
+    ${EXTERN_DIR}/dawn/src
+    ${dawn_src}/partition_alloc
+    ${dawn_src}/native/utils
+    ${dawn_src}/utils
+    ${dawn_src}/wire
+    ${dawn_src}/wire/server
+    ${dawn_src}/wire/client
+)
+
+# add repo-based source
+# -----------------------------
+src(
+    ${dawn_src}/common/**.cpp
+    ${dawn_src}/native/*.cpp
+    ${dawn_src}/native/null/*.cpp
+    ${dawn_src}/native/utils/*.cpp
+    ${dawn_src}/native/stream/*.cpp
+    ${dawn_src}/samples/SampleUtils.cpp
+    ${dawn_src}/wire/client/*.cpp
+    ${dawn_src}/wire/server/*.cpp
+    ${dawn_src}/utils/*.cpp
+    ${dawn_src}/wire/*.cpp
+    ${dawn_src}/glfw/*.cpp
+    ${dawn_src}/platform/**.cpp)
+
+# add generated source (built by .py)
+# -----------------------------
+src(
+    ${dawn_gen}/src/dawn/common/*.cpp
+    ${dawn_gen}/src/dawn/dawn_proc.c
+    ${dawn_gen}/src/dawn/*.cpp
+    ${dawn_gen}/src/dawn/native/*.cpp
+    ${dawn_gen}/src/dawn/wire/**.cpp)
+
+if (win)
+    src(${dawn_src}/native/d3d/**.cpp
+        ${dawn_src}/native/d3d12/**.cpp)
+endif()
+
+if (linux)
+    src(${dawn_src}/native/vulkan/**.cpp)
+endif()
+
+if (mac)
+    src(${dawn_src}/native/metal/**.cpp)
+endif()
+
+# benchmark / test code removal
+# -----------------------------
+src(-_test.cc
+    -_testing.cc
+    -_bench.cc
+    -_benchmark.cc
+    -_test_common.cc
+    -_mock_log.cc
+    -benchmarks.cc
+    -test_helpers.cc
+    -test_matchers.cc
+    -SemaphoreServiceImplementationZirconHandle.cpp
+    -MemoryServiceImplementationZirconHandle.cpp
+)
+
+if(NOT android)
+    src(-AHBFunctions.cpp -MemoryServiceImplementationAHardwareBuffer.cpp)
+endif()
+
+if(NOT mac)
+    src(
+        -IOSurfaceUtils.cpp
+        -OSXTimer.cpp
+    )
+endif()
+
+if(NOT win)
+    src(
+        -WindowsUtils.cpp
+        -WindowsTimer.cpp
+        -WindowsDebugLogger.cpp
+        -printer_windows.cc
+        -command_windows.cc
+        -tmpfile_windows.cc
+    )
+endif()
+
+# section for skia
+# -----------------------------
+dep(harfbuzz:harfbuzz libexpat:expat freetype:freetype2)
+
+defines(
+    SK_DAWN
+    SK_VULKAN
+    SK_GRAPHITE
+    SK_GANESH
+    SK_DISABLE_TRACING
+    GR_TEST_UTILS
+    GRAPHITE_TEST_UTILS
+    SK_DISABLE_LEGACY_PNG_WRITEBUFFER
+    SK_DISABLE_LEGACY_IMAGE_READBUFFER
+    SK_SHAPER_HARFBUZZ_AVAILABLE
+    SK_SHAPER_UNICODE_AVAILABLE
+    VK_USE_PLATFORM_XCB_KHR
+)
+
+if (win)
+    defines(SK_BUILD_FOR_WIN)
+elseif (mac)
+    defines(SK_BUILD_FOR_MAC)
+elseif (linux)
+    defines(SK_BUILD_FOR_UNIX)
+endif()
+
+includes(
+    ${INSTALL_PREFIX}/include/harfbuzz
+    ${INSTALL_PREFIX}/include/freetype2
+)
+
+set(dawn_dir ${EXTERN_DIR}/dawn)
+set(skia_dir ${EXTERN_DIR}/skia)
+set(skia_src ${EXTERN_DIR}/skia/src)
+
+includes(
+    ${dawn_dir}/include
+    ${dawn_dir}/src
+    ${dawn_dir}/ion-${cfg_lower}/include
+    ${dawn_dir}/ion-${cfg_lower}/gen/include
+    ${skia_dir}
+    ${skia_dir}/include
+    ${skia_dir}/modules/svg/include
+    ${skia_src}
+)
+
+# add support software (no ganesh, since we use graphite with dawn, a more limited interface)
+src(
+    #${skia_dir}/tools/*.cpp
+    ${skia_dir}/tools/flags/*.cpp
+    ${skia_dir}/tools/graphite/*.cpp
+    ${skia_dir}/tools/fonts/*.cpp
+    ${skia_dir}/tools/svg/*.cpp
+    #${skia_dir}/tools/gpu/*.cpp
+)
+
+src(
+    ${skia_dir}/modules/svg/src/*.cpp
+    ${skia_dir}/modules/skcms/*.cc
+    ${skia_dir}/modules/skcms/src/*.cc
+    ${skia_dir}/modules/skunicode/src/SkUnicode.cpp
+    ${skia_dir}/modules/skunicode/src/SkUnicode_client.cpp
+    ${skia_dir}/modules/skshaper/src/SkShaper.cpp
+    ${skia_dir}/modules/skshaper/src/SkShaper_primitive.cpp
+    ${skia_dir}/modules/skshaper/src/SkShaper_skunicode.cpp
+    ${skia_dir}/modules/skshaper/src/SkShaper_harfbuzz.cpp
+    ${skia_src}/base/**.cpp
+    ${skia_src}/core/**.cpp
+    ${skia_src}/lazy/*.cpp
+    ${skia_src}/effects/**.cpp
+    ${skia_src}/fonts/**.cpp
+    ${skia_src}/image/**.cpp
+    ${skia_src}/opts/**.cpp
+    ${skia_src}/pathops/**.cpp
+    ${skia_src}/sfnt/**.cpp
+    ${skia_src}/shaders/**.cpp
+    ${skia_src}/svg/**.cpp
+    ${skia_src}/text/*.cpp
+    ${skia_src}/text/gpu/*.cpp
+    ${skia_src}/utils/*.cpp
+    ${skia_src}/sksl/**.cpp
+    ${skia_src}/xml/*.cpp
+    ${skia_src}/gpu/*.cpp
+    ${skia_src}/gpu/vk/*.cpp
+    ${skia_src}/gpu/MutableTextureState.cpp
+    ${skia_src}/gpu/ganesh/*.cpp
+    ${skia_src}/gpu/ganesh/vk/*.cpp
+    ${skia_src}/gpu/ganesh/geometry/*.cpp
+    ${skia_src}/gpu/ganesh/ops/*.cpp
+    ${skia_src}/gpu/ganesh/effects/*.cpp
+    ${skia_src}/gpu/ganesh/tessellate/*.cpp
+    ${skia_src}/gpu/ganesh/text/*.cpp
+    ${skia_src}/gpu/ganesh/surface/*.cpp
+    ${skia_src}/gpu/ganesh/mock/*.cpp
+    ${skia_src}/gpu/ganesh/glsl/*.cpp
+    ${skia_src}/gpu/ganesh/image/*.cpp
+    ${skia_src}/gpu/ganesh/gradients/*.cpp
+    ${skia_src}/text/gpu/*.cpp
+    ${skia_src}/gpu/graphite/*.cpp
+    ${skia_src}/gpu/graphite/geom/*.cpp
+    ${skia_src}/gpu/graphite/render/*.cpp
+    ${skia_src}/gpu/graphite/surface/*.cpp
+    ${skia_src}/gpu/graphite/text/*.cpp
+    ${skia_src}/gpu/graphite/compute/DispatchGroup.cpp
+    ${skia_src}/gpu/graphite/dawn/*.cpp
+    ${skia_src}/gpu/tessellate/*.cpp
+    ${skia_src}/ports/SkGlobalInitialization_default.cpp
+    ${skia_src}/ports/SkFontHost_FreeType.cpp
+    ${skia_src}/ports/SkFontHost_FreeType_common.cpp
+    ${skia_src}/ports/SkFontMgr_custom.cpp
+    ${skia_src}/ports/SkFontMgr_custom_empty.cpp
+    ${skia_src}/ports/SkMemory_malloc.cpp
+    ${skia_src}/ports/SkOSFile_stdio.cpp
+    ${skia_dir}/tools/GpuToolUtils.cpp
+)
+
+src(
+    -_mock.cpp
+    -_win.cpp
+    -_fuzz.cpp
+    -_coretext.cpp
+    -public_headers_warnings_check.cpp
+)
+
+if (win)
+    src(
+        ${skia_src}/utils/win/*.cpp
+        ${skia_src}/ports/*_win_dw.cpp
+        ${skia_src}/ports/SkDebug_win.cpp
+        ${skia_src}/ports/SkOSFile_win.cpp
+    )
+else()
+    src(
+        ${skia_src}/ports/SkDebug_stdio.cpp
+        ${skia_src}/ports/SkOSFile_posix.cpp
+    )
+endif()
+
+if (mac)
+    src(
+        ${skia_src}/utils/mac/*.cpp
+        ${skia_src}/ports/*_mac_ct.cpp
+    )
+endif()

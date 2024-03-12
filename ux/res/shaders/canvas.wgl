@@ -18,5 +18,5 @@ fn vertex_main(
 
 @fragment
 fn fragment_main(a : args) -> @location(0) vec4f {
-    return vec4f(1.0f, 1.0f, 1.0f, 1.0f); //textureSample(myTexture, mySampler, a.uv);
+    return textureSample(myTexture, mySampler, a.uv);
 }

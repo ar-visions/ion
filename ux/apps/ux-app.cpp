@@ -9,7 +9,7 @@ using namespace ion;
 /// compatible with any kind of app or game in the above
 /// described contexts
 
-struct View:Element {
+struct AppTest:Element {
     struct props {
         callback    clicked;
         ///
@@ -21,7 +21,7 @@ struct View:Element {
         type_register(props);
     };
 
-    component(View, Element, props);
+    component(AppTest, Element, props);
 };
 
 int main(int argc, char *argv[]) {
@@ -29,7 +29,7 @@ int main(int argc, char *argv[]) {
     map<mx> config { args::parse(argc, argv, defs) };
     if    (!config) return args::defaults(defs);
     return App(config, [](App &app) -> node {
-        return View {
+        return AppTest {
             { "id", "main" }
         };
     });
