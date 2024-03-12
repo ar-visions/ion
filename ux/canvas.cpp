@@ -4,13 +4,24 @@
 
 #ifdef __linux__
 #define GLFW_EXPOSE_NATIVE_X11
+#define GLFW_EXPOSE_NATIVE_WAYLAND
+#endif
+
+#ifdef WIN32
+#define GLFW_EXPOSE_NATIVE_WIN32
+#endif
+
+#ifdef __APPLE__
+#define GLFW_EXPOSE_NATIVE_COCOA
+#endif
+
 #include <GLFW/glfw3native.h>
+
 /// X11 globals that conflict with Dawn
 #undef None
 #undef Success
 #undef Always
 #undef Bool
-#endif
 
 #include <vector>
 #include <algorithm>
@@ -217,6 +228,50 @@ Texture Texture::of_size(Device &dev, vec2i size, TextureFormat2 f) {
     return texture;
 }
 
+Texture Texture::of_size(Device &dev, vec2i size, TextureFormat2 f) {
+    WGPUTextureFormat        format = f.convert();
+    WGPUTextureDescriptor   tx_desc {
+        .dimension                  = WGPUTextureDimension_2D,
+        .size.width                 = (u32)size.x,
+        .size.height                = (u32)size.y,
+        .size.depthOrArrayLayers    = 1,
+        .sampleCount                = 1,
+        .format                     = preferred_swapchain_format(),
+        .mipLevelCount              = 1,
+        .usage                      = WGPUTextureUsage_CopyDst        | 
+                                      WGPUTextureUsage_TextureBinding | 
+                                      WGPUTextureUsage_RenderAttachment
+    };
+
+    WGPUTextureViewDescriptor vdesc {
+        .format                     = preferred_swapchain_format(),
+        .dimension                  = WGPUTextureViewDimension_2D,
+        .baseMipLevel               = 0,
+        .mipLevelCount              = 1,
+        .baseArrayLayer             = 0,
+        .arrayLayerCount            = 1
+    };
+
+    device                          = dev->device;
+    sz                              = size;
+    texture                         = WGPUCreateTexture(device, &tx_desc);
+    view                            = WGPUCreateTextureView(texture, &vdesc);
+    
+    WGPUSamplerDescriptor     sdesc {
+        .addressModeU               = WGPUAddressMode_Repeat,
+        .addressModeV               = WGPUAddressMode_Repeat,
+        .addressModeW               = WGPUAddressMode_Repeat,
+        .magFilter                  = WGPUFilterMode_Linear,
+        .minFilter                  = WGPUFilterMode_Linear,
+        .mipmapFilter               = WGPUFilterMode_Linear,
+        .lodMinClamp                = 0.0f,
+        .lodMaxClamp                = FLT_MAX,
+        .compare                    = WGPUCompareFunction_Undefined
+    };
+    
+    sampler                         = wgpuDeviceCreateSampler(device, &sampler_desc);
+}
+
 /// make this not a static method; change the texture already in memory
 Texture Texture::load(Device &dev, symbol name, Asset type) {
     return from_image(dev, asset_image(name, type), type);
@@ -261,6 +316,7 @@ struct IPipeline {
     bool                        init;
     watch                       watcher;
     bool                        updated;
+    bool                        blending = true;
     Texture                     textures[Asset::count - 1];
 
     static WGPUBuffer create_index_buffer(WGPUDevice device, mx indexData) {
@@ -495,24 +551,8 @@ struct IPipeline {
             .entryCount         = size_t(bind_id),
             .entries            = bind_values.data
         };
-        bind_group = wgpuDeviceCreateBindGroup(device, &bg);
-
-        WGPUPipelineLayoutDescriptor pldesc = {};
-        pldesc.bindGroupLayoutCount = 1;
-        pldesc.bindGroupLayouts = &bgl;
-        pl = wgpuDeviceCreatePipelineLayout(device, &pldesc);
-
-        WGPUVertexAttribute attributes[MAX_ATTRIBUTES]; // Adjust MAX_ATTRIBUTES as needed
-        WGPUVertexBufferLayout buffer_layout = {
-            .arrayStride = vtype->base_sz,
-            .attributeCount = 0,
-            .attributes = attributes
-        };
-
-        WGPUDepthStencilState depth_stencil {
-            .format = WGPUTextureFormat_Depth24PlusStencil8,
-            .depthCompare = WGPUCompareFunction_LessEqual
-        };
+        bind_group = device.CreateBindGroup(&bg);
+        pl = dawn::utils::MakeBasicPipelineLayout(device, &bgl);
 
         size_t        attrib_count = 0;
         doubly<prop> &props = *(doubly<prop>*)vtype->meta;
@@ -534,84 +574,65 @@ struct IPipeline {
             attrib_count++;
         }
 
-        buffer_layout.attributeCount = attrib_count;
-        WGPUColorTargetState color_target = { .format = preferred_swapchain_format() };
-        WGPUFragmentState fragment {
-            .module = mod, .entryPoint = "fragment_main", .targetCount = 1, .targets = &color_target
-        };
-        WGPURenderPipelineDescriptor render_desc = {
-            .layout         = pl,
-            .vertex         = { .module = mod, .entryPoint = "vertex_main", .bufferCount = 1, .buffers = &buffer_layout },
-            //.depthStencil   = &depth_stencil,
-            .multisample    = {
-                .count = 1,
-                .mask = 0xFFFFFFFF,
-                .alphaToCoverageEnabled = false
+        /// blending could be a series of flattened enums
+        wgpu::BlendState blend = {
+            .color = {
+                .operation = wgpu::BlendOperation::Add,
+                .srcFactor = wgpu::BlendFactor::SrcAlpha,
+                .dstFactor = wgpu::BlendFactor::OneMinusSrcAlpha
             },
-            .fragment       = &fragment
+            .alpha = {
+                .operation = wgpu::BlendOperation::Add,
+                .srcFactor = wgpu::BlendFactor::One,
+                .dstFactor = wgpu::BlendFactor::OneMinusSrcAlpha
+            }
         };
 
-        pipeline = wgpuDeviceCreateRenderPipeline(device, &render_desc);
+        render_desc.cBuffers[0].attributeCount = attrib_count;
+        render_desc.cFragment.module = mod;
+        render_desc.cTargets[0].format = preferred_swapchain_format();
+        render_desc.cTargets[0].blend = blending ? &blend : null;
+        render_desc.EnableDepthStencil(wgpu::TextureFormat::Depth24PlusStencil8);
+
+        pipeline = device.CreateRenderPipeline(&render_desc);
         Dawn dawn;
         dawn.process_events();
     }
 
-    void submit(WGPUTextureView texture_view, WGPUTextureView depthStencilView, bool clear_color, rgbaf color_value) {
-        WGPUDevice device = this->device->device;
-        WGPUQueue queue = wgpuDeviceGetQueue(device);
-
-        int szi = wgpuBufferGetSize(index_buffer);
-        int szv = wgpuBufferGetSize(vertex_buffer);
-
-        //clear_color = false;
-        // RenderPass render({swap_view}, depthStencilView, rgbaf {0.0, 0.0, 0.5, 1.0});
-        WGPURenderPassColorAttachment colorAttachment = {
-            .view       = texture_view,
-            .depthSlice = WGPU_DEPTH_SLICE_UNDEFINED,
-            .loadOp     = clear_color ? WGPULoadOp_Clear : WGPULoadOp_Load, /// set to Load for no clear
-            .storeOp    = WGPUStoreOp_Store,
-            .clearValue = (WGPUColor) {.r = color_value.r, .g = color_value.g, .b = color_value.b, .a = color_value.a}
+    void submit(wgpu::TextureView color_view, wgpu::TextureView depth_stencil_view, states<Clear> clear_states, rgbaf clear_color) {
+        wgpu::RenderPassColorAttachment color_attachment {
+            .view = color_view,
+            .loadOp = clear_states[Clear::Color] ? wgpu::LoadOp::Clear : wgpu::LoadOp::Load,
+            .storeOp = wgpu::StoreOp::Store,
+            .clearValue = wgpu::Color { clear_color.r, clear_color.g, clear_color.b, clear_color.a }
+        };
+        wgpu::RenderPassDepthStencilAttachment depth_attachment {
+            .view = depth_stencil_view,
+            .depthLoadOp = clear_states[Clear::Depth] ? wgpu::LoadOp::Clear : wgpu::LoadOp::Load,
+            .depthStoreOp = wgpu::StoreOp::Store,
+            .depthClearValue = 1.0f,
+            .depthReadOnly = false,
+            .stencilLoadOp = clear_states[Clear::Stencil] ? wgpu::LoadOp::Clear : wgpu::LoadOp::Load,
+            .stencilStoreOp = wgpu::StoreOp::Store,
+            .stencilReadOnly = false
+        };
+        wgpu::RenderPassDescriptor render_desc {
+            .colorAttachmentCount = 1,
+            .colorAttachments = &color_attachment,
+            .depthStencilAttachment = depth_stencil_view ? &depth_attachment : null
         };
 
-        /*
-        WGPURenderPassDepthStencilAttachment depthStencilAttachment { };
-        if (depthStencilView) {
-            depthStencilAttachment.view              = depthStencilView;
-            depthStencilAttachment.depthLoadOp       = WGPULoadOp_Clear;
-            depthStencilAttachment.depthStoreOp      = WGPUStoreOp_Store;
-            depthStencilAttachment.depthClearValue   = 1.0f;
-            depthStencilAttachment.stencilLoadOp     = WGPULoadOp_Clear;
-            depthStencilAttachment.stencilStoreOp    = WGPUStoreOp_Store;
-            depthStencilAttachment.stencilClearValue = 0;
-        }*/
-
-        WGPURenderPassDescriptor renderPassDescriptor {
-            .colorAttachmentCount   = 1,
-            .colorAttachments       = &colorAttachment,
-            .depthStencilAttachment = nullptr //depthStencilView ? &depthStencilAttachment : nullptr
-        };
-
-        // Now you can use the renderPassDescriptor to begin a render pass
-        WGPUCommandEncoder command_encoder = wgpuDeviceCreateCommandEncoder(device, NULL);
-        WGPURenderPassEncoder render_pass = wgpuCommandEncoderBeginRenderPass(command_encoder, &renderPassDescriptor);
-
-        wgpuRenderPassEncoderSetPipeline(render_pass, pipeline);
-        wgpuRenderPassEncoderSetBindGroup(render_pass, 0, bind_group, 0, NULL);
-        wgpuRenderPassEncoderSetVertexBuffer(render_pass, 0, vertex_buffer, 0, WGPU_WHOLE_SIZE);
-        wgpuRenderPassEncoderSetIndexBuffer(render_pass, index_buffer, WGPUIndexFormat_Uint32, 0, WGPU_WHOLE_SIZE);
-        wgpuRenderPassEncoderDrawIndexed(render_pass, indices_count, 1, 0, 0, 0);
-        wgpuRenderPassEncoderEnd(render_pass);
-
-        // submit the command buffer
-        WGPUCommandBuffer commands = wgpuCommandEncoderFinish(command_encoder, nullptr);
-        wgpuQueueSubmit(queue, 1, &commands);
-        wgpuQueueRelease(queue);
-        wgpuCommandBufferRelease(commands);
-        
-        // clean up
-        wgpuRenderPassEncoderRelease(render_pass);
-        wgpuCommandEncoderRelease(command_encoder);
-
+        wgpu::Queue queue = device->device.GetQueue();
+        wgpu::CommandEncoder encoder = device->device.CreateCommandEncoder();
+        wgpu::RenderPassEncoder render = encoder.BeginRenderPass(&render_desc);
+        render.SetPipeline(pipeline);
+        render.SetBindGroup(0, bind_group);
+        render.SetVertexBuffer(0, vertex_buffer);
+        render.SetIndexBuffer(index_buffer, wgpu::IndexFormat::Uint32);
+        render.DrawIndexed(indices_count);
+        render.End();
+        wgpu::CommandBuffer commands = encoder.Finish();
+        queue.Submit(1, &commands);
     }
 
     void start() {
@@ -670,10 +691,9 @@ struct IPipes {
     lambda<void(IPipeline&)>    reload;
     lambda<void(memory*)>       uniform_update;
     
-    void submit(WGPUTextureView texture_view, WGPUTextureView depthStencilView, bool clear_color, rgbaf clear_color_value) {
+    void submit(wgpu::TextureView color_view, wgpu::TextureView depth_stencil_view, states<Clear> clear_states, rgbaf clear_color) {
         for (auto p: pipelines) {
-            p->submit(texture_view, depthStencilView, clear_color, clear_color_value);
-            clear_color = false;
+            p->submit(color_view, depth_stencil_view, clear_states, clear_color);
         }
     }
     register(IPipes);
@@ -885,14 +905,11 @@ struct IWindow {
     WGPUDevice                  gpu;
     Device                      device;
     Texture                     texture;
-
-    WGPUSurface                 surface;
-    WGPUSampler                 sampler; /// 'device' default sampler
-    WGPUQueue                   queue;
-    WGPUSwapChain               swapchain;
-    WGPUTextureView             depthStencilView;
+    wgpu::Sampler               sampler; /// 'device' default sampler
+    wgpu::Queue                 queue;
+    wgpu::SwapChain             swapchain;
+    wgpu::TextureView           depth_stencil_view;
     
-
     Pipes                       canvas_pipeline;
     Canvas                      canvas;
     Scene                       scene;
@@ -994,17 +1011,16 @@ struct IWindow {
         if (iwin->key_scancode) iwin->key_scancode(key, scancode, action, mods);
     }
 
-    /*
-    WGPUTextureView depth_stencil_view() {
-        WGPUDevice device = this->device->device;
-        WGPUTextureDescriptor descriptor {
-            .usage          = WGPUTextureUsage_RenderAttachment,
-            .dimension      = WGPUTextureDimension_2D,
-            .size           = { (u32)sz.x, (u32)sz.y, 1 },
-            .format         = WGPUTextureFormat_Depth24PlusStencil8,
-            .mipLevelCount  = 1,
-            .sampleCount    = 1
-        };
+    wgpu::TextureView create_depth_stencil_view() {
+        wgpu::TextureDescriptor descriptor;
+        descriptor.dimension = wgpu::TextureDimension::e2D;
+        descriptor.size.width = (u32)sz.x;
+        descriptor.size.height = (u32)sz.y;
+        descriptor.size.depthOrArrayLayers = 1;
+        descriptor.sampleCount = 1;
+        descriptor.format = WGPUTextureFormat_Depth24PlusStencil8;
+        descriptor.mipLevelCount = 1;
+        descriptor.usage = WGPUTextureUsage_RenderAttachment;
 
         WGPUTexture depthStencilTexture = wgpuDeviceCreateTexture(device, &descriptor);
         WGPUTextureViewDescriptor viewDescriptor {
@@ -1153,7 +1169,7 @@ struct IWindow {
 
         update_swap();
 
-        //depthStencilView = depth_stencil_view();
+        depth_stencil_view = create_depth_stencil_view();
         update_texture();
 
         canvas_pipeline = Pipes(this->device, null, array<Graphics> {
@@ -1171,7 +1187,7 @@ struct IWindow {
                         {{  1.0f,  1.0f, 0.0f, 1.0f }, {  1.0f, 1.0f }}
                     };
 
-                    ibo = mx::wrap<u32>((void*)indexData, 6);
+                    ibo = mx::wrap<u32>((void*)indexData, 6); // must be a COPY.
                     vbo = mx::wrap<Attribs>((void*)vertexData, 4);
                     // set vbo and ibo
                 }
@@ -1185,22 +1201,28 @@ struct IWindow {
         glfwPollEvents();
         dawn.process_events();
 
-        WGPUTextureView swap_view = wgpuSwapChainGetCurrentTextureView(swapchain);
-        bool clear_color = true;
-        rgbaf clear_color_value { 0.0f, 0.0f, 0.5f, 1.0f };
+        wgpu::TextureView swap_view = swapchain.GetCurrentTextureView();
+        states<Clear> clear_states { Clear::Color, Clear::Depth };
+        rgbaf clear_color { 0.0f, 0.0f, 0.5f, 1.0f };
 
         /// render webgpu
         if (fn_scene_render) {
             Scene scene = fn_scene_render();
-            for (Pipes &p: scene)
-                p->submit(swap_view, depthStencilView, clear_color, clear_color_value);
+            for (Pipes &p: scene) {
+                for (Pipeline &pipeline: p->pipelines) {
+                    pipeline->submit(swap_view, depth_stencil_view, clear_states, clear_color);
+                    clear_states[Clear::Color] = false;
+                    clear_states[Clear::Depth] = false;
+                    clear_states[Clear::Stencil] = false;
+                }
+            }
         }
         
         /// render skia texture to window
         if (fn_canvas_render) {
             fn_canvas_render(canvas);
             canvas.flush();
-            canvas_pipeline->submit(swap_view, depthStencilView, clear_color, clear_color_value);
+            canvas_pipeline->submit(swap_view, depth_stencil_view, clear_states, clear_color);
         }
 
         wgpuSwapChainPresent(swapchain);
