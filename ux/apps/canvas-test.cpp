@@ -21,7 +21,7 @@ int main(int argc, const char* argv[]) {
     Window window   = Window::create("dawn", {kWidth, kHeight});
     Device  device  = window.device();
     vec2i   size    = window.size();
-    Texture texture = device.create_texture(size);
+    Texture texture = device.create_texture(size, Asset::attachment);
     window.set_title("Canvas Test");
     
     Pipes canvas_pipeline = Pipes(device, null, array<Graphics> {
@@ -32,12 +32,16 @@ int main(int argc, const char* argv[]) {
                     0, 1, 2,
                     2, 1, 3
                 };
-                static const CanvasAttribs vertexData[4] = {
+                static CanvasAttribs vertexData[4] = {
                     {{ -1.0f, -1.0f, 0.0f, 1.0f }, {  0.0f, 0.0f }},
                     {{  1.0f, -1.0f, 0.0f, 1.0f }, {  1.0f, 0.0f }},
                     {{ -1.0f,  1.0f, 0.0f, 1.0f }, { -1.0f, 1.0f }},
                     {{  1.0f,  1.0f, 0.0f, 1.0f }, {  1.0f, 1.0f }}
                 };
+                for (int i = 0; i < 4; i++) {
+                    vertexData[i].pos.x *= 0.1;
+                    vertexData[i].pos.y *= 0.1;
+                }
                 // set vbo and ibo
                 ibo = mx::wrap<u32>((void*)indexData, 6);
                 vbo = mx::wrap<CanvasAttribs>((void*)vertexData, 4);

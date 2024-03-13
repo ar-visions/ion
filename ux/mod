@@ -1,6 +1,6 @@
 dep(
     glfw:glfw3
-    ion:dawn
+    ion:trinity
     mx:mx
     mx:math
     mx:async

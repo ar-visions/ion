@@ -100,7 +100,7 @@ int App::run() {
     Window &window  = data->window;
     Device  device  = window.device();
     vec2i   size    = window.size();
-    Texture texture = device.create_texture(size);
+    Texture texture = device.create_texture(size, Asset::attachment);
 
     /// we call app_fn() right away to obtain app class
     node ee = data->app_fn(*this);

@@ -1,7 +1,7 @@
 
 #include <mx/mx.hpp>
 #include <media/image.hpp>
-#include <dawn/dawn.hpp>
+#include <trinity/trinity.hpp>
 
 #include <dawn/webgpu_cpp.h>
 #include <dawn/dawn_proc.h>

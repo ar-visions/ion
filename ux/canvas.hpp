@@ -3,7 +3,7 @@
 #include <watch/watch.hpp>
 #include <media/media.hpp>
 #include <media/image.hpp>
-#include <dawn/dawn.hpp>
+#include <trinity/trinity.hpp>
 
 struct SkCanvas;
 
