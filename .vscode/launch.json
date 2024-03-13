@@ -66,6 +66,10 @@
                 {
                     "name": "ASAN_OPTIONS",
                     "value": ""
+                },
+                {
+                    "name": "VK_ICD_FILENAMES",
+                    "value": "/usr/share/vulkan/icd.d/radeon_icd.x86_64.json"
                 }
             ],
             "MIMode": "gdb",

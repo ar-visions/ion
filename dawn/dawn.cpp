@@ -42,6 +42,7 @@ namespace ion {
 
 struct IDevice {
     wgpu::Device device;
+    wgpu::Queue  queue;
     register(IDevice)
 };
 
@@ -237,7 +238,7 @@ struct IDawn {
     #elif defined(__linux__)
         wgpu::BackendType backend_type = wgpu::BackendType::Vulkan;
     #endif
-    std::unique_ptr<dawn::native::Instance> instance;
+    wgpu::Instance instance;
     register(IDawn);
 };
 
@@ -810,9 +811,10 @@ struct IWindow {
     Window::OnSceneRender       fn_scene_render;
 
     DawnProcTable               procs;
-    WGPUDevice                  gpu;
     Device                      device;
     Texture                     texture;
+    wgpu::Adapter               adapter;
+    wgpu::Surface               surface;
     wgpu::Sampler               sampler; /// 'device' default sampler
     wgpu::Queue                 queue;
     wgpu::SwapChain             swapchain;
@@ -905,104 +907,79 @@ struct IWindow {
     }
 
     wgpu::TextureView create_depth_stencil_view() {
-        wgpu::TextureDescriptor descriptor;
-        descriptor.dimension = wgpu::TextureDimension::e2D;
-        descriptor.size.width = (u32)sz.x;
-        descriptor.size.height = (u32)sz.y;
-        descriptor.size.depthOrArrayLayers = 1;
-        descriptor.sampleCount = 1;
-        descriptor.format = wgpu::TextureFormat::Depth24PlusStencil8;
-        descriptor.mipLevelCount = 1;
-        descriptor.usage = wgpu::TextureUsage::RenderAttachment;
+        wgpu::TextureDescriptor descriptor {
+            .usage          = wgpu::TextureUsage::RenderAttachment,
+            .dimension      = wgpu::TextureDimension::e2D,
+            .size           = { (u32)sz.x, (u32)sz.y, 1 },
+            .format         = wgpu::TextureFormat::Depth24PlusStencil8,
+            .mipLevelCount  = 1,
+            .sampleCount    = 1
+        };
+
         auto depthStencilTexture = device->device.CreateTexture(&descriptor);
         return depthStencilTexture.CreateView();
     }
 
     void update_swap() {
-        static std::unique_ptr<wgpu::ChainedStruct> surfaceChainedDesc;
-        surfaceChainedDesc = wgpu::glfw::SetupWindowAndGetSurfaceDescriptor(handle); /// this needs some work because this is called more than once.
+        surface = wgpu::glfw::CreateSurfaceForWindow(dawn->instance, handle); /// this needs some work because this is called more than once.
 
-        WGPUSurfaceDescriptor surfaceDesc;
-        surfaceDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(surfaceChainedDesc.get());
-        WGPUSurface surface = procs.instanceCreateSurface(dawn->instance->Get(), &surfaceDesc);
+        wgpu::SwapChainDescriptor swapChainDesc {
+            .usage          = wgpu::TextureUsage::RenderAttachment,
+            .format         = preferred_swapchain_format(),
+            .width          = (u32)sz.x,
+            .height         = (u32)sz.y,
+            .presentMode    = wgpu::PresentMode::Mailbox
+        };
 
-        WGPUSwapChainDescriptor swapChainDesc = {};
-        swapChainDesc.usage = WGPUTextureUsage_RenderAttachment;
-        swapChainDesc.format = static_cast<WGPUTextureFormat>(preferred_swapchain_format());
-        swapChainDesc.width = (u32)sz.x;
-        swapChainDesc.height = (u32)sz.y;
-        swapChainDesc.presentMode = WGPUPresentMode_Mailbox;
-        WGPUSwapChain backendSwapChain =
-            procs.deviceCreateSwapChain(gpu, surface, &swapChainDesc);
-        swapchain = wgpu::SwapChain::Acquire(backendSwapChain);
-
+        swapchain = device->device.CreateSwapChain(surface, &swapChainDesc);
         depth_stencil_view = create_depth_stencil_view();
     }
 
-    void create_resources() {
-        if (!dawn->instance) {
-            WGPUInstanceDescriptor instanceDescriptor{};
-            instanceDescriptor.features.timedWaitAnyEnable = true;
-            dawn->instance = std::make_unique<dawn::native::Instance>(&instanceDescriptor);
+    static void adapter_ready(WGPURequestAdapterStatus status, WGPUAdapter adapter, const char* message, void* userdata) {
+        if (status == WGPURequestAdapterStatus_Success) {
+            IWindow* iwin = (IWindow*)userdata;
+            iwin->adapter = wgpu::Adapter::Acquire(adapter);
+        } else {
+            console.fault("adapter not ready");
         }
-        wgpu::RequestAdapterOptions options = {};
-        options.backendType = dawn->backend_type;
+    }
 
-        // Get an adapter for the backend to use, and create the device.
-        auto adapters = dawn->instance->EnumerateAdapters(&options);
-        wgpu::DawnAdapterPropertiesPowerPreference power_props{};
-        wgpu::AdapterProperties adapterProperties{};
-        adapterProperties.nextInChain = &power_props;
-        // Find the first adapter which satisfies the adapterType requirement.
-        auto isAdapterType = [&](const auto& adapter) -> bool {
-            // picks the first adapter when adapterType is unknown.
-            if (adapter_type == wgpu::AdapterType::Unknown) {
-                return true;
-            }
-            adapter.GetProperties(&adapterProperties);
-            return adapterProperties.adapterType == adapter_type;
+    void create_resources() {
+        procs = dawn::native::GetProcs();
+        dawnProcSetProcs(&procs);
+
+        wgpu::RequestAdapterOptions options {
+            .powerPreference = wgpu::PowerPreference::HighPerformance,
+            .backendType = dawn->backend_type
         };
-        auto preferredAdapter = std::find_if(adapters.begin(), adapters.end(), isAdapterType);
-        if (preferredAdapter == adapters.end()) {
-            fprintf(stderr, "Failed to find an adapter! Please try another adapter type.\n");
-            return;
-        }
+        
+        dawn->instance.RequestAdapter(&options, adapter_ready, (void*)this);
 
         std::vector<const char*> enableToggleNames = {
             "allow_unsafe_apis",  "use_user_defined_labels_in_backend" // allow_unsafe_apis = Needed for dual-source blending, BufferMapExtendedUsages.
         };
         std::vector<const char*> disabledToggleNames;
-        WGPUDawnTogglesDescriptor toggles;
-        toggles.chain.sType = WGPUSType_DawnTogglesDescriptor;
-        toggles.chain.next = nullptr;
-        toggles.enabledToggles = enableToggleNames.data();
-        toggles.enabledToggleCount = enableToggleNames.size();
-        toggles.disabledToggles = disabledToggleNames.data();
-        toggles.disabledToggleCount = disabledToggleNames.size();
-
-        WGPUDeviceDescriptor deviceDesc = {};
+        wgpu::DawnTogglesDescriptor toggles;
+        toggles.enabledToggles       = enableToggleNames.data();
+        toggles.enabledToggleCount   = enableToggleNames.size();
+        toggles.disabledToggles      = disabledToggleNames.data();
+        toggles.disabledToggleCount  = disabledToggleNames.size();
 
         std::vector<wgpu::FeatureName> requiredFeatures;
         requiredFeatures.push_back(wgpu::FeatureName::SurfaceCapabilities);
-        //if (adapter.HasFeature(wgpu::FeatureName::BufferMapExtendedUsages)) {
-        //    requiredFeatures.push_back(wgpu::FeatureName::BufferMapExtendedUsages);
-        //}
 
-        deviceDesc.requiredFeatures = (WGPUFeatureName*)requiredFeatures.data();
-        deviceDesc.requiredFeatureCount = requiredFeatures.size();
+        wgpu::DeviceDescriptor deviceDesc {
+            .nextInChain            = &toggles,
+            .requiredFeatureCount   = requiredFeatures.size(),
+            .requiredFeatures       = requiredFeatures.data()
+        };
 
-        deviceDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&toggles);
-
-        gpu = preferredAdapter->CreateDevice(&deviceDesc);
-
-        procs = dawn::native::GetProcs();
-        dawnProcSetProcs(&procs);
-        procs.deviceSetUncapturedErrorCallback(gpu, PrintDeviceError, nullptr);
-        procs.deviceSetDeviceLostCallback(gpu, DeviceLostCallback, nullptr);
-        procs.deviceSetLoggingCallback(gpu, DeviceLogCallback, nullptr);
-        device->device = wgpu::Device::Acquire(gpu);
-        queue  = device->device.GetQueue();
-
+        device->device = adapter.CreateDevice(&deviceDesc);
+        device->queue  = device->device.GetQueue();
+        WGPUDevice dev = device->device.Get();
+        wgpuDeviceSetUncapturedErrorCallback(dev, PrintDeviceError, nullptr);
+        wgpuDeviceSetDeviceLostCallback(dev, DeviceLostCallback, nullptr);
+        wgpuDeviceSetLoggingCallback(dev, DeviceLogCallback, nullptr);
         update_swap();
     }
 
@@ -1174,7 +1151,7 @@ ion::vec2i Window::size() {
 }
 
 void Dawn::process_events() {
-    dawn::native::InstanceProcessEvents(data->instance->Get());
+    data->instance.ProcessEvents();
 }
 
 float Dawn::get_dpi() {
