@@ -17,7 +17,7 @@ if (win)
         TINT_BUILD_HLSL_WRITER
         DAWN_ENABLE_BACKEND_D3D12)
 elseif (mac)
-    dep(CoreFoundation IOKit IOSurface QuartzCore Metal AppKit CoreGraphics Cocoa)
+    dep(@CoreFoundation @IOKit @IOSurface @QuartzCore @Metal @AppKit @CoreGraphics @Cocoa)
     defines(
         TINT_BUILD_METAL_WRITER
         DAWN_ENABLE_BACKEND_METAL)
@@ -76,7 +76,7 @@ endif()
 set(dawn_gen ${EXTERN_DIR}/dawn/ion-${cfg_lower}/gen)
 set(dawn_src ${EXTERN_DIR}/dawn/src/dawn)
 
-public_includes(
+includes(
     ${EXTERN_DIR}/dawn
     ${dawn_gen}/include
     ${dawn_gen}/src
@@ -174,6 +174,12 @@ if(NOT win)
         -command_windows.cc
         -tmpfile_windows.cc
     )
+endif()
+
+if (NOT linux)
+src(
+    -X11Functions.cpp
+)
 endif()
 
 includes(

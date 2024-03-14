@@ -19,6 +19,27 @@
             }
         },
         {
+            "name":     "brotli",
+            "version":  "1.1.0",
+            "commit":   "ed738e8",
+            "url":      "https://github.com/google/brotli"
+        },
+        {
+            "name":     "grapheme",
+            "version":  "15.0",
+            "commit":   "c8b34aa04ac8702e55ba4b8946d6794c9c6056f5",
+            "url":      "https://git.suckless.org/libgrapheme",
+            "resource": true,
+            "platforms": []
+        },
+        {
+            "name":     "icu",
+            "version":  "74.2",
+            "commit":   "c8b34aa04ac8702e55ba4b8946d6794c9c6056f5",
+            "url":      "https://github.com/unicode-org/icu",
+            "resource": true
+        },
+        {
             "name":     "abseil-cpp",
             "version":  "v22",
             "url":      "https://github.com/abseil/abseil-cpp",
