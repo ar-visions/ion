@@ -1,7 +1,7 @@
 #include <ux/app.hpp>
 #include <ssh/ssh.hpp>
 #include <ux/canvas.hpp>
-#include <ux/webgpu.hpp>
+#include <GLFW/glfw3.h>
 
 #ifdef __APPLE__
 extern "C" void AllowKeyRepeats(void);

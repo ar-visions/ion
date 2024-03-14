@@ -1,6 +1,8 @@
 
 #include <trinity/subdiv.hpp>
 
+using namespace ion;
+
 glm::vec3 average_verts(face& f, array<glm::vec3>& verts) {
     glm::vec3 sum(0.0f);
     for (size_t i = 0; i < f.size; ++i)

@@ -1,7 +1,4 @@
 dep(
-    glfw:glfw3
-    ion:trinity
-    mx:mx
     mx:math
     mx:async
     mx:watch
@@ -9,87 +6,18 @@ dep(
     ion:regex
     ion:composer
     ion:ssh
+    ion:dawn
+    ion:skia
+    ion:trinity
 )
+
+#if (win)
+#    dep(d3d12 dxgi d3dcompiler libcmt libucrt msvcrt)
+#    cxxflags(+/bigobj)
+#elseif (mac)
+#    dep(CoreFoundation IOKit IOSurface QuartzCore Metal AppKit CoreGraphics Cocoa)
+#elseif (linux)
+#    dep(X11 Vulkan)
+#endif()
 
 cpp(17)
-
-if (win)
-    cxxflags(+/bigobj)
-endif()
-
-if(linux)
-    # spriv tools
-    # -----------------------------
-    includes(${EXTERN_DIR}/SPIRV-Tools)
-    includes(${EXTERN_DIR}/SPIRV-Tools/ion-${cfg_lower})
-    includes(${EXTERN_DIR}/Vulkan-Utility-Libraries)
-endif()
-
-# abseil-cpp combined
-# -----------------------------
-set(absl_src ${EXTERN_DIR}/abseil-cpp)
-includes(${absl_src})
-
-# dawn
-# -----------------------------
-set(dawn_gen ${EXTERN_DIR}/dawn/ion-${cfg_lower}/gen)
-set(dawn_src ${EXTERN_DIR}/dawn/src/dawn)
-set(dawn_dir ${EXTERN_DIR}/dawn)
-
-includes(
-    ${EXTERN_DIR}/dawn
-    ${dawn_gen}/include
-    ${dawn_gen}/src
-    ${dawn_gen}/src/dawn/wire
-    ${dawn_gen}/src/dawn/wire/server
-    ${dawn_gen}/src/dawn/wire/client
-    ${EXTERN_DIR}/dawn/src
-    ${dawn_src}/partition_alloc
-    ${dawn_src}/native/utils
-    ${dawn_src}/utils
-    ${dawn_src}/wire
-    ${dawn_src}/wire/server
-    ${dawn_src}/wire/client
-)
-
-defines(
-    SK_DAWN
-    SK_VULKAN
-    SK_GRAPHITE
-    SK_GANESH
-    SK_DISABLE_TRACING
-    GR_TEST_UTILS
-    GRAPHITE_TEST_UTILS
-    SK_DISABLE_LEGACY_PNG_WRITEBUFFER
-    SK_DISABLE_LEGACY_IMAGE_READBUFFER
-    SK_SHAPER_HARFBUZZ_AVAILABLE
-    SK_SHAPER_UNICODE_AVAILABLE
-    VK_USE_PLATFORM_XCB_KHR
-)
-
-if (win)
-    defines(SK_BUILD_FOR_WIN)
-elseif (mac)
-    defines(SK_BUILD_FOR_MAC)
-elseif (linux)
-    defines(SK_BUILD_FOR_UNIX)
-endif()
-
-includes(
-    ${INSTALL_PREFIX}/include/harfbuzz
-    ${INSTALL_PREFIX}/include/freetype2
-)
-
-set(skia_dir ${EXTERN_DIR}/skia)
-set(skia_src ${EXTERN_DIR}/skia/src)
-
-includes(
-    ${dawn_dir}/include
-    ${dawn_dir}/src
-    ${dawn_dir}/ion-${cfg_lower}/include
-    ${dawn_dir}/ion-${cfg_lower}/gen/include
-    ${skia_dir}
-    ${skia_dir}/include
-    ${skia_dir}/modules/svg/include
-    ${skia_src}
-)
