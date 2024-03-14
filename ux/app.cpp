@@ -170,7 +170,7 @@ int App::run() {
         /// size updated (recreates a texture from device, and canvas)
         [&](vec2i sz) {
             texture.resize(sz);
-            canvas = Canvas(device, texture, true);
+            canvas = Canvas(texture);
         });
 
     window.set_on_key_char([&](uint32_t c, int mods) {

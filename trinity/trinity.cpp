@@ -69,7 +69,6 @@ void Device::get_dpi(float *xscale, float *yscale) {
 
 struct ITexture {
     Device              device;
-    wgpu::TextureDimension dim;
     wgpu::Texture       texture;
     wgpu::TextureFormat format;
     wgpu::TextureView   view;
@@ -138,7 +137,7 @@ struct ITexture {
         if (usage & (wgpu::TextureUsage::TextureBinding))
             sampler     = device->wgpu.CreateSampler();
         this->format    = asset_format(asset_type);
-        this->sz        = sz;
+        this->sz        = vec2i(w, h);
         this->usage     = usage;
         for (field<Texture::OnTextureResize> &f: resize_fns)
             f.value(sz);
@@ -152,6 +151,10 @@ static wgpu::TextureFormat preferred_swapchain_format() {
     return wgpu::TextureFormat::BGRA8Unorm;
 }
 
+Device &Texture::device() {
+    return data->device;
+}
+
 vec2i Texture::size() {
     return data->sz;
 }
@@ -163,6 +166,11 @@ void *Texture::handle() {
 void Texture::on_resize(str user, OnTextureResize fn) {
     data->resize_fns[user] = fn;
 }
+
+void Texture::cleanup_resize(str user) {
+    assert(data->resize_fns->remove(user));
+}
+
 
 void Texture::resize(vec2i sz) {
     data->create(data->device, sz.x, sz.y, 1, data->asset_type, data->usage);
@@ -316,6 +324,12 @@ struct IDawn {
     register(IDawn);
 };
 
+struct UniformData {
+    Uniform      u;
+    wgpu::Buffer buffer;
+    register(UniformData);
+};
+
 struct IPipeline {
     static inline ion::map<wgpu::ShaderModule> mod_cache;
 
@@ -326,6 +340,7 @@ struct IPipeline {
     wgpu::Buffer                vertex_buffer;
     wgpu::PipelineLayout        pl;
     wgpu::ShaderModule          mod;
+    array<UniformData>          uniforms;
 
     str                         name; // Pipelines represent 'parts' of models and must have a name
     Device                      device;
@@ -471,6 +486,7 @@ struct IPipeline {
         size_t bind_id = 0;
         Texture tx;
 
+        uniforms.clear();
         for (mx& binding: gfx->bindings) { /// array of mx can tell us what type of data it is
             wgpu::BindGroupLayoutEntry entry {
                 .binding    = u32(bind_id),
@@ -495,16 +511,19 @@ struct IPipeline {
                 Sampling sampling(binding.hold());
                 entry.sampler.type          = sampling == Sampling::nearest ? wgpu::SamplerBindingType::NonFiltering : wgpu::SamplerBindingType::Filtering;
                 bind_value.sampler          = tx->sampler;
-            } else {
-                /// other objects are Uniform buffers
-                entry.buffer.type = wgpu::BufferBindingType::Uniform;
+            } else if (binding.type() == typeof(Uniform)) {
+                Uniform u = binding.hold();
+                size_t data_sz = u->uniform_data.type()->base_sz; /// fix this name
 
-                size_t sz = binding.type()->base_sz; /// was UniformBufferObject
+                entry.buffer.type = wgpu::BufferBindingType::Uniform;
                 wgpu::BufferDescriptor desc = {
                     .usage = wgpu::BufferUsage::Uniform | wgpu::BufferUsage::CopyDst,
-                    .size = sz
+                    .size  = data_sz
                 };
-                bind_value.buffer = device.CreateBuffer(&desc);
+                bind_value.buffer = device.CreateBuffer(&desc); // this needs to be updated each frame
+                uniforms += { u, bind_value.buffer };
+            } else {
+                assert(false);
             }
 
             bind_entries.push(entry);
@@ -575,6 +594,7 @@ struct IPipeline {
         render_desc.cBuffers[0].attributeCount = attrib_count;
         render_desc.cFragment.module = mod;
         render_desc.cTargets[0].format = preferred_swapchain_format();
+        render_desc.cTargets[0].blend = &blend;
         render_desc.EnableDepthStencil(wgpu::TextureFormat::Depth24PlusStencil8);
 
         pipeline = device.CreateRenderPipeline(&render_desc);
@@ -609,6 +629,12 @@ struct IPipeline {
     }
 
     void submit(wgpu::TextureView color_view, wgpu::TextureView depth_stencil, states<Clear> clear_states, rgbaf clear_color) {
+        for (UniformData &udata: uniforms) {
+            u64 sz = udata.buffer.GetSize();
+            assert(sz == udata.u.size());
+            device->queue.WriteBuffer(udata.buffer, 0, udata.u.address(), sz);
+        }
+
         wgpu::RenderPassColorAttachment color_attachment {
             .view = color_view,
             .loadOp = clear_states[Clear::Color] ? wgpu::LoadOp::Clear : wgpu::LoadOp::Load,

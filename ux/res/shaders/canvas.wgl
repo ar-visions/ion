@@ -3,20 +3,26 @@ struct args {
     @location(0)       uv  : vec2f
 };
 
+struct ustate {
+    x_scale : f32,
+    y_scale : f32
+};
+
+@group(0) @binding(0) var t0 : texture_2d<f32>;
+@group(0) @binding(1) var s0 : sampler;
+@group(0) @binding(2) var<uniform> u : ustate;
+
 @vertex
 fn vertex_main(
         @location(0) pos1 : vec4f, 
         @location(1) uv  : vec2f) -> args {
     var a : args;
-    a.pos = pos1;
+    a.pos = vec4f(pos1.x * u.x_scale, pos1.y * u.y_scale, pos1.z, pos1.w);
     a.uv  = uv;
     return a;
 }
 
-@group(0) @binding(0) var myTexture : texture_2d<f32>;
-@group(0) @binding(1) var mySampler : sampler;
-
 @fragment
 fn fragment_main(a : args) -> @location(0) vec4f {
-    return textureSample(myTexture, mySampler, a.uv);
+    return textureSample(t0, s0, a.uv);
 }

@@ -87,10 +87,10 @@ SVG::SVG(path p) : SVG() {
 SVG::SVG(cstr p) : SVG(path(p)) { }
 
 struct ICanvas {
+    str canvas_id;
     std::unique_ptr<skgpu::graphite::Context>  fGraphiteContext;
     std::unique_ptr<skgpu::graphite::Recorder> fGraphiteRecorder;
     //DisplayParams     params;
-    bool           use_hidpi;
     Texture          texture;
     sk_sp<SkSurface> sk_surf = null;
     SkCanvas      *sk_canvas = null;
@@ -111,6 +111,11 @@ struct ICanvas {
         SkPaint     ps;
         glm::mat4   model, view, proj;
     };
+
+    ~ICanvas() {
+        if (texture.device())
+            texture.cleanup_resize(canvas_id);
+    }
 
     state *top = null;
     doubly<state> stack;
@@ -637,54 +642,69 @@ struct ICanvas {
 
 mx_implement(Canvas, mx, ICanvas);
 
-/// create Canvas with a texture
-Canvas::Canvas(Device device, Texture texture, bool use_hidpi) : Canvas() {
+/// create Canvas with a texture; register resizing updates so we can update without recreating the object
+Canvas::Canvas(Texture texture) : Canvas() {
+    static int n_canvas = 0;
+    n_canvas++;
+    
+    data->canvas_id = fmt {"canvas{0}", {n_canvas}};
     data->texture = texture;
+    ICanvas *icanvas = data;
 
-    skwindow::DisplayParams params { };
-    params.fColorType = kRGBA_8888_SkColorType;
-    params.fColorSpace = SkColorSpace::MakeSRGB();
-    params.fMSAASampleCount = 0;
-    params.fGrContextOptions = GrContextOptions();
-    params.fSurfaceProps = SkSurfaceProps(0, kBGR_H_SkPixelGeometry);
-    params.fDisableVsync = false;
-    params.fDelayDrawableAcquisition = false;
-    params.fEnableBinaryArchive = false;
-    params.fCreateProtectedNativeBackend = false;
-    params.fGraphiteContextOptions.fPriv.fStoreContextRefInRecorder = true; // Needed to make synchronous readPixels work:
+    auto update = [data=icanvas]() {
 
-    skgpu::graphite::DawnBackendContext backendContext;
-    wgpu::Device *idevice = (wgpu::Device*)device.handle();
-    backendContext.fDevice = *idevice;
-    backendContext.fQueue = idevice->GetQueue();
+        skwindow::DisplayParams params { };
+        params.fColorType = kRGBA_8888_SkColorType;
+        params.fColorSpace = SkColorSpace::MakeSRGB();
+        params.fMSAASampleCount = 0;
+        params.fGrContextOptions = GrContextOptions();
+        params.fSurfaceProps = SkSurfaceProps(0, kBGR_H_SkPixelGeometry);
+        params.fDisableVsync = false;
+        params.fDelayDrawableAcquisition = false;
+        params.fEnableBinaryArchive = false;
+        params.fCreateProtectedNativeBackend = false;
+        params.fGraphiteContextOptions.fPriv.fStoreContextRefInRecorder = true; // Needed to make synchronous readPixels work:
 
-    data->fGraphiteContext = skgpu::graphite::ContextFactory::MakeDawn(
-            backendContext, params.fGraphiteContextOptions.fOptions);
-    data->fGraphiteRecorder = data->fGraphiteContext->makeRecorder(ToolUtils::CreateTestingRecorderOptions());
+        skgpu::graphite::DawnBackendContext backendContext;
+        Device device = data->texture.device();
+        wgpu::Device *idevice = (wgpu::Device*)device.handle();
+        backendContext.fDevice = *idevice;
+        backendContext.fQueue = idevice->GetQueue();
 
-    wgpu::Texture *itexture = (wgpu::Texture*)texture.handle();
+        data->fGraphiteContext = null;
+        data->fGraphiteRecorder = null;
 
-    skgpu::graphite::BackendTexture backend_texture(itexture->Get());
-    data->sk_surf = SkSurfaces::WrapBackendTexture(
-        data->fGraphiteRecorder.get(),
-        backend_texture,
-        kBGRA_8888_SkColorType,
-        params.fColorSpace,
-        &params.fSurfaceProps);
+        data->fGraphiteContext = skgpu::graphite::ContextFactory::MakeDawn(
+                backendContext, params.fGraphiteContextOptions.fOptions);
+        data->fGraphiteRecorder = data->fGraphiteContext->makeRecorder(ToolUtils::CreateTestingRecorderOptions());
 
-    float xscale = 1.0f, yscale = 1.0f;
-    device.get_dpi(&xscale, &yscale);
-    if (use_hidpi) {
-        xscale = math::max(2.0f, xscale);
-        yscale = math::max(2.0f, yscale);
-    }
+        wgpu::Texture *itexture = (wgpu::Texture*)data->texture.handle();
 
-    data->dpi_scale.x = xscale;
-    data->dpi_scale.y = yscale;
-    data->sz          = texture.size(); // use virtual functions to obtain the virtual size
-    data->sk_canvas   = data->sk_surf->getCanvas();
-    data->use_hidpi   = use_hidpi;
+        skgpu::graphite::BackendTexture backend_texture(itexture->Get());
+        data->sk_surf = SkSurfaces::WrapBackendTexture(
+            data->fGraphiteRecorder.get(),
+            backend_texture,
+            kBGRA_8888_SkColorType,
+            params.fColorSpace,
+            &params.fSurfaceProps);
+
+        float xscale = 1.0f, yscale = 1.0f;
+        device.get_dpi(&xscale, &yscale);
+
+        data->dpi_scale.x = xscale;
+        data->dpi_scale.y = yscale;
+        data->sz          = data->texture.size(); // use virtual functions to obtain the virtual size
+        data->sk_canvas   = data->sk_surf->getCanvas();
+    };
+
+    update();
+
     data->save();
+
+    // this is slower than reconstructing canvas, somehow...
+    //texture.on_resize(data->canvas_id, [update](vec2i sz) {
+    //    update();
+    //});
 }
 
 

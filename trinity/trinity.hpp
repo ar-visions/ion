@@ -49,7 +49,9 @@ struct Texture:mx {
     void    resize(vec2i sz);
     vec2i   size();
     void    on_resize(str user, OnTextureResize fn);
+    void    cleanup_resize(str user);
     void*   handle();
+    Device &device();
 };
 
 struct IDevice;
@@ -87,6 +89,27 @@ struct Graphics:mx {
         data->bindings  = bindings;
     }
     mx_object(Graphics, mx, GraphicsData);
+};
+
+/// wrap data for Uniforms; this ustate struct should remain active during pipeline
+struct Uniform:mx {
+    struct M {
+        mx     uniform_data;
+        register(M);
+    };
+    void *address() {
+        return data->uniform_data.origin<void>();
+    }
+    size_t size() {
+        return data->uniform_data.total_size();
+    }
+    template <typename U>
+    static inline Uniform of_state(U &ustate) {
+        Uniform u;
+        u->uniform_data = mx::wrap<U>(&ustate);
+        return u;
+    }
+    mx_basic(Uniform);
 };
 
 enums(Sampling, nearest, nearest, linear, ansio);

@@ -441,7 +441,7 @@ struct Window;
 struct Canvas:mx {
     mx_declare(Canvas, mx, ICanvas);
 
-    Canvas(Device device, Texture texture, bool use_hidpi);
+    Canvas(Texture texture);
 
     u32 get_virtual_width();
     u32 get_virtual_height();
