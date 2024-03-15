@@ -3,38 +3,99 @@
 
 using namespace ion;
 
+/// dont need to 'register' these structs, because we dont create at runtime
+struct CanvasAttribs {
+    glm::vec4 pos;
+    glm::vec2 uv;
+    doubly<prop> meta() {
+        return {
+            { "pos", pos },
+            { "uv",  uv  }
+        };
+    }
+};
+
+/// define structs for rubiks
+struct Light {
+    glm::vec4 pos;
+    glm::vec4 color;
+};
+
+struct Vertex {
+    glm::vec3 pos;
+    glm::vec3 normal;
+    glm::vec2 uv0;
+    glm::vec2 uv1;
+    glm::vec4 tangent;
+    u16       joints0[4];
+    u16       joints1[4];
+    f32       weights0[4];
+    f32       weights1[4];
+
+    doubly<prop> meta() const {
+        return {
+            prop { "POSITION",      pos      },
+            prop { "NORMAL",        normal   },
+            prop { "TEXCOORD_0",    uv0      },
+            prop { "TEXCOORD_1",    uv1      },
+            prop { "TANGENT",       tangent  },
+            prop { "JOINTS_0",      joints0  },
+            prop { "JOINTS_1",      joints1  },
+            prop { "WEIGHTS_0",     weights0 },
+            prop { "WEIGHTS_1",     weights1 }
+        };
+    }
+
+    register(Vertex);
+};
+
+/// get gltf model output running nominal; there seems to be a skew in the coordinates so it may be being misread
+/// uniform has an update method with a pipeline arg
+struct RubiksState {
+    glm::mat4  model;
+    glm::mat4  view;
+    glm::mat4  proj;
+    glm::vec4  eye;
+    Light      lights[3];
+};
+
+struct UState {
+    float x_scale;
+    float y_scale;
+};
+
 int main(int argc, const char* argv[]) {
     static constexpr uint32_t kWidth = 1024;
     static constexpr uint32_t kHeight = 1024;
 
-    /// dont need to 'register' these structs, because we dont create at runtime
-    struct CanvasAttribs {
-        glm::vec4 pos;
-        glm::vec2 uv;
-        doubly<prop> meta() {
-            return {
-                { "pos", pos },
-                { "uv",  uv  }
-            };
-        }
-    };
-    struct UState {
-        float x_scale;
-        float y_scale;
-    };
-
     Window window   = Window::create("dawn", {kWidth, kHeight});
     Device  device  = window.device();
-    vec2i   size    = window.size();
-    Texture texture = device.create_texture(size, Asset::attachment);
+    Texture canvas_texture = device.create_texture(window.size(), Asset::attachment);
     window.set_title("Canvas Test");
 
-    UState  ustate;
-    Uniform uniform = Uniform::of_state(ustate);
+    UState  canvas_state;
+    Uniform canvas_uniform = Uniform::of_state(canvas_state);
     
+    Pipes human_pipeline = Pipes(device, null, array<Graphics> {
+        Graphics {
+            "human", typeof(Vertex), {
+                Sampling::linear, Texture(Asset::color),
+                Sampling::linear, Texture(Asset::normal),
+                Sampling::linear, Texture(Asset::material),
+                Sampling::linear, Texture(Asset::reflect),
+                Sampling::linear, Texture(Asset::env)
+            }, "human", [](array<image> &images) {
+                /// if we provide this lambda, we are letting gltf load the vbo/ibo
+                images[Asset::color] = 
+            }
+        }
+    });
+
     Pipes canvas_pipeline = Pipes(device, null, array<Graphics> {
         Graphics {
-            "canvas", typeof(CanvasAttribs), { texture, Sampling::linear, uniform }, "canvas",
+            "canvas", typeof(CanvasAttribs),
+            { canvas_texture, Sampling::linear, canvas_uniform }, "canvas",
+            /// with this lambda, we are providing our own vbo/ibo
             [](mx &vbo, mx &ibo, array<image> &images) {
                 static const uint32_t indexData[6] = {
                     0, 1, 2,
@@ -46,7 +107,6 @@ int main(int argc, const char* argv[]) {
                     {{ -1.0f,  1.0f, 0.0f, 1.0f }, { -1.0f, 1.0f }},
                     {{  1.0f,  1.0f, 0.0f, 1.0f }, {  1.0f, 1.0f }}
                 };
-                // set vbo and ibo
                 ibo = mx::wrap<u32>((void*)indexData, 6);
                 vbo = mx::wrap<CanvasAttribs>((void*)vertexData, 4);
             }
@@ -54,20 +114,16 @@ int main(int argc, const char* argv[]) {
     });
     
     Canvas canvas;
-
     num s = millis();
 
-    /// calls OnWindowResize when registered
     window.register_presentation(
-        /// presentation: returns the pipelines that renders canvas, also updates the canvas (test code)
         [&]() -> Scene {
-
             num diff = millis() - s;
             float  f = (float)diff / 1000.0 * 2.0f * M_PI;
 
             // change Uniform states in Presentation associated to pipelines that use them
-            ustate.x_scale = 0.5 + sin(f) * 0.25;
-            ustate.y_scale = 0.5 + cos(f) * 0.25;
+            canvas_state.x_scale = 0.5 + sin(f) * 0.25;
+            canvas_state.y_scale = 0.5 + cos(f) * 0.25;
 
             vec2i sz = canvas.size();
             rectd rect { 0, 0, sz.x, sz.y };
@@ -77,9 +133,8 @@ int main(int argc, const char* argv[]) {
             canvas.color("#ff0");
             canvas.fill(top);
             canvas.flush();
-            return Scene { canvas_pipeline };
+            return Scene { rubiks_pipeline, canvas_pipeline };
         },
-        /// size updated (resizes texture, and recreates Canvas)
         [&](vec2i sz) {
             texture.resize(sz);
             canvas = Canvas(texture);

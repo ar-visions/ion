@@ -1,0 +1,63 @@
+struct varying {
+    @builtin(position) gl_Position : vec4f,
+    @location(0)       uv          : vec2f
+};
+
+struct light {
+    pos   : vec3f,
+    color : vec4f
+};
+
+struct ustate {
+    model  : mat4x4f,
+    view   : mat4x4f,
+    proj   : mat4x4f,
+    eye    : vec4f,
+    lights : array<light>
+};
+
+@group(0) @binding(0)  var<uniform> u  : ustate;
+@group(0) @binding(1)  var bones       : array<mat4x4f, 128>;
+@group(0) @binding(3)  var color       : texture_2d<f32>;
+@group(0) @binding(4)  var color_sa    : sampler;
+@group(0) @binding(5)  var normal      : texture_2d<f32>;
+@group(0) @binding(6)  var normal_sa   : sampler;
+@group(0) @binding(7)  var material    : texture_2d<f32>;
+@group(0) @binding(8)  var material_sa : sampler;
+@group(0) @binding(9)  var reflect     : texture_2d<f32>;
+@group(0) @binding(10) var reflect_sa  : sampler;
+@group(0) @binding(11) var env         : texture_2d<f32>;
+@group(0) @binding(12) var env_sa      : sampler;
+
+struct attribs {
+    @location(0) pos      : vec3f,
+    @location(1) normal   : vec3f,
+    @location(2) uv0      : vec2f,
+    @location(3) uv1      : vec2f,
+    @location(4) tangent  : vec4f,
+    @location(5) joints0  : vec4<u16>,
+    @location(6) joints1  : vec4<u16>,
+    @location(7) weights0 : vec4<f32>,
+    @location(8) weights1 : vec4<f32>
+};
+
+@vertex
+fn vertex_main(a : attribs) -> varying {
+    var v : varying;
+    let pos4      = vec4f(a.pos, 1.0f);
+    let skin_pos  = vec4f(0.0f);
+    for (let i = 0u; i < 4u; i = i + 1u) {
+        skin_pos = skin_pos + bones[a.joints0[i]] * a.weights0[i] * pos4;
+    }
+    let world_pos = u.view * u.model * p;
+    let  clip_pos = u.proj * world_pos;
+    v.gl_Position = clip_pos;
+    v.uv          = a.uv;
+    return v;
+}
+
+@fragment
+fn fragment_main(a : varying) -> @location(0) vec4f {
+    let color = textureSample(color, color_sa, a.uv);
+    return color;
+}
