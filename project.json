@@ -22,7 +22,10 @@
             "name":     "brotli",
             "version":  "1.1.0",
             "commit":   "ed738e8",
-            "url":      "https://github.com/google/brotli"
+            "url":      "https://github.com/google/brotli",
+            "cmake": {
+                "args": ["-DBUILD_SHARED_LIBS=Off"]
+            }
         },
         {
             "name":     "grapheme",
@@ -35,9 +38,8 @@
         {
             "name":     "icu",
             "version":  "74.2",
-            "commit":   "c8b34aa04ac8702e55ba4b8946d6794c9c6056f5",
-            "url":      "https://github.com/unicode-org/icu",
-            "resource": true
+            "commit":   "2d02932",
+            "url":      "https://github.com/unicode-org/icu"
         },
         {
             "name":     "abseil-cpp",
@@ -285,7 +287,8 @@
             "version":  "aug7-23",
             "url":      "https://chromium.googlesource.com/chromium/tools/depot_tools.git",
             "commit":   "02e70b435732a41d3d251f7c861110c6ee91f65b",
-            "resource": true
+            "resource": true,
+            "platforms": []
         },
         {
             "name":     "yuv2rgb",
