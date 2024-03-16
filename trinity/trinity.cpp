@@ -303,7 +303,7 @@ struct IDawn {
         procs.deviceSetLoggingCallback(dev, DeviceLogCallback, nullptr);
 
         #ifdef __APPLE__
-        AllowKeyRepeats(); // can go in ux module perhaps
+        //AllowKeyRepeats(); // can go in ux module perhaps
         #endif
         assert(glfwInit());
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -475,7 +475,7 @@ struct IPipeline {
         Texture tx;
 
         uniforms.clear();
-        for (mx& binding: bindings) { /// array of mx can tell us what type of data it is
+        for (mx& binding: gfx->bindings) { /// array of mx can tell us what type of data it is
             wgpu::BindGroupLayoutEntry entry {
                 .binding    = u32(bind_id),
                 .visibility = wgpu::ShaderStage::Vertex | wgpu::ShaderStage::Fragment /// probably best to look through the shader code after @fragment and @vertex
@@ -487,7 +487,7 @@ struct IPipeline {
             if (binding.type() == typeof(Texture)) {
                 tx = binding.hold();
                 tx.on_resize(name, [&](vec2i sz) {
-                    load_bindings(gfx);
+                    update_bindings(gfx, bindings);
                 });
                 entry.texture.multisampled  = false;
                 entry.texture.sampleType    = wgpu::TextureSampleType::Float;

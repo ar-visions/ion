@@ -19,7 +19,7 @@ if (win)
 elseif (mac)
     dep(@CoreFoundation @IOKit @IOSurface @QuartzCore @Metal @AppKit @CoreGraphics @Cocoa)
     defines(
-        TINT_BUILD_METAL_WRITER
+        TINT_BUILD_MSL_WRITER
         DAWN_ENABLE_BACKEND_METAL)
 elseif (linux)
     dep(@X11 @Vulkan)
@@ -127,7 +127,11 @@ if (linux)
 endif()
 
 if (mac)
+    src(${dawn_src}/native/Surface_metal.mm)
     src(${dawn_src}/native/metal/**.cpp)
+    src(${dawn_src}/common/SystemUtils_mac.mm)
+    src(${dawn_src}/native/metal/**.mm)
+    src(${dawn_src}/glfw/utils_metal.mm)
 endif()
 
 # benchmark / test code removal

@@ -29,8 +29,8 @@ struct Vertex {
     glm::vec4 tangent;
     u16       joints0[4];
     u16       joints1[4];
-    f32       weights0[4];
-    f32       weights1[4];
+    float     weights0[4];
+    float     weights1[4];
 
     doubly<prop> meta() const {
         return {
@@ -76,20 +76,20 @@ int main(int argc, const char* argv[]) {
     UState  canvas_state;
     Uniform canvas_uniform = Uniform::of_state(canvas_state);
     
+    /*
     Pipes human_pipeline = Pipes(device, null, array<Graphics> {
         Graphics {
             "human", typeof(Vertex), {
-                Sampling::linear, Texture(Asset::color),
-                Sampling::linear, Texture(Asset::normal),
-                Sampling::linear, Texture(Asset::material),
-                Sampling::linear, Texture(Asset::reflect),
-                Sampling::linear, Texture(Asset::env)
+                Sampling::linear, (Asset::color),
+                Sampling::linear, (Asset::normal),
+                Sampling::linear, (Asset::material),
+                Sampling::linear, (Asset::reflect),
+                Sampling::linear, (Asset::env)
             }, "human", [](array<image> &images) {
                 /// if we provide this lambda, we are letting gltf load the vbo/ibo
-                images[Asset::color] = 
             }
         }
-    });
+    });*/
 
     Pipes canvas_pipeline = Pipes(device, null, array<Graphics> {
         Graphics {
@@ -133,11 +133,11 @@ int main(int argc, const char* argv[]) {
             canvas.color("#ff0");
             canvas.fill(top);
             canvas.flush();
-            return Scene { rubiks_pipeline, canvas_pipeline };
+            return Scene { canvas_pipeline };
         },
         [&](vec2i sz) {
-            texture.resize(sz);
-            canvas = Canvas(texture);
+            canvas_texture.resize(sz);
+            canvas = Canvas(canvas_texture);
         });
     
     i64 s_last = millis() / 1000;
