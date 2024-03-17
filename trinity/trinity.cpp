@@ -467,10 +467,11 @@ struct IPipeline {
         mod = mod_cache[gfx->shader];
     }
 
-    void update_bindings(Graphics &gfx, array<mx> bindings) {
+    /// loads/associates uniforms here (change from vk where that was a separate process)
+    void load_bindings(Graphics &gfx) {
         wgpu::Device device = this->device->wgpu;
-        array<wgpu::BindGroupEntry>       bind_values (bindings.count());
-        array<wgpu::BindGroupLayoutEntry> bind_entries(bindings.count());
+        array<wgpu::BindGroupEntry>       bind_values (gfx->bindings.count());
+        array<wgpu::BindGroupLayoutEntry> bind_entries(gfx->bindings.count());
         size_t bind_id = 0;
         Texture tx;
 
@@ -487,7 +488,7 @@ struct IPipeline {
             if (binding.type() == typeof(Texture)) {
                 tx = binding.hold();
                 tx.on_resize(name, [&](vec2i sz) {
-                    update_bindings(gfx, bindings);
+                    load_bindings(gfx);
                 });
                 entry.texture.multisampled  = false;
                 entry.texture.sampleType    = wgpu::TextureSampleType::Float;
@@ -607,18 +608,12 @@ struct IPipeline {
             load_from_gltf(m, part, mx_vbuffer, mx_ibuffer);
         }
 
-        /// load textures from images
-        /// images may be in mx form, so that we return ids of textures, or, unique images
-        /// if images are unique they must be converted to texture; no cache possible
-        /// if they are ids we keep a cache possibly with a file date check
-        array<mx> bindings;
-
         index_buffer  = device->create_buffer(mx_ibuffer, wgpu::BufferUsage::Index);
         vertex_buffer = device->create_buffer(mx_vbuffer, wgpu::BufferUsage::Vertex);
         indices_count = mx_ibuffer.count();
 
         load_shader(gfx);
-        update_bindings(gfx, bindings); /// resizing updates this, but a reload should also be supported
+        load_bindings(gfx);
         create_with_attrs(gfx);
     }
 

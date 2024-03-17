@@ -217,7 +217,7 @@ endif()
 
 option_if_not_defined(TINT_ENABLE_INSTALL "Enable install step for Tint libraries" OFF)
 option_if_not_defined(TINT_BUILD_CMD_TOOLS "Build the Tint command line tools" ON)
-option_if_not_defined(TINT_BUILD_DOCS "Build documentation" ON)
+option_if_not_defined(TINT_BUILD_DOCS "Build documentation" OFF)
 option_if_not_defined(TINT_DOCS_WARN_AS_ERROR "When building documentation, treat warnings as errors" OFF)
 
 if (NOT DAWN_USE_GLFW AND (TINT_BUILD_CMD_TOOLS OR DAWN_BUILD_SAMPLES))

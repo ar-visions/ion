@@ -36,7 +36,6 @@ struct iRegEx {
 RegEx::RegEx(symbol pattern, Behaviour b) : RegEx(str(pattern), b) { }
 
 RegEx::RegEx(str pattern, Behaviour b) : RegEx() {
-    OnigErrorInfo err;
     data->b = b;
     load_patterns(&pattern, 1);
 }

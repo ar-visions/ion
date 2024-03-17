@@ -5,11 +5,9 @@ project(icu4c)
 add_executable(bootstrap bootstrap.c)
 string(TOLOWER ${CMAKE_BUILD_TYPE} cfg_lower)
 
-# our build script can be defined here
 if(WIN32)
-    # we copy the files in ninja.bat
     add_custom_target(build
-        COMMAND sh "build.bat" ${SDK} ${cfg_lower}
+        COMMAND "build.bat" ${SDK} ${cfg_lower}
         COMMENT "running icu build"
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
         VERBATIM)
