@@ -100,7 +100,7 @@ struct iTLS {
     #endif
             init = true;
         }
-        int ret, len;
+        int ret;
         mbedtls_net_init(&fd);
 
         //mbedtls_ssl_init(&ssl);
@@ -635,7 +635,6 @@ bool message::read_content(sock &sc) {
                 if (content_len == 0) /// this will effectively drop out of the while loop
                     break;
             }
-            num   rx = math::min(1, 1);
             bool sff = content_len == -1;
             for (num rcv = 0; sff || rcv < content_len; rcv += rlen) {
                 num   rx = math::min(1, 1);
@@ -668,7 +667,6 @@ bool message::read_content(sock &sc) {
             }
         }
         /// read content
-        size_t sz = rcv.byte_len();
         array<char> js { rcv };
         var   obj = var::json(js, null);
         data->content = obj;
@@ -708,7 +706,6 @@ message::operator bool() {
     type_t ct = data->code.type();
     assert(ct == typeof(i32) || ct == typeof(str));
     int ic = int(data->code);
-    bool d_con = bool(data->content);
     return (data->query.mtype() != method::undefined || 
         (ct == typeof(i32) && (ic == 0 && (data->content || data->headers)) || 
         (ic >= 200 && ic < 300)));
@@ -895,8 +892,6 @@ future request(uri url, map<mx> args) {
         for (auto &d: defs)
             if (!headers(d.key))
                  headers[d.key] = d.value;
-        
-        uri::components *comp = query.get<uri::components>(0);
         
         message request { content, headers, query }; /// best to handle post creation within message
         request.write(client);

@@ -1,0 +1,5 @@
+add_compile_options(
+  $<$<CONFIG:>:/MT>
+  $<$<CONFIG:Debug>:/MT>
+  $<$<CONFIG:Release>:/MT>
+)

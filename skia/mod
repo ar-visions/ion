@@ -1,4 +1,8 @@
-dep(harfbuzz:harfbuzz libexpat:expat freetype:freetype2 ion:dawn icu:icuuc icu:icudata)
+dep(harfbuzz:harfbuzz libexpat:expat freetype:freetype2 ion:dawn icu:icuuc brotli:brotlicommon brotli:brotlienc brotli:brotlidec bzip2:bz2)
+
+if (NOT win)
+    dep(icu:icudata)
+endif()
 
 include(${r_path}/skia/defs)
 
@@ -22,30 +26,19 @@ includes(
     ${skia_src}
 )
 
-# add support software (no ganesh, since we use graphite with dawn, a more limited interface)
 src(
-    #${skia_dir}/tools/*.cpp
     ${skia_dir}/tools/flags/*.cpp
     ${skia_dir}/tools/graphite/*.cpp
     ${skia_dir}/tools/fonts/*.cpp
     ${skia_dir}/tools/svg/*.cpp
-    #${skia_dir}/tools/gpu/*.cpp
 )
-
-# todo: skia support for grapheme is partial and still requires icu4c
-# adding support for unicode via graphme (overlays for generated headers)
-#src(${EXTERN_DIR}/grapheme/src/*.c)
-#includes(
-#    ${EXTERN_DIR}/grapheme/src
-#    ${EXTERN_DIR}/grapheme
-#)
 
 src(
     ${skia_dir}/modules/svg/src/*.cpp
     ${skia_dir}/modules/skcms/*.cc
     ${skia_dir}/modules/skcms/src/*.cc
     ${skia_dir}/modules/skunicode/src/SkUnicode.cpp
-    #${skia_dir}/modules/skunicode/src/SkUnicode_libgrapheme.cpp
+    #${skia_dir}/modules/skunicode/src/SkUnicode_libgrapheme.cpp -- only partial support (requires icu4c still)
     ${skia_dir}/modules/skunicode/src/SkUnicode_icu.cpp
     ${skia_dir}/modules/skunicode/src/SkUnicode_icu_builtin.cpp
     ${skia_dir}/modules/skunicode/src/SkUnicode_icu_bidi.cpp
@@ -70,20 +63,8 @@ src(
     ${skia_src}/sksl/**.cpp
     ${skia_src}/xml/*.cpp
     ${skia_src}/gpu/*.cpp
-    ${skia_src}/gpu/vk/*.cpp
     ${skia_src}/gpu/MutableTextureState.cpp
-    ${skia_src}/gpu/ganesh/*.cpp
-    ${skia_src}/gpu/ganesh/vk/*.cpp
-    ${skia_src}/gpu/ganesh/geometry/*.cpp
-    ${skia_src}/gpu/ganesh/ops/*.cpp
-    ${skia_src}/gpu/ganesh/effects/*.cpp
-    ${skia_src}/gpu/ganesh/tessellate/*.cpp
-    ${skia_src}/gpu/ganesh/text/*.cpp
-    ${skia_src}/gpu/ganesh/surface/*.cpp
-    ${skia_src}/gpu/ganesh/mock/*.cpp
-    ${skia_src}/gpu/ganesh/glsl/*.cpp
-    ${skia_src}/gpu/ganesh/image/*.cpp
-    ${skia_src}/gpu/ganesh/gradients/*.cpp
+    ${skia_src}/gpu/ganesh/GrDriverBugWorkarounds.cpp
     ${skia_src}/text/gpu/*.cpp
     ${skia_src}/gpu/graphite/*.cpp
     ${skia_src}/gpu/graphite/geom/*.cpp
@@ -109,6 +90,7 @@ src(
     -_fuzz.cpp
     -_coretext.cpp
     -public_headers_warnings_check.cpp
+    -create_test_font.cpp
 )
 
 if (win)

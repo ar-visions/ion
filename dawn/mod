@@ -1,17 +1,19 @@
 # build absl, spirv-tools, tint, dawn, and skia
 # -----------------------------
-dep(
-    glfw:glfw3
-)
-
 cpp(17)
+
+dep(mx:mx)
+
+if (win)
+    dep(d3d12 dxgi dxguid d3dcompiler)
+endif()
+
+dep(glfw:glfw3)
 
 defines(TINT_BUILD_WGSL_READER
         TINT_BUILD_WGSL_WRITER)
 
 if (win)
-    dep(d3d12 dxgi d3dcompiler libcmt libucrt msvcrt)
-    #cxxflags(/showIncludes)
     cxxflags(+/bigobj +-Wno-macro-redefined +-Wno-unused-private-field)
     defines(
         NOMINMAX
@@ -152,6 +154,7 @@ src(-_test.cc
     -test_matchers.cc
     -SemaphoreServiceImplementationZirconHandle.cpp
     -MemoryServiceImplementationZirconHandle.cpp
+    -diagnostic_test.cc
 )
 
 # got mixed up with skia build:

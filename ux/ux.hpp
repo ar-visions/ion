@@ -1,8 +1,8 @@
 #pragma once
 
+#include <math/math.hpp>
 #include <async/async.hpp>
 #include <net/net.hpp>
-#include <math/math.hpp>
 #include <media/media.hpp>
 #include <composer/composer.hpp>
 #include <ux/canvas.hpp>

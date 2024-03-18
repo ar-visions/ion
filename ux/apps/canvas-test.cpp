@@ -115,7 +115,7 @@ int main(int argc, const char* argv[]) {
     
     Canvas canvas;
     num s = millis();
-
+ 
     window.register_presentation(
         [&]() -> Scene {
             num diff = millis() - s;
