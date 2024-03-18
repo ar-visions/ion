@@ -6,6 +6,8 @@ includes(${module_path}
 
 defines(ONIG_STATIC)
 
+cxxflags(+-Wno-deprecated-non-prototype)
+
 set(dir ${EXTERN_DIR}/oniguruma/src)
 
 src(

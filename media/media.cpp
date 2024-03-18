@@ -16,15 +16,6 @@
 #define DR_WAV_IMPLEMENTATION
 #include <media/dr_wav.h>
 
-//#include <gsl/gsl_fft_complex.h>
-//#include <gsl/gsl_errno.h>
-//#include <gsl/gsl_fft_real.h>
-
-//#include <ogg/ogg.h>
-//#include <opus/opus.h>
-//#include <opusenc/opusenc.h>
-//#include <opusfile/opusfile.h>
-
 #if 0
 extern "C" {
     #include <shine/layer3.h>
@@ -167,41 +158,12 @@ void audio::convert_mono() {
     data->channels = 1;        /// set to 1 channel
 }
 
-/// save / export to destination format (.mp3 .opus .wav support)
+/// save / export to destination format (.mp3 .wav support -- todo: add aac here (impl in Stream))
 bool audio::save(path dest, i64 bitrate) {
     str  ext    = dest.ext();
     cstr s_path = dest.cs();
     
-    /// conversion to opus
-    if (ext == ".opus") {
-        #if 0
-        const i64        latency    = 20; /// compute 20ms frame size
-        const i64        frame_size = data->sample_rate / (1000 / latency);
-        OggOpusEnc      *enc;
-        OggOpusComments *comments;
-        int              error;
-        
-        comments = ope_comments_create();
-        ope_comments_add(comments, "ARTIST", data->artist.cs());
-        ope_comments_add(comments, "TITLE",  data->title.cs());
-        enc = ope_encoder_create_file(s_path, comments, data->sample_rate, data->channels, 0, &error);
-        ope_encoder_ctl(enc, OPUS_SET_BITRATE(bitrate));
-        
-        if (!enc) {
-            console.fault("error encoding to file {0}: {1}", { str(s_path), error });
-            ope_comments_destroy(comments);
-            return false;
-        }
-        
-        for (i64 i = 0; i < data->total_samples; i += frame_size) {
-            i64 remain = data->total_samples - i;
-            ope_encoder_write(enc, &data->samples[i * data->channels], int(math::min(remain, frame_size))); // number of frames to write
-        }
-        ope_encoder_drain(enc); /// drain? flush!
-        ope_encoder_destroy(enc);
-        ope_comments_destroy(comments);
-        #endif
-    } else if (ext == ".mp3") {
+    if (ext == ".mp3") {
         #if 0
         FILE          *mp3_file = fopen(s_path, "wb");
         shine_config_t config;
@@ -286,46 +248,8 @@ audio audio::random_noise(i64 millis, int channels, int sample_rate) {
 audio::audio(path res, bool force_mono) : audio() {
     str  ext = res.ext();
     cstr s_path = res.cs();
-    int  error;
     ///
-    if (ext == ".opus") {
-        #if 0
-        /// open file
-        OggOpusFile *opus_file = op_open_file(s_path, &error);
-        if (error != 0) console.fault("failed to open file: {0}, error {1}", { error });
-
-       OpusTags* tags = (OpusTags*)op_tags(opus_file, 0);
-        if (tags != NULL) {
-            data->artist = opus_tags_query(tags, "ARTIST", 0);
-            data->title  = opus_tags_query(tags, "TITLE",  0);
-        }
-        
-        /// allocate samples
-        const int buffer_size = 1024;
-        opus_int16 buffer[buffer_size];
-        data->channels = op_channel_count(opus_file, -1);
-        data->total_samples = op_pcm_total(opus_file, -1);
-        data->samples = iaudio::alloc_pcm(data->total_samples, data->channels);
-        const OpusHead *head = op_head(opus_file, -1);
-        if (!head) console.fault("failed to read opus head");
-        data->sample_rate = i32(head->input_sample_rate);
-        
-        /// read samples
-        size_t t = 0;
-        int samples_read = 0;
-        do {
-            samples_read = op_read(opus_file, &data->samples[t], buffer_size, NULL);
-            if (samples_read < 0)
-                console.fault("error reading file: {0}", { samples_read });
-            
-            t += samples_read * data->channels;
-        } while (samples_read != 0);
-        op_free(opus_file);
-        
-        /// this will always result in exactly total_samples read -- or a crash
-        if (t != data->total_samples) console.fault("sample count mismatch: {0}", { str(res) });
-        #endif
-    } else if (ext == ".mp3") {
+    if (ext == ".mp3") {
         /// open file
         mp3dec_t         dec;
         mp3dec_ex_t      api;

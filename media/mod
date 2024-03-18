@@ -4,30 +4,14 @@ dep(mx:mx)
 src(-camera-apple.mm)
 src(-camera-win.cpp)
 src(-camera-linux.cpp)
-#
-
-#FFmpeg:swscale 
-#FFmpeg:avdevice
-#FFmpeg:avfilter FFmpeg:avformat
-#FFmpeg:avcodec 
-#FFmpeg:avutil
-#FFmpeg:swresample
-#x264:x264
-
-#gpac:gpac_static
 
 dep(mx:async
     fdk-aac:fdk-aac
     mp4v2:mp4v2
     shine:shine
-    speexdsp:speexdsp
     yuv2rgb:yuv2rgb
     libpng:png zlib:zlib
-    opus:opus opusenc:opusenc opusfile:opusfile
     )
-
-
-includes(${INSTALL_PREFIX}/include/opus)
 
 if(APPLE)
     dep(IOSurface QuartzCore Metal CoreMedia CoreAudio AudioToolbox CoreFoundation Cocoa IOKit AVFoundation)

@@ -143,8 +143,6 @@ struct uri:mx {
                 array<str> sp = kv.split("=");
                 mx    &k = sp[0];
                 mx    &v = sp.len() > 1 ? sp[1] : k;
-                char *sk = k.data<char>();
-                char *sv = v.data<char>();
                 ra.args[k] = v;
             }
         } else

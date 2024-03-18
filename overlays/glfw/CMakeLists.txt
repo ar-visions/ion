@@ -2,15 +2,7 @@ cmake_minimum_required(VERSION 3.0...3.20 FATAL_ERROR)
 
 project(GLFW VERSION 3.3.8 LANGUAGES C)
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
-
-if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static-libstdc++")
-elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static-libstdc++")
-endif()
+add_compile_options(/MT)
 
 set(CMAKE_LEGACY_CYGWIN_WIN32 OFF)
 
@@ -299,26 +291,21 @@ endif()
 # Use Cocoa for window creation and NSOpenGL for context creation
 #--------------------------------------------------------------------
 if (_GLFW_COCOA)
+
     list(APPEND glfw_LIBRARIES
         "-framework Cocoa"
         "-framework IOKit"
-        "-framework CoreFoundation"
-        "-framework Metal"
-        "-framework QuartzCore"
-        "-framework IOSurface"
-        "-lc++")
+        "-framework CoreFoundation")
 
     set(glfw_PKG_DEPS "")
-    set(glfw_PKG_LIBS "-framework Cocoa -framework IOKit -framework CoreFoundation -framework Metal -framework QuartzCore -framework IOSurface -lc++")
+    set(glfw_PKG_LIBS "-framework Cocoa -framework IOKit -framework CoreFoundation")
 endif()
 
 #--------------------------------------------------------------------
 # Add the Vulkan loader as a dependency if necessary
 #--------------------------------------------------------------------
 if (GLFW_VULKAN_STATIC)
-    if(NOT _GLFW_COCOA)
-        list(APPEND glfw_PKG_DEPS "vulkan")
-    endif()
+    list(APPEND glfw_PKG_DEPS "vulkan")
 endif()
 
 #--------------------------------------------------------------------
@@ -397,12 +384,3 @@ if (GLFW_INSTALL)
         set_target_properties(uninstall PROPERTIES FOLDER "GLFW3")
     endif()
 endif()
-
-
-include(mod)
-
-include(mod)
-
-include(mod)
-
-include(mod)

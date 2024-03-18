@@ -11,6 +11,8 @@ namespace ion {
 
 enums(Clear, Undefined, Undefined = 0, Color = 1, Depth = 2, Stencil = 4);
 
+#undef DELETE
+
 enums(Key, undefined,
     undefined=0, Space=32, Apostrophe=39, Comma=44, Minus=45, Period=46, Slash=47,
     k_0=48, k_1=49, k_2=50, k_3=51, k_4=52, k_5=53, k_6=54, k_7=55, k_8=56, k_9=57,

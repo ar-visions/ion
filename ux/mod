@@ -1,4 +1,4 @@
-dep(
+dep(mx:mx
     mx:math
     mx:async
     mx:watch
@@ -11,15 +11,12 @@ dep(
     ion:trinity
 )
 
+cpp(17)
 include(${r_path}/skia/defs)
-
 if (win)
-    dep(d3d12 dxgi d3dcompiler libcmt libucrt msvcrt)
     cxxflags(+/bigobj)
 elseif (mac)
     dep(CoreFoundation IOKit IOSurface QuartzCore Metal AppKit CoreGraphics Cocoa)
 elseif (linux)
     dep(X11 Vulkan)
 endif()
-
-cpp(17)

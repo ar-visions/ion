@@ -10,6 +10,8 @@ set(dir ${EXTERN_DIR}/libssh/src)
 
 if(UNIX)
     cflags(+-Wno-unused-value)
+else()
+    cflags(+-Wdeprecated-declarations)
 endif()
 
 # add source references
