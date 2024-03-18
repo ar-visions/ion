@@ -91,7 +91,10 @@
             "commit":   "5b45794c2c24c3fa40dc480af92c5284a95423ef",
             "resource":  false,
             "recursive": false,
-            "prebuild": "prebuild.py"
+            "prebuild": "prebuild.py",
+            "cmake": {
+                "args": ["-DTINT_BUILD_DOCS=Off", "-DTINT_DOCS_WARN_AS_ERROR=Off"]
+            }
         },
         {
             "name":     "harfbuzz",
@@ -99,7 +102,7 @@
             "url":      "https://github.com/harfbuzz/harfbuzz",
             "commit":   "894a1f7",
             "cmake": {
-                "args-win": ["-DCMAKE_CXX_FLAGS=/bigobj"]
+                "args-win": ["-DCMAKE_CXX_FLAGS=/bigobj /MT"]
             }
         },
         {
@@ -108,7 +111,7 @@
             "url":      "https://github.com/freetype/freetype",
             "commit":   "2a790a9f4937c3950028bd3de29e63c6b0d419ce",
             "cmake": {
-                "args": ["FT_DISABLE_BZIP2=On"]
+                "args": ["-DFT_DISABLE_BZIP2=On"]
             }
         },
         {
@@ -117,7 +120,8 @@
             "url":      "https://github.com/libexpat/libexpat",
             "commit":   "a590b2d",
             "cmake": {
-                "path": "expat"
+                "path": "expat",
+                "args": ["-DBUILD_SHARED_LIBS=Off", "-DEXPAT_MSVC_STATIC_CRT=On"]
             }
         },
         {

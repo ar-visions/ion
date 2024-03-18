@@ -34,6 +34,8 @@ cmake_minimum_required(VERSION 3.10.2)
 # override options in third_party dependencies. We can also add the HOMEPAGE_URL
 # entry to the project `HOMEPAGE_URL "https://dawn.googlesource.com/dawn"`
 
+set(CMAKE_SUPPRESS_REGENERATION true)
+
 project(
     Dawn
     DESCRIPTION "Dawn, a WebGPU implementation"
