@@ -9,6 +9,7 @@ dep(mx:async
     fdk-aac:fdk-aac
     mp4v2:mp4v2
     shine:shine
+    speexdsp:speexdsp
     yuv2rgb:yuv2rgb
     libpng:png zlib:zlib
     )

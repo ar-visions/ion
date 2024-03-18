@@ -2,7 +2,9 @@ cmake_minimum_required(VERSION 3.0...3.20 FATAL_ERROR)
 
 project(GLFW VERSION 3.3.8 LANGUAGES C)
 
-add_compile_options(/MT)
+if(WIN32)
+    add_compile_options(/MT)
+endif()
 
 set(CMAKE_LEGACY_CYGWIN_WIN32 OFF)
 

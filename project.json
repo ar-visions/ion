@@ -158,6 +158,12 @@
             }
         },
         {
+            "name":     "speexdsp",
+            "version":  "1.2.1",
+            "url":      "https://github.com/xiph/speexdsp",
+            "commit":   "1b28a0f"
+        },
+        {
             "name":     "kissfft",
             "version":  "131.1.0",
             "url":      "https://github.com/mborgerding/kissfft",
