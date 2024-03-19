@@ -313,51 +313,62 @@ struct IDawn {
     register(IDawn);
 };
 
-struct UniformData {
-    Uniform      u;
-    wgpu::Buffer buffer;
-    register(UniformData);
+struct IRenderable {
+    array<mx> uniforms;
+    array<mx> storage;
+    register(IRenderable)
+};
+
+struct IObject {
+    Model model;
+    array<IRenderable> renderables;
+    register(IObject)
 };
 
 struct IPipeline {
     static inline ion::map<wgpu::ShaderModule> mod_cache;
 
+    str                         name;
+    
+    wgpu::Buffer                index_buffer;
+    wgpu::Buffer                vertex_buffer;
+    array<wgpu::Buffer>         uniform_buffers;
+    array<wgpu::Buffer>         storage_buffers;
+    array<type_t>               uniform_types;
+    array<type_t>               storage_types; /// use the buffer size to know the vector length (if this is )
+
     wgpu::RenderPipeline        pipeline;
     wgpu::BindGroup             bind_group;
     wgpu::BindGroupLayout       bgl;
-    wgpu::Buffer                index_buffer;
-    wgpu::Buffer                vertex_buffer;
-    wgpu::PipelineLayout        pl;
+    wgpu::PipelineLayout        pipeline_layout;
     wgpu::ShaderModule          mod;
-    array<UniformData>          uniforms;
-
-    str                         name; // Pipelines represent 'parts' of models and must have a name
+    //array<UniformData>        uniforms;
+    
     Device                      device;
     Graphics                    gfx;
     gltf::Model                 m;
     size_t                      indices_count;
     Texture                     textures[Asset::count - 1];
 
-    void load_from_gltf(gltf::Model &m, str &part, mx &mx_vbuffer, mx &mx_ibuffer) {
+    void load_from_gltf(gltf::Model &m, str &part, mx &mx_vbuffer, mx &mx_ibuffer, mx &mx_bones) {
         /// model must have been loaded
         assert(m->nodes);
-        using namespace gltf;
         /// load single part from gltf (a Pipes object effectively calls this multiple times for multiple Pipelines)
-        for (Node &node: m->nodes) {
+        for (gltf::Node &node: m->nodes) {
             /// load specific node name from node group
             if (node->name != part) continue;
             assert(node->mesh >= 0);
 
-            Mesh &mesh = m->meshes[node->mesh];
+            gltf::Mesh &mesh = m->meshes[node->mesh];
 
-            for (Primitive &prim: mesh->primitives) {
+            for (gltf::Primitive &prim: mesh->primitives) {
                 /// for each attrib we fill out the vstride
                 struct vstride {
                     ion::prop      *prop;
                     type_t          compound_type;
-                    Accessor::M    *accessor;
-                    Buffer::M      *buffer;
-                    BufferView::M  *buffer_view;
+                    gltf::Accessor::M    *accessor;
+                    gltf::Buffer::M      *buffer;
+                    gltf::BufferView::M  *buffer_view;
                     num             offset;
                 };
 
@@ -369,7 +380,7 @@ struct IPipeline {
                     str       prop_bind      = f.key.hold();
                     symbol    prop_sym       = symbol(prop_bind);
                     num       accessor_index = num(f.value);
-                    Accessor &accessor       = m->accessors[accessor_index];
+                    gltf::Accessor &accessor       = m->accessors[accessor_index];
 
                     /// the src stride is the size of struct_type[n_components]
                     assert(gfx->vtype->meta_map);
@@ -388,7 +399,10 @@ struct IPipeline {
                         assert(vlen == accessor->count);
                     else
                         vlen = accessor->count;
-                    
+
+                    /// lets make implicit bindings if there are skins associated to these node groups
+                    /// its an assertion error and a compilation error when the shader does not contain the var<storage> when "skin" is >= 0
+                    /// this buffer we create here, resolving bones = buffer_view[skin][each...joint index]
                     if (stride.compound_type == typeof(float)) {
                         assert(accessor->componentType == gltf::ComponentType::FLOAT);
                         assert(accessor->type == gltf::CompoundType::SCALAR);
@@ -435,23 +449,43 @@ struct IPipeline {
                 mx_vbuffer = verts;
 
                 /// indices data = indexing mesh-primitive->indices
-                Accessor &a_indices = m->accessors[prim->indices];
-                BufferView &view = m->bufferViews[ a_indices->bufferView ];
-                Buffer      &buf = m->buffers    [ view->buffer ];
+                gltf::Accessor &a_indices = m->accessors[prim->indices];
+                gltf::BufferView &view = m->bufferViews[ a_indices->bufferView ];
+                gltf::Buffer      &buf = m->buffers    [ view->buffer ];
                 memory *mem_indices;
 
-                if (a_indices->componentType == ComponentType::UNSIGNED_SHORT) {
+                if (a_indices->componentType == gltf::ComponentType::UNSIGNED_SHORT) {
                     u16 *u16_window = (u16*)(buf->uri.data + view->byteOffset);
                     u32 *u32_alloc  = (u32*)calloc(sizeof(u32), a_indices->count);
                     for (int i = 0; i < a_indices->count; i++)
                         u32_alloc[i] = u32(u16_window[i]);
                     mem_indices = memory::wrap(typeof(u32), u32_alloc, a_indices->count);
                 } else {
-                    assert(a_indices->componentType == ComponentType::UNSIGNED_INT);
+                    assert(a_indices->componentType == gltf::ComponentType::UNSIGNED_INT);
                     u32 *u32_window = (u32*)(buf->uri.data + view->byteOffset);
                     mem_indices = memory::window(typeof(u32), u32_window, a_indices->count);
                 }
                 mx_ibuffer = mx(mem_indices);
+
+                /// load skin (mat4x4 indexed array)
+                if (node->skin >= 0) {
+                    gltf::Skin       &skin = m->skins      [node->skin];
+                    gltf::Accessor   &mats = m->accessors  [skin->inverseBindMatrices];
+                    gltf::BufferView &view = m->bufferViews[mats->bufferView];
+                    gltf::Buffer      &buf = m->buffers    [view->buffer];
+                    array<int> &joints = skin->joints;
+                    int         j_len  = joints.len();
+                    assert(mats->type          == gltf::CompoundType::MAT4);
+                    assert(mats->componentType == gltf::ComponentType::FLOAT);
+
+                    glm::mat4x4 *m44_window = (glm::mat4x4*)(buf->uri.data + view->byteOffset);
+                    glm::mat4x4 *m44_alloc  = (glm::mat4x4*)calloc(sizeof(glm::mat4x4), j_len);
+                    for (int i = 0; i < j_len; i++) {
+                        m44_alloc[i] = m44_window[joints[i]];
+                    }
+                    mem_indices      = memory::wrap(typeof(glm::mat4x4), m44_alloc, j_len);
+                    mx_bones         = mx(mem_indices);
+                }
                 break;
             }
             break;
@@ -475,7 +509,11 @@ struct IPipeline {
         size_t bind_id = 0;
         Texture tx;
 
-        uniforms.clear();
+        uniform_buffers.clear();
+        uniform_types.clear();
+        storage_buffers.clear(); /// use wgpu::Buffer::size
+        storage_types.clear();
+        
         for (mx& binding: gfx->bindings) { /// array of mx can tell us what type of data it is
             wgpu::BindGroupLayoutEntry entry {
                 .binding    = u32(bind_id),
@@ -484,8 +522,8 @@ struct IPipeline {
             wgpu::BindGroupEntry bind_value {
                 .binding    = u32(bind_id)
             };
-
-            if (binding.type() == typeof(Texture)) {
+            type_t btype = binding.type();
+            if (btype == typeof(Texture)) {
                 tx = binding.hold();
                 tx.on_resize(name, [&](vec2i sz) {
                     load_bindings(gfx);
@@ -494,27 +532,33 @@ struct IPipeline {
                 entry.texture.sampleType    = wgpu::TextureSampleType::Float;
                 entry.texture.viewDimension = wgpu::TextureViewDimension::e2D;
                 bind_value.textureView      = tx->view;
-            } else if (binding.type() == typeof(Sampling::etype)) {
+            } else if (btype == typeof(Sampling::etype)) {
                 /// this must be specified immediately after the texture
                 assert(tx);
                 Sampling sampling(binding.hold());
                 entry.sampler.type          = sampling == Sampling::nearest ? wgpu::SamplerBindingType::NonFiltering : wgpu::SamplerBindingType::Filtering;
                 bind_value.sampler          = tx->sampler;
-            } else if (binding.type() == typeof(Uniform)) {
-                Uniform u = binding.hold();
-                size_t data_sz = u->uniform_data.type()->base_sz; /// fix this name
-
-                entry.buffer.type = wgpu::BufferBindingType::Uniform;
-                wgpu::BufferDescriptor desc = {
-                    .usage = wgpu::BufferUsage::Uniform | wgpu::BufferUsage::CopyDst,
-                    .size  = data_sz
-                };
-                bind_value.buffer = device.CreateBuffer(&desc); // this needs to be updated each frame
-                uniforms += { u, bind_value.buffer };
             } else {
-                assert(false);
+                bool is_uniform = btype->inherits<Uniform>();
+                entry.buffer.type = is_uniform ? wgpu::BufferBindingType::Uniform : wgpu::BufferBindingType::ReadOnlyStorage;
+                size_t sz    = btype->base_sz;
+                size_t count = binding.count(); /// this is a max size; its lazy on our part but its also complex to have a declarative api on field size resolution across a variety of different use-cases
+                /// user must create an array type for their vector size
+                wgpu::BufferDescriptor desc = {
+                    .usage = (is_uniform ? wgpu::BufferUsage::Uniform : wgpu::BufferUsage::Storage) |
+                        wgpu::BufferUsage::CopyDst,
+                    .size  = sz * count
+                };
+                bind_value.buffer = device.CreateBuffer(&desc); /// updated with mx from IRenderable
+                if (is_uniform) {
+                    uniform_buffers += bind_value.buffer;
+                    uniform_types += btype;
+                } else {
+                    storage_buffers += bind_value.buffer;
+                    storage_types += btype;
+                    entry.visibility = wgpu::ShaderStage::Vertex;
+                }
             }
-
             bind_entries.push(entry);
             bind_values.push(bind_value);
             bind_id++;
@@ -535,7 +579,7 @@ struct IPipeline {
 
         /// create bind group, and pipeline layout (stored)
         bind_group = device.CreateBindGroup(&bg);
-        pl = dawn::utils::MakeBasicPipelineLayout(device, &bgl);
+        pipeline_layout = dawn::utils::MakeBasicPipelineLayout(device, &bgl);
     }
 
     /// get meta attributes on the Vertex type (all must be used in shader)
@@ -550,8 +594,11 @@ struct IPipeline {
             if (p.type == typeof(glm::vec4))  return wgpu::VertexFormat::Float32x4;
             if (p.type == typeof(glm::ivec4)) return wgpu::VertexFormat::Sint32x4;
             if (p.type == typeof(float))      return wgpu::VertexFormat::Float32;
+            if (p.type == typeof(float[4]))   return wgpu::VertexFormat::Float32x4;
+            if (p.type == typeof(u16[4]))     return wgpu::VertexFormat::Uint16x4;
+            
             ///
-            assert(false);
+            console.fault("type not found when parsing vertex: {0}", {p.type->name});
             return wgpu::VertexFormat::Undefined;
         };
 
@@ -570,7 +617,7 @@ struct IPipeline {
         };
 
         dawn::utils::ComboRenderPipelineDescriptor render_desc;
-        render_desc.layout = pl;
+        render_desc.layout = pipeline_layout;
         render_desc.vertex.module = mod;
         render_desc.vertex.bufferCount = 1;
         render_desc.cBuffers[0].arrayStride = gfx->vtype->base_sz;// sizeof(Attribs);
@@ -591,37 +638,23 @@ struct IPipeline {
         dawn.process_events();
     }
 
-    /// create pipeline with shader, textures, vbo/ibo, bindings, attribs, blending and stencil info
-    void reload() {
-        str            part   = gfx->name;
-        type_t         vtype  = gfx->vtype;
-        mx             mx_vbuffer;
-        mx             mx_ibuffer;
-        array<image>   images;
-
-        /// load vbo/ibo data:
-        if (gfx->gen) {
-            /// generate based on user routine
-            gfx->gen(mx_vbuffer, mx_ibuffer, images);
-        } else {
-            /// otherwise load from gltf
-            load_from_gltf(m, part, mx_vbuffer, mx_ibuffer);
+    void submit(IRenderable &renderable, wgpu::TextureView color_view, wgpu::TextureView depth_stencil, states<Clear> clear_states, rgbaf clear_color) {
+        /// update uniforms
+        for (int i = 0; i < uniform_buffers.count(); i++) {
+            wgpu::Buffer &b = uniform_buffers[i];
+            mx &data = renderable.uniforms[i];
+            u64   sz = b.GetSize();
+            assert(b.GetSize() == data.type()->base_sz);
+            device->queue.WriteBuffer(b, 0, data.origin<void>(), sz);
         }
 
-        index_buffer  = device->create_buffer(mx_ibuffer, wgpu::BufferUsage::Index);
-        vertex_buffer = device->create_buffer(mx_vbuffer, wgpu::BufferUsage::Vertex);
-        indices_count = mx_ibuffer.count();
-
-        load_shader(gfx);
-        load_bindings(gfx);
-        create_with_attrs(gfx);
-    }
-
-    void submit(wgpu::TextureView color_view, wgpu::TextureView depth_stencil, states<Clear> clear_states, rgbaf clear_color) {
-        for (UniformData &udata: uniforms) {
-            u64 sz = udata.buffer.GetSize();
-            assert(sz == udata.u.size());
-            device->queue.WriteBuffer(udata.buffer, 0, udata.u.address(), sz);
+        /// update storage
+        for (int i = 0; i < storage_buffers.count(); i++) {
+            wgpu::Buffer &b = storage_buffers[i];
+            mx   &data      = renderable.storage[i];
+            u64   vec_sz    = data.type()->base_sz * data.count(); /// the storage_buffer is max sized, so we just make sure its large enough
+            assert(b.GetSize() >= vec_sz);
+            device->queue.WriteBuffer(b, 0, data.origin<void>(), vec_sz);
         }
 
         wgpu::RenderPassColorAttachment color_attachment {
@@ -671,44 +704,115 @@ struct IPipeline {
     register(IPipeline);
 };
 
-struct IPipes {
+struct IModel {
     Device                      device;
     ion::gltf::Model            m;
     symbol                      model;
-    array<Texture>              textures { Asset::count };
     array<Pipeline>             pipelines;
 
-    void submit(wgpu::TextureView color_view, wgpu::TextureView depth_stencil_view, states<Clear> clear_states, rgbaf clear_color) {
+    void submit(IRenderable &renderable, wgpu::TextureView color_view, wgpu::TextureView depth_stencil_view, states<Clear> clear_states, rgbaf clear_color) {
         for (auto p: pipelines)
-            p->submit(color_view, depth_stencil_view, clear_states, clear_color);
+            p->submit(renderable, color_view, depth_stencil_view, clear_states, clear_color);
     }
-    register(IPipes);
+
+    /// create pipeline with shader, textures, vbo/ibo, bindings, attribs, blending and stencil info
+    void reload() {
+
+        for (Pipeline &sub: pipelines) {
+            Graphics &     gfx    = sub->gfx;
+            str &          name   = gfx->name;
+            type_t         vtype  = gfx->vtype;
+            mx             mx_vbuffer;
+            mx             mx_ibuffer;
+            mx             mx_bones;
+            array<image>   images;
+
+            /// load vbo/ibo data:
+            if (gfx->gen) {
+                /// generate based on user routine
+                gfx->gen(mx_vbuffer, mx_ibuffer, images);
+            } else {
+                /// otherwise load from gltf
+                sub->load_from_gltf(m, name, mx_vbuffer, mx_ibuffer, mx_bones);
+            }
+
+            sub->index_buffer  = device->create_buffer(mx_ibuffer, wgpu::BufferUsage::Index);
+            sub->vertex_buffer = device->create_buffer(mx_vbuffer, wgpu::BufferUsage::Vertex);
+
+            // these have to be uniquely instanced for each; we do need a rest state stored though.
+            //bones_buffer  = device->create_buffer(mx_bones,   wgpu::BufferUsage::Storage);
+            
+            sub->indices_count = mx_ibuffer.count();
+            sub->load_shader(gfx);
+            sub->load_bindings(gfx);
+            sub->create_with_attrs(gfx);
+        }
+
+    }
+
+    register(IModel);
 };
 
-Pipes::Pipes(Device &device, symbol model, array<Graphics> parts):Pipes() {
-    using namespace gltf;
+Model::Model(Device &device, symbol model, array<Graphics> select):Model() {
     data->device = device;
     data->model = model;
 
     if (model) {
         path gltf_path = fmt {"models/{0}.gltf", { model }};
-        data->m = Model::load(gltf_path);
+        data->m = gltf::Model::load(gltf_path);
     }
 
-    for (Graphics &gfx: parts) {
+    for (Graphics &gfx: select) {
         Pipeline p;
         p->gfx            = gfx;
         p->device         = device;
         p->name           = gfx->name;
         p->m              = data->m;
-        data->pipelines  += p;
+        data->pipelines += p;
     }
 
-    for (Pipeline &p: data->pipelines)
-        p->reload();
+    data->reload();
 }
 
-Pipeline &Pipes::operator[](str s) {
+Object Model::instance() {
+    Object o;
+
+    /// likely best to use a 'map' for these so we may re-use types
+    size_t n_pipelines = data->pipelines.count();
+
+    o->model = *this;
+    o->renderables = array<IRenderable>(n_pipelines);
+
+    size_t r = 0;
+    /// for each pipeline, add a renderable; each with allocations for uniforms and storage data (vector sized based on a max provided by user)
+    /// for data such as skin mat44, we can find out what this is (todo)
+    for (Pipeline &pl: data->pipelines) {
+        IRenderable &renderable = o->renderables.push();
+        /// add uniform types (each of count == 1)
+        int u = 0;
+        for (type_t u_type: pl->uniform_types) {
+            size_t uniform_sz = pl->uniform_buffers[u++].GetSize();
+            assert(uniform_sz == u_type->base_sz);
+            mx m = memory::alloc(u_type, 1, 1, null);
+            renderable.uniforms.push(m);
+        }
+        /// add storage types (allocate vector of buffer.GetSize() / sizeof(storage_type))
+        int s = 0;
+        for (type_t s_type: pl->storage_types) {
+            size_t buffer_sz = pl->storage_buffers[s++].GetSize();
+            size_t vcount = buffer_sz / s_type->base_sz;
+            mx m = memory::alloc(s_type, vcount, vcount, null);
+            renderable.storage.push(m);
+        }
+    }
+    return o;
+}
+
+Model::operator Object() {
+    return instance();
+}
+
+Pipeline &Model::operator[](str s) {
     for (Pipeline &p: data->pipelines) {
         if (s == p->name)
             return p;
@@ -829,12 +933,16 @@ struct IWindow {
 
         for (Presentation p: presentations) {
             Scene scene = p.on_present();
-            for (Pipes &p: scene) {
-                for (Pipeline &pipeline: p->pipelines) {
-                    pipeline->submit(swap_view, depth_stencil->view, clear_states, clear_color);
+            for (Object &o: scene) { /// this will change to Object/Entity/Visual iteration
+                int ipipeline = 0;
+                assert(o->renderables.count() == o->model->pipelines.count());
+                for (IRenderable &renderable: o->renderables) {
+                    Pipeline &pl = o->model->pipelines[ipipeline];
+                    pl->submit(renderable, swap_view, depth_stencil->view, clear_states, clear_color);
                     //clear_states[Clear::Color] = false;
                     //clear_states[Clear::Depth] = false;
                     //clear_states[Clear::Stencil] = false;
+                    ipipeline++;
                 }
             }
         }
@@ -980,6 +1088,7 @@ mx_implement(Dawn,      mx, IDawn);
 mx_implement(Device,    mx, IDevice);
 mx_implement(Texture,   mx, ITexture);
 mx_implement(Pipeline,  mx, IPipeline);
-mx_implement(Pipes,     mx, IPipes);
+mx_implement(Model,     mx, IModel);
+mx_implement(Object,    mx, IObject);
 mx_implement(Window,    mx, IWindow);
 }

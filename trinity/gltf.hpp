@@ -28,10 +28,79 @@ namespace gltf {
         TRIANGLE_FAN = 6
     );
 
+    enums(Interpolation, LINEAR,
+        LINEAR = 0, STEP = 1, CUBICSPLINE = 2
+    );
+
+    /// animation Sampler
+    struct Sampler:mx {
+        struct M {
+            size_t        input;
+            size_t        output;
+            Interpolation interpolation;
+            doubly<prop> meta() {
+                return {
+                    { "input",          input },
+                    { "output",         output },
+                    { "interpolation",  interpolation },
+                };
+            }
+            register(M);
+        };
+        mx_basic(Sampler);
+    };
+
+    struct ChannelTarget:mx {
+        struct M {
+            size_t          node;
+            str             path; /// field name of node
+            doubly<prop> meta() {
+                return {
+                    { "node",           node },
+                    { "path",           path }
+                };
+            }
+            register(M);
+        };
+        mx_basic(ChannelTarget);
+    };
+
+    struct Channel:mx {
+        struct M {
+            size_t          sampler; /// sampler id
+            ChannelTarget   target;
+            doubly<prop> meta() {
+                return {
+                    { "sampler",        sampler },
+                    { "target",         target }
+                };
+            }
+            register(M);
+        };
+        mx_basic(Channel);
+    };
+
+    struct Animation:mx {
+        struct M {
+            str             name;
+            array<Sampler>  samplers;
+            array<Channel>  channels;
+            doubly<prop> meta() {
+                return {
+                    { "name",           name },
+                    { "samplers",       samplers },
+                    { "channels",       channels }
+                };
+            }
+            register(M);
+        };
+        mx_basic(Animation);
+    };
+    
     struct SparseInfo:mx {
         struct M {
-            size_t        bufferView;
-            ComponentType componentType;
+            size_t          bufferView;
+            ComponentType   componentType;
             /// componentType:
             /// sub-accessor type for bufferView, only for index types
             /// for value types, we are using the componentType of the accessor
@@ -114,8 +183,8 @@ namespace gltf {
     struct Skin:mx {
         struct M {
             str             name;
-            array<int>      joints; /// references the nodes array
-            int             inverseBindMatrices; /// buffer-view index (data type must be matrix 4x4)
+            array<int>      joints; /// references the bufferView; we have to make a new one based on this index
+            int             inverseBindMatrices; /// buffer-view index of mat44 (before index ordering) (assert data type must be matrix 4x4)
             mx              extras;
             mx              extensions;
             ///
@@ -141,6 +210,7 @@ namespace gltf {
             array<float>    translation = { 0.0, 0.0, 0.0 };
             array<float>    rotation    = { 0.0, 0.0, 0.0, 1.0 };
             array<float>    scale       = { 1.0, 1.0, 1.0 };
+            array<float>    weights     = { }; /// no weights, for no vertices
             array<int>      children;
             ///
             doubly<prop> meta() {
@@ -151,7 +221,8 @@ namespace gltf {
                     { "children",      children    },
                     { "translation",   translation }, /// apply first
                     { "rotation",      rotation    }, /// apply second
-                    { "scale",         scale       }  /// apply third [these are done on load after json is read in; this is only done in cases where ONE of these are set (we want to set defaults of 1,1,1 for scale, 0,0,0 for translate, etc)]
+                    { "scale",         scale       }, /// apply third [these are done on load after json is read in; this is only done in cases where ONE of these are set (we want to set defaults of 1,1,1 for scale, 0,0,0 for translate, etc)]
+                    { "weights",       weights     }
                 };
             }
             register(M);
@@ -276,6 +347,7 @@ namespace gltf {
             array<Scene>      scenes;
             AssetDesc         asset;
             array<Buffer>     buffers;
+            array<Animation>  animations;
             ///
             doubly<prop> meta() {
                 return {
@@ -287,7 +359,8 @@ namespace gltf {
                     { "scene",       scene },
                     { "scenes",      scenes },
                     { "asset",       asset },
-                    { "buffers",     buffers }
+                    { "buffers",     buffers },
+                    { "animations",  animations }
                 };
             }
             register(M);

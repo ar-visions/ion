@@ -107,7 +107,7 @@ int App::run() {
     style root_style { ee->type }; /// this is a singleton, so anyone else doing style s; will get the style. (those should not exec first, though.)
     window.set_title(ee->type->name);
     
-    Pipes canvas_pipeline = Pipes(device, null, array<Graphics> {
+    Model canvas_pipeline = Model(device, null, array<Graphics> {
         Graphics {
             "canvas", typeof(CanvasAttribs), { texture, Sampling::linear }, "canvas",
             [](mx &vbo, mx &ibo, array<image> &images) {

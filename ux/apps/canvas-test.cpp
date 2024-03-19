@@ -51,17 +51,19 @@ struct Vertex {
 
 /// get gltf model output running nominal; there seems to be a skew in the coordinates so it may be being misread
 /// uniform has an update method with a pipeline arg
-struct RubiksState {
+struct HumanState:Uniform {
     glm::mat4  model;
     glm::mat4  view;
     glm::mat4  proj;
     glm::vec4  eye;
-    Light      lights[3];
+    Light      lights[4];
+    register(HumanState);
 };
 
-struct UState {
+struct UState:Uniform {
     float x_scale;
     float y_scale;
+    register(UState);
 };
 
 int main(int argc, const char* argv[]) {
@@ -73,25 +75,25 @@ int main(int argc, const char* argv[]) {
     Texture canvas_texture = device.create_texture(window.size(), Asset::attachment);
     window.set_title("Canvas Test");
 
-    UState  canvas_state;
-    Uniform canvas_uniform = Uniform::of_state(canvas_state);
-    
-    /*
-    Pipes human_pipeline = Pipes(device, null, array<Graphics> {
-        Graphics {
-            "human", typeof(Vertex), {
-                Sampling::linear, (Asset::color),
-                Sampling::linear, (Asset::normal),
-                Sampling::linear, (Asset::material),
-                Sampling::linear, (Asset::reflect),
-                Sampling::linear, (Asset::env)
-            }, "human", [](array<image> &images) {
-                /// if we provide this lambda, we are letting gltf load the vbo/ibo
-            }
-        }
-    });*/
+    type_t type = typeof(UState);
 
-    Pipes canvas_pipeline = Pipes(device, null, array<Graphics> {
+    UState     canvas_state;
+    mx         canvas_uniform = mx::window(&canvas_state);
+
+    HumanState human_state;
+    mx         human_uniform  = mx::window(&human_state); // window memory is not freed at origin (wrap is)
+
+    Model      human_pipeline = Model(device, "human", array<Graphics> {
+        Graphics {
+            "Body", typeof(Vertex), { human_uniform }, "human" /// contains Body contains head; does not contain teeth, tongue or L/R eyes
+        } /// implicit is Skin(0) (node has reference to skin of 0, if not specified, no implicit bindings to Skin buffer) resolved Joint Buffer (bind to var<storage> type) at index 0 (assert that its in range)
+    }); /// todo: process Skin to resolve buffers
+    Object     human_object = human_pipeline.instance();
+
+    /// we need a render state on Pipes, and i suppose that contains the same set of names
+
+
+    Model canvas_pipeline = Model(device, null, array<Graphics> {
         Graphics {
             "canvas", typeof(CanvasAttribs),
             { canvas_texture, Sampling::linear, canvas_uniform }, "canvas",
@@ -112,6 +114,7 @@ int main(int argc, const char* argv[]) {
             }
         }
     });
+    Object     canvas_object = canvas_pipeline.instance();
     
     Canvas canvas;
     num s = millis();

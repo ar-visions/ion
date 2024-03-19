@@ -232,7 +232,7 @@ struct ICanvas {
 
         return text_metrics {
             adv,
-            abs(mx.fAscent) + abs(mx.fDescent),
+            fabs(mx.fAscent) + fabs(mx.fDescent),
             mx.fAscent,
             mx.fDescent,
             lh,

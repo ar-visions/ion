@@ -37,6 +37,10 @@ enums(Asset, undefined,
 
 struct Device;
 
+/// if you inherit from Uniform these buffers will be typed as such; otherwise they are treated as 'storage'
+/// added benefit of inheritance for your uniforms, allowing for possibly less code
+struct Uniform { };
+
 /// we dont expose Usage/Format because we have Asset, path (from name); thats enough context to make things
 struct Texture:mx {
     mx_declare(Texture, mx, struct ITexture);
@@ -65,7 +69,7 @@ struct Device:mx {
 };
 
 struct Pipeline;
-struct Pipes;
+struct Model;
 
 enums(ShaderModule, undefined,
      undefined, vertex, fragment, compute);
@@ -73,8 +77,8 @@ enums(ShaderModule, undefined,
 using GraphicsGen = lambda<void(mx&,mx&,array<image>&)>;
 
 struct GraphicsData {
-    symbol      name;
-    symbol      shader;
+    str         name;
+    str         shader;
     type_t      vtype;
     GraphicsGen gen;
     array<mx>   bindings;
@@ -83,7 +87,7 @@ struct GraphicsData {
 };
 
 struct Graphics:mx {
-    Graphics(symbol name, type_t vtype, array<mx> bindings, symbol shader = "pbr", GraphicsGen gen = null) : Graphics() {
+    Graphics(str name, type_t vtype, array<mx> bindings, str shader = "pbr", GraphicsGen gen = null) : Graphics() {
         data->name      = name;
         data->shader    = shader;
         data->vtype     = vtype;
@@ -91,27 +95,6 @@ struct Graphics:mx {
         data->bindings  = bindings;
     }
     mx_object(Graphics, mx, GraphicsData);
-};
-
-/// wrap data for Uniforms; this ustate struct should remain active during pipeline
-struct Uniform:mx {
-    struct M {
-        mx     uniform_data;
-        register(M);
-    };
-    void *address() {
-        return data->uniform_data.origin<void>();
-    }
-    size_t size() {
-        return data->uniform_data.total_size();
-    }
-    template <typename U>
-    static inline Uniform of_state(U &ustate) {
-        Uniform u;
-        u->uniform_data = mx::wrap<U>(&ustate);
-        return u;
-    }
-    mx_basic(Uniform);
 };
 
 enums(Sampling, nearest, nearest, linear, ansio);
@@ -122,14 +105,24 @@ struct Pipeline:mx {
     mx_declare(Pipeline, mx, struct IPipeline)
 };
 
-/// for Daniel to call back.. they got tired of calling
-struct Pipes:mx {
-    mx_declare(Pipes, mx, struct IPipes);
-    Pipes(Device &device, symbol model, array<Graphics> parts);
-    Pipeline &operator[](str s);
+/// the object has unique buffers for uniform, storage
+/// should make use of mx, or templated types for setting data
+struct Model;
+
+struct Object:mx {
+    Model &model(); /// if operator on Model is called, you may obtain Model by calling this
+    mx_declare(Object, mx, struct IObject);
 };
 
-using Scene           = array<Pipes>;
+struct Model:mx {
+    mx_declare(Model, mx, struct IModel);
+    Model(Device &device, symbol model, array<Graphics> select); /// select Graphics in the Model with user defined functionality
+    Pipeline &operator[](str s);
+    Object instance(); /// instance Object for rendering
+    operator Object(); /// Model ref is stored on Object, so its useful
+};
+
+using Scene           = array<Object>; /// this must change to be array<Object> so we render instances (change in progress)
 using OnWindowResize  = lambda<void(vec2i)>;
 using OnWindowPresent = lambda<Scene()>;
 
