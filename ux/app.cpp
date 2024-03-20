@@ -107,9 +107,10 @@ int App::run() {
     style root_style { ee->type }; /// this is a singleton, so anyone else doing style s; will get the style. (those should not exec first, though.)
     window.set_title(ee->type->name);
     
+    array<ShaderVar> v = { texture, Sampling(Sampling::linear) };
     Model canvas_pipeline = Model(device, null, array<Graphics> {
         Graphics {
-            "canvas", typeof(CanvasAttribs), { texture, Sampling::linear }, "canvas",
+            "canvas", typeof(CanvasAttribs), { texture, Sampling::linear },
             [](mx &vbo, mx &ibo, array<image> &images) {
                 static const uint32_t indexData[6] = {
                     0, 1, 2,

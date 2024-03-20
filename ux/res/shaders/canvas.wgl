@@ -11,13 +11,14 @@ struct ustate {
 @group(0) @binding(0) var t0 : texture_2d<f32>;
 @group(0) @binding(1) var s0 : sampler;
 @group(0) @binding(2) var<uniform> u : ustate;
+@group(0) @binding(3) var<storage> test_storage : array<f32>;
 
 @vertex
 fn vertex_main(
         @location(0) pos1 : vec4f, 
         @location(1) uv  : vec2f) -> args {
     var a : args;
-    a.pos = vec4f(pos1.x * u.x_scale, pos1.y * u.y_scale, pos1.z, pos1.w);
+    a.pos = vec4f(pos1.x * u.x_scale * test_storage[0], pos1.y * u.y_scale * test_storage[1], pos1.z, pos1.w);
     a.uv  = uv;
     return a;
 }

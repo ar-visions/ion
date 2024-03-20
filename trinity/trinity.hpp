@@ -37,9 +37,10 @@ enums(Asset, undefined,
 
 struct Device;
 
-/// if you inherit from Uniform these buffers will be typed as such; otherwise they are treated as 'storage'
-/// added benefit of inheritance for your uniforms, allowing for possibly less code
-struct Uniform { };
+enums(Sampling, undefined, undefined, nearest, linear, ansio);
+
+/// Storage is more complex, because we need cases covered for Bone data
+/// It may not be generalizable due to the dynamically indexed nature of skin model
 
 /// we dont expose Usage/Format because we have Asset, path (from name); thats enough context to make things
 struct Texture:mx {
@@ -59,6 +60,83 @@ struct Texture:mx {
     void*   handle();
     Device &device();
 };
+
+
+/// used to declare all shader variables, provided to Model
+/// can be useful for Compute shader if thats something we want to implement
+struct ShaderVar:mx {
+    enums(Flag, undefined, 
+        undefined = 0,
+        object = 1,
+        uniform = 2,
+        read_only = 4,
+        vertex = 8,
+        fragment = 16);
+    
+    struct M {
+        Sampling sampling;
+        Texture  tx;
+        type_t   type;
+        size_t   count;
+        u32      flags;
+        mx       cache; /// if set, this is provided for data (otherwise a unique allocation is given)
+        register(M)
+    };
+    /// handle cases of non-object, or model-based allocation
+    mx alloc() {
+        if (data->cache)
+            return data->cache;
+        if (data->sampling)
+            return data->sampling;
+        if (data->tx)
+            return data->tx;
+        return memory::alloc(data->type, data->count, 0, null);
+    }
+    void prepare_data() {
+        if (!(data->flags & Flag::object))
+            data->cache = memory::alloc(data->type, data->count, 0, null);
+    }
+    size_t size() {
+        return data->type->base_sz * data->count;
+    }
+    void prepare_flags() {
+        if (!(data->flags & (Flag::vertex | Flag::fragment)))
+            data->flags  |= (Flag::vertex | Flag::fragment); // both are implied if none are given
+    }
+    ShaderVar(Sampling sampling) : ShaderVar() {
+        data->type = typeof(Sampling);
+        data->sampling = sampling;
+        prepare_flags();
+    }
+    ShaderVar(Sampling::etype sampling) : ShaderVar() {
+        data->type = typeof(Sampling);
+        data->sampling = Sampling(sampling);
+        prepare_flags();
+    }
+    ShaderVar(Texture tx, u32 flags) : ShaderVar() {
+        data->type = typeof(Texture);
+        data->tx = tx;
+        data->flags = flags;
+        prepare_flags();
+    }
+    ShaderVar(Texture tx) : ShaderVar() {
+        data->type = typeof(Texture);
+        data->tx = tx;
+        prepare_flags();
+    }
+    ShaderVar(type_t type, size_t count, u32 flags) : ShaderVar() {
+        data->type  = type;
+        data->count = count;
+        data->flags = flags;
+        prepare_flags();
+    }
+    mx_basic(ShaderVar);
+};
+
+#define   ModelUniform(utype)     ShaderVar(typeof(utype), 1,  ShaderVar::Flag::uniform)
+#define  ObjectUniform(utype)     ShaderVar(typeof(utype), 1,  ShaderVar::Flag::uniform | ShaderVar::Flag::object)
+#define    ModelVector(utype, sz) ShaderVar(typeof(utype), sz, ShaderVar::Flag::read_only)
+#define   ObjectVector(utype, sz) ShaderVar(typeof(utype), sz, ShaderVar::Flag::read_only | ShaderVar::Flag::object)
 
 struct IDevice;
 struct Device:mx {
@@ -81,15 +159,15 @@ struct GraphicsData {
     str         shader;
     type_t      vtype;
     GraphicsGen gen;
-    array<mx>   bindings;
+    array<ShaderVar> bindings; /// ordered the same as shader
     ///
     type_register(GraphicsData);
 };
 
 struct Graphics:mx {
-    Graphics(str name, type_t vtype, array<mx> bindings, str shader = "pbr", GraphicsGen gen = null) : Graphics() {
+    Graphics(str name, type_t vtype, array<ShaderVar> bindings, GraphicsGen gen = null, str shader = null) : Graphics() {
         data->name      = name;
-        data->shader    = shader;
+        data->shader    = shader ? shader : name;
         data->vtype     = vtype;
         data->gen       = gen;
         data->bindings  = bindings;
@@ -97,20 +175,35 @@ struct Graphics:mx {
     mx_object(Graphics, mx, GraphicsData);
 };
 
-enums(Sampling, nearest, nearest, linear, ansio);
-
-using MG = map<Graphics>;
-
 struct Pipeline:mx {
     mx_declare(Pipeline, mx, struct IPipeline)
 };
 
-/// the object has unique buffers for uniform, storage
-/// should make use of mx, or templated types for setting data
 struct Model;
+struct IObject;
+
+/// our Object impl needs to access IObject internal, so we forward declare
+mx &object_data(IObject *o, str name, type_t type);
+
+using Bones = glm::mat4x4*;
 
 struct Object:mx {
     Model &model(); /// if operator on Model is called, you may obtain Model by calling this
+    
+    /// lookup instanced data on object; can be model-based if its not flagged as object
+    template <typename T>
+    T &uniform(str name) {
+        mx &o_data = object_data(data, name, typeof(T));
+        return *o_data.origin<T>();
+    }
+    template <typename T>
+    T *vector(str name) {
+        mx &o_data = object_data(data, name, typeof(T));
+        return o_data.origin<T>();
+    }
+    Bones bones(str name) {
+        return vector<glm::mat4x4>(name);
+    }
     mx_declare(Object, mx, struct IObject);
 };
 

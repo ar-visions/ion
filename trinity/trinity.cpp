@@ -59,9 +59,10 @@ void Device::get_dpi(float *xscale, float *yscale) {
 struct ITexture {
     Device              device;
     wgpu::Texture       texture;
+    wgpu::TextureDimension dim;
     wgpu::TextureFormat format;
     wgpu::TextureView   view;
-    wgpu::Sampler       sampler;
+    //wgpu::Sampler       sampler; (not associated here, its bound in Pipeline)
     wgpu::TextureUsage  usage;
     vec2i               sz;
     Asset               asset_type;
@@ -73,6 +74,15 @@ struct ITexture {
             case Asset::env: return wgpu::TextureFormat::RGBA16Float; /// load with OpenEXR
             default:         return wgpu::TextureFormat::BGRA8Unorm;
         }
+    }
+
+    wgpu::TextureViewDimension view_dimension() {
+        switch (dim) {
+            case wgpu::TextureDimension::e1D: return wgpu::TextureViewDimension::e1D;
+            case wgpu::TextureDimension::e2D: return wgpu::TextureViewDimension::e2D;
+            case wgpu::TextureDimension::e3D: return wgpu::TextureViewDimension::e3D;
+        }
+        return wgpu::TextureViewDimension::Undefined;
     }
 
     wgpu::TextureDimension asset_dimension(Asset &asset) {
@@ -119,12 +129,13 @@ struct ITexture {
         tx_desc.usage                   = usage;
 
         this->device    = device;
+        this->dim       = tx_desc.dimension;
         this->asset_type = asset_type;
         this->texture   = device->wgpu.CreateTexture(&tx_desc);
         if (usage & (wgpu::TextureUsage::TextureBinding | wgpu::TextureUsage::RenderAttachment))
             view        = texture.CreateView();
-        if (usage & (wgpu::TextureUsage::TextureBinding))
-            sampler     = device->wgpu.CreateSampler();
+        //if (usage & (wgpu::TextureUsage::TextureBinding))
+        //    sampler     = device->wgpu.CreateSampler();
         this->format    = asset_format(asset_type);
         this->sz        = vec2i(w, h);
         this->usage     = usage;
@@ -314,8 +325,8 @@ struct IDawn {
 };
 
 struct IRenderable {
-    array<mx> uniforms;
-    array<mx> storage;
+    str name; /// needs the same identification
+    array<mx> var_data; /// from ShaderVar::alloc()
     register(IRenderable)
 };
 
@@ -325,6 +336,12 @@ struct IObject {
     register(IObject)
 };
 
+struct IVar {
+    wgpu::Buffer      buffer;
+    wgpu::Sampler     sampler;
+    ShaderVar         svar;
+};
+
 struct IPipeline {
     static inline ion::map<wgpu::ShaderModule> mod_cache;
 
@@ -332,17 +349,13 @@ struct IPipeline {
     
     wgpu::Buffer                index_buffer;
     wgpu::Buffer                vertex_buffer;
-    array<wgpu::Buffer>         uniform_buffers;
-    array<wgpu::Buffer>         storage_buffers;
-    array<type_t>               uniform_types;
-    array<type_t>               storage_types; /// use the buffer size to know the vector length (if this is )
+    array<IVar>                 ivars;
 
     wgpu::RenderPipeline        pipeline;
     wgpu::BindGroup             bind_group;
     wgpu::BindGroupLayout       bgl;
     wgpu::PipelineLayout        pipeline_layout;
     wgpu::ShaderModule          mod;
-    //array<UniformData>        uniforms;
     
     Device                      device;
     Graphics                    gfx;
@@ -353,141 +366,117 @@ struct IPipeline {
     void load_from_gltf(gltf::Model &m, str &part, mx &mx_vbuffer, mx &mx_ibuffer, mx &mx_bones) {
         /// model must have been loaded
         assert(m->nodes);
-        /// load single part from gltf (a Pipes object effectively calls this multiple times for multiple Pipelines)
-        for (gltf::Node &node: m->nodes) {
-            /// load specific node name from node group
-            if (node->name != part) continue;
-            assert(node->mesh >= 0);
 
-            gltf::Mesh &mesh = m->meshes[node->mesh];
+        /// load single part from gltf (Model calls this multiple times)
+        gltf::Node &node = m[part];
+        assert(node->mesh >= 0);
 
-            for (gltf::Primitive &prim: mesh->primitives) {
-                /// for each attrib we fill out the vstride
-                struct vstride {
-                    ion::prop      *prop;
-                    type_t          compound_type;
-                    gltf::Accessor::M    *accessor;
-                    gltf::Buffer::M      *buffer;
-                    gltf::BufferView::M  *buffer_view;
-                    num             offset;
-                };
+        gltf::Mesh &mesh = m->meshes[node->mesh];
 
-                ///
-                array<vstride> strides { prim->attributes->count() };
-                size_t pcount = 0;
-                size_t vlen = 0;
-                for (field<mx> f: prim->attributes) {
-                    str       prop_bind      = f.key.hold();
-                    symbol    prop_sym       = symbol(prop_bind);
-                    num       accessor_index = num(f.value);
-                    gltf::Accessor &accessor       = m->accessors[accessor_index];
+        for (gltf::Primitive &prim: mesh->primitives) {
+            /// for each attrib
+            struct vstride {
+                ion::prop            *prop;
+                type_t                compound_type;
+                gltf::Accessor::M    *accessor;
+                gltf::Buffer::M      *buffer;
+                gltf::BufferView::M  *buffer_view;
+                num                   offset;
+            };
 
-                    /// the src stride is the size of struct_type[n_components]
-                    assert(gfx->vtype->meta_map);
-                    prop*  p = (*gfx->vtype->meta_map)[prop_sym];
-                    assert(p);
+            array<vstride> strides { prim->attributes->count() };
+            size_t pcount = 0;
+            size_t vlen = 0;
+            for (field<mx> f: prim->attributes) {
+                str       prop_bind      = f.key.hold();
+                symbol    prop_sym       = symbol(prop_bind);
+                num       accessor_index = num(f.value);
+                gltf::Accessor &accessor       = m->accessors[accessor_index];
 
-                    vstride &stride    = strides[pcount++];
-                    stride.prop        = p;
-                    stride.compound_type = p->type; /// native glm-type or float
-                    stride.accessor    = accessor.data;
-                    stride.buffer_view = m->bufferViews[accessor->bufferView].data;
-                    stride.buffer      = m->buffers[stride.buffer_view->buffer].data;
-                    stride.offset      = stride.prop->offset; /// origin at offset and stride by V type
-                    
-                    if (vlen)
-                        assert(vlen == accessor->count);
-                    else
-                        vlen = accessor->count;
+                /// the src stride is the size of struct_type[n_components]
+                assert(gfx->vtype->meta_map);
+                prop*  p = (*gfx->vtype->meta_map)[prop_sym];
+                assert(p);
 
-                    /// lets make implicit bindings if there are skins associated to these node groups
-                    /// its an assertion error and a compilation error when the shader does not contain the var<storage> when "skin" is >= 0
-                    /// this buffer we create here, resolving bones = buffer_view[skin][each...joint index]
-                    if (stride.compound_type == typeof(float)) {
-                        assert(accessor->componentType == gltf::ComponentType::FLOAT);
-                        assert(accessor->type == gltf::CompoundType::SCALAR);
-                    }
-                    if (stride.compound_type == typeof(glm::vec2)) {
-                        assert(accessor->componentType == gltf::ComponentType::FLOAT);
-                        assert(accessor->type == gltf::CompoundType::VEC2);
-                    }
-                    if (stride.compound_type == typeof(glm::vec3)) {
-                        assert(accessor->componentType == gltf::ComponentType::FLOAT);
-                        assert(accessor->type == gltf::CompoundType::VEC3);
-                    }
-                    if (stride.compound_type == typeof(glm::vec4)) {
-                        assert(accessor->componentType == gltf::ComponentType::FLOAT);
-                        assert(accessor->type == gltf::CompoundType::VEC4);
-                    }
+                vstride &stride    = strides[pcount++];
+                stride.prop        = p;
+                stride.compound_type = p->type; /// native glm-type or float
+                stride.accessor    = accessor.data;
+                stride.buffer_view = m->bufferViews[accessor->bufferView].data;
+                stride.buffer      = m->buffers[stride.buffer_view->buffer].data;
+                stride.offset      = stride.prop->offset; /// origin at offset and stride by V type
+                
+                if (vlen)
+                    assert(vlen == accessor->count);
+                else
+                    vlen = accessor->count;
+
+                if (stride.compound_type == typeof(float)) {
+                    assert(accessor->componentType == gltf::ComponentType::FLOAT);
+                    assert(accessor->type == gltf::CompoundType::SCALAR);
                 }
-                strides.set_size(pcount);
-
-                /// allocate entire vertex buffer for this 
-                u8 *vbuf = (u8*)calloc(vlen, gfx->vtype->base_sz);
-
-                /// copy data into vbuf
-                for (vstride &stride: strides) {
-                    /// offset into src buffer
-                    u8 *dst        = vbuf;
-                    num src_offset = stride.buffer_view->byteOffset;
-                    /// size of member / accessor compound-type
-                    num src_stride = stride.compound_type->base_sz;
-                    for (num i = 0; i < vlen; i++) {
-                        /// dst: vertex member position
-                        u8 *member = &dst[stride.offset];
-                        /// src: gltf buffer at offset: 
-                        /// buffer-view + [0...accessor-count] * src-stride (same as our type size)
-                        u8 *src    = &stride.buffer->uri[src_offset + src_stride * i];
-                        memcpy(member, src, src_stride);
-
-                        /// next vertex
-                        dst += gfx->vtype->base_sz;
-                    }
+                if (stride.compound_type == typeof(glm::vec2)) {
+                    assert(accessor->componentType == gltf::ComponentType::FLOAT);
+                    assert(accessor->type == gltf::CompoundType::VEC2);
                 }
-                /// create vertex buffer by wrapping what we've copied from allocation (we have a primitive array)
-                mx verts { memory::wrap(gfx->vtype, vbuf, vlen) }; /// load indices (always store 32bit uint)
-                mx_vbuffer = verts;
-
-                /// indices data = indexing mesh-primitive->indices
-                gltf::Accessor &a_indices = m->accessors[prim->indices];
-                gltf::BufferView &view = m->bufferViews[ a_indices->bufferView ];
-                gltf::Buffer      &buf = m->buffers    [ view->buffer ];
-                memory *mem_indices;
-
-                if (a_indices->componentType == gltf::ComponentType::UNSIGNED_SHORT) {
-                    u16 *u16_window = (u16*)(buf->uri.data + view->byteOffset);
-                    u32 *u32_alloc  = (u32*)calloc(sizeof(u32), a_indices->count);
-                    for (int i = 0; i < a_indices->count; i++)
-                        u32_alloc[i] = u32(u16_window[i]);
-                    mem_indices = memory::wrap(typeof(u32), u32_alloc, a_indices->count);
-                } else {
-                    assert(a_indices->componentType == gltf::ComponentType::UNSIGNED_INT);
-                    u32 *u32_window = (u32*)(buf->uri.data + view->byteOffset);
-                    mem_indices = memory::window(typeof(u32), u32_window, a_indices->count);
+                if (stride.compound_type == typeof(glm::vec3)) {
+                    assert(accessor->componentType == gltf::ComponentType::FLOAT);
+                    assert(accessor->type == gltf::CompoundType::VEC3);
                 }
-                mx_ibuffer = mx(mem_indices);
-
-                /// load skin (mat4x4 indexed array)
-                if (node->skin >= 0) {
-                    gltf::Skin       &skin = m->skins      [node->skin];
-                    gltf::Accessor   &mats = m->accessors  [skin->inverseBindMatrices];
-                    gltf::BufferView &view = m->bufferViews[mats->bufferView];
-                    gltf::Buffer      &buf = m->buffers    [view->buffer];
-                    array<int> &joints = skin->joints;
-                    int         j_len  = joints.len();
-                    assert(mats->type          == gltf::CompoundType::MAT4);
-                    assert(mats->componentType == gltf::ComponentType::FLOAT);
-
-                    glm::mat4x4 *m44_window = (glm::mat4x4*)(buf->uri.data + view->byteOffset);
-                    glm::mat4x4 *m44_alloc  = (glm::mat4x4*)calloc(sizeof(glm::mat4x4), j_len);
-                    for (int i = 0; i < j_len; i++) {
-                        m44_alloc[i] = m44_window[joints[i]];
-                    }
-                    mem_indices      = memory::wrap(typeof(glm::mat4x4), m44_alloc, j_len);
-                    mx_bones         = mx(mem_indices);
+                if (stride.compound_type == typeof(glm::vec4)) {
+                    assert(accessor->componentType == gltf::ComponentType::FLOAT);
+                    assert(accessor->type == gltf::CompoundType::VEC4);
                 }
-                break;
             }
+            strides.set_size(pcount);
+
+            /// allocate entire vertex buffer for this 
+            u8 *vbuf = (u8*)calloc(vlen, gfx->vtype->base_sz);
+
+            /// copy data into vbuf
+            for (vstride &stride: strides) {
+                /// offset into src buffer
+                u8 *dst        = vbuf;
+                num src_offset = stride.buffer_view->byteOffset;
+                /// size of member / accessor compound-type
+                num src_stride = stride.compound_type->base_sz;
+                for (num i = 0; i < vlen; i++) {
+                    /// dst: vertex member position
+                    u8 *member = &dst[stride.offset];
+                    /// src: gltf buffer at offset: 
+                    /// buffer-view + [0...accessor-count] * src-stride (same as our type size)
+                    u8 *src    = &stride.buffer->uri[src_offset + src_stride * i];
+                    memcpy(member, src, src_stride);
+
+                    /// next vertex
+                    dst += gfx->vtype->base_sz;
+                }
+            }
+            /// create vertex buffer by wrapping what we've copied from allocation (we have a primitive array)
+            mx verts { memory::wrap(gfx->vtype, vbuf, vlen) }; /// load indices (always store 32bit uint)
+            mx_vbuffer = verts;
+
+            /// indices data = indexing mesh-primitive->indices
+            gltf::Accessor &a_indices = m->accessors[prim->indices];
+            gltf::BufferView &view = m->bufferViews[ a_indices->bufferView ];
+            gltf::Buffer      &buf = m->buffers    [ view->buffer ];
+            memory *mem_indices;
+
+            if (a_indices->componentType == gltf::ComponentType::UNSIGNED_SHORT) {
+                u16 *u16_window = (u16*)(buf->uri.data + view->byteOffset);
+                u32 *u32_alloc  = (u32*)calloc(sizeof(u32), a_indices->count);
+                for (int i = 0; i < a_indices->count; i++)
+                    u32_alloc[i] = u32(u16_window[i]);
+                mem_indices = memory::wrap(typeof(u32), u32_alloc, a_indices->count);
+            } else {
+                assert(a_indices->componentType == gltf::ComponentType::UNSIGNED_INT);
+                u32 *u32_window = (u32*)(buf->uri.data + view->byteOffset);
+                mem_indices = memory::window(typeof(u32), u32_window, a_indices->count);
+            }
+            mx_ibuffer = mx(mem_indices);
+
+            /// initialize rest state for this node, returning mat4 data
+            m.skeleton_init(mx_bones, node);
             break;
         }
     }
@@ -502,65 +491,96 @@ struct IPipeline {
     }
 
     /// loads/associates uniforms here (change from vk where that was a separate process)
-    void load_bindings(Graphics &gfx) {
+    void load_bindings(Graphics &gfx, mx bones) {
         wgpu::Device device = this->device->wgpu;
         array<wgpu::BindGroupEntry>       bind_values (gfx->bindings.count());
         array<wgpu::BindGroupLayoutEntry> bind_entries(gfx->bindings.count());
         size_t bind_id = 0;
-        Texture tx;
 
-        uniform_buffers.clear();
-        uniform_types.clear();
-        storage_buffers.clear(); /// use wgpu::Buffer::size
-        storage_types.clear();
-        
-        for (mx& binding: gfx->bindings) { /// array of mx can tell us what type of data it is
-            wgpu::BindGroupLayoutEntry entry {
-                .binding    = u32(bind_id),
-                .visibility = wgpu::ShaderStage::Vertex | wgpu::ShaderStage::Fragment /// probably best to look through the shader code after @fragment and @vertex
-            };
-            wgpu::BindGroupEntry bind_value {
-                .binding    = u32(bind_id)
-            };
-            type_t btype = binding.type();
+        ivars.clear();
+        for (ShaderVar& binding: gfx->bindings) { /// array of mx can tell us what type of data it is
+            wgpu::BindGroupLayoutEntry entry { .binding = u32(bind_id) };
+            wgpu::BindGroupEntry bind_value  { .binding = u32(bind_id) };
+            type_t btype = binding->type;
+
             if (btype == typeof(Texture)) {
-                tx = binding.hold();
-                tx.on_resize(name, [&](vec2i sz) {
-                    load_bindings(gfx);
-                });
+
+                binding->tx.on_resize(name, [&](vec2i sz) { load_bindings(gfx, bones); });
                 entry.texture.multisampled  = false;
                 entry.texture.sampleType    = wgpu::TextureSampleType::Float;
-                entry.texture.viewDimension = wgpu::TextureViewDimension::e2D;
-                bind_value.textureView      = tx->view;
-            } else if (btype == typeof(Sampling::etype)) {
-                /// this must be specified immediately after the texture
-                assert(tx);
-                Sampling sampling(binding.hold());
-                entry.sampler.type          = sampling == Sampling::nearest ? wgpu::SamplerBindingType::NonFiltering : wgpu::SamplerBindingType::Filtering;
-                bind_value.sampler          = tx->sampler;
+                entry.texture.viewDimension = binding->tx->view_dimension();
+                bind_value.textureView      = binding->tx->view;
+
+            } else if (btype == typeof(Sampling)) {
+
+                bool nearest = binding->sampling == Sampling::nearest;
+                wgpu::FilterMode filter_mode = nearest ?
+                    wgpu::FilterMode::Nearest : wgpu::FilterMode::Linear;
+                wgpu::SamplerDescriptor desc = {
+                    .magFilter    = filter_mode,
+                    .minFilter    = filter_mode,
+                    .mipmapFilter = nearest ? wgpu::MipmapFilterMode::Nearest : wgpu::MipmapFilterMode::Linear
+                };
+                entry.sampler.type = nearest ?
+                    wgpu::SamplerBindingType::NonFiltering : wgpu::SamplerBindingType::Filtering;
+                bind_value.sampler = device.CreateSampler(&desc);
+                
             } else {
-                bool is_uniform = btype->inherits<Uniform>();
-                entry.buffer.type = is_uniform ? wgpu::BufferBindingType::Uniform : wgpu::BufferBindingType::ReadOnlyStorage;
-                size_t sz    = btype->base_sz;
-                size_t count = binding.count(); /// this is a max size; its lazy on our part but its also complex to have a declarative api on field size resolution across a variety of different use-cases
-                /// user must create an array type for their vector size
+
+                bool      is_uniform   = binding->flags & ShaderVar::Flag::uniform;
+                bool      read_only    = binding->flags & ShaderVar::Flag::read_only;
+
+                entry.buffer.type =
+                    is_uniform ? wgpu::BufferBindingType::Uniform         :
+                    read_only  ? wgpu::BufferBindingType::ReadOnlyStorage : 
+                                 wgpu::BufferBindingType::Storage;
+
                 wgpu::BufferDescriptor desc = {
                     .usage = (is_uniform ? wgpu::BufferUsage::Uniform : wgpu::BufferUsage::Storage) |
                         wgpu::BufferUsage::CopyDst,
-                    .size  = sz * count
+                    .size  = binding.size()
                 };
-                bind_value.buffer = device.CreateBuffer(&desc); /// updated with mx from IRenderable
-                if (is_uniform) {
-                    uniform_buffers += bind_value.buffer;
-                    uniform_types += btype;
-                } else {
-                    storage_buffers += bind_value.buffer;
-                    storage_types += btype;
-                    entry.visibility = wgpu::ShaderStage::Vertex;
-                }
+
+                bind_value.buffer = device.CreateBuffer(&desc); /// updated with mx given from IRenderable, in IPipeline
+                binding.prepare_data();
             }
+
+            ivars += IVar {
+                .buffer  = bind_value.buffer,
+                .sampler = bind_value.sampler,
+                .svar    = binding
+            };
+
+            if (binding->flags & ShaderVar::Flag::vertex)   entry.visibility |= wgpu::ShaderStage::Vertex;
+            if (binding->flags & ShaderVar::Flag::fragment) entry.visibility |= wgpu::ShaderStage::Fragment;
+
             bind_entries.push(entry);
-            bind_values.push(bind_value);
+            bind_values. push(bind_value);
+            bind_id++;
+        }
+
+        /// bones provided with object (this was resolved from gltf load for name)
+        /// these are the rest states; users interface with Bones provided by Object::bones()
+        if (bones) {
+            wgpu::BindGroupLayoutEntry entry { .binding = u32(bind_id) };
+            wgpu::BindGroupEntry bind_value  { .binding = u32(bind_id) };
+
+            wgpu::BufferDescriptor desc = {
+                .usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopyDst,
+                .size  = bones.total_size()
+            };
+            bind_value.buffer = device.CreateBuffer(&desc);
+            entry.buffer.type = wgpu::BufferBindingType::ReadOnlyStorage;
+            entry.visibility  = wgpu::ShaderStage::Vertex;
+
+            ivars += IVar {
+                .buffer  = bind_value.buffer,
+                .svar    = ShaderVar(typeof(glm::mat4x4), bones.count(),
+                    ShaderVar::Flag::object | ShaderVar::Flag::read_only)
+            };
+
+            bind_entries.push(entry);
+            bind_values. push(bind_value);
             bind_id++;
         }
 
@@ -630,7 +650,7 @@ struct IPipeline {
         render_desc.cBuffers[0].attributeCount = attrib_count;
         render_desc.cFragment.module = mod;
         render_desc.cTargets[0].format = preferred_swapchain_format();
-        render_desc.cTargets[0].blend = &blend;
+        render_desc.cTargets[0].blend = &blend; /// needs a way to disable blending
         render_desc.EnableDepthStencil(wgpu::TextureFormat::Depth24PlusStencil8);
 
         pipeline = device.CreateRenderPipeline(&render_desc);
@@ -639,22 +659,13 @@ struct IPipeline {
     }
 
     void submit(IRenderable &renderable, wgpu::TextureView color_view, wgpu::TextureView depth_stencil, states<Clear> clear_states, rgbaf clear_color) {
-        /// update uniforms
-        for (int i = 0; i < uniform_buffers.count(); i++) {
-            wgpu::Buffer &b = uniform_buffers[i];
-            mx &data = renderable.uniforms[i];
-            u64   sz = b.GetSize();
-            assert(b.GetSize() == data.type()->base_sz);
-            device->queue.WriteBuffer(b, 0, data.origin<void>(), sz);
-        }
-
-        /// update storage
-        for (int i = 0; i < storage_buffers.count(); i++) {
-            wgpu::Buffer &b = storage_buffers[i];
-            mx   &data      = renderable.storage[i];
-            u64   vec_sz    = data.type()->base_sz * data.count(); /// the storage_buffer is max sized, so we just make sure its large enough
-            assert(b.GetSize() >= vec_sz);
-            device->queue.WriteBuffer(b, 0, data.origin<void>(), vec_sz);
+        /// update ivar buffers where defined
+        for (int i = 0; i < ivars.count(); i++) {
+            wgpu::Buffer &b = ivars[i].buffer;
+            if (!b) continue;
+            mx &data = renderable.var_data[i];
+            assert(b.GetSize() == data.total_size());
+            device->queue.WriteBuffer(b, 0, data.origin<void>(), data.total_size());
         }
 
         wgpu::RenderPassColorAttachment color_attachment {
@@ -720,31 +731,19 @@ struct IModel {
 
         for (Pipeline &sub: pipelines) {
             Graphics &     gfx    = sub->gfx;
-            str &          name   = gfx->name;
-            type_t         vtype  = gfx->vtype;
-            mx             mx_vbuffer;
-            mx             mx_ibuffer;
-            mx             mx_bones;
+            mx             vbuffer, ibuffer, bones;
             array<image>   images;
 
-            /// load vbo/ibo data:
-            if (gfx->gen) {
-                /// generate based on user routine
-                gfx->gen(mx_vbuffer, mx_ibuffer, images);
-            } else {
-                /// otherwise load from gltf
-                sub->load_from_gltf(m, name, mx_vbuffer, mx_ibuffer, mx_bones);
-            }
+            if (gfx->gen)
+                gfx->gen(vbuffer, ibuffer, images); /// generate vbo/ibo based on user routine
+            else
+                sub->load_from_gltf(m, gfx->name, vbuffer, ibuffer, bones); /// otherwise load from gltf
 
-            sub->index_buffer  = device->create_buffer(mx_ibuffer, wgpu::BufferUsage::Index);
-            sub->vertex_buffer = device->create_buffer(mx_vbuffer, wgpu::BufferUsage::Vertex);
-
-            // these have to be uniquely instanced for each; we do need a rest state stored though.
-            //bones_buffer  = device->create_buffer(mx_bones,   wgpu::BufferUsage::Storage);
-            
-            sub->indices_count = mx_ibuffer.count();
+            sub->index_buffer  = device->create_buffer(ibuffer, wgpu::BufferUsage::Index);
+            sub->vertex_buffer = device->create_buffer(vbuffer, wgpu::BufferUsage::Vertex);
+            sub->indices_count = ibuffer.count();
             sub->load_shader(gfx);
-            sub->load_bindings(gfx);
+            sub->load_bindings(gfx, bones);
             sub->create_with_attrs(gfx);
         }
 
@@ -774,39 +773,49 @@ Model::Model(Device &device, symbol model, array<Graphics> select):Model() {
     data->reload();
 }
 
+mx &object_data(IObject *o, str name, type_t type) {
+    bool name_found = false;
+    for (IRenderable &renderable: o->renderables)
+        if (renderable.name == name) {
+            name_found = true;
+            for (mx &v: renderable.var_data)
+                if (v.type() == type)
+                    return v;
+            break;
+        }
+    
+    if (name_found)
+        console.fault("object_data: type not found for sub-object: {0}/{1}", { name, str(type->name) });
+    else
+        console.fault("object_data: sub-object not found: {0}/{1}", { name, str(type->name) });
+    
+    static mx null;
+    return null;
+}
+
 Object Model::instance() {
     Object o;
 
-    /// likely best to use a 'map' for these so we may re-use types
     size_t n_pipelines = data->pipelines.count();
-
     o->model = *this;
     o->renderables = array<IRenderable>(n_pipelines);
 
-    size_t r = 0;
-    /// for each pipeline, add a renderable; each with allocations for uniforms and storage data (vector sized based on a max provided by user)
-    /// for data such as skin mat44, we can find out what this is (todo)
     for (Pipeline &pl: data->pipelines) {
         IRenderable &renderable = o->renderables.push();
-        /// add uniform types (each of count == 1)
-        int u = 0;
-        for (type_t u_type: pl->uniform_types) {
-            size_t uniform_sz = pl->uniform_buffers[u++].GetSize();
-            assert(uniform_sz == u_type->base_sz);
-            mx m = memory::alloc(u_type, 1, 1, null);
-            renderable.uniforms.push(m);
-        }
-        /// add storage types (allocate vector of buffer.GetSize() / sizeof(storage_type))
-        int s = 0;
-        for (type_t s_type: pl->storage_types) {
-            size_t buffer_sz = pl->storage_buffers[s++].GetSize();
-            size_t vcount = buffer_sz / s_type->base_sz;
-            mx m = memory::alloc(s_type, vcount, vcount, null);
-            renderable.storage.push(m);
+        renderable.name = pl->name;
+        for (IVar &ivar: pl->ivars) {
+            if (ivar.buffer) {
+                size_t buffer_sz = ivar.buffer.GetSize();
+                assert(buffer_sz == ivar.svar.size());
+            }
+            mx m = ivar.svar.alloc();
+            renderable.var_data.push(m);
         }
     }
     return o;
 }
+
+/// we need a way for the user to obtain typed data reference
 
 Model::operator Object() {
     return instance();

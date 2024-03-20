@@ -183,7 +183,7 @@ namespace gltf {
     struct Skin:mx {
         struct M {
             str             name;
-            array<int>      joints; /// references the bufferView; we have to make a new one based on this index
+            array<int>      joints; /// references nodes!
             int             inverseBindMatrices; /// buffer-view index of mat44 (before index ordering) (assert data type must be matrix 4x4)
             mx              extras;
             mx              extensions;
@@ -200,6 +200,10 @@ namespace gltf {
             register(M);
         };
         mx_basic(Skin);
+    };
+
+    struct Joints:mx {
+        mx_basic(Joints)
     };
 
     struct Node:mx {
@@ -227,6 +231,9 @@ namespace gltf {
             }
             register(M);
         };
+
+        Joints joints();
+
         mx_basic(Node);
     };
 
@@ -339,7 +346,7 @@ namespace gltf {
     struct Model:mx {
         struct M {
             array<Node>       nodes;
-            array<Skin>       skins; /// these are the armatures/bones; why on earth they call it skins is pretty silly; the bones move the model faces, and those faces may or may not be described as skin on the model
+            array<Skin>       skins;
             array<Accessor>   accessors;
             array<BufferView> bufferViews;
             array<Mesh>       meshes;
@@ -367,10 +374,53 @@ namespace gltf {
         };
         mx_basic(Model);
 
-        static Model load(path p) {
-            return p.read<Model>();
+        static Model load(path p) { return p.read<Model>(); }
+
+        Node *find(str name) {
+            for (Node &node: data->nodes) {
+                if (node->name != name) continue;
+                return &node;
+            }
+            return (Node*)null;
+        }
+
+        Node &operator[](str name) { return *find(name); }
+
+        void skeleton_init(mx &bones, Node &node) {
+            if (node->skin == -1) return;
+            Skin &skin  = data->skins[node->skin];
+            int   j_len = skin->joints.len();
+
+            if (!bones) {
+                glm::mat4 *m44 = (glm::mat4*)calloc(sizeof(glm::mat4), j_len);
+                memory* mem = memory::wrap(typeof(glm::mat4), m44, j_len);
+                bones = mx(mem);
+            } else
+                assert(bones.type() == typeof(glm::mat4) && j_len == bones.count());
+
+            glm::mat4 *m44 = bones.origin<glm::mat4>();
+            for (int i = 0; i < j_len; i++) {
+                m44[i] = glm::mat4(1.0f);
+                m44_apply(m44[i], skin->joints[i]);
+            }
+        }
+
+        protected: /// we need to also store these m44 references (mx bones should become a Bones with data and a map)
+        void m44_apply(glm::mat4 &mat, int node_index) {
+            Node &node = data->nodes[node_index];
+            glm::quat quat(node->rotation[3], node->rotation[0], node->rotation[1], node->rotation[2]);
+            mat  = glm::translate(mat, glm::vec3(node->translation[0], node->translation[1], node->translation[2]));
+            mat *= glm::mat4_cast(quat);
+            mat  = glm::scale    (mat, glm::vec3(node->scale[0], node->scale[1], node->scale[2]));
+            for (int i: node->children)
+                m44_apply(mat, i);
         }
     };
+
+    Joints Node::joints() {
+        /// traverse defaults and return a Joints struct, allowing rest state and manipulation by matrix ops
+        /// the structure stored will be data-compatible with the attribs for joints/weights
+    }
 };
 
 };
