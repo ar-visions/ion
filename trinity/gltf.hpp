@@ -202,7 +202,23 @@ namespace gltf {
         mx_basic(Skin);
     };
 
+    struct Node;
+    struct Transform:mx {
+        struct M {
+            glm::mat4          *current_state; /// verify all children in the top level joints list; otherwise we wont be able to reference here
+            glm::mat4           default_local;
+            glm::mat4           default_state;
+            array<Transform>    children;
+        };
+        mx_basic(Transform);
+    };
+
     struct Joints:mx {
+        struct M {
+            array<glm::mat4>    states;     /// wgpu::Buffer updated with this information per frame
+            array<glm::mat4>    defaults;   /// or rest state
+            array<Transform>    transform;  /// Node at given joint
+        };
         mx_basic(Joints)
     };
 
@@ -386,40 +402,45 @@ namespace gltf {
 
         Node &operator[](str name) { return *find(name); }
 
-        void skeleton_init(mx &bones, Node &node) {
-            if (node->skin == -1) return;
-            Skin &skin  = data->skins[node->skin];
-            int   j_len = skin->joints.len();
+        Joints joints(Node &node);
+    };
 
-            if (!bones) {
-                glm::mat4 *m44 = (glm::mat4*)calloc(sizeof(glm::mat4), j_len);
-                memory* mem = memory::wrap(typeof(glm::mat4), m44, j_len);
-                bones = mx(mem);
-            } else
-                assert(bones.type() == typeof(glm::mat4) && j_len == bones.count());
 
-            glm::mat4 *m44 = bones.origin<glm::mat4>();
-            for (int i = 0; i < j_len; i++) {
-                m44[i] = glm::mat4(1.0f);
-                m44_apply(m44[i], skin->joints[i]);
-            }
-        }
 
-        protected: /// we need to also store these m44 references (mx bones should become a Bones with data and a map)
-        void m44_apply(glm::mat4 &mat, int node_index) {
+    Joints Model::joints(Node &node) {
+        Joints joints;
+
+        if (node->skin == -1) return;
+        Skin &skin  = data->skins[node->skin];
+        int   j_len = skin->joints.len();
+
+        joints->defaults  = array<glm::mat4>(j_len);
+        joints->states    = array<glm::mat4>(j_len);
+        joints->transform = array<Transform>(j_len);
+
+        auto m44_apply = [data](Transform &transform, glm::mat4 &mat, int node_index) {
             Node &node = data->nodes[node_index];
             glm::quat quat(node->rotation[3], node->rotation[0], node->rotation[1], node->rotation[2]);
             mat  = glm::translate(mat, glm::vec3(node->translation[0], node->translation[1], node->translation[2]));
             mat *= glm::mat4_cast(quat);
             mat  = glm::scale    (mat, glm::vec3(node->scale[0], node->scale[1], node->scale[2]));
-            for (int i: node->children)
-                m44_apply(mat, i);
-        }
-    };
 
-    Joints Node::joints() {
-        /// traverse defaults and return a Joints struct, allowing rest state and manipulation by matrix ops
-        /// the structure stored will be data-compatible with the attribs for joints/weights
+            transform->children = array<Transform>(node->children.len());
+            for (int i: node->children) {
+                Transform &transform = transform->children.push();
+                m44_apply(transform, mat, i);
+            }
+        };
+
+        for (int i = 0; i < j_len; i++) {
+            Transform &transform = joints->transform.push();
+            transform->default_state = glm::mat4(1.0f);
+            m44_apply(transform, skin->joints[i]);
+        }
+    }
+
+    void Joints::transform(int joint_index) {
+
     }
 };
 
