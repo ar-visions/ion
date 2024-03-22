@@ -36,8 +36,8 @@ struct Vertex {
     glm::vec2 uv0;
     glm::vec2 uv1;
     glm::vec4 tangent;
-    u16       joints0[4];
-    u16       joints1[4];
+    u32       joints0[4];
+    u32       joints1[4];
     float     weights0[4];
     float     weights1[4];
 

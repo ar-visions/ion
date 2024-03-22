@@ -339,6 +339,8 @@ struct IVar {
     wgpu::Buffer      buffer;
     wgpu::Sampler     sampler;
     ShaderVar         svar;
+    lambda<mx()>      instance; /// user-defined routine for instancing mx data
+    lambda<mx(mx&)>   update;   /// user-defined routine for updating mx data
 };
 
 struct IPipeline {
@@ -435,22 +437,53 @@ struct IPipeline {
             u8 *vbuf = (u8*)calloc(vlen, gfx->vtype->base_sz);
 
             /// copy data into vbuf
+            /// we need to perform conversion on u16 to u32
             for (vstride &stride: strides) {
-                /// offset into src buffer
                 u8 *dst        = vbuf;
-                num src_offset = stride.buffer_view->byteOffset;
-                /// size of member / accessor compound-type
-                num src_stride = stride.compound_type->base_sz;
-                for (num i = 0; i < vlen; i++) {
-                    /// dst: vertex member position
-                    u8 *member = &dst[stride.offset];
-                    /// src: gltf buffer at offset: 
-                    /// buffer-view + [0...accessor-count] * src-stride (same as our type size)
-                    u8 *src    = &stride.buffer->uri[src_offset + src_stride * i];
-                    memcpy(member, src, src_stride);
+                u8 *src        = (u8*)&stride.buffer->uri.data[stride.buffer_view->byteOffset];
+                num member_sz  = stride.compound_type->base_sz; /// size of member / accessor compound-type
 
-                    /// next vertex
-                    dst += gfx->vtype->base_sz;
+                size_t src_vcount       = stride.accessor->vcount();
+                size_t src_component_sz = stride.accessor->component_size();
+                size_t src_sz           = src_vcount * src_component_sz;
+
+                if (src_sz != member_sz) {
+                    /// supports VEC2 -> MAT16 conversion for u8, s8, u16, s16 -> u32
+                    switch (stride.accessor->componentType) {
+                        case gltf::ComponentType::BYTE:
+                        case gltf::ComponentType::UNSIGNED_BYTE:
+                            for (num i = 0; i < vlen; i++) {
+                                u32 *member = (u32*)&dst[stride.offset];
+                                u8  *bsrc   =  (u8*)&src[src_sz * i];
+                                for (int m = 0; m < src_vcount; m++)
+                                    member[m] = bsrc[m];
+                                dst += gfx->vtype->base_sz;
+                            }
+                            break;
+                        case gltf::ComponentType::SHORT:
+                        case gltf::ComponentType::UNSIGNED_SHORT:
+                            for (num i = 0; i < vlen; i++) {
+                                u32 *member = (u32*)&dst[stride.offset];
+                                u16 *bsrc   = (u16*)&src[src_sz * i];
+                                for (int m = 0; m < src_vcount; m++)
+                                    member[m] = bsrc[m];
+                                dst += gfx->vtype->base_sz;
+                            }
+                            break;
+                        default:
+                            console.fault("glTF attribute conversion not implemented: {0} -> {1}",
+                                { stride.accessor->componentType, str(stride.compound_type->name) });
+                            break;
+                    }
+
+                } else {
+                    /// perform simple copies from src[offset + 0...len-1] to dst
+                    for (num i = 0; i < vlen; i++) {
+                        u8 *member = &dst[stride.offset];
+                        u8 *bsrc   = &src[src_sz * i];
+                        memcpy(member, bsrc, src_sz);
+                        dst += gfx->vtype->base_sz; /// next vert
+                    }
                 }
             }
             /// create vertex buffer by wrapping what we've copied from allocation (we have a primitive array)
@@ -579,7 +612,16 @@ struct IPipeline {
             ivars += IVar {
                 .buffer  = bind_value.buffer,
                 .svar    = ShaderVar(typeof(glm::mat4x4), joints.count(),
-                    ShaderVar::Flag::object | ShaderVar::Flag::read_only)
+                    ShaderVar::Flag::object | ShaderVar::Flag::read_only),
+                .instance = [joints]() -> mx {
+                    return joints.copy();
+                },
+                .update = [](mx &mx_joints) -> mx {
+                    /// use this instead of var_data
+                    /// assert it matches the size provided above
+                    gltf::Joints joints(mx_joints.hold());
+                    return joints->states;
+                }
             };
 
             bind_entries.push(entry);
@@ -616,8 +658,9 @@ struct IPipeline {
             if (p.type == typeof(glm::ivec4)) return wgpu::VertexFormat::Sint32x4;
             if (p.type == typeof(float))      return wgpu::VertexFormat::Float32;
             if (p.type == typeof(float[4]))   return wgpu::VertexFormat::Float32x4;
-            if (p.type == typeof(u16[4]))     return wgpu::VertexFormat::Uint16x4;
-            
+          //if (p.type == typeof(u16[4]))     return wgpu::VertexFormat::Uint16x4; # not supported in shader (still used in glTF buffer-view; convert when loading)
+            if (p.type == typeof(u32[4]))     return wgpu::VertexFormat::Uint32x4;
+
             ///
             console.fault("type not found when parsing vertex: {0}", {p.type->name});
             return wgpu::VertexFormat::Undefined;
@@ -665,7 +708,7 @@ struct IPipeline {
         render_desc.cBuffers[0].arrayStride = gfx->vtype->base_sz;// sizeof(Attribs);
         render_desc.cBuffers[0].attributeCount = attrib_count;
         render_desc.cTargets[0].format = preferred_swapchain_format();
-        render_desc.cTargets[0].blend = null;//&blend; /// needs a way to disable blending
+        render_desc.cTargets[0].blend = &blend; /// needs a way to disable blending
 
         pipeline = device.CreateRenderPipeline(&render_desc);
         Dawn dawn;
@@ -675,9 +718,15 @@ struct IPipeline {
     void submit(IRenderable &renderable, wgpu::TextureView color_view, wgpu::TextureView depth_stencil, states<Clear> clear_states, rgbaf clear_color) {
         /// update ivar buffers where defined
         for (int i = 0; i < ivars.count(); i++) {
-            wgpu::Buffer &b = ivars[i].buffer;
+            IVar &ivar = ivars[i];
+            wgpu::Buffer &b = ivar.buffer;
             if (!b) continue;
-            mx &data = renderable.var_data[i];
+            if (ivar.update)
+                debug_break();
+            
+            mx data = ivar.update ? ivar.update(renderable.var_data[i]) : renderable.var_data[i];
+            size_t bsz = b.GetSize();
+            size_t data_sz = data.total_size();
             assert(b.GetSize() == data.total_size());
             device->queue.WriteBuffer(b, 0, data.origin<void>(), data.total_size());
         }
@@ -786,6 +835,8 @@ Model::Model(Device &device, symbol model, array<Graphics> select):Model() {
     data->reload();
 }
 
+/// Joints use-case: returns an instance of gltf::Joints
+/// that copy is made from a user-defined instancing function provided by the binding function
 mx &object_data(IObject *o, str name, type_t type) {
     bool name_found = false;
     for (IRenderable &renderable: o->renderables)
@@ -821,7 +872,8 @@ Object Model::instance() {
                 size_t buffer_sz = ivar.buffer.GetSize();
                 assert(buffer_sz == ivar.svar.size());
             }
-            mx m = ivar.svar.alloc();
+            /// instance and update can be stored on ShaderVar but i think it may be too much for it
+            mx m = ivar.instance ? ivar.instance() : ivar.svar.alloc();
             renderable.var_data.push(m);
         }
     }

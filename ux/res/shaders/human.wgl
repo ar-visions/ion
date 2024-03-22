@@ -57,12 +57,13 @@ fn vertex_main(a : attribs) -> vary {
     for (var i:u32 = 0u; i < 4u; i += 1u) {
         skin_pos = skin_pos + joints[a.joints1[i]] * a.weights1[i] * pos4;
     }
-    let world_pos = u.view * u.model * pos4;//skin_pos;
+    let model_pos = u.model * skin_pos;
+    let world_pos = u.view * model_pos;//skin_pos;
     let  clip_pos = u.proj * world_pos;
 
     var light = vec3f(0.0f);
     for (var i:u32 = 0u; i < u.light_count; i += 1u) {
-        let light_dir = normalize(u.lights[i].pos.xyz - world_pos.xyz);
+        let light_dir = normalize(u.lights[i].pos.xyz - model_pos.xyz);
         let amount = max(dot(a.normal, light_dir), 0.0);
         light += amount * vec3f(1.0f);
     }

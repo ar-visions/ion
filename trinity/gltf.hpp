@@ -155,8 +155,46 @@ namespace gltf {
                     { "sparse",         sparse        } /// these are overlays we use to make a copied buffer instance with changes made to it
                 };
             }
+
+            size_t vcount() {
+                size_t vsize = 0;
+                switch (type) {
+                    case gltf::CompoundType::SCALAR: vsize = 1; break;
+                    case gltf::CompoundType::VEC2:   vsize = 2; break;
+                    case gltf::CompoundType::VEC3:   vsize = 3; break;
+                    case gltf::CompoundType::VEC4:   vsize = 4; break;
+                    case gltf::CompoundType::MAT2:   vsize = 4; break;
+                    case gltf::CompoundType::MAT3:   vsize = 9; break;
+                    case gltf::CompoundType::MAT4:   vsize = 16; break;
+                    default: assert(false);
+                }
+                return vsize;
+            };
+
+            size_t component_size() {
+                size_t scalar_sz = 0;
+                switch (componentType) {
+                    case gltf::ComponentType::BYTE:           scalar_sz = sizeof(u8); break;
+                    case gltf::ComponentType::UNSIGNED_BYTE:  scalar_sz = sizeof(u8); break;
+                    case gltf::ComponentType::SHORT:          scalar_sz = sizeof(u16); break;
+                    case gltf::ComponentType::UNSIGNED_SHORT: scalar_sz = sizeof(u16); break;
+                    case gltf::ComponentType::UNSIGNED_INT:   scalar_sz = sizeof(u32); break;
+                    case gltf::ComponentType::FLOAT:          scalar_sz = sizeof(float); break;
+                    default: assert(false);
+                }
+                return scalar_sz;
+            };
             register(M);
         };
+
+        size_t vcount() {
+            return data->vcount();
+        };
+
+        size_t component_size() {
+            return data->component_size();
+        }
+
         mx_basic(Accessor);
     };
 
@@ -202,14 +240,16 @@ namespace gltf {
         mx_basic(Skin);
     };
 
+    struct JData;
     struct Node;
     struct Transform:mx {
         struct M {
-            glm::mat4          *state;
+            JData              *jdata;
+            int                 istate;
             glm::mat4           local;
             glm::mat4           local_default;
-            M                  *parent;
-            array<Transform>    children; /// all of these are added into Joints::transforms (as well as root Transforms)
+            int                 iparent;
+            array<int>          ichildren; /// all of these are added into Joints::transforms (as well as root Transforms)
             register(M)
         };
 
@@ -228,37 +268,56 @@ namespace gltf {
             propagate();
         }
 
-        void propagate() {
-            static glm::mat4 ident(1.0);
-            glm::mat4 &m = data->parent ? *data->parent->state : ident;
-            *data->state = m * data->local;
-            for (Transform &transform: data->children)
-                transform.propagate();
-        }
+        void propagate();
 
         void operator*=(glm::mat4 m) {
             multiply(m);
         }
 
-        operator bool() { return data->state; } /// useful for parent & null state handling
+        operator bool() { return data->jdata; } /// useful for parent & null state handling
 
         mx_basic(Transform);
     };
 
+    struct JData {
+        array<glm::mat4>    states;     /// wgpu::Buffer updated with this information per frame
+        array<Transform>    transforms; /// same identity as joints array in skin
+        register(JData)
+    };
+
+    /// references JData
+    void Transform::propagate() {
+        static glm::mat4 ident(1.0); /// iparent's istate will always == iparent
+        glm::mat4 &m = (data->iparent != -1) ? data->jdata->states[data->iparent] : ident;
+        data->jdata->states[data->istate] = m * data->local;
+        for (int &t: data->ichildren)
+            data->jdata->transforms[t].propagate();
+    }
+
     struct Joints:mx {
-        struct M {
-            array<glm::mat4>    states;     /// wgpu::Buffer updated with this information per frame
-            array<Transform>    transforms; /// same identity as joints array in skin
-            register(M)
-        };
-        
+        memory *copy() const {
+            Joints joints;
+            joints->states = array<glm::mat4>(data->states.len());
+            memcpy(joints->states.data, data->states.data, sizeof(glm::mat4) * data->states.len());
+            joints->states.set_size(data->states.len());
+
+            /// fix mx::copy()
+            joints->transforms = array<Transform>(data->transforms.len());
+            memcpy(joints->transforms.data, data->transforms.data, sizeof(Transform::M) * data->transforms.len());
+            joints->transforms.set_size(data->transforms.len());
+
+            for (Transform &transform: joints->transforms) {
+                transform->jdata = joints.data;
+            }
+            return joints.hold();
+        }
         size_t total_size() { return data->states.total_size(); }
         size_t count()      { return data->states.len(); }
 
         Transform &operator[](size_t joint_index) {
             return data->transforms[joint_index];
         }
-        mx_basic(Joints)
+        mx_object(Joints, mx, JData)
     };
 
     struct Node:mx {
@@ -462,9 +521,8 @@ namespace gltf {
                 for (int &node_index: skin->joints)
                     data->nodes[node_index]->joint_index = j_index++;
 
-                joints->transforms = array<Transform>(skin->joints.len());
+                joints->transforms = array<Transform>(skin->joints.len()); /// we are appending, so dont set size (just verify)
                 joints->states     = array<glm::mat4>(skin->joints.len());
-                joints->transforms.set_size(skin->joints.len());
                 joints->states    .set_size(skin->joints.len());
                 Transform null;
                 /// for each root joint, resolve the local and global matrices
@@ -476,33 +534,44 @@ namespace gltf {
                     node_transform(joints, ident, node_index, null);
                 }
             }
+            /// test code!
+            for (glm::mat4 &state: joints->states) {
+                state = glm::mat4(1.0f);
+            }
+
+            /// adding transforms twice
+            assert(joints->states.len() == joints->transforms.len());
             return joints;
         }
 
         protected:
 
         /// builds Transform, separate from Model/Skin/Node and contains usable glm types
-        Transform node_transform(Joints joints, const glm::mat4 &parent_mat, int node_index, const Transform &parent) {
+        Transform node_transform(Joints joints, const glm::mat4 &parent_mat, int node_index, Transform &parent) {
             Node &node = data->nodes[node_index];
             assert(node->processed == false);
 
             node->processed = true;
             Transform transform;
             if (node->joint_index >= 0) {
-                transform->local  = glm::mat4(1.0f);
+                transform->jdata     = joints.data;
+                transform->local     = glm::mat4(1.0f);
                 glm::quat quat(node->rotation[3], node->rotation[0], node->rotation[1], node->rotation[2]);
-                transform->local  = glm::translate(transform->local, glm::vec3(node->translation[0], node->translation[1], node->translation[2]));
-                transform->local *= glm::mat4_cast(quat);
-                transform->local  = glm::scale    (transform->local, glm::vec3(node->scale[0], node->scale[1], node->scale[2]));
+                transform->local     = glm::translate(transform->local, glm::vec3(node->translation[0], node->translation[1], node->translation[2]));
+                transform->local    *= glm::mat4_cast(quat);
+                transform->local     = glm::scale    (transform->local, glm::vec3(node->scale[0], node->scale[1], node->scale[2]));
                 transform->local_default = transform->local;
-                transform->parent = parent.data;
-                transform->state = &joints->states [node->joint_index];
-               *transform->state = parent_mat * transform->local_default;
+                transform->iparent   = parent->istate;
+                transform->istate    = node->joint_index;
+                glm::mat4 &state_mat = joints->states[transform->istate] = parent_mat * transform->local_default;
 
                 for (int node_index: node->children) {
-                    Transform ch = node_transform(joints, *transform->state, node_index, transform);
-                    if (ch->state)
-                        transform->children += ch; /// there are cases where a referenced node is not part of the joints array; we dont add those.
+                    /// ch is referenced from the ops below, when called here (not released)
+                    Transform ch = node_transform(joints, state_mat, node_index, transform);
+                    if (ch) {
+                        assert(data->nodes[node_index]->joint_index == ch->istate);
+                        transform->ichildren += ch->istate; /// there are cases where a referenced node is not part of the joints array; we dont add those.
+                    }
                 }
 
                 joints->transforms += transform;
