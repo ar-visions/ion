@@ -1,10 +1,11 @@
 struct vary {
     @builtin(position) gl_Position : vec4f,
-    @location(0)       uv0         : vec2f
+    @location(0)       uv0         : vec2f,
+    @location(1)       color       : vec4f
 };
 
 struct light {
-    pos   : vec3f,
+    pos   : vec4f,
     color : vec4f
 };
 
@@ -13,11 +14,14 @@ struct ustate {
     view   : mat4x4f,
     proj   : mat4x4f,
     eye    : vec4f,
-    lights : array<light, 4>
+    lights : array<light, 4>,
+    light_count : u32
 };
 
-@group(0) @binding(0)  var<uniform> u     : ustate;
-@group(0) @binding(1)  var<storage> bones : array<mat4x4f>;
+@group(0) @binding(0)  var<uniform> u      : ustate;
+@group(0) @binding(1)  var<storage, read> joints : array<mat4x4f>;
+
+/*
 @group(0) @binding(2)  var color          : texture_2d<f32>;
 @group(0) @binding(3)  var color_sa       : sampler;
 @group(0) @binding(4)  var normal         : texture_2d<f32>;
@@ -28,6 +32,7 @@ struct ustate {
 @group(0) @binding(9)  var reflect_sa     : sampler;
 @group(0) @binding(10) var env            : texture_2d<f32>;
 @group(0) @binding(11) var env_sa         : sampler;
+*/
 
 struct attribs {
     @location(0) pos      : vec3f,
@@ -44,20 +49,32 @@ struct attribs {
 @vertex
 fn vertex_main(a : attribs) -> vary {
     var v : vary;
-    let pos4      = vec4f(a.pos, 1.0f);
+    let pos4 = vec4f(a.pos, 1.0f);
     var skin_pos : vec4f = vec4f(0.0f);
-    for (var i:u32 = 0u; i < 4u; i = i + 1u) {
-        skin_pos = skin_pos + bones[a.joints0[i]] * a.weights0[i] * pos4;
+    for (var i:u32 = 0u; i < 4u; i += 1u) {
+        skin_pos = skin_pos + joints[a.joints0[i]] * a.weights0[i] * pos4;
     }
-    let world_pos = u.view * u.model * skin_pos;
+    for (var i:u32 = 0u; i < 4u; i += 1u) {
+        skin_pos = skin_pos + joints[a.joints1[i]] * a.weights1[i] * pos4;
+    }
+    let world_pos = u.view * u.model * pos4;//skin_pos;
     let  clip_pos = u.proj * world_pos;
+
+    var light = vec3f(0.0f);
+    for (var i:u32 = 0u; i < u.light_count; i += 1u) {
+        let light_dir = normalize(u.lights[i].pos.xyz - world_pos.xyz);
+        let amount = max(dot(a.normal, light_dir), 0.0);
+        light += amount * vec3f(1.0f);
+    }
+
     v.gl_Position = clip_pos;
+    v.color       = vec4f(light, 1.0f);
     v.uv0         = a.uv0;
     return v;
 }
 
 @fragment
 fn fragment_main(v : vary) -> @location(0) vec4f {
-    let color = textureSample(color, color_sa, v.uv0);
-    return color;
+    //let color = textureSample(color, color_sa, v.uv0);
+    return v.color;
 }

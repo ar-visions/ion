@@ -9,7 +9,8 @@ struct GLFWwindow;
 
 namespace ion {
 
-enums(Clear, Undefined, Undefined = 0, Color = 1, Depth = 2, Stencil = 4);
+enums(Clear, Undefined,
+    Undefined, Color, Depth, Stencil);
 
 #undef DELETE
 
@@ -247,6 +248,7 @@ struct Window:mx {
     void set_on_key_scancode    (OnKeyScanCode key_scancode) ;
 
     void register_presentation(OnWindowPresent on_present, OnWindowResize on_resize);
+    float aspect();
 
     void  run();
     void *handle();

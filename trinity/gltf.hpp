@@ -205,20 +205,59 @@ namespace gltf {
     struct Node;
     struct Transform:mx {
         struct M {
-            glm::mat4          *current_state; /// verify all children in the top level joints list; otherwise we wont be able to reference here
-            glm::mat4           default_local;
-            glm::mat4           default_state;
-            array<Transform>    children;
+            glm::mat4          *state;
+            glm::mat4           local;
+            glm::mat4           local_default;
+            M                  *parent;
+            array<Transform>    children; /// all of these are added into Joints::transforms (as well as root Transforms)
+            register(M)
         };
+
+        void multiply(const glm::mat4 &m) {
+            data->local *= m;
+            propagate();
+        }
+
+        void set(const glm::mat4 &m) {
+            data->local = m;
+            propagate();
+        }
+
+        void set_default() {
+            data->local = data->local_default;
+            propagate();
+        }
+
+        void propagate() {
+            static glm::mat4 ident(1.0);
+            glm::mat4 &m = data->parent ? *data->parent->state : ident;
+            *data->state = m * data->local;
+            for (Transform &transform: data->children)
+                transform.propagate();
+        }
+
+        void operator*=(glm::mat4 m) {
+            multiply(m);
+        }
+
+        operator bool() { return data->state; } /// useful for parent & null state handling
+
         mx_basic(Transform);
     };
 
     struct Joints:mx {
         struct M {
             array<glm::mat4>    states;     /// wgpu::Buffer updated with this information per frame
-            array<glm::mat4>    defaults;   /// or rest state
-            array<Transform>    transform;  /// Node at given joint
+            array<Transform>    transforms; /// same identity as joints array in skin
+            register(M)
         };
+        
+        size_t total_size() { return data->states.total_size(); }
+        size_t count()      { return data->states.len(); }
+
+        Transform &operator[](size_t joint_index) {
+            return data->transforms[joint_index];
+        }
         mx_basic(Joints)
     };
 
@@ -232,6 +271,10 @@ namespace gltf {
             array<float>    scale       = { 1.0, 1.0, 1.0 };
             array<float>    weights     = { }; /// no weights, for no vertices
             array<int>      children;
+            int             joint_index = -1;
+            bool            processed;
+            bool test;
+
             ///
             doubly<prop> meta() {
                 return {
@@ -247,8 +290,6 @@ namespace gltf {
             }
             register(M);
         };
-
-        Joints joints();
 
         mx_basic(Node);
     };
@@ -402,46 +443,74 @@ namespace gltf {
 
         Node &operator[](str name) { return *find(name); }
 
-        Joints joints(Node &node);
-    };
+        Joints joints(Node &node) {
+            Joints joints;
+            
+            if (node->skin != -1) {
+                Skin &skin = data->skins[node->skin];
 
+                ion::uniques<int> all_children; /// pre-alloc'd at the size of nodes array
+                for (int &node_index: skin->joints) {
+                    Node &node = data->nodes[node_index];
+                    for (int i: node->children) {
+                        assert(!all_children.contains(i));
+                        all_children.set(i);
+                    }
+                }
 
+                int j_index = 0;
+                for (int &node_index: skin->joints)
+                    data->nodes[node_index]->joint_index = j_index++;
 
-    Joints Model::joints(Node &node) {
-        Joints joints;
-
-        if (node->skin == -1) return;
-        Skin &skin  = data->skins[node->skin];
-        int   j_len = skin->joints.len();
-
-        joints->defaults  = array<glm::mat4>(j_len);
-        joints->states    = array<glm::mat4>(j_len);
-        joints->transform = array<Transform>(j_len);
-
-        auto m44_apply = [data](Transform &transform, glm::mat4 &mat, int node_index) {
-            Node &node = data->nodes[node_index];
-            glm::quat quat(node->rotation[3], node->rotation[0], node->rotation[1], node->rotation[2]);
-            mat  = glm::translate(mat, glm::vec3(node->translation[0], node->translation[1], node->translation[2]));
-            mat *= glm::mat4_cast(quat);
-            mat  = glm::scale    (mat, glm::vec3(node->scale[0], node->scale[1], node->scale[2]));
-
-            transform->children = array<Transform>(node->children.len());
-            for (int i: node->children) {
-                Transform &transform = transform->children.push();
-                m44_apply(transform, mat, i);
+                joints->transforms = array<Transform>(skin->joints.len());
+                joints->states     = array<glm::mat4>(skin->joints.len());
+                joints->transforms.set_size(skin->joints.len());
+                joints->states    .set_size(skin->joints.len());
+                Transform null;
+                /// for each root joint, resolve the local and global matrices
+                for (int &node_index: skin->joints) {
+                    if (all_children.contains(node_index))
+                        continue;
+                    
+                    glm::mat4 ident = glm::mat4(1.0f);
+                    node_transform(joints, ident, node_index, null);
+                }
             }
-        };
-
-        for (int i = 0; i < j_len; i++) {
-            Transform &transform = joints->transform.push();
-            transform->default_state = glm::mat4(1.0f);
-            m44_apply(transform, skin->joints[i]);
+            return joints;
         }
-    }
 
-    void Joints::transform(int joint_index) {
+        protected:
 
-    }
+        /// builds Transform, separate from Model/Skin/Node and contains usable glm types
+        Transform node_transform(Joints joints, const glm::mat4 &parent_mat, int node_index, const Transform &parent) {
+            Node &node = data->nodes[node_index];
+            assert(node->processed == false);
+
+            node->processed = true;
+            Transform transform;
+            if (node->joint_index >= 0) {
+                transform->local  = glm::mat4(1.0f);
+                glm::quat quat(node->rotation[3], node->rotation[0], node->rotation[1], node->rotation[2]);
+                transform->local  = glm::translate(transform->local, glm::vec3(node->translation[0], node->translation[1], node->translation[2]));
+                transform->local *= glm::mat4_cast(quat);
+                transform->local  = glm::scale    (transform->local, glm::vec3(node->scale[0], node->scale[1], node->scale[2]));
+                transform->local_default = transform->local;
+                transform->parent = parent.data;
+                transform->state = &joints->states [node->joint_index];
+               *transform->state = parent_mat * transform->local_default;
+
+                for (int node_index: node->children) {
+                    Transform ch = node_transform(joints, *transform->state, node_index, transform);
+                    if (ch->state)
+                        transform->children += ch; /// there are cases where a referenced node is not part of the joints array; we dont add those.
+                }
+
+                joints->transforms += transform;
+            }
+            return transform;
+        }
+
+    };
 };
 
 };

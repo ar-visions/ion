@@ -19,6 +19,17 @@ struct Light {
     glm::vec4 color;
 };
 
+struct HumanState {
+    glm::mat4  model;
+    glm::mat4  view;
+    glm::mat4  proj;
+    glm::vec4  eye;
+    Light      lights[4];
+    u32        light_count;
+    u32        padding[3];
+    register(HumanState);
+};
+
 struct Vertex {
     glm::vec3 pos;
     glm::vec3 normal;
@@ -47,14 +58,7 @@ struct Vertex {
     register(Vertex);
 };
 
-struct HumanState {
-    glm::mat4  model;
-    glm::mat4  view;
-    glm::mat4  proj;
-    glm::vec4  eye;
-    Light      lights[4];
-    register(HumanState);
-};
+
 
 struct UState {
     float x_scale = 1.0f;
@@ -69,25 +73,15 @@ int main(int argc, const char* argv[]) {
     Window window   = Window::create("dawn", {kWidth, kHeight});
     Device  device  = window.device();
     Texture canvas_texture = device.create_texture(window.size(), Asset::attachment);
+
     window.set_title("Canvas Test");
 
-    /*
-    Model human_model = Model(device, "human", {
-        Graphics { "Body", typeof(Vertex), { ObjectUniform(HumanState) }, "human" }
-    });
-
-    Object human_object = human_model.instance();
-    Bones  body_bones   = human_object.bones("Body");
-
-    we need Bones to be a proper class now, because it needs to apply a m44 (it should reference the the same gltf Model function)
-    */
-
-    Model canvas_model = Model(device, null, {
+    Model m_canvas = Model(device, null, {
         Graphics {
             "canvas",
             typeof(CanvasAttribs), {
-                canvas_texture,
                 Sampling::linear,
+                canvas_texture,
                 ObjectUniform(UState),
                 ObjectVector(float, 2)
             },
@@ -108,25 +102,31 @@ int main(int argc, const char* argv[]) {
             }
         }
     });
-    Object canvas_object = canvas_model.instance();
+    Object o_canvas = m_canvas.instance();
+
+    Model m_human = Model(device, "human", {
+        Graphics { "Body", typeof(Vertex), { ObjectUniform(HumanState) }, null, "human" }
+    });
+
+    Object o_human = m_human.instance();
     
     Canvas canvas;
     num s = millis();
- 
+
+
+    states<Clear> clear_states { Clear::Color, Clear::Depth };
+    clear_states[Clear::Color] = false;
+
     window.register_presentation(
         [&]() -> Scene {
-            UState &canvas_state = canvas_object.uniform<UState>("canvas"); /// todo: defaults not set
-            float *test_store    = canvas_object.vector <float> ("canvas");
-
+            UState &u_canvas   = o_canvas.uniform<UState>("canvas"); /// todo: defaults not set
+            float  *test_store = o_canvas.vector <float> ("canvas");
             test_store[0] = 1.0f;
-            test_store[1] = 0.1f;
-
+            test_store[1] = 1.0f;
             num diff = millis() - s;
             float  f = (float)diff / 1000.0 * 2.0f * M_PI;
-
-            canvas_state.x_scale = 0.5 + sin(f) * 0.25;
-            canvas_state.y_scale = 0.5 + cos(f) * 0.25;
-
+            u_canvas.x_scale = 0.5 + sin(f) * 0.25;
+            u_canvas.y_scale = 0.5 + cos(f) * 0.25;
             vec2i sz = canvas.size();
             rectd rect { 0, 0, sz.x, sz.y };
             canvas.color("#00f");
@@ -135,7 +135,27 @@ int main(int argc, const char* argv[]) {
             canvas.color("#ff0");
             canvas.fill(top);
             canvas.flush();
-            return Scene { canvas_object };
+
+            HumanState &u_human = o_human.uniform<HumanState>("Body");
+            glm::vec3 eye    = glm::vec3(0.0f, 1.5f, -0.8f);
+            glm::vec3 target = glm::vec3(0.0f, 1.5f, 0.0f);
+            glm::vec3 up     = glm::vec3(0.0f, 1.0f, 0.0f);
+
+            
+            static float inc = 0;
+            inc += 0.0004f;
+            glm::quat r = glm::angleAxis(inc, glm::vec3(0.0f, 1.0f, 0.0f));
+            u_human.model = glm::mat4_cast(r);
+            u_human.view  = glm::lookAt(eye, target, up);
+            u_human.proj  = glm::perspective(64.0f, window.aspect(), 0.1f, 100.0f);
+
+            u_human.lights[0].pos = glm::vec4(0.0f, 1.5f, -0.8f, 0.0f);
+            u_human.light_count = 1;
+
+            array<Object> scene(1);
+            scene.push(o_human);
+
+            return scene;
         },
         [&](vec2i sz) {
             canvas_texture.resize(sz);

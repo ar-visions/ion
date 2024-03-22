@@ -15,8 +15,7 @@ struct Dawn:mx {
     mx_declare(Dawn, mx, IDawn);
 };
 
-template <> struct is_singleton<IDawn> : true_type { };
-template <> struct is_singleton<Dawn>  : true_type { }; // this one, the above is not a flag to make the data singular; redundant
+template <> struct is_singleton<Dawn>  : true_type { };
 
 struct IDevice {
     wgpu::Adapter       adapter;
@@ -356,6 +355,8 @@ struct IPipeline {
     wgpu::BindGroupLayout       bgl;
     wgpu::PipelineLayout        pipeline_layout;
     wgpu::ShaderModule          mod;
+
+    rgbaf                       clear_color { 0.0f, 0.0f, 0.5f, 1.0f };
     
     Device                      device;
     Graphics                    gfx;
@@ -363,7 +364,7 @@ struct IPipeline {
     size_t                      indices_count;
     Texture                     textures[Asset::count - 1];
 
-    void load_from_gltf(gltf::Model &m, str &part, mx &mx_vbuffer, mx &mx_ibuffer, mx &mx_bones) {
+    void load_from_gltf(gltf::Model &m, str &part, mx &mx_vbuffer, mx &mx_ibuffer, gltf::Joints &joints) {
         /// model must have been loaded
         assert(m->nodes);
 
@@ -475,8 +476,8 @@ struct IPipeline {
             }
             mx_ibuffer = mx(mem_indices);
 
-            /// initialize rest state for this node, returning mat4 data
-            m.skeleton_init(mx_bones, node);
+            /// load joints for this node (may be default or null state)
+            joints = m.joints(node);
             break;
         }
     }
@@ -491,21 +492,24 @@ struct IPipeline {
     }
 
     /// loads/associates uniforms here (change from vk where that was a separate process)
-    void load_bindings(Graphics &gfx, mx bones) {
+    void load_bindings(Graphics &gfx, gltf::Joints joints) {
         wgpu::Device device = this->device->wgpu;
         array<wgpu::BindGroupEntry>       bind_values (gfx->bindings.count());
         array<wgpu::BindGroupLayoutEntry> bind_entries(gfx->bindings.count());
         size_t bind_id = 0;
 
+        /// iterate through ShaderVar bindings
         ivars.clear();
-        for (ShaderVar& binding: gfx->bindings) { /// array of mx can tell us what type of data it is
+        for (ShaderVar& binding: gfx->bindings) {
             wgpu::BindGroupLayoutEntry entry { .binding = u32(bind_id) };
             wgpu::BindGroupEntry bind_value  { .binding = u32(bind_id) };
             type_t btype = binding->type;
 
             if (btype == typeof(Texture)) {
 
-                binding->tx.on_resize(name, [&](vec2i sz) { load_bindings(gfx, bones); });
+                binding->tx.on_resize(name, [this, gfx, joints](vec2i sz) mutable {
+                    load_bindings(gfx, joints);
+                });
                 entry.texture.multisampled  = false;
                 entry.texture.sampleType    = wgpu::TextureSampleType::Float;
                 entry.texture.viewDimension = binding->tx->view_dimension();
@@ -559,15 +563,14 @@ struct IPipeline {
             bind_id++;
         }
 
-        /// bones provided with object (this was resolved from gltf load for name)
-        /// these are the rest states; users interface with Bones provided by Object::bones()
-        if (bones) {
+        /// add joints data as binding to shader (Vertex only)
+        if (joints.count()) {
             wgpu::BindGroupLayoutEntry entry { .binding = u32(bind_id) };
             wgpu::BindGroupEntry bind_value  { .binding = u32(bind_id) };
 
             wgpu::BufferDescriptor desc = {
                 .usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopyDst,
-                .size  = bones.total_size()
+                .size  = joints.total_size()
             };
             bind_value.buffer = device.CreateBuffer(&desc);
             entry.buffer.type = wgpu::BufferBindingType::ReadOnlyStorage;
@@ -575,7 +578,7 @@ struct IPipeline {
 
             ivars += IVar {
                 .buffer  = bind_value.buffer,
-                .svar    = ShaderVar(typeof(glm::mat4x4), bones.count(),
+                .svar    = ShaderVar(typeof(glm::mat4x4), joints.count(),
                     ShaderVar::Flag::object | ShaderVar::Flag::read_only)
             };
 
@@ -588,7 +591,6 @@ struct IPipeline {
             .entryCount         = size_t(bind_id),
             .entries            = bind_entries.data
         };
-        /// create bind group layout
         bgl = device.CreateBindGroupLayout(&ld);
 
         wgpu::BindGroupDescriptor bg {
@@ -597,7 +599,6 @@ struct IPipeline {
             .entries            = bind_values.data
         };
 
-        /// create bind group, and pipeline layout (stored)
         bind_group = device.CreateBindGroup(&bg);
         pipeline_layout = dawn::utils::MakeBasicPipelineLayout(device, &bgl);
     }
@@ -638,20 +639,33 @@ struct IPipeline {
 
         dawn::utils::ComboRenderPipelineDescriptor render_desc;
         render_desc.layout = pipeline_layout;
+        render_desc.primitive.frontFace = wgpu::FrontFace::CCW;
+        render_desc.primitive.cullMode = wgpu::CullMode::Back;
+        render_desc.primitive.topology = wgpu::PrimitiveTopology::TriangleList;
+
+        render_desc.cFragment.module = mod;
+        render_desc.cFragment.entryPoint = "fragment_main";
+
         render_desc.vertex.module = mod;
+        render_desc.vertex.entryPoint = "vertex_main";
         render_desc.vertex.bufferCount = 1;
-        render_desc.cBuffers[0].arrayStride = gfx->vtype->base_sz;// sizeof(Attribs);
+        
+        /// todo: stop using this structure, as its confusing
+        render_desc.cDepthStencil.depthWriteEnabled = true;
+        render_desc.cDepthStencil.depthCompare = wgpu::CompareFunction::Less;
+        render_desc.EnableDepthStencil(wgpu::TextureFormat::Depth24PlusStencil8);
+
         for (prop &p: props) {
             render_desc.cAttributes[attrib_count].shaderLocation = attrib_count;
             render_desc.cAttributes[attrib_count].format         = get_wgpu_format(p);
             render_desc.cAttributes[attrib_count].offset         = p.offset;
             attrib_count++;
         }
+
+        render_desc.cBuffers[0].arrayStride = gfx->vtype->base_sz;// sizeof(Attribs);
         render_desc.cBuffers[0].attributeCount = attrib_count;
-        render_desc.cFragment.module = mod;
         render_desc.cTargets[0].format = preferred_swapchain_format();
-        render_desc.cTargets[0].blend = &blend; /// needs a way to disable blending
-        render_desc.EnableDepthStencil(wgpu::TextureFormat::Depth24PlusStencil8);
+        render_desc.cTargets[0].blend = null;//&blend; /// needs a way to disable blending
 
         pipeline = device.CreateRenderPipeline(&render_desc);
         Dawn dawn;
@@ -672,7 +686,7 @@ struct IPipeline {
             .view = color_view,
             .loadOp = clear_states[Clear::Color] ? wgpu::LoadOp::Clear : wgpu::LoadOp::Load,
             .storeOp = wgpu::StoreOp::Store,
-            .clearValue = wgpu::Color { clear_color.r, clear_color.g, clear_color.b, clear_color.a }
+            .clearValue = wgpu::Color { clear_color.r, clear_color.g, clear_color.b, 0.0f }
         };
         wgpu::RenderPassDepthStencilAttachment depth_attachment {
             .view = depth_stencil,
@@ -728,25 +742,24 @@ struct IModel {
 
     /// create pipeline with shader, textures, vbo/ibo, bindings, attribs, blending and stencil info
     void reload() {
-
         for (Pipeline &sub: pipelines) {
             Graphics &     gfx    = sub->gfx;
             mx             vbuffer, ibuffer, bones;
             array<image>   images;
+            gltf::Joints   joints;
 
             if (gfx->gen)
                 gfx->gen(vbuffer, ibuffer, images); /// generate vbo/ibo based on user routine
             else
-                sub->load_from_gltf(m, gfx->name, vbuffer, ibuffer, bones); /// otherwise load from gltf
+                sub->load_from_gltf(m, gfx->name, vbuffer, ibuffer, joints); /// otherwise load from gltf
 
             sub->index_buffer  = device->create_buffer(ibuffer, wgpu::BufferUsage::Index);
             sub->vertex_buffer = device->create_buffer(vbuffer, wgpu::BufferUsage::Vertex);
             sub->indices_count = ibuffer.count();
             sub->load_shader(gfx);
-            sub->load_bindings(gfx, bones);
+            sub->load_bindings(gfx, joints);
             sub->create_with_attrs(gfx);
         }
-
     }
 
     register(IModel);
@@ -938,8 +951,6 @@ struct IWindow {
 
         wgpu::TextureView swap_view = swapchain.GetCurrentTextureView();
         states<Clear> clear_states { Clear::Color, Clear::Depth };
-        rgbaf clear_color { 0.0f, 0.0f, 0.5f, 1.0f };
-
         for (Presentation p: presentations) {
             Scene scene = p.on_present();
             for (Object &o: scene) { /// this will change to Object/Entity/Visual iteration
@@ -947,10 +958,10 @@ struct IWindow {
                 assert(o->renderables.count() == o->model->pipelines.count());
                 for (IRenderable &renderable: o->renderables) {
                     Pipeline &pl = o->model->pipelines[ipipeline];
-                    pl->submit(renderable, swap_view, depth_stencil->view, clear_states, clear_color);
-                    //clear_states[Clear::Color] = false;
-                    //clear_states[Clear::Depth] = false;
-                    //clear_states[Clear::Stencil] = false;
+                    pl->submit(renderable, swap_view, depth_stencil->view, clear_states, pl->clear_color);
+                    clear_states[Clear::Color] = false;
+                    clear_states[Clear::Depth] = false;
+                    clear_states[Clear::Stencil] = false;
                     ipipeline++;
                 }
             }
@@ -991,6 +1002,10 @@ struct IWindow {
 
     register(IWindow);
 };
+
+float Window::aspect() {
+    return float(data->sz.x) / float(data->sz.y);
+}
 
 void Window::register_presentation(OnWindowPresent on_present, OnWindowResize on_resize) {
     data->register_presentation(on_present, on_resize);
