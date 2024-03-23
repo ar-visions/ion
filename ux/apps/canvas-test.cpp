@@ -1,5 +1,6 @@
 
 #include <ux/ux.hpp>
+#include <trinity/subdiv.hpp>
 
 using namespace ion;
 
@@ -67,6 +68,7 @@ struct UState {
 };
 
 int main(int argc, const char* argv[]) {
+
     static constexpr uint32_t kWidth = 1024;
     static constexpr uint32_t kHeight = 1024;
 

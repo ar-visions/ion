@@ -477,7 +477,7 @@ struct IPipeline {
                     }
 
                 } else {
-                    /// perform simple copies from src[offset + 0...len-1] to dst
+                    /// perform simple copies
                     for (num i = 0; i < vlen; i++) {
                         u8 *member = &dst[stride.offset];
                         u8 *bsrc   = &src[src_sz * i];
@@ -508,6 +508,7 @@ struct IPipeline {
                 mem_indices = memory::window(typeof(u32), u32_window, a_indices->count);
             }
             mx_ibuffer = mx(mem_indices);
+            Mesh mesh = Mesh::import_vbo(mx_vbuffer, mx_ibuffer, true);
 
             /// load joints for this node (may be default or null state)
             joints = m.joints(node);
@@ -1167,4 +1168,5 @@ mx_implement(Pipeline,  mx, IPipeline);
 mx_implement(Model,     mx, IModel);
 mx_implement(Object,    mx, IObject);
 mx_implement(Window,    mx, IWindow);
+
 }

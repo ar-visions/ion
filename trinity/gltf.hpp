@@ -25,7 +25,9 @@ namespace gltf {
     enums(Mode, TRIANGLES,
         NONE = 0, LINES = 1, LINE_LOOP = 2,
         TRIANGLES = 4, TRIANGLE_STRIP = 5,
-        TRIANGLE_FAN = 6
+        TRIANGLE_FAN = 6, QUADS = 7
+        /// Added magic QUADS since Khronos has abandoned its users including Facebook and Adobe
+        /// They requested this feature when they were Facebook.
     );
 
     enums(Interpolation, LINEAR,
