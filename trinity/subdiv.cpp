@@ -1,7 +1,5 @@
-
+#include <mx/mx.hpp>
 #include <trinity/subdiv.hpp>
-
-using namespace ion;
 
 namespace ion {
 
@@ -13,12 +11,12 @@ struct Vertex:mx {
         array<int>      vertList;   //adj vertices
         array<int>      triList;
         array<int>      quadList;
-        array<int>      edgeList;
+        doubly<int>     edgeList;
         register(M)
     };
     Vertex(int idx, float* c) : Vertex() {
         data->idx = idx;
-        data->coords = c; // compatible with our mx vertex, atleast for position
+        data->coords = c;
     }
     mx_basic(Vertex)
 };
@@ -49,7 +47,7 @@ struct Triangle:mx {
         register(M)
     };
 	Triangle(int idx, int v1i, int v2i, int v3i) : Triangle() {
-        data->id = idx;
+        data->idx = idx;
         data->v1i = v1i;
         data->v2i = v2i;
         data->v3i = v3i;
@@ -82,6 +80,7 @@ struct IMesh {
     array<Quad>       quads;
 
     /// using for Reference for our import
+    /*
     void loadOffQuadMesh(const char* name) {
         FILE* fPtr;
         fopen_s(&fPtr,name, "r");
@@ -111,40 +110,69 @@ struct IMesh {
         }
 
         fclose(fPtr);
-    }
+    }*/
 
     void import(array<mx> &verts, array<u32> &quads) {
+        for (mx &vert: verts) {
+            float *vdata = vert.origin<float>();
+            addVertex(vdata[0], vdata[1], vdata[2]);
+        }
+    }
 
+    bool makeVertsNeighbor(int v1i, int v2i) {
+        //returns true if v1i already neighbor w/ v2i; false o/w
+        for (int i = 0; i < verts[v1i]->vertList.len(); i++)
+            if (verts[v1i]->vertList[i] == v2i)
+                return true;
+
+        verts[v1i]->vertList += v2i;
+        verts[v2i]->vertList += v1i;
+        return false;
+    }
+
+    void addVertex(float x, float y, float z) {
+        int idx = verts.len();
+        float* c = new float[3];
+        c[0] = x;
+        c[1] = y;
+        c[2] = z;
+        verts += Vertex(idx, c);
+    }
+
+    int getEdgeFromVerts(int v1, int v2) {
+        for (int ei: verts[v1]->edgeList) {
+            Edge &e = edges[ei];
+            if ((e->v1i == v1 && e->v2i == v2) ||
+                (e->v1i == v2 && e->v2i == v1))
+                return ei;
+        }
+        return -1;
+        /*for (int i = 0; i < verts[v1]->edgeList.len(); i++) {
+            if (edges[verts[v1]->edgeList[i]]->v1i == v1 && edges[verts[v1]->edgeList[i]]->v2i == v2 ||
+                edges[verts[v1]->edgeList[i]]->v1i == v2 && edges[verts[v1]->edgeList[i]]->v2i == v1)
+                return verts[v1]->edgeList[i];
+        }
+        return -1;*/
     }
 
     void addQuad(int v1, int v2, int v3, int v4) {
         int idx = quads.len();
-        quads.push_back(Quad(idx, v1, v2, v3, v4));
-        ////printf("Add quad called for %d , %d , %d , %d\n", v1, v2, v3, v4);
-
+        quads += Quad(idx, v1, v2, v3, v4);
         if (!makeVertsNeighbor(v1, v2))
             addEdge(v1, v2, idx);
         else {
             int temp = getEdgeFromVerts(v1, v2);
-            //printf("These verts %d and %d already edge in edge: %d \n",v1,v2, temp);
-            if (temp != -1) {
-                if (std::count(edges[temp]->quadIdx.begin(), edges[temp]->quadIdx.end(), idx) == 0) {
-                    edges[temp]->quadIdx.push_back(idx);
-                    ////printf("Edge %d has new quad: %d \n", temp, idx);
-                }
-            }
+            if (temp != -1 && !edges[temp]->quadIdx.contains(idx))
+                edges[temp]->quadIdx += idx;
         }
 
         if (!makeVertsNeighbor(v2, v3))
             addEdge(v2, v3, idx);
         else {
             int temp = getEdgeFromVerts(v2, v3);
-            ////printf("These verts %d and  %d are already edge in edge: %d \n",v2,v3, temp);
             if (temp != -1) {
-                if (std::count(edges[temp]->quadIdx.begin(), edges[temp]->quadIdx.end(), idx) == 0) {
-                    edges[temp]->quadIdx.push_back(idx);
-                    ////printf("Edge %d has new quad: %d \n", temp, idx);
-                }
+                if (!edges[temp]->quadIdx.contains(idx))
+                    edges[temp]->quadIdx += idx;
             }
         }
 
@@ -152,84 +180,137 @@ struct IMesh {
             addEdge(v3, v4, idx);
         else {
             int temp = getEdgeFromVerts(v3, v4);
-            ////printf("These verts %d and %d are already edge in edge: %d \n",v3,v4, temp);
             if (temp != -1) {
-                if (std::count(edges[temp]->quadIdx.begin(), edges[temp]->quadIdx.end(), idx) == 0) {
-                    edges[temp]->quadIdx.push_back(idx);
-                    ////printf("Edge %d has new quad: %d \n", temp, idx);
-                }
+                if (!edges[temp]->quadIdx.contains(idx))
+                    edges[temp]->quadIdx += idx;
             }
         }
-
         if (!makeVertsNeighbor(v1, v4))
             addEdge(v1, v4, idx);
         else {
-            ////printf(" %d , %d are already neighbour!\n", v1, v4);
             int temp = getEdgeFromVerts(v1, v4);
-            ////printf("These verts %d and %d already edge in edge: %d \n",v1,v4, temp);
             if (temp != -1) {
-                if (std::count(edges[temp]->quadIdx.begin(), edges[temp]->quadIdx.end(), idx) == 0)
-                {
-                    edges[temp]->quadIdx.push_back(idx);
-                    ////printf("Edge %d has new quad: %d \n", temp, idx);
+                if (!edges[temp]->quadIdx.contains(idx))
+                    edges[temp]->quadIdx += idx; /// Edge %d has new quad
+            }
+        }
+        verts[v1]->quadList += idx;
+        verts[v2]->quadList += idx;
+        verts[v3]->quadList += idx;
+        verts[v4]->quadList += idx;
+    }
+
+    void addEdge(int v1, int v2, int quadIdx) {
+        int idx = edges.len();
+        edges += Edge(idx, v1, v2);
+        if (quadIdx != -1)
+            edges[idx]->quadIdx += quadIdx;
+        verts[v1]->edgeList += idx;
+        verts[v2]->edgeList += idx;
+    }
+
+    void addCatmullClarkEdge(int v1, int v2 , array<Edge>& cmEdges, int quadIdx) {
+        int idx = cmEdges.len();
+        //printf("catmull edge index with %d created between: %d and %d with QUAD: %d\n",idx, v1, v2,quadIdx);
+        cmEdges += Edge(idx, v1, v2);
+        cmEdges[idx]->quadIdx += quadIdx;
+        
+        verts[v1]->edgeList += idx;
+        verts[v2]->edgeList += idx;
+    }
+
+    int getCatmullClarkEdgeFromVerts(int v1, int v2, array<Edge>& cmEdge, array<int>& verts_oldEdgeList) {
+        //printf("We will get the edge for verts %d and %d \n",v1, v2);
+        //printf("verts_oldEdgeList.size() = %d\n", verts_oldEdgeList.size());
+        if (v1 < verts_oldEdgeList.len()) {
+            for (int i = verts_oldEdgeList[v1]; i < verts[v1]->edgeList.len(); i++) {
+                //printf("verts[%d].edgeList[%d] = %d\n", v1, i, verts[v1]->edgeList[i]);
+                for (int j = 0; j < verts[v2]->edgeList.len(); j++) {
+                    //printf("verts[%d].edgeList[%d] = %d\n", v2, j, verts[v2]->edgeList[j]);
+                    if (verts[v1]->edgeList[i] == verts[v2]->edgeList[j]) {
+                        //printf("Edge found = %d\n", verts[v1]->edgeList[i]);
+                        return verts[v1]->edgeList[i];
+                    }
                 }
+
+            }
+        }
+        else if (v2 < verts_oldEdgeList.size()) {
+            for (int i = 0; i < verts[v1]->edgeList.size(); i++) {
+                //printf("verts[%d].edgeList[%d] = %d\n", v1, i, verts[v1]->edgeList[i]);
+                for (int j = verts_oldEdgeList[v2]; j < verts[v2]->edgeList.size(); j++) {
+                    //printf("verts[%d].edgeList[%d] = %d\n", v2, j, verts[v2]->edgeList[j]);
+
+
+                    if (verts[v1]->edgeList[i] == verts[v2]->edgeList[j]) {
+                        //printf("Edge found = %d\n", verts[v1]->edgeList[i]);
+                        return verts[v1]->edgeList[i];
+                    }
+
+
+                }
+
+            }
+        }
+        else {
+            for (int i = 0; i < verts[v1]->edgeList.size(); i++) {
+                //printf("verts[%d].edgeList[%d] = %d\n", v1, i, verts[v1]->edgeList[i]);
+                for (int j = 0; j < verts[v2]->edgeList.size(); j++) {
+                    //printf("verts[%d].edgeList[%d] = %d\n", v2, j, verts[v2]->edgeList[j]);
+
+
+                    if (verts[v1]->edgeList[i] == verts[v2]->edgeList[j]) {
+                        //printf("Edge found = %d\n", verts[v1]->edgeList[i]);
+                        return verts[v1]->edgeList[i];
+                    }
+
+
+                }
+
             }
         }
 
-        verts[v1]->quadList.push_back(idx);
-        verts[v2]->quadList.push_back(idx);
-        verts[v3]->quadList.push_back(idx);
-        verts[v4]->quadList.push_back(idx);
+        
+        //printf("Edge not found!\n");
+        return -1;
     }
 
-    void addCatmullClarkQuad(int v1, int v2, int v3, int v4, vector<Quad*>& cmQuads, vector<Edge*> &cmEdges, vector<int>& verts_oldEdgeList) {
+    void addCatmullClarkQuad(int v1, int v2, int v3, int v4, array<Quad>& cmQuads, array<Edge>& cmEdges, array<int>& verts_oldEdgeList) {
         int idx = cmQuads.len();
-        cmQuads.push_back(Quad(idx, v1, v2, v3, v4));
-        //printf("Quad will be created with verts %d , %d , %d , %d", v1, v2, v3, v4);
+        cmQuads += Quad(idx, v1, v2, v3, v4);
         if (!makeVertsNeighbor(v1, v2))
             addCatmullClarkEdge(v1, v2, cmEdges, idx);
         else {
-            int temp = getCatmullClarkEdgeFromVerts(v1, v2,cmEdges, verts_oldEdgeList);
-            if (temp != -1) {
-                //printf("edge %d will be added new quad %d\n", temp, idx);
-                cmEdges[temp]->quadIdx.push_back(idx);
-            }
+            int temp = getCatmullClarkEdgeFromVerts(v1, v2, cmEdges, verts_oldEdgeList);
+            if (temp != -1)
+                cmEdges[temp]->quadIdx += idx);
         }
         if (!makeVertsNeighbor(v2, v3))
             addCatmullClarkEdge(v2, v3, cmEdges, idx);
         else {
             int temp = getCatmullClarkEdgeFromVerts(v2, v3, cmEdges, verts_oldEdgeList);
-            if (temp != -1) {
-                //printf("edge %d will be added new quad %d\n", temp, idx);
-                cmEdges[temp]->quadIdx.push_back(idx);
-                //printf("edge %d added new quad %d\n", temp, idx);
-            }
+            if (temp != -1)
+                cmEdges[temp]->quadIdx += idx;
         }
         if (!makeVertsNeighbor(v3, v4))
             addCatmullClarkEdge(v3, v4, cmEdges, idx);
         else {
             int temp = getCatmullClarkEdgeFromVerts(v3, v4, cmEdges, verts_oldEdgeList);
-            if (temp != -1) {
-                //printf("edge %d will be added new quad %d\n", temp, idx);
-                cmEdges[temp]->quadIdx.push_back(idx);
-                //printf("edge %d added new quad %d\n", temp, idx);
-            }
+            if (temp != -1)
+                cmEdges[temp]->quadIdx += idx;
         }
         if (!makeVertsNeighbor(v1, v4))
             addCatmullClarkEdge(v1, v4, cmEdges, idx);
         else {
             int temp = getCatmullClarkEdgeFromVerts(v1, v4, cmEdges, verts_oldEdgeList);
-            if (temp != -1) {
-                //printf("edge %d will be added new quad %d\n", temp, idx);
-                cmEdges[temp]->quadIdx.push_back(idx);
-                //printf("edge %d added new quad %d\n", temp, idx);
-            }
+            if (temp != -1)
+                cmEdges[temp]->quadIdx += idx;
         }
 
-        verts[v1]->quadList.push_back(idx);
-        verts[v2]->quadList.push_back(idx);
-        verts[v3]->quadList.push_back(idx);
-        verts[v4]->quadList.push_back(idx);
+        verts[v1]->quadList += idx;
+        verts[v2]->quadList += idx;
+        verts[v3]->quadList += idx;
+        verts[v4]->quadList += idx;
     }
 
     void copyEdges(const array<Edge> edgev) {
@@ -245,12 +326,9 @@ struct IMesh {
     }
 
     void catmull_clark() {
-
         float* tempVert = new float[3]; //[0]=x, [1]=y, [2]=z
-        if (quads.len() < 1) {
-            //printf("Cant perform Catmull-Clark subdivision on non-quad meshes");
+        if (!quads) 
             return;
-        }
 
         //after creating new vertices we need to update coords of old verts.
         //we must know where should we stop.
@@ -277,33 +355,22 @@ struct IMesh {
                 + verts[quads[i]->v3i]->coords[2] + verts[quads[i]->v4i]->coords[2]) / 4.0f;
 
             addVertex(tempVert[0], tempVert[1], tempVert[2]);
-            //////printf("Face point coordinats %.5g, %.5g, %.5g\n", tempVert[0], tempVert[1], tempVert[2]);
-
-            //to decrease complexity we will store facepoint idx of each quad
             quads[i]->facePointIdx = verts.len() - 1;
         }
 
         //create edge points for each edge
-        ////printf("Creating edge points!\n");
-
         /*  _______E1______ 
             |      |      |
             |  F1  ep  F2 |  Edge Point: ep = (F1+F2+E1+E2)\4
             |______|______|
-                E2	
+                   E2	
         */
         for (int i = 0; i < edges.len(); i++) {
             if (edges[i]->quadIdx.len() != 2) {
-                //printf("This mesh NOT watertight and edges[%d] is at boundary.\n",i);
+                //printf("This mesh NOT water-tight and edges[%d] is at boundary.\n",i);
                 edges[i]->midPointIdx = -1;
                 continue;
             }
-
-            //printf("edges[%d]->quadIdx.len() = %d\n",i, edges[i]->quadIdx.len());
-            //printf("edges[%d]->quadIdx[0] = %d\n",i, edges[i]->quadIdx[0]);
-            //printf("edges[%d]->quadIdx[1] = %d\n",i, edges[i]->quadIdx[1]);
-            
-
             tempVert[0] = (verts[quads[edges[i]->quadIdx[0]]->facePointIdx]->coords[0] +
                 verts[quads[edges[i]->quadIdx[1]]->facePointIdx]->coords[0] +
                 verts[edges[i]->v1i]->coords[0] +
@@ -324,7 +391,6 @@ struct IMesh {
 
         }
 
-        //printf("*********Moving the old vertices now!\n");
         //move old verts to their new positions
         /*
                     |
@@ -338,21 +404,15 @@ struct IMesh {
             fp3 	ep3    fp4
                     |
                     |
-        
         */
         float tempX_fp=-1.0f,tempX_ep = -1.0f, tempY_fp = -1.0f, tempY_ep = -1.0f, tempZ_fp = -1.0f, tempZ_ep = -1.0f;
         int n=-1;
         for (int i = 0; i < oldVertsIdx+1; i++) {
-            if (verts[i]->quadList.len() != verts[i]->edgeList.len()) {
-                //printf("EdgeList.len() of %d th vertex is %d\n", i, n);
-                //printf("QuadList.len() of %d th vertex is %d\n\n", i, verts[i]->quadList.len());
+            Vertex &v = verts[i];
+            if (v->quadList.len() != v->edgeList.len())
                 continue;
-            }
 
-            //printf("Moving %d th vertex\n", i);
-            n = verts[i]->edgeList.len();
-            //printf("EdgeList.len() of %d th vertex is %d\n", i, n);
-            //printf("QuadList.len() of %d th vertex is %d\n", i, verts[i]->quadList.len());
+            n = v->edgeList.len();
             tempX_fp = 0.0f;
             tempX_ep = 0.0f;
 
@@ -361,38 +421,27 @@ struct IMesh {
 
             tempZ_fp = 0.0f;
             tempZ_ep = 0.0f;
+
             for (int j = 0; j < n; j++) {
-                //printf("quads.len() = %d\n", quads.len());
-                //printf("verts[%d]->quadList[%d] = %d\n", i, j, verts[i]->quadList[j]);
+                tempX_fp += verts[quads[v->quadList[j]]->facePointIdx]->coords[0]/n;
+                tempX_ep += verts[edges[v->edgeList[j]]->midPointIdx]->coords[0] / n;
 
-                //printf("edges.len() = %d\n", edges.len());
-                //printf("verts[%d]->edgeList[%d] = %d\n", i, j, verts[i]->edgeList[j]);
+                tempY_fp += verts[quads[v->quadList[j]]->facePointIdx]->coords[1] / n;
+                tempY_ep += verts[edges[v->edgeList[j]]->midPointIdx]->coords[1] / n;
 
-                tempX_fp += verts[quads[verts[i]->quadList[j]]->facePointIdx]->coords[0]/n;
-                tempX_ep += verts[edges[verts[i]->edgeList[j]]->midPointIdx]->coords[0] / n;
-
-                tempY_fp += verts[quads[verts[i]->quadList[j]]->facePointIdx]->coords[1] / n;
-                tempY_ep += verts[edges[verts[i]->edgeList[j]]->midPointIdx]->coords[1] / n;
-
-                tempZ_fp += verts[quads[verts[i]->quadList[j]]->facePointIdx]->coords[2] / n;
-                tempZ_ep += verts[edges[verts[i]->edgeList[j]]->midPointIdx]->coords[2] / n;
+                tempZ_fp += verts[quads[v->quadList[j]]->facePointIdx]->coords[2] / n;
+                tempZ_ep += verts[edges[v->edgeList[j]]->midPointIdx]->coords[2] / n;
             }
-            tempVert[0] = ((float)tempX_fp / n) + ((float)2.0f * tempX_ep / n) + ((float)(n - 3) * verts[i]->coords[0] / (n));
+            tempVert[0] = ((float)tempX_fp / n) + ((float)2.0f * tempX_ep / n) + ((float)(n - 3) * v->coords[0] / (n));
 
-            tempVert[1] = ((float)tempY_fp / n) + ((float)2.0f * tempY_ep / n) + ((float)(n - 3) * verts[i]->coords[1] / (n));
+            tempVert[1] = ((float)tempY_fp / n) + ((float)2.0f * tempY_ep / n) + ((float)(n - 3) * v->coords[1] / (n));
+            tempVert[2] = ((float)tempZ_fp / n) + ((float)2.0f * tempZ_ep / n) + ((float)(n - 3) * v->coords[2] / (n));
 
-            tempVert[2] = ((float)tempZ_fp / n) + ((float)2.0f * tempZ_ep / n) + ((float)(n - 3) * verts[i]->coords[2] / (n));
-
-            verts[i]->coords[0] = tempVert[0];
-            verts[i]->coords[1] = tempVert[1];
-            verts[i]->coords[2] = tempVert[2];
-
-            
+            v->coords[0] = tempVert[0];
+            v->coords[1] = tempVert[1];
+            v->coords[2] = tempVert[2];
         }
-        
-        //printf("*********We will create new quads and edges now!\n");
-
-
+ 
         //now we need to create new quads and edges!
         array<Edge> catmullEdges;
         array<Quad> catmullQuads;
@@ -412,9 +461,8 @@ struct IMesh {
             verts[i]->vertList.clear();
         }
 
-        for (int i = 0; i < oldVertsIdx+1; i++) {
-            verts_oldEdges.push_back(verts[i]->edgeList.len());
-        }
+        for (int i = 0; i < oldVertsIdx+1; i++)
+            verts_oldEdges += verts[i]->edgeList.len();
 
         int tempEdge1_2, tempEdge2_3, tempEdge3_4, tempEdge4_1;
         int tempQuadIdx=-1, tempEdge1=-1, tempEdge2=-1;
@@ -422,24 +470,14 @@ struct IMesh {
             vert3_oldQuads, vert3_oldEdges, vert4_oldQuads, vert4_oldEdges;
         
         for (int i = 0; i < quads.len(); i++) {
-            //printf("%d th quad\n", i);
-            //printf("edges.len() = %d\n", edges.len());
             tempEdge1_2 = getEdgeFromVerts(quads[i]->v1i, quads[i]->v2i);
-            //printf("tempEdge1_2 = %d\n", tempEdge1_2);
             tempEdge2_3 = getEdgeFromVerts(quads[i]->v2i, quads[i]->v3i);
-            //printf("tempEdge2_3 = %d\n", tempEdge2_3);
-
             tempEdge3_4 = getEdgeFromVerts(quads[i]->v3i, quads[i]->v4i);
-            //printf("tempEdge3_4 = %d\n", tempEdge3_4);
-
             tempEdge4_1 = getEdgeFromVerts(quads[i]->v4i, quads[i]->v1i);
-            //printf("tempEdge4_1 = %d\n", tempEdge4_1);
-            
             if (edges[tempEdge1_2]->midPointIdx == -1 || edges[tempEdge2_3]->midPointIdx == -1
                 || edges[tempEdge3_4]->midPointIdx == -1 || edges[tempEdge4_1]->midPointIdx == -1) {
                 continue;
             }
-
             addCatmullClarkQuad(quads[i]->v1i, edges[tempEdge1_2]->midPointIdx, 
                 quads[i]->facePointIdx, edges[tempEdge4_1]->midPointIdx,catmullQuads,catmullEdges, verts_oldEdges);
 
@@ -451,26 +489,20 @@ struct IMesh {
 
             addCatmullClarkQuad(quads[i]->v4i, edges[tempEdge4_1]->midPointIdx,
                 quads[i]->facePointIdx, edges[tempEdge3_4]->midPointIdx, catmullQuads, catmullEdges, verts_oldEdges);
-
-            
         }
-        //printf("\n\n We will erase old verts \n\n");
-        for (int i = 0; i < oldVertsIdx + 1; i++) {
-            verts[i]->edgeList.erase(verts[i]->edgeList.begin(), verts[i]->edgeList.begin() +
-                verts_oldEdges[i] );
-        }
+        // erase old verts
+        for (int i = 0; i < oldVertsIdx + 1; i++)
+            verts[i]->edgeList->remove(0, verts_oldEdges[i]);
         
         copyEdges(catmullEdges);
-        ////printf("catmullEdges.len() = %d\n", catmullEdges.len());
         copyQuads(catmullQuads);
         catmullEdges.clear();
         catmullQuads.clear();
         delete[] tempVert;
-        ////printf("******Catmull Clark Subdivision Completed!\n");
     }
 };
 
-mx_implement(Mesh, IMesh)
+mx_implement(Mesh, mx, IMesh)
 
 Mesh Mesh::import_vbo(mx vbo, mx ibo, bool convert_from_tris) {
     Mesh mesh;
@@ -545,7 +577,7 @@ void Mesh::export_vbo(mx &vbo, mx &ibo, bool convert_to_tris) {
 /// @github/bertaye wrote very clear code on this
 /// leveraging that work with mx meta api; uses any input Vertex type containing a meta map
 void Mesh::catmull_clark() {
-    data->cutmull_clark();
+    data->catmull_clark();
 }
 
 }
