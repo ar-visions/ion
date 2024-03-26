@@ -98,8 +98,6 @@ struct iCapture {
     com_ptr<ID3D11Texture2D>            m_TexSysMem;
     NvEncoderD3D11 *                    nvenc;
 
-    type_register(iCapture);
-
     void OnFrameArrived(Direct3D11CaptureFramePool const& sender, winrt::Windows::Foundation::IInspectable const&) {
         u64      frame_time = microseconds();
         Direct3D11CaptureFrame frame = sender.TryGetNextFrame();

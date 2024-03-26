@@ -115,7 +115,6 @@ struct coord {
     }
 
     coord(cstr cs) : coord(str(cs)) { }
-    register(coord);
 };
 
 /// good primitive for ui, implemented in basic canvas ops.
@@ -126,7 +125,6 @@ struct region:mx {
         coord br = (cstr)"r0 b0";
         double per = -1;
         bool set = false;
-        register(M);
     };
     mx_basic(region);
 
@@ -216,7 +214,6 @@ struct OBJ:mx {
         struct gdata {
             str        name;
             array<u32> ibo;
-            type_register(gdata);
         };
         mx_object(group, mx, gdata);
     };
@@ -224,7 +221,6 @@ struct OBJ:mx {
     struct M {
         array<V>   vbo;
         map<group> groups;
-        type_register(M);
     };
 
     mx_object(OBJ, mx, M);
@@ -445,10 +441,7 @@ struct Element:node {
                 prop { "count-height", count_height }
             };
         }
-        type_register(props);
     };
-
-
 
     void debug() {
     }

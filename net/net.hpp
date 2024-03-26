@@ -27,7 +27,6 @@ struct uri:mx {
         str     resource;
         map<mx> args;
         str     version;
-        type_register(components);
     };
     /// singular container type used for 'enumeration' and containment of value: method
     /// enum = method::mtype
@@ -253,7 +252,6 @@ struct message:mx {
         mx      code = int(0);
         map<mx> headers;
         mx      content; /// best to store as mx, so we can convert directly in lambda arg, functionally its nice to have delim access in var.
-        type_register(M);
     };
 
     method method_type() {

@@ -19,7 +19,6 @@ struct H264FileParser:FileParser {
         std::optional<std::vector<std::byte>> previousUnitType5 = std::nullopt;
         std::optional<std::vector<std::byte>> previousUnitType7 = std::nullopt;
         std::optional<std::vector<std::byte>> previousUnitType8 = std::nullopt;
-        type_register(h264data);
     };
     mx_object(H264FileParser, FileParser, h264data);
     H264FileParser(std::string directory, uint32_t fps, bool loop);

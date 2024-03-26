@@ -101,8 +101,6 @@ struct rgba {
     operator str() {
         return color_value(*this);
     }
-
-    type_register(rgba);
 };
 
 template <typename T>
@@ -231,8 +229,6 @@ struct rect {
             0, 0
         };
     }
-
-    type_register(rect);
 };
 
 template <typename T>
@@ -329,8 +325,6 @@ struct Rounded:Rect<T> {
         inline rdata(rect &r, T rx, T ry)
              : rdata(vec4 {r.x, r.y, rx, ry},             vec4 {r.x + r.w, r.y, rx, ry},
                      vec4 {r.x + r.w, r.y + r.h, rx, ry}, vec4 {r.x, r.y + r.h, rx, ry}) { }
-        
-        register(rdata);
     };
     mx_object(Rounded, Rect<T>, rdata);
 
@@ -355,7 +349,6 @@ struct Arc:mx {
         real radius;
         vec2d degs; /// x:from [->y:distance]
         vec2d origin;
-        register(adata);
     };
     mx_object(Arc, mx, adata);
 };
@@ -364,7 +357,6 @@ struct Line:mx {
     struct ldata {
         vec2d to;
         vec2d origin;
-        register(ldata);
     };
     mx_object(Line, mx, ldata);
     //movable(Line);
@@ -381,7 +373,6 @@ struct Bezier:mx {
         vec2d cp1;
         vec2d b;
         vec2d origin;
-        register(bdata);
     };
     mx_object(Bezier, mx, bdata);
 };

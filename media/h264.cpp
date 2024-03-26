@@ -222,8 +222,6 @@ public:
         res.set_size((size_t)encoded_len);
         return res;
     }
-
-    register(i264);
 };
 
 /*

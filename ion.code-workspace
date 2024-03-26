@@ -209,7 +209,9 @@
 			"time.h": "c",
 			"pixdesc.h": "c",
 			"scene_manager.h": "c",
-			"expected": "cpp"
+			"expected": "cpp",
+			"hash_set": "cpp",
+			"slist": "cpp"
 		},
 		"git.ignoreLimitWarning": true
 	}

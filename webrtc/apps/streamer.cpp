@@ -25,7 +25,6 @@ struct View:Element {
                 prop { "clicked", clicked}
             };
         }
-        type_register(props);
     };
 
     int context_var;

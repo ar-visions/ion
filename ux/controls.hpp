@@ -18,7 +18,6 @@ struct Button:Element {
                 {"selected",  selected}
             };
         }
-        type_register(props);
     };
 
     component(Button, Element, props);
@@ -63,8 +62,6 @@ struct Edit:Element {
             callback change;
         } ev;
 
-        type_register(props);
-
         doubly<prop> meta() {
             return {
                 prop { "on-change", ev.change },
@@ -86,7 +83,6 @@ struct list_view:node {
             real    value  = 1.0;
             bool    scale  = true;
             xalign  align  = xalign::left;
-            type_register(cdata);
         };
         
         mx_object(Column, mx, cdata);
@@ -136,7 +132,6 @@ struct list_view:node {
                 prop { "column-ids", column.ids }
             };
         }
-        type_register(Members);
     } m;
     
     void update_columns() {

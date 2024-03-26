@@ -591,7 +591,6 @@ struct ICanvas {
         }
         return *(SkFont*)font->sk_font;
     }
-    type_register(ICanvas);
 };
 
 mx_implement(Canvas, mx, ICanvas);

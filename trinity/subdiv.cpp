@@ -8,15 +8,24 @@ struct Vertex:mx {
         float*          coords;
         float*          normals;    //3d coordinates etc
         int             idx;        //who am i; verts[idx]
+        mx              vdata;      // data for entire vertex, in vtype
         array<int>      vertList;   //adj vertices
         array<int>      triList;
         array<int>      quadList;
         doubly<int>     edgeList;
-        register(M)
     };
-    Vertex(int idx, float* c) : Vertex() {
+    Vertex(int idx, mx vdata) {
         data->idx = idx;
-        data->coords = c;
+        data->vdata = vdata;
+        data->coords = vdata.origin<float>();
+    }
+    /// interpolate an average using meta properties
+    Vertex(int idx, mx (&src)[4]) {
+        type_t vtype = src[0].type();
+        data->idx    = idx;
+        data->vdata  = memory::alloc(vtype, 1, 0, src[0].origin<void>());
+        data->coords = data->vdata.origin<float>();
+        /// we want to add by T and divide by count==4
     }
     mx_basic(Vertex)
 };
@@ -29,7 +38,6 @@ struct Edge:mx {
         int midPointIdx; //mid point of the edge, will be needed for catmull-clark
         int v1i, v2i; //endpnts
         float length;
-        register(M)
     };
 	Edge(int idx, int v1i, int v2i) : Edge() {
         data->idx = idx;
@@ -44,7 +52,6 @@ struct Triangle:mx {
         int idx; //tris[idx]
         int midPointIdx;
         int v1i, v2i, v3i;
-        register(M)
     };
 	Triangle(int idx, int v1i, int v2i, int v3i) : Triangle() {
         data->idx = idx;
@@ -60,7 +67,6 @@ struct Quad:mx {
         int idx;
         int facePointIdx = -1;
         int v1i, v2i, v3i, v4i;
-        register(M)
     };
 	Quad(int idx, int v1i, int v2i, int v3i, int v4i) : Quad() {
         data->idx = idx;
@@ -112,10 +118,9 @@ struct IMesh {
         fclose(fPtr);
     }*/
 
-    void import(array<mx> &verts, array<u32> &quads) {
-        for (mx &vert: verts) {
-            float *vdata = vert.origin<float>();
-            addVertex(vdata[0], vdata[1], vdata[2]);
+    void import(array<mx> &mx_verts, array<u32> &quads) {
+        for (mx &vert: mx_verts) {
+            addVertex(vert);
         }
     }
 
@@ -130,13 +135,24 @@ struct IMesh {
         return false;
     }
 
-    void addVertex(float x, float y, float z) {
+    void addVertex(const mx &vert) {
         int idx = verts.len();
-        float* c = new float[3];
+        verts += Vertex(idx, vert);
+    }
+
+    void addVertex(const mx (&v4)[4]) {
+        int idx = verts.len();
+        verts += Vertex(idx, v4);
+    }
+
+    /// dont use this.
+    void addVertex(int ph, float x, float y, float z) { /// needs to take in an entire mx vertex 
+        int idx = verts.len();
+        float* c = (float*)calloc(vtype->base_sz, 1);
         c[0] = x;
         c[1] = y;
         c[2] = z;
-        verts += Vertex(idx, c);
+        verts += Vertex(idx, memory::alloc(vtype, 3, 0, c));
     }
 
     int getEdgeFromVerts(int v1, int v2) {
@@ -220,58 +236,24 @@ struct IMesh {
     }
 
     int getCatmullClarkEdgeFromVerts(int v1, int v2, array<Edge>& cmEdge, array<int>& verts_oldEdgeList) {
-        //printf("We will get the edge for verts %d and %d \n",v1, v2);
-        //printf("verts_oldEdgeList.size() = %d\n", verts_oldEdgeList.size());
         if (v1 < verts_oldEdgeList.len()) {
-            for (int i = verts_oldEdgeList[v1]; i < verts[v1]->edgeList.len(); i++) {
-                //printf("verts[%d].edgeList[%d] = %d\n", v1, i, verts[v1]->edgeList[i]);
-                for (int j = 0; j < verts[v2]->edgeList.len(); j++) {
-                    //printf("verts[%d].edgeList[%d] = %d\n", v2, j, verts[v2]->edgeList[j]);
-                    if (verts[v1]->edgeList[i] == verts[v2]->edgeList[j]) {
-                        //printf("Edge found = %d\n", verts[v1]->edgeList[i]);
+            for (int i = verts_oldEdgeList[v1]; i < verts[v1]->edgeList.len(); i++)
+                for (int j = 0; j < verts[v2]->edgeList.len(); j++)
+                    if (verts[v1]->edgeList[i] == verts[v2]->edgeList[j])
                         return verts[v1]->edgeList[i];
-                    }
-                }
-
-            }
         }
-        else if (v2 < verts_oldEdgeList.size()) {
-            for (int i = 0; i < verts[v1]->edgeList.size(); i++) {
-                //printf("verts[%d].edgeList[%d] = %d\n", v1, i, verts[v1]->edgeList[i]);
-                for (int j = verts_oldEdgeList[v2]; j < verts[v2]->edgeList.size(); j++) {
-                    //printf("verts[%d].edgeList[%d] = %d\n", v2, j, verts[v2]->edgeList[j]);
-
-
-                    if (verts[v1]->edgeList[i] == verts[v2]->edgeList[j]) {
-                        //printf("Edge found = %d\n", verts[v1]->edgeList[i]);
+        else if (v2 < verts_oldEdgeList.len()) {
+            for (int i = 0; i < verts[v1]->edgeList.len(); i++)
+                for (int j = verts_oldEdgeList[v2]; j < verts[v2]->edgeList.len(); j++)
+                    if (verts[v1]->edgeList[i] == verts[v2]->edgeList[j])
                         return verts[v1]->edgeList[i];
-                    }
-
-
-                }
-
-            }
         }
         else {
-            for (int i = 0; i < verts[v1]->edgeList.size(); i++) {
-                //printf("verts[%d].edgeList[%d] = %d\n", v1, i, verts[v1]->edgeList[i]);
-                for (int j = 0; j < verts[v2]->edgeList.size(); j++) {
-                    //printf("verts[%d].edgeList[%d] = %d\n", v2, j, verts[v2]->edgeList[j]);
-
-
-                    if (verts[v1]->edgeList[i] == verts[v2]->edgeList[j]) {
-                        //printf("Edge found = %d\n", verts[v1]->edgeList[i]);
+            for (int i = 0; i < verts[v1]->edgeList.len(); i++)
+                for (int j = 0; j < verts[v2]->edgeList.len(); j++)
+                    if (verts[v1]->edgeList[i] == verts[v2]->edgeList[j])
                         return verts[v1]->edgeList[i];
-                    }
-
-
-                }
-
-            }
         }
-
-        
-        //printf("Edge not found!\n");
         return -1;
     }
 
@@ -283,7 +265,7 @@ struct IMesh {
         else {
             int temp = getCatmullClarkEdgeFromVerts(v1, v2, cmEdges, verts_oldEdgeList);
             if (temp != -1)
-                cmEdges[temp]->quadIdx += idx);
+                cmEdges[temp]->quadIdx += idx;
         }
         if (!makeVertsNeighbor(v2, v3))
             addCatmullClarkEdge(v2, v3, cmEdges, idx);
@@ -344,18 +326,25 @@ struct IMesh {
 
         */
         for (int i = 0; i < quads.len(); i++) {
+            Quad &q = quads[i];
 
-            tempVert[0] = (verts[quads[i]->v1i]->coords[0] + verts[quads[i]->v2i]->coords[0]
-                + verts[quads[i]->v3i]->coords[0] + verts[quads[i]->v4i]->coords[0]) / 4.0f;
+            float *coords0 = verts[q->v1i]->coords;
+            float *coords1 = verts[q->v2i]->coords;
+            float *coords2 = verts[q->v3i]->coords;
+            float *coords3 = verts[q->v4i]->coords;
 
-            tempVert[1] = (verts[quads[i]->v1i]->coords[1] + verts[quads[i]->v2i]->coords[1]
-                + verts[quads[i]->v3i]->coords[1] + verts[quads[i]->v4i]->coords[1]) / 4.0f;
+            tempVert[0] = (verts[q->v1i]->coords[0] + verts[q->v2i]->coords[0]
+                + verts[q->v3i]->coords[0] + verts[q->v4i]->coords[0]) / 4.0f;
 
-            tempVert[2] = (verts[quads[i]->v1i]->coords[2] + verts[quads[i]->v2i]->coords[2]
-                + verts[quads[i]->v3i]->coords[2] + verts[quads[i]->v4i]->coords[2]) / 4.0f;
+            tempVert[1] = (verts[q->v1i]->coords[1] + verts[q->v2i]->coords[1]
+                + verts[q->v3i]->coords[1] + verts[q->v4i]->coords[1]) / 4.0f;
 
-            addVertex(tempVert[0], tempVert[1], tempVert[2]);
-            quads[i]->facePointIdx = verts.len() - 1;
+            tempVert[2] = (verts[q->v1i]->coords[2] + verts[q->v2i]->coords[2]
+                + verts[q->v3i]->coords[2] + verts[q->v4i]->coords[2]) / 4.0f;
+
+            //todo
+            //addVertex(tempVert[0], tempVert[1], tempVert[2]);
+            q->facePointIdx = verts.len() - 1;
         }
 
         //create edge points for each edge
@@ -365,28 +354,41 @@ struct IMesh {
             |______|______|
                    E2	
         */
+       ///
         for (int i = 0; i < edges.len(); i++) {
             if (edges[i]->quadIdx.len() != 2) {
                 //printf("This mesh NOT water-tight and edges[%d] is at boundary.\n",i);
                 edges[i]->midPointIdx = -1;
                 continue;
             }
+            mx v[4] = {
+                verts[quads[edges[i]->quadIdx[0]]->facePointIdx]->vdata,
+                verts[quads[edges[i]->quadIdx[1]]->facePointIdx]->vdata,
+                verts[edges[i]->v1i]->vdata,
+                verts[edges[i]->v2i]->vdata
+            };
+            addVertex(v);
+            /*
+            /// interpolate X
             tempVert[0] = (verts[quads[edges[i]->quadIdx[0]]->facePointIdx]->coords[0] +
                 verts[quads[edges[i]->quadIdx[1]]->facePointIdx]->coords[0] +
                 verts[edges[i]->v1i]->coords[0] +
                 verts[edges[i]->v2i]->coords[0]) / 4.0f;
 
+            /// interpolate Y
             tempVert[1] = (verts[quads[edges[i]->quadIdx[0]]->facePointIdx]->coords[1] +
                 verts[quads[edges[i]->quadIdx[1]]->facePointIdx]->coords[1] +
                 verts[edges[i]->v1i]->coords[1] +
                 verts[edges[i]->v2i]->coords[1]) / 4.0f;
 
+            /// interpolate Z
             tempVert[2] = (verts[quads[edges[i]->quadIdx[0]]->facePointIdx]->coords[2] +
                 verts[quads[edges[i]->quadIdx[1]]->facePointIdx]->coords[2] +
                 verts[edges[i]->v1i]->coords[2] +
                 verts[edges[i]->v2i]->coords[2]) / 4.0f;
             ////printf("Edge point coordinats %.5g, %.5g, %.5g\n", tempVert[0], tempVert[1], tempVert[2]);
             addVertex(tempVert[0], tempVert[1], tempVert[2]);
+            */
             edges[i]->midPointIdx = verts.len() - 1;
 
         }
@@ -512,7 +514,7 @@ Mesh Mesh::import_vbo(mx vbo, mx ibo, bool convert_from_tris) {
 
     if (convert_from_tris) {
         u32 *tris = ibo.origin<u32>();
-        array<u32> &quads = mesh->quads;
+        array<Quad> &quads = mesh->quads;
 
         for (int itri = 0; itri < ibo.count() / 6; itri++) {
             u32 t0_A = tris[itri * 6 + 0]; // A
@@ -524,16 +526,15 @@ Mesh Mesh::import_vbo(mx vbo, mx ibo, bool convert_from_tris) {
 
             if (t0_A == t1_A && t0_C == t1_C) {
                 assert(t0_A == t1_A && t0_C == t1_C);
-                quads += Quad(t0_A, t0_B, t1_C, t1_D);
+                quads += Quad(quads.len(), t0_A, t0_B, t1_C, t1_D);
             } else if (t0_B == t1_A && t0_C == t1_D) {
-                quads += Quad(t0_A, t0_B, t0_C, t1_C);
+                quads += Quad(quads.len(), t0_A, t0_B, t0_C, t1_C);
                 assert(t0_B == t1_A && t0_C == t1_D);
             } else {
-                debug_break(); // never happens (blender model exported to glTF (their exporter does not alter indexing data))
             }
         }
     } else {
-        mesh->quads = ibo.grab();
+        mesh->quads = ibo.hold();
     }
 
     /// copy vertex data (no altering original)
@@ -541,22 +542,26 @@ Mesh Mesh::import_vbo(mx vbo, mx ibo, bool convert_from_tris) {
     num    stride = vtype->base_sz;
     u8*    vdata  = vbo.origin<u8>();
 
-    mesh->verts = array<mx>(vbo.count() * 4); /// reserve enough space for copy and sub-division
-    for (num v = 0; v < vbo.count(); i++)
-        mesh->verts += memory::alloc(vtype, 1, 1, &vdata[stride * v]);
+    mesh->verts = array<Vertex>(vbo.count() * 4); /// reserve enough space for copy and sub-division
+    for (num v = 0; v < vbo.count(); v++) {
+        mx velement(vtype, &vdata[v * stride]);
+        mesh->verts += Vertex(v, velement);
+    }
+    mesh->vtype = vtype;
+    return mesh;
 }
 
 void Mesh::export_vbo(mx &vbo, mx &ibo, bool convert_to_tris) {
     /// simple tessellation from quads (maybe TOO simple!)
-    auto tessellate = [](array<u32> &quads) {
+    auto tessellate = [](array<Quad> &quads) {
         array<u32> tris(quads.len() / 4 * 6);
-        for (int i = 0; i < quads.len(); i += 4) {
-            tris += quads[i + 0];
-            tris += quads[i + 1];
-            tris += quads[i + 2];
-            tris += quads[i + 3];
-            tris += quads[i + 0];
-            tris += quads[i + 2];
+        for (Quad &quad: quads) {
+            tris += quad->v1i;
+            tris += quad->v2i;
+            tris += quad->v3i;
+            tris += quad->v4i;
+            tris += quad->v1i;
+            tris += quad->v3i;
         }
         return tris.hold();
     };
@@ -566,9 +571,9 @@ void Mesh::export_vbo(mx &vbo, mx &ibo, bool convert_to_tris) {
     
     vbo        = memory::alloc(data->vtype, data->verts.len(), 0, null);
     u8* dst    = vbo.origin<u8>();
-    num stride = vtype->base_sz;
+    num stride = data->vtype->base_sz;
     
-    for (num v = 0; v < vbo.count(); i++) {
+    for (num v = 0; v < vbo.count(); v++) {
         u8* src = data->verts[v].origin<u8>();
         memcpy(&dst[v * stride], src, stride);
     }

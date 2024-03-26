@@ -81,7 +81,6 @@ struct ShaderVar:mx {
         size_t   count;
         u32      flags;
         mx       cache; /// if set, this is provided for data (otherwise a unique allocation is given)
-        register(M)
     };
     /// handle cases of non-object, or model-based allocation
     mx alloc() {
@@ -161,8 +160,6 @@ struct GraphicsData {
     type_t      vtype;
     GraphicsGen gen;
     array<ShaderVar> bindings; /// ordered the same as shader
-    ///
-    type_register(GraphicsData);
 };
 
 struct Graphics:mx {

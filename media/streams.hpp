@@ -30,7 +30,6 @@ struct Remote:mx {
     struct M {
         raw_t sdata;
         lambda<void(Frame&)> callback;
-        register(M)
     };
     void close();
     mx_basic(Remote);
@@ -61,7 +60,6 @@ struct MStream:mx {
         PCMInfo              pcm_output;
         int                  video_next_id;
         int                  audio_next_id;
-        register(M)
     };
 
     MStream(array<StreamType> stream_types, array<Media> media, lambda<void(MStream)> fn):MStream() {

@@ -201,8 +201,6 @@ struct iTLS {
         mbedtls_psa_crypto_free();
     #endif /* MBEDTLS_USE_PSA_CRYPTO */
     }
-    
-    type_register(iTLS);
 };
 
 mx_implement(TLS, mx, iTLS);
@@ -412,8 +410,6 @@ struct Session {
         
         return client;
     }
-
-    type_register(Session);
 };
 
 mx_implement(sock, mx, Session);

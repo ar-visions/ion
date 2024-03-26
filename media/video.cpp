@@ -182,7 +182,6 @@ struct Nalu:mx {
         operator bool() {
             return type != Type::unspecified;
         }
-        register(M);
     };
 
     static Nalu find(array<Nalu> nalus, Nalu::Type type) {
@@ -323,8 +322,6 @@ struct iVideo {
     operator bool() {
         return mp4;
     }
-
-    register(iVideo);
 
     void load(ion::path p) {
         playback = p;

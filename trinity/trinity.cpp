@@ -35,8 +35,6 @@ struct IDevice {
         queue.WriteBuffer(buffer, 0, data, size);
         return buffer;
     }
-
-    register(IDevice)
 };
 
 
@@ -143,7 +141,6 @@ struct ITexture {
     }
 
     operator bool() { return bool(texture); }
-    type_register(ITexture);
 };
 
 static wgpu::TextureFormat preferred_swapchain_format() {
@@ -320,19 +317,16 @@ struct IDawn {
         glfwWindowHint(GLFW_COCOA_RETINA_FRAMEBUFFER, GLFW_FALSE);
         glfwSetErrorCallback(PrintGLFWError);
     }
-    register(IDawn);
 };
 
 struct IRenderable {
     str name; /// needs the same identification
     array<mx> var_data; /// from ShaderVar::alloc()
-    register(IRenderable)
 };
 
 struct IObject {
     Model model;
     array<IRenderable> renderables;
-    register(IObject)
 };
 
 struct IVar {
@@ -509,7 +503,11 @@ struct IPipeline {
             }
             mx_ibuffer = mx(mem_indices);
             Mesh mesh = Mesh::import_vbo(mx_vbuffer, mx_ibuffer, true);
+            mesh.catmull_clark();
 
+            mx mx_vbuffer_sub;
+            mx mx_ibuffer_sub;
+            mesh.export_vbo(mx_vbuffer_sub, mx_ibuffer_sub, true);
             /// load joints for this node (may be default or null state)
             joints = m.joints(node);
             break;
@@ -775,8 +773,6 @@ struct IPipeline {
     ~IPipeline() {
         cleanup();
     }
-
-    register(IPipeline);
 };
 
 struct IModel {
@@ -811,8 +807,6 @@ struct IModel {
             sub->create_with_attrs(gfx);
         }
     }
-
-    register(IModel);
 };
 
 Model::Model(Device &device, symbol model, array<Graphics> select):Model() {
@@ -1052,8 +1046,6 @@ struct IWindow {
         if (--count == 0)
             glfwTerminate();
     }
-
-    register(IWindow);
 };
 
 float Window::aspect() {

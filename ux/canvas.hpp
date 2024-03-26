@@ -43,7 +43,6 @@ namespace graphics {
             void*       sk_offset;      /// applied offset; this only works for positive offset
             real        cache_offset;   /// when sk_path/sk_offset made, this is set
             real        offset;         /// current state for offset; an sk_path is not made because it may not be completed by the user
-            type_register(sdata);
         };
         
         ///
@@ -139,7 +138,6 @@ namespace graphics {
                     console.fault("border requires 1 (size) or 2 (size, roundness) or 5 (size, tl tr br bl) values");
             }
         }
-        type_register(border);
     };
 };
 
@@ -204,8 +202,6 @@ struct alignment {
         return { x * (1.0 - f) + b.x * f,
                  y * (1.0 - f) + b.y * f };
     }
-
-    type_register(alignment);
 };
 
 struct font:mx {
@@ -214,7 +210,6 @@ struct font:mx {
         str  name = "RobotoMono-Regular";
         bool loaded = false;
         void *sk_font = null;
-        type_register(fdata);
     };
 
     mx_object(font, mx, fdata);
@@ -376,8 +371,6 @@ struct EStr {
     operator str() {
         return fmt { "{0}{1}", { value, suffix } };
     }
-
-    register(EStr);
 };
 
 /// external props, used to manage SVG
@@ -388,7 +381,6 @@ struct EProps:mx {
         operator bool() {
             return eprops.len() > 0;
         }
-        register(M)
     };
     mx_basic(EProps);
 
@@ -421,7 +413,6 @@ struct SVG:mx {
         int        w, h;
         int       rw, rh;
         operator bool();
-        register(M);
     };
 
     SVG(path p);

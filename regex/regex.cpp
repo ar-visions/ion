@@ -30,7 +30,6 @@ struct iRegEx {
         free(states);
         drop(last_mem);
     }
-    register(iRegEx);
 };
 
 RegEx::RegEx(symbol pattern, Behaviour b) : RegEx(str(pattern), b) { }

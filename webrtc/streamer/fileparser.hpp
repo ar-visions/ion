@@ -26,7 +26,6 @@ struct FileParser: Source {
         bool loop;
         uint64_t loopTimestampOffset = 0;
         rtc::binary sample = {};
-        type_register(iFileParser);
     };
 
     mx_object(FileParser, Source, iFileParser);

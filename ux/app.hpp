@@ -17,16 +17,12 @@ struct adata {
     lambda<node(struct App&)>  app_fn;
     map<mx>             args;
     Services            services;
-    ///
-    type_register(adata);
 };
 
 struct WebService:node {
     struct props {
         uri url;
         lambda<message(message)> on_message;
-
-        type_register(WebService);
 
 		doubly<prop> meta() {
 			return {

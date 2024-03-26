@@ -30,8 +30,6 @@ struct SSHPeer:mx {
         ssh_channel                 chan;
         ssh_event                   mainloop;
 
-        type_register(pdata);
-
         void disconnect();
     };
     mx_object(SSHPeer, mx, pdata);
@@ -65,8 +63,6 @@ struct SSHService:node {
         uri                         bind;
         str                         banner = "default message here\n";
         int                         max_attempts = 3;
-
-        type_register(props);
 
         doubly<prop> meta() const {
             return {
@@ -107,8 +103,6 @@ struct Services:composer {
         lambda<node(Services&)>  service_fn;
         map<mx>                  args;
         bool                     stop, stopped;
-        ///
-        type_register(internal);
     };
     mx_object(Services, composer, internal);
 

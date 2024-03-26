@@ -47,7 +47,6 @@ namespace gltf {
                     { "interpolation",  interpolation },
                 };
             }
-            register(M);
         };
         mx_basic(Sampler);
     };
@@ -62,7 +61,6 @@ namespace gltf {
                     { "path",           path }
                 };
             }
-            register(M);
         };
         mx_basic(ChannelTarget);
     };
@@ -77,7 +75,6 @@ namespace gltf {
                     { "target",         target }
                 };
             }
-            register(M);
         };
         mx_basic(Channel);
     };
@@ -94,7 +91,6 @@ namespace gltf {
                     { "channels",       channels }
                 };
             }
-            register(M);
         };
         mx_basic(Animation);
     };
@@ -113,7 +109,6 @@ namespace gltf {
                     { "componentType",  componentType }
                 };
             }
-            register(M);
         };
         mx_basic(SparseInfo);
     };
@@ -131,7 +126,6 @@ namespace gltf {
                     { "values",         values      }
                 };
             }
-            register(M);
         };
         mx_basic(Sparse);
     };
@@ -186,7 +180,6 @@ namespace gltf {
                 }
                 return scalar_sz;
             };
-            register(M);
         };
 
         size_t vcount() {
@@ -215,7 +208,6 @@ namespace gltf {
                     { "target",       target       }
                 };
             }
-            register(M);
         };
         mx_basic(BufferView);
     };
@@ -237,7 +229,6 @@ namespace gltf {
                     { "extras",              extras      }
                 };
             }
-            register(M);
         };
         mx_basic(Skin);
     };
@@ -252,7 +243,6 @@ namespace gltf {
             glm::mat4           local_default;
             int                 iparent;
             array<int>          ichildren; /// all of these are added into Joints::transforms (as well as root Transforms)
-            register(M)
         };
 
         void multiply(const glm::mat4 &m) {
@@ -284,7 +274,6 @@ namespace gltf {
     struct JData {
         array<glm::mat4>    states;     /// wgpu::Buffer updated with this information per frame
         array<Transform>    transforms; /// same identity as joints array in skin
-        register(JData)
     };
 
     /// references JData
@@ -349,7 +338,6 @@ namespace gltf {
                     { "weights",       weights     }
                 };
             }
-            register(M);
         };
 
         mx_basic(Node);
@@ -372,7 +360,6 @@ namespace gltf {
                     { "targets",       targets    }
                 };
             }
-            register(M);
         };
         mx_basic(Primitive);
     };
@@ -386,7 +373,6 @@ namespace gltf {
                     { "targetNames",  target_names }
                 };
             }
-            register(M);
         };
         mx_basic(MeshExtras);
     };
@@ -406,7 +392,6 @@ namespace gltf {
                     { "extras",       extras     }
                 };
             }
-            register(M);
         };
         mx_basic(Mesh);
     };
@@ -422,7 +407,6 @@ namespace gltf {
                     { "nodes",  nodes }
                 };
             }
-            register(M);
         };
         mx_basic(Scene);
     };
@@ -440,7 +424,6 @@ namespace gltf {
                     { "version",   version   }
                 };
             }
-            register(M);
         };
         mx_basic(AssetDesc);
     };
@@ -456,7 +439,6 @@ namespace gltf {
                     { "uri",        uri        }
                 };
             }
-            register(M);
         };
         mx_basic(Buffer);
     };
@@ -488,7 +470,6 @@ namespace gltf {
                     { "animations",  animations }
                 };
             }
-            register(M);
         };
         mx_basic(Model);
 

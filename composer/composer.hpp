@@ -62,7 +62,6 @@ struct style:mx {
             operator bool() {
                 return type || id || state;
             }
-            register(M)
         };
         mx_basic(Qualifier)
     };
@@ -284,8 +283,6 @@ struct style:mx {
         ///
         operator  bool() { return dur.value >  0; }
         bool operator!() { return dur.value <= 0; }
-
-        type_register(transition);
     };
 
     struct block;
@@ -330,8 +327,6 @@ struct style:mx {
 
         /// optimize member access by caching by member name, and type
         void cache_members();
-
-        type_register(impl);
     };
 
     /// style is loaded from its root Element (AppNameHere.css)
@@ -361,7 +356,6 @@ namespace user {
             states<keyboard>    modifiers;
             bool                repeat;
             bool                up;
-            type_register(kdata);
         };
         mx_object(key, mx, kdata);
     };
@@ -382,7 +376,6 @@ struct event:mx {
         mouse::etype            button_id;
         bool                    prevent_default;
         bool                    stop_propagation;
-        type_register(edata);
     };
 
     mx_object(event, mx, edata);
@@ -422,7 +415,6 @@ struct listener:mx {
         bool      detached;
         ///
         ~ldata() { printf("listener, ...destroyed\n"); }
-        type_register(ldata);
     };
     
     ///
@@ -445,7 +437,6 @@ struct listener:mx {
 struct dispatch:mx {
     struct ddata {
         doubly<listener> listeners;
-        type_register(ddata);
     };
     ///
     mx_object(dispatch, mx, ddata);
@@ -472,11 +463,12 @@ struct composer:mx {
         bool          shift;
         bool          alt;
         int           buttons[16];
-        type_register(cmdata);
     };
     
     /// called from app
     void update_all(node e);
+
+    void set_app(memory *mem);
 
     /// called recursively from update_all -> update(), also called from node generic render (node will need a composer data member)
     static void update(cmdata *composer, node *parent, node *&instance, node &e);
@@ -529,9 +521,6 @@ struct node:mx {
         operator bool() {
             return (type || children.len() > 0);
         }
-        
-        ///
-        type_register(edata);
     };
 
     template <typename T>
@@ -689,7 +678,7 @@ struct node:mx {
 
     /// the element can create its instance.. that instance is a sub-class of Element2 too so we use a forward
     struct node *new_instance() {
-        return (struct node*)data->type->functions->alloc_new((struct node*)null, (struct node*)null);
+        return (struct node*)data->type->functions->alloc_new();
     }
 };
 
@@ -712,7 +701,6 @@ struct node:mx {
     C(mx                o) : C(o.mem->hold())  { }\
     C()                    : C(mx::alloc<C>()) { }\
     intern    *operator->() { return  state; }\
-    type_register(C);
 
 //typedef node* (*FnFactory)();
 using FnFactory = node*(*)();

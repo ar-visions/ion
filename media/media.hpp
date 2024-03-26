@@ -24,7 +24,6 @@ struct PCMInfo:mx {
         u32                 channels;
         mx                  audio_buffer;
         operator bool() { return samples > 0; }
-        register(M);
     };
     mx_basic(PCMInfo);
 };
@@ -35,7 +34,6 @@ struct MediaBuffer:mx {
         mx       buf;
         int      id;
         operator bool() { return buf.mem && bool(buf); }
-        register(M)
     };
     mx_basic(MediaBuffer);
 
@@ -102,8 +100,6 @@ struct iaudio {
 
     ~iaudio()       { delete[] samples; }
     operator bool() { return samples; }
-
-    register(iaudio);
 };
 
 struct audio:mx {

@@ -28,10 +28,9 @@ struct HumanState {
     Light      lights[4];
     u32        light_count;
     u32        padding[3];
-    register(HumanState);
 };
 
-struct Vertex {
+struct HumanVertex {
     glm::vec3 pos;
     glm::vec3 normal;
     glm::vec2 uv0;
@@ -55,8 +54,6 @@ struct Vertex {
             prop { "WEIGHTS_1",     weights1 }
         };
     }
-
-    register(Vertex);
 };
 
 
@@ -64,11 +61,14 @@ struct Vertex {
 struct UState {
     float x_scale = 1.0f;
     float y_scale = 1.0f;
-    register(UState);
 };
 
 int main(int argc, const char* argv[]) {
 
+    Mesh mesh;
+
+    type_t hv_type = typeof(HumanVertex);
+    
     static constexpr uint32_t kWidth = 1024;
     static constexpr uint32_t kHeight = 1024;
 
@@ -107,7 +107,7 @@ int main(int argc, const char* argv[]) {
     Object o_canvas = m_canvas.instance();
 
     Model m_human = Model(device, "human", {
-        Graphics { "Body", typeof(Vertex), { ObjectUniform(HumanState) }, null, "human" }
+        Graphics { "Body", typeof(HumanVertex), { ObjectUniform(HumanState) }, null, "human" }
     });
 
     Object o_human = m_human.instance();

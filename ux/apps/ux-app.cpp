@@ -18,7 +18,6 @@ struct AppTest:Element {
                 prop { "clicked", clicked}
             };
         }
-        type_register(props);
     };
 
     component(AppTest, Element, props);

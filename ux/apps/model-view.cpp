@@ -11,7 +11,6 @@ struct ModelView:Element {
                 prop { "clicked", clicked}
             };
         }
-        type_register(props);
     };
 
     component(ModelView, Element, props);

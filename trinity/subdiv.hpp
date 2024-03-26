@@ -7,7 +7,7 @@ namespace ion {
         static Mesh import_vbo(mx vbo, mx ibo, bool convert_tris);
         void export_vbo(mx &vbo, mx &ibo, bool export_tri);
         
-        Mesh catmull_clark();
+        void catmull_clark();
         mx_declare(Mesh, mx, IMesh)
     };
 }

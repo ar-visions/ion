@@ -39,8 +39,6 @@ struct Client:mx {
         std::optional<std::shared_ptr<ClientTrackData>> audio;
         std::optional<std::shared_ptr<rtc::DataChannel>> dataChannel;
         std::shared_ptr<rtc::PeerConnection> peerConnection;
-
-        type_register(iClient);
     };
 
     mx_object(Client, mx, iClient);
@@ -70,7 +68,6 @@ struct Source:mx {
         lambda<       void(StreamType)> loadNextSample;
         lambda<       void(StreamType)> start;
         lambda<       void(StreamType)> stop;
-        type_register(iSource);
     };
 
     operator bool() { return data && data->start; }
@@ -89,8 +86,6 @@ struct Stream:mx {
         Source  audio;
         Source  video;
         rtc::synchronized_callback<StreamType, uint64_t, rtc::binary> sampleHandler;
-
-        type_register(iStream);
 
         void onSample(std::function<void (StreamType, uint64_t, rtc::binary)> handler) {
             sampleHandler = handler;
@@ -205,8 +200,6 @@ struct Service: node {
 		uri 					  url;
 		lambda<message(message&)> on_message;
 		///
-		type_register(props);
-		///
 		doubly<prop> meta() {
 			return {
 				prop { "url", url },
@@ -280,18 +273,13 @@ struct VideoStream: node {
                 prop { "stream-select", stream_select }
 			};
 		}
-		type_register(props);
 	};
 
 	component(VideoStream, node, props);
 	
 	void mounted();
 };
-
-
 }
-
-
 
 //using namespace std::chrono_literals;
 using std::shared_ptr;

@@ -74,12 +74,6 @@ void App::shell_server(uri bind) {
     
 }
 
-static adata *_app_instance;
-
-adata *app_instance() {
-    return _app_instance;
-}
-
 struct CanvasAttribs {
     glm::vec4 pos;
     glm::vec2 uv;
@@ -94,7 +88,7 @@ struct CanvasAttribs {
 int App::run() {
     App &app = *this;
 
-    _app_instance = data;
+    composer::set_app(mem);
     data->window = Window::create("", vec2i {512, 512});
 
     Window &window  = data->window;
