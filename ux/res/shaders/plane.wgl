@@ -1,0 +1,73 @@
+struct vary {
+    @builtin(position) gl_Position : vec4f,
+    @location(0)       uv0         : vec2f,
+    @location(1)       color       : vec4f
+};
+
+struct light {
+    pos   : vec4f,
+    color : vec4f
+};
+
+struct ustate {
+    model  : mat4x4f,
+    view   : mat4x4f,
+    proj   : mat4x4f,
+    eye    : vec4f,
+    lights : array<light, 4>,
+    light_count : u32
+};
+
+@group(0) @binding(0)  var<uniform> u      : ustate;
+
+struct attribs {
+    @location(0) pos      : vec3f,
+    @location(1) normal   : vec3f,
+    @location(2) uv0      : vec2f,
+    @location(4) tangent  : vec4f,
+};
+
+fn _vertex_main(a : attribs, offset : f32) -> vary {
+    var v : vary;
+    let pos4 = vec4f(a.pos + a.normal * offset, 1.0f);
+    let model_pos = u.model * pos4;
+    let world_pos = u.view * model_pos;//skin_pos;
+    let  clip_pos = u.proj * world_pos;
+
+    var light = vec3f(0.0f);
+    for (var i:u32 = 0u; i < u.light_count; i += 1u) {
+        let light_dir = normalize(u.lights[i].pos.xyz - model_pos.xyz);
+        let amount = max(dot(a.normal, light_dir), 0.0);
+        light += amount * vec3f(1.0f);
+    }
+
+    v.gl_Position = clip_pos;
+    v.color       = vec4f(light, 1.0f);
+    v.uv0         = a.uv0;
+    return v;
+}
+
+@vertex
+fn vertex_main(a : attribs) -> vary {
+    return _vertex_main(a, 0.0f);
+}
+
+@vertex
+fn vertex_wire(a : attribs) -> vary {
+    return _vertex_main(a, 0.001f);
+}
+
+fn _fragment_main(v : vary) -> vec4f {
+    //let color = textureSample(color, color_sa, v.uv0);
+    return v.color;
+}
+
+@fragment
+fn fragment_main(v : vary) -> @location(0) vec4f {
+    return _fragment_main(v);
+}
+
+@fragment
+fn fragment_wire(v : vary) -> @location(0) vec4f {
+    return mix(_fragment_main(v), vec4(1.0f, 1.0f, 0.0f, 1.0f), 0.66f);
+}

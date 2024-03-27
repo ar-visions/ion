@@ -34,7 +34,7 @@ enums(Key, undefined,
 /// having Asset lets us abstract away the usage, format and even dimension
 /// the asset we wouldnt have in resource is depth_stencil
 enums(Asset, undefined, 
-     color, normal, material, reflect, env, attachment, depth_stencil, undefined); /// populate from objects normal map first, and then adjust by equirect if its provided
+     color, normal, material, reflect, env, attachment, depth_stencil, multisample, undefined); /// populate from objects normal map first, and then adjust by equirect if its provided
 
 struct Device;
 

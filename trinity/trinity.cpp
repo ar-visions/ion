@@ -109,7 +109,7 @@ struct ITexture {
     }
 
     /// needs some controls on mip levels for view
-    void create(Device &device, int w, int h, int array_layers, Asset asset_type, wgpu::TextureUsage usage) {
+    void create(Device &device, int w, int h, int array_layers, int sample_count, Asset asset_type, wgpu::TextureUsage usage) {
         assert(device->wgpu);
         /// skia requires this.  it likely has its own swap chain
         if (asset_type == Asset::attachment)
@@ -120,7 +120,7 @@ struct ITexture {
         tx_desc.size.width              = (u32)w;
         tx_desc.size.height             = (u32)h;
         tx_desc.size.depthOrArrayLayers = (u32)array_layers;
-        tx_desc.sampleCount             = 1;
+        tx_desc.sampleCount             = sample_count;
         tx_desc.format                  = asset_format(asset_type);
         tx_desc.mipLevelCount           = 1;
         tx_desc.usage                   = usage;
@@ -169,7 +169,7 @@ void Texture::cleanup_resize(str user) {
 
 
 void Texture::resize(vec2i sz) {
-    data->create(data->device, sz.x, sz.y, 1, data->asset_type, data->usage);
+    data->create(data->device, sz.x, sz.y, 1, 1, data->asset_type, data->usage);
 }
 
 ion::image Texture::asset_image(symbol name, Asset type) {
@@ -188,7 +188,7 @@ ion::image Texture::asset_image(symbol name, Asset type) {
 Texture Texture::from_image(Device &device, image img, Asset asset_type) {
     Texture tx;
     vec2i sz(img.width(), img.height());
-    tx->create(device, sz.x, sz.y, 1, asset_type,
+    tx->create(device, sz.x, sz.y, 1, 1, asset_type,
         wgpu::TextureUsage::CopyDst | wgpu::TextureUsage::TextureBinding);
     tx->set_content(img);
     return tx;
@@ -202,7 +202,7 @@ Texture Texture::load(Device &dev, symbol name, Asset type) {
 /// formats and usage not needed because we have asset
 Texture Device::create_texture(vec2i sz, Asset asset_type) {
     Texture tx;
-    tx->create(*this, sz.x, sz.y, 1, asset_type,
+    tx->create(*this, sz.x, sz.y, 1, 1, asset_type,
         wgpu::TextureUsage::CopyDst | wgpu::TextureUsage::TextureBinding);
     return tx;
 }
@@ -342,11 +342,12 @@ struct IPipeline {
 
     str                         name;
     
-    wgpu::Buffer                index_buffer;
+    wgpu::Buffer                triangle_buffer;
+    wgpu::Buffer                line_buffer;
     wgpu::Buffer                vertex_buffer;
     array<IVar>                 ivars;
 
-    wgpu::RenderPipeline        pipeline;
+    wgpu::RenderPipeline        pipeline, pipeline_wire;
     wgpu::BindGroup             bind_group;
     wgpu::BindGroupLayout       bgl;
     wgpu::PipelineLayout        pipeline_layout;
@@ -357,10 +358,10 @@ struct IPipeline {
     Device                      device;
     Graphics                    gfx;
     gltf::Model                 m;
-    size_t                      indices_count;
+    size_t                      triangle_count, line_count;
     Texture                     textures[Asset::count - 1];
 
-    void load_from_gltf(gltf::Model &m, str &part, mx &mx_vbuffer, mx &mx_ibuffer, gltf::Joints &joints) {
+    void load_from_gltf(gltf::Model &m, str &part, mx &vertices, mx &quads, gltf::Joints &joints) {
         /// model must have been loaded
         assert(m->nodes);
 
@@ -481,8 +482,7 @@ struct IPipeline {
                 }
             }
             /// create vertex buffer by wrapping what we've copied from allocation (we have a primitive array)
-            mx verts { memory::wrap(gfx->vtype, vbuf, vlen) }; /// load indices (always store 32bit uint)
-            mx_vbuffer = verts;
+            vertices = mx { memory::wrap(gfx->vtype, vbuf, vlen) }; /// load indices (always store 32bit uint)
 
             /// indices data = indexing mesh-primitive->indices
             gltf::Accessor &a_indices = m->accessors[prim->indices];
@@ -501,13 +501,8 @@ struct IPipeline {
                 u32 *u32_window = (u32*)(buf->uri.data + view->byteOffset);
                 mem_indices = memory::window(typeof(u32), u32_window, a_indices->count);
             }
-            mx_ibuffer = mx(mem_indices);
-            Mesh mesh = Mesh::import_vbo(mx_vbuffer, mx_ibuffer, true);
-            mesh.catmull_clark();
+            quads = mx(mem_indices);
 
-            mx mx_vbuffer_sub;
-            mx mx_ibuffer_sub;
-            mesh.export_vbo(mx_vbuffer_sub, mx_ibuffer_sub, true);
             /// load joints for this node (may be default or null state)
             joints = m.joints(node);
             break;
@@ -645,7 +640,7 @@ struct IPipeline {
     }
 
     /// get meta attributes on the Vertex type (all must be used in shader)
-    void create_with_attrs(Graphics &gfx) {
+    void create_with_attrs(Graphics &gfx, bool wire) {
         wgpu::Device  device        = this->device->wgpu;
         size_t        attrib_count  = 0;
         doubly<prop> &props         = *(doubly<prop>*)gfx->vtype->meta;
@@ -665,6 +660,43 @@ struct IPipeline {
             return wgpu::VertexFormat::Undefined;
         };
 
+        dawn::utils::ComboRenderPipelineDescriptor render_desc;
+        render_desc.layout = pipeline_layout;
+
+        render_desc.multisample.count = 4;
+
+        if (wire) {
+            render_desc.primitive.topology = wgpu::PrimitiveTopology::LineList;
+        } else {
+            render_desc.primitive.frontFace = wgpu::FrontFace::CCW;
+            render_desc.primitive.cullMode = wgpu::CullMode::Back;
+            render_desc.primitive.topology = wgpu::PrimitiveTopology::TriangleList;
+        }
+
+        render_desc.cFragment.module = mod;
+        render_desc.cFragment.entryPoint = wire ? "fragment_wire" : "fragment_main";
+
+        render_desc.vertex.module = mod;
+        render_desc.vertex.entryPoint = wire ? "vertex_wire" : "vertex_main";
+        render_desc.vertex.bufferCount = 1;
+        
+        /// todo: stop using this structure, as its confusing
+        render_desc.cDepthStencil.depthWriteEnabled = true;
+
+        if (wire)
+            render_desc.cDepthStencil.depthCompare = wgpu::CompareFunction::LessEqual;
+        else
+            render_desc.cDepthStencil.depthCompare = wgpu::CompareFunction::Less;
+        
+        render_desc.EnableDepthStencil(wgpu::TextureFormat::Depth24PlusStencil8);
+
+        for (prop &p: props) {
+            render_desc.cAttributes[attrib_count].shaderLocation = attrib_count;
+            render_desc.cAttributes[attrib_count].format         = get_wgpu_format(p);
+            render_desc.cAttributes[attrib_count].offset         = p.offset;
+            attrib_count++;
+        }
+
         /// blending could be a series of flattened enums
         wgpu::BlendState blend = {
             .color = {
@@ -679,42 +711,21 @@ struct IPipeline {
             }
         };
 
-        dawn::utils::ComboRenderPipelineDescriptor render_desc;
-        render_desc.layout = pipeline_layout;
-        render_desc.primitive.frontFace = wgpu::FrontFace::CCW;
-        render_desc.primitive.cullMode = wgpu::CullMode::Back;
-        render_desc.primitive.topology = wgpu::PrimitiveTopology::TriangleList;
-
-        render_desc.cFragment.module = mod;
-        render_desc.cFragment.entryPoint = "fragment_main";
-
-        render_desc.vertex.module = mod;
-        render_desc.vertex.entryPoint = "vertex_main";
-        render_desc.vertex.bufferCount = 1;
-        
-        /// todo: stop using this structure, as its confusing
-        render_desc.cDepthStencil.depthWriteEnabled = true;
-        render_desc.cDepthStencil.depthCompare = wgpu::CompareFunction::Less;
-        render_desc.EnableDepthStencil(wgpu::TextureFormat::Depth24PlusStencil8);
-
-        for (prop &p: props) {
-            render_desc.cAttributes[attrib_count].shaderLocation = attrib_count;
-            render_desc.cAttributes[attrib_count].format         = get_wgpu_format(p);
-            render_desc.cAttributes[attrib_count].offset         = p.offset;
-            attrib_count++;
-        }
-
         render_desc.cBuffers[0].arrayStride = gfx->vtype->base_sz;// sizeof(Attribs);
         render_desc.cBuffers[0].attributeCount = attrib_count;
         render_desc.cTargets[0].format = preferred_swapchain_format();
         render_desc.cTargets[0].blend = &blend; /// needs a way to disable blending
 
-        pipeline = device.CreateRenderPipeline(&render_desc);
+        if (wire)
+            pipeline_wire = device.CreateRenderPipeline(&render_desc);
+        else
+            pipeline = device.CreateRenderPipeline(&render_desc);
         Dawn dawn;
         dawn.process_events();
+        debug_break();
     }
 
-    void submit(IRenderable &renderable, wgpu::TextureView color_view, wgpu::TextureView depth_stencil, states<Clear> clear_states, rgbaf clear_color) {
+    void submit(IRenderable &renderable, wgpu::TextureView &swap_view, wgpu::TextureView &color_view, wgpu::TextureView &depth_stencil, states<Clear> &clear_states, rgbaf &clear_color) {
         /// update ivar buffers where defined
         for (int i = 0; i < ivars.count(); i++) {
             IVar &ivar = ivars[i];
@@ -730,37 +741,57 @@ struct IPipeline {
             device->queue.WriteBuffer(b, 0, data.origin<void>(), data.total_size());
         }
 
-        wgpu::RenderPassColorAttachment color_attachment {
-            .view = color_view,
-            .loadOp = clear_states[Clear::Color] ? wgpu::LoadOp::Clear : wgpu::LoadOp::Load,
-            .storeOp = wgpu::StoreOp::Store,
-            .clearValue = wgpu::Color { clear_color.r, clear_color.g, clear_color.b, 0.0f }
-        };
-        wgpu::RenderPassDepthStencilAttachment depth_attachment {
-            .view = depth_stencil,
-            .depthLoadOp = clear_states[Clear::Depth] ? wgpu::LoadOp::Clear : wgpu::LoadOp::Load,
-            .depthStoreOp = wgpu::StoreOp::Store,
-            .depthClearValue = 1.0f,
-            .depthReadOnly = false,
-            .stencilLoadOp = clear_states[Clear::Stencil] ? wgpu::LoadOp::Clear : wgpu::LoadOp::Load,
-            .stencilStoreOp = wgpu::StoreOp::Store,
-            .stencilReadOnly = false
-        };
-        wgpu::RenderPassDescriptor render_desc {
-            .colorAttachmentCount = 1,
-            .colorAttachments = &color_attachment,
-            .depthStencilAttachment = depth_stencil ? &depth_attachment : null
+        wgpu::CommandEncoder encoder = device->wgpu.CreateCommandEncoder();
+
+        auto render_encoder = [&](bool wire) -> wgpu::RenderPassEncoder { /// needs to support a singular wire pass where the buffer is cleared
+            wgpu::RenderPassColorAttachment color_attachment {
+                .loadOp = (!wire && clear_states[Clear::Color]) ? wgpu::LoadOp::Clear : wgpu::LoadOp::Load,
+                .storeOp = wgpu::StoreOp::Store,
+                .clearValue = wgpu::Color { clear_color.r, clear_color.g, clear_color.b, 0.0f }
+            };
+            if (color_view) {
+                color_attachment.view = color_view;
+                color_attachment.resolveTarget = swap_view;
+            } else {
+                color_attachment.view = swap_view;
+            }
+            wgpu::RenderPassDepthStencilAttachment depth_attachment {
+                .view = depth_stencil,
+                .depthLoadOp = (!wire && clear_states[Clear::Depth]) ? wgpu::LoadOp::Clear : wgpu::LoadOp::Load,
+                .depthStoreOp = wgpu::StoreOp::Store,
+                .depthClearValue = 1.0f,
+                .depthReadOnly = false,
+                .stencilLoadOp = (!wire && clear_states[Clear::Stencil]) ? wgpu::LoadOp::Clear : wgpu::LoadOp::Load,
+                .stencilStoreOp = wgpu::StoreOp::Store,
+                .stencilReadOnly = false
+            };
+            wgpu::RenderPassDescriptor render_desc {
+                .colorAttachmentCount = 1,
+                .colorAttachments = &color_attachment,
+                .depthStencilAttachment = depth_stencil ? &depth_attachment : null
+            };
+            return encoder.BeginRenderPass(&render_desc);
         };
 
         wgpu::Queue queue = device->queue;
-        wgpu::CommandEncoder encoder = device->wgpu.CreateCommandEncoder();
-        wgpu::RenderPassEncoder render = encoder.BeginRenderPass(&render_desc);
+        
+        wgpu::RenderPassEncoder render = render_encoder(false);
         render.SetPipeline(pipeline);
         render.SetBindGroup(0, bind_group);
         render.SetVertexBuffer(0, vertex_buffer);
-        render.SetIndexBuffer(index_buffer, wgpu::IndexFormat::Uint32);
-        render.DrawIndexed(indices_count);
+        render.SetIndexBuffer(triangle_buffer, wgpu::IndexFormat::Uint32);
+        render.DrawIndexed(triangle_count * 3);
         render.End();
+
+
+        wgpu::RenderPassEncoder wire_render = render_encoder(true);
+        wire_render.SetPipeline(pipeline_wire);
+        wire_render.SetBindGroup(0, bind_group);
+        wire_render.SetVertexBuffer(0, vertex_buffer);
+        wire_render.SetIndexBuffer(line_buffer, wgpu::IndexFormat::Uint32);
+        wire_render.DrawIndexed(line_count * 2);
+        wire_render.End();
+        
         wgpu::CommandBuffer commands = encoder.Finish();
         queue.Submit(1, &commands);
     }
@@ -781,30 +812,56 @@ struct IModel {
     symbol                      model;
     array<Pipeline>             pipelines;
 
-    void submit(IRenderable &renderable, wgpu::TextureView color_view, wgpu::TextureView depth_stencil_view, states<Clear> clear_states, rgbaf clear_color) {
+    void submit(IRenderable &renderable, wgpu::TextureView swap_view, wgpu::TextureView color_view, wgpu::TextureView depth_stencil_view, states<Clear> clear_states, rgbaf clear_color) {
         for (auto p: pipelines)
-            p->submit(renderable, color_view, depth_stencil_view, clear_states, clear_color);
+            p->submit(renderable, swap_view, color_view, depth_stencil_view, clear_states, clear_color);
     }
 
     /// create pipeline with shader, textures, vbo/ibo, bindings, attribs, blending and stencil info
     void reload() {
         for (Pipeline &sub: pipelines) {
             Graphics &     gfx    = sub->gfx;
-            mx             vbuffer, ibuffer, bones;
+            mx             vertices, quads, bones;
             array<image>   images;
             gltf::Joints   joints;
 
             if (gfx->gen)
-                gfx->gen(vbuffer, ibuffer, images); /// generate vbo/ibo based on user routine
+                gfx->gen(vertices, quads, images); /// generate vbo/ibo based on user routine
             else
-                sub->load_from_gltf(m, gfx->name, vbuffer, ibuffer, joints); /// otherwise load from gltf
+                sub->load_from_gltf(m, gfx->name, vertices, quads, joints); /// otherwise load from gltf
 
-            sub->index_buffer  = device->create_buffer(ibuffer, wgpu::BufferUsage::Index);
-            sub->vertex_buffer = device->create_buffer(vbuffer, wgpu::BufferUsage::Vertex);
-            sub->indices_count = ibuffer.count();
+            /// sub-divide and tessellate
+            Mesh mesh = Mesh::import_vbo(vertices, quads, false); /// our model is stored as Quads using new glTF feature
+            //mesh.catmull_clark();
+
+            array<u32> lines(quads.count() / 4 * 8);
+            u32 *quad_data = quads.origin<u32>();
+            for (int i = 0; i < quads.count(); i += 4) {
+                lines += quad_data[i + 0];
+                lines += quad_data[i + 1];
+
+                lines += quad_data[i + 1];
+                lines += quad_data[i + 3];
+
+                lines += quad_data[i + 3];
+                lines += quad_data[i + 2];
+
+                lines += quad_data[i + 2];
+                lines += quad_data[i + 0];
+            }
+
+            mx triangles;
+            mesh.export_vbo(vertices, quads, triangles, true);
+
+            sub->triangle_buffer = device->create_buffer(triangles, wgpu::BufferUsage::Index);
+            sub->line_buffer     = device->create_buffer(lines,     wgpu::BufferUsage::Index);
+            sub->vertex_buffer   = device->create_buffer(vertices,  wgpu::BufferUsage::Vertex);
+            sub->triangle_count  = triangles.count() / 3;
+            sub->line_count      = lines.count() / 2;
             sub->load_shader(gfx);
             sub->load_bindings(gfx, joints);
-            sub->create_with_attrs(gfx);
+            sub->create_with_attrs(gfx, false);
+            sub->create_with_attrs(gfx, true);
         }
     }
 };
@@ -916,6 +973,8 @@ struct IWindow {
     Texture                     depth_stencil;
     wgpu::Surface               surface;
     wgpu::SwapChain             swapchain;
+    Texture                     color;
+
     array<Presentation>         presentations;
     vec2i                       sz;
     void                       *user_data;
@@ -964,9 +1023,13 @@ struct IWindow {
         if (iwin->key_scancode) iwin->key_scancode(key, scancode, action, mods);
     }
 
-    void update_depth_stencil() {
-        depth_stencil->create(dawn->device, sz.x, sz.y, 1, 
+    void update_attachments() {
+        depth_stencil->create(dawn->device, sz.x, sz.y, 1, 4,
             Asset::depth_stencil,
+            wgpu::TextureUsage::RenderAttachment);
+        
+        color->create(dawn->device, sz.x, sz.y, 1, 4,
+            Asset::multisample,
             wgpu::TextureUsage::RenderAttachment);
     }
 
@@ -982,7 +1045,7 @@ struct IWindow {
         };
 
         swapchain = dawn->device->wgpu.CreateSwapChain(surface, &swapChainDesc);
-        update_depth_stencil();
+        update_attachments();
     }
 
     void register_presentation(OnWindowPresent on_present, OnWindowResize on_resize) {
@@ -1005,7 +1068,7 @@ struct IWindow {
                 assert(o->renderables.count() == o->model->pipelines.count());
                 for (IRenderable &renderable: o->renderables) {
                     Pipeline &pl = o->model->pipelines[ipipeline];
-                    pl->submit(renderable, swap_view, depth_stencil->view, clear_states, pl->clear_color);
+                    pl->submit(renderable, swap_view, color->view, depth_stencil->view, clear_states, pl->clear_color);
                     clear_states[Clear::Color] = false;
                     clear_states[Clear::Depth] = false;
                     clear_states[Clear::Stencil] = false;

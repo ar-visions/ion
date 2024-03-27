@@ -12,16 +12,16 @@ struct Vertex:mx {
         array<int>      vertList;   //adj vertices
         array<int>      triList;
         array<int>      quadList;
-        doubly<int>     edgeList;
+        array<int>      edgeList;
     };
-    Vertex(int idx, mx vdata) {
+    Vertex(int idx, mx vdata) : Vertex() {
         data->idx = idx;
         data->vdata = vdata;
         data->coords = vdata.origin<float>();
     }
     /// interpolate an average using meta properties
-    Vertex(int idx, mx (&src)[4]) {
-        type_t vtype = src[0].type();
+    Vertex(int idx, mx (&src)[4]) : Vertex() {
+        type_t vtype = src[0].type(); /// all must be same, of course
         data->idx    = idx;
         data->vdata  = memory::alloc(vtype, 1, 0, src[0].origin<void>());
         data->coords = data->vdata.origin<float>();
@@ -118,19 +118,14 @@ struct IMesh {
         fclose(fPtr);
     }*/
 
-    void import(array<mx> &mx_verts, array<u32> &quads) {
-        for (mx &vert: mx_verts) {
-            addVertex(vert);
-        }
-    }
-
     bool makeVertsNeighbor(int v1i, int v2i) {
         //returns true if v1i already neighbor w/ v2i; false o/w
         for (int i = 0; i < verts[v1i]->vertList.len(); i++)
             if (verts[v1i]->vertList[i] == v2i)
                 return true;
 
-        verts[v1i]->vertList += v2i;
+        Vertex &v1 = verts[v1i];
+        v1->vertList += v2i;
         verts[v2i]->vertList += v1i;
         return false;
     }
@@ -426,6 +421,9 @@ struct IMesh {
 
             for (int j = 0; j < n; j++) {
                 tempX_fp += verts[quads[v->quadList[j]]->facePointIdx]->coords[0]/n;
+                printf("v->edgeList[j] = %d\n", v->edgeList[j]);
+                printf("edges len = %d\n", (int)edges.len());
+                printf("midPointIdx = %d\n", edges[v->edgeList[j]]->midPointIdx);
                 tempX_ep += verts[edges[v->edgeList[j]]->midPointIdx]->coords[0] / n;
 
                 tempY_fp += verts[quads[v->quadList[j]]->facePointIdx]->coords[1] / n;
@@ -470,7 +468,7 @@ struct IMesh {
         int tempQuadIdx=-1, tempEdge1=-1, tempEdge2=-1;
         int vert1_oldQuads, vert1_oldEdges, vert2_oldQuads, vert2_oldEdges,
             vert3_oldQuads, vert3_oldEdges, vert4_oldQuads, vert4_oldEdges;
-        
+
         for (int i = 0; i < quads.len(); i++) {
             tempEdge1_2 = getEdgeFromVerts(quads[i]->v1i, quads[i]->v2i);
             tempEdge2_3 = getEdgeFromVerts(quads[i]->v2i, quads[i]->v3i);
@@ -492,9 +490,10 @@ struct IMesh {
             addCatmullClarkQuad(quads[i]->v4i, edges[tempEdge4_1]->midPointIdx,
                 quads[i]->facePointIdx, edges[tempEdge3_4]->midPointIdx, catmullQuads, catmullEdges, verts_oldEdges);
         }
+
         // erase old verts
-        for (int i = 0; i < oldVertsIdx + 1; i++)
-            verts[i]->edgeList->remove(0, verts_oldEdges[i]);
+        //for (int i = 0; i < oldVertsIdx + 1; i++)
+        //    verts[i]->edgeList->remove(0, verts_oldEdges[i]);
         
         copyEdges(catmullEdges);
         copyQuads(catmullQuads);
@@ -502,6 +501,7 @@ struct IMesh {
         catmullQuads.clear();
         delete[] tempVert;
     }
+
 };
 
 mx_implement(Mesh, mx, IMesh)
@@ -509,33 +509,7 @@ mx_implement(Mesh, mx, IMesh)
 Mesh Mesh::import_vbo(mx vbo, mx ibo, bool convert_from_tris) {
     Mesh mesh;
     mesh->vtype = vbo.type();
-
-    assert(ibo.type() == typeof(u32));
-
-    if (convert_from_tris) {
-        u32 *tris = ibo.origin<u32>();
-        array<Quad> &quads = mesh->quads;
-
-        for (int itri = 0; itri < ibo.count() / 6; itri++) {
-            u32 t0_A = tris[itri * 6 + 0]; // A
-            u32 t0_B = tris[itri * 6 + 1]; // B
-            u32 t0_C = tris[itri * 6 + 2]; // C
-            u32 t1_A = tris[itri * 6 + 3]; // A
-            u32 t1_C = tris[itri * 6 + 4]; // C
-            u32 t1_D = tris[itri * 6 + 5]; // D
-
-            if (t0_A == t1_A && t0_C == t1_C) {
-                assert(t0_A == t1_A && t0_C == t1_C);
-                quads += Quad(quads.len(), t0_A, t0_B, t1_C, t1_D);
-            } else if (t0_B == t1_A && t0_C == t1_D) {
-                quads += Quad(quads.len(), t0_A, t0_B, t0_C, t1_C);
-                assert(t0_B == t1_A && t0_C == t1_D);
-            } else {
-            }
-        }
-    } else {
-        mesh->quads = ibo.hold();
-    }
+    array<Quad> &quads = mesh->quads;
 
     /// copy vertex data (no altering original)
     type_t vtype  = vbo.type();
@@ -547,11 +521,48 @@ Mesh Mesh::import_vbo(mx vbo, mx ibo, bool convert_from_tris) {
         mx velement(vtype, &vdata[v * stride]);
         mesh->verts += Vertex(v, velement);
     }
-    mesh->vtype = vtype;
+    if (convert_from_tris) {
+        u32 *tris = ibo.origin<u32>();
+        for (int itri = 0; itri < ibo.count() / 6; itri++) {
+            u32 t0_A = tris[itri * 6 + 0]; // A
+            u32 t0_B = tris[itri * 6 + 1]; // B
+            u32 t0_C = tris[itri * 6 + 2]; // C
+            u32 t1_A = tris[itri * 6 + 3]; // A
+            u32 t1_C = tris[itri * 6 + 4]; // C
+            u32 t1_D = tris[itri * 6 + 5]; // D
+
+            if (t0_A == t1_A && t0_C == t1_C) {
+                assert(t0_A == t1_A && t0_C == t1_C);
+                mesh->addQuad(t0_A, t0_B, t1_C, t1_D);
+                mesh->makeVertsNeighbor(t0_A, t0_B);
+                mesh->makeVertsNeighbor(t0_B, t0_C);
+                mesh->makeVertsNeighbor(t0_C, t1_D);
+                mesh->makeVertsNeighbor(t1_D, t0_A);
+
+            } else if (t0_B == t1_A && t0_C == t1_D) {
+                mesh->addQuad(t0_A, t0_B, t0_C, t1_C);
+                mesh->makeVertsNeighbor(t0_A, t0_B); /// these are not validated
+                mesh->makeVertsNeighbor(t0_B, t0_C);
+                mesh->makeVertsNeighbor(t0_C, t1_C);
+                mesh->makeVertsNeighbor(t1_C, t0_A);
+                assert(t0_B == t1_A && t0_C == t1_D);
+            } else {
+            }
+        }
+    } else {
+        u32 *quads = ibo.origin<u32>();
+        for (int iquad = 0; iquad < ibo.count() / 4; iquad++) {
+            u32 qA = quads[iquad * 4 + 0]; // A
+            u32 qB = quads[iquad * 4 + 1]; // B
+            u32 qC = quads[iquad * 4 + 2]; // C
+            u32 qD = quads[iquad * 4 + 3]; // D
+            mesh->addQuad(qA, qB, qD, qC); // ABCD is a bow-tie layout from blender, so lets flip C and D, making a clock-wise Quad
+        }
+    }
     return mesh;
 }
 
-void Mesh::export_vbo(mx &vbo, mx &ibo, bool convert_to_tris) {
+void Mesh::export_vbo(mx &vbo, mx &quads, mx &out_tris, bool convert_to_tris) {
     /// simple tessellation from quads (maybe TOO simple!)
     auto tessellate = [](array<Quad> &quads) {
         array<u32> tris(quads.len() / 4 * 6);
@@ -559,24 +570,38 @@ void Mesh::export_vbo(mx &vbo, mx &ibo, bool convert_to_tris) {
             tris += quad->v1i;
             tris += quad->v2i;
             tris += quad->v3i;
+            tris += quad->v3i;
             tris += quad->v4i;
             tris += quad->v1i;
-            tris += quad->v3i;
         }
         return tris.hold();
     };
 
     /// convert ibo buffer to triangles from quads
-    ibo        = convert_to_tris ? tessellate(data->quads) : data->quads.hold();
-    
+    quads = data->quads.hold(); /// we can always use quads for rendering wireframe
+    if (convert_to_tris)
+        out_tris = tessellate(data->quads);
+
     vbo        = memory::alloc(data->vtype, data->verts.len(), 0, null);
     u8* dst    = vbo.origin<u8>();
     num stride = data->vtype->base_sz;
     
     for (num v = 0; v < vbo.count(); v++) {
-        u8* src = data->verts[v].origin<u8>();
+        u8* src = data->verts[v]->vdata.origin<u8>();
         memcpy(&dst[v * stride], src, stride);
     }
+
+    u32 *indices = quads.origin<u32>();
+
+    glm::vec3 &v_t0_TL = *(glm::vec3*)&dst[indices[0] * stride];
+    glm::vec3 &v_t0_TR = *(glm::vec3*)&dst[indices[1] * stride];
+    glm::vec3 &v_t0_BR = *(glm::vec3*)&dst[indices[2] * stride];
+
+    glm::vec3 &v_t1_BR = *(glm::vec3*)&dst[indices[3] * stride];
+    glm::vec3 &v_t1_BL = *(glm::vec3*)&dst[indices[4] * stride];
+    glm::vec3 &v_t1_TL = *(glm::vec3*)&dst[indices[5] * stride];
+
+    debug_break();
 }
 
 /// @github/bertaye wrote very clear code on this

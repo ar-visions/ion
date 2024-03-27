@@ -87,27 +87,22 @@ int main(int argc, const char* argv[]) {
                 ObjectUniform(UState),
                 ObjectVector(float, 2)
             },
-            /// with this lambda, we are providing our own vbo/ibo
-            [](mx &vbo, mx &ibo, array<image> &images) {
-                static const uint32_t indexData[6] = {
-                    0, 1, 2,
-                    2, 1, 3
-                };
-                static CanvasAttribs vertexData[4] = {
+            /// with this lambda, we are providing our own vertices and faces (quads)
+            [](mx &vertices, mx &quads, array<image> &images) {
+                quads = array<u32> { 0, 1, 2, 3 }.hold();
+                vertices = array<CanvasAttribs> {
                     {{ -1.0f, -1.0f, 0.0f, 1.0f }, {  0.0f, 0.0f }},
                     {{  1.0f, -1.0f, 0.0f, 1.0f }, {  1.0f, 0.0f }},
                     {{ -1.0f,  1.0f, 0.0f, 1.0f }, { -1.0f, 1.0f }},
                     {{  1.0f,  1.0f, 0.0f, 1.0f }, {  1.0f, 1.0f }}
-                };
-                ibo = mx::wrap<u32>((void*)indexData, 6);
-                vbo = mx::wrap<CanvasAttribs>((void*)vertexData, 4);
+                }.hold();
             }
         }
     });
     Object o_canvas = m_canvas.instance();
 
-    Model m_human = Model(device, "human", {
-        Graphics { "Body", typeof(HumanVertex), { ObjectUniform(HumanState) }, null, "human" }
+    Model m_human = Model(device, "plane", {
+        Graphics { "Plane", typeof(HumanVertex), { ObjectUniform(HumanState) }, null, "plane" }
     });
 
     Object o_human = m_human.instance();
@@ -138,11 +133,16 @@ int main(int argc, const char* argv[]) {
             canvas.fill(top);
             canvas.flush();
 
-            HumanState &u_human = o_human.uniform<HumanState>("Body");
-            glm::vec3 eye    = glm::vec3(0.0f, 1.5f, -0.8f);
-            glm::vec3 target = glm::vec3(0.0f, 1.5f, 0.0f);
-            glm::vec3 up     = glm::vec3(0.0f, 1.0f, 0.0f);
-
+            HumanState &u_human = o_human.uniform<HumanState>("Plane");
+            //glm::vec3 eye    = glm::vec3(0.0f, 1.5f, -0.8f);
+            //glm::vec3 target = glm::vec3(0.0f, 1.5f, 0.0f);
+            //glm::vec3 up     = glm::vec3(0.0f, 1.0f, 0.0f);
+            glm::vec3 eye     = glm::vec3(0.0f, 1.0f, -0.8f);
+            glm::vec3 target  = glm::vec3(0.0f, 0.0f, 0.0f);
+            glm::vec3 forward = glm::normalize(target - eye);
+            glm::vec3 w_up    = glm::vec3(0.0f, 1.0f, 0.0f);
+            glm::vec3 right   = glm::normalize(glm::cross(forward, w_up));
+            glm::vec3 up      = glm::cross(right, forward);
             
             static float inc = 0;
             inc += 0.0004f;

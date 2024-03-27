@@ -46,8 +46,7 @@ struct attribs {
     @location(8) weights1 : vec4<f32>
 };
 
-@vertex
-fn vertex_main(a : attribs) -> vary {
+fn _vertex(a : attribs) -> vary {
     var v : vary;
     let pos4 = vec4f(a.pos, 1.0f);
     var skin_pos : vec4f = vec4f(0.0f);
@@ -74,8 +73,27 @@ fn vertex_main(a : attribs) -> vary {
     return v;
 }
 
-@fragment
-fn fragment_main(v : vary) -> @location(0) vec4f {
+@vertex
+fn vertex_main(a : attribs) -> vary {
+    return _vertex(a);
+}
+
+@vertex
+fn vertex_wire(a : attribs) -> vary {
+    return _vertex(a);
+}
+
+fn _fragment(v : vary) -> vec4f {
     //let color = textureSample(color, color_sa, v.uv0);
     return v.color;
+}
+
+@fragment
+fn fragment_main(v : vary) -> @location(0) vec4f {
+    return _fragment(v);
+}
+
+@fragment
+fn fragment_wire(v : vary) -> @location(0) vec4f {
+    return mix(_fragment(v), vec4f(1.0f, 1.0f, 0.0f, 1.0f), 0.66f);
 }
