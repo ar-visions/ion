@@ -361,7 +361,7 @@ struct IPipeline {
     size_t                      triangle_count, line_count;
     Texture                     textures[Asset::count - 1];
 
-    void load_from_gltf(gltf::Model &m, str &part, mx &vertices, mx &quads, gltf::Joints &joints) {
+    void load_from_gltf(gltf::Model &m, str &part, mx &vertices, array<u32> &tris, gltf::Joints &joints) {
         /// model must have been loaded
         assert(m->nodes);
 
@@ -501,7 +501,7 @@ struct IPipeline {
                 u32 *u32_window = (u32*)(buf->uri.data + view->byteOffset);
                 mem_indices = memory::window(typeof(u32), u32_window, a_indices->count);
             }
-            quads = mx(mem_indices);
+            tris = mem_indices->hold();
 
             /// load joints for this node (may be default or null state)
             joints = m.joints(node);
@@ -821,43 +821,41 @@ struct IModel {
     void reload() {
         for (Pipeline &sub: pipelines) {
             Graphics &     gfx    = sub->gfx;
-            mx             vertices, quads, bones;
+            array<u32>     quads, triangles;
+            mx             vertices, bones;
             array<image>   images;
             gltf::Joints   joints;
-
+            int            subdiv = 0;
             if (gfx->gen)
-                gfx->gen(vertices, quads, images); /// generate vbo/ibo based on user routine
-            else
-                sub->load_from_gltf(m, gfx->name, vertices, quads, joints); /// otherwise load from gltf
-
+                gfx->gen(vertices, triangles, images); /// generate vbo/ibo based on user routine
+            else {
+                sub->load_from_gltf(m, gfx->name, vertices, triangles, joints); /// otherwise load from gltf
+                subdiv = 0;
+            }
             /// sub-divide and tessellate
-            Mesh mesh = Mesh::import_vbo(vertices, quads, false); /// our model is stored as Quads using new glTF feature
-            //mesh.catmull_clark();
+            Mesh mesh = Mesh::import_vbo(vertices, triangles, true); /// our model is stored as triangles, but it would be nice to parameterize this as soon as glTF quads support works
+            while (subdiv-- > 0)
+                mesh.catmull_clark();
+            mesh.export_vbo(vertices, quads, triangles, true);
 
             array<u32> lines(quads.count() / 4 * 8);
             u32 *quad_data = quads.origin<u32>();
             for (int i = 0; i < quads.count(); i += 4) {
                 lines += quad_data[i + 0];
                 lines += quad_data[i + 1];
-
                 lines += quad_data[i + 1];
-                lines += quad_data[i + 3];
-
-                lines += quad_data[i + 3];
                 lines += quad_data[i + 2];
-
                 lines += quad_data[i + 2];
+                lines += quad_data[i + 3];
+                lines += quad_data[i + 3];
                 lines += quad_data[i + 0];
             }
-
-            mx triangles;
-            mesh.export_vbo(vertices, quads, triangles, true);
 
             sub->triangle_buffer = device->create_buffer(triangles, wgpu::BufferUsage::Index);
             sub->line_buffer     = device->create_buffer(lines,     wgpu::BufferUsage::Index);
             sub->vertex_buffer   = device->create_buffer(vertices,  wgpu::BufferUsage::Vertex);
-            sub->triangle_count  = triangles.count() / 3;
-            sub->line_count      = lines.count() / 2;
+            sub->triangle_count  = triangles.len() / 3;
+            sub->line_count      = lines.len() / 2;
             sub->load_shader(gfx);
             sub->load_bindings(gfx, joints);
             sub->create_with_attrs(gfx, false);

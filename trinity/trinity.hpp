@@ -152,7 +152,7 @@ struct Model;
 enums(ShaderModule, undefined,
      undefined, vertex, fragment, compute);
 
-using GraphicsGen = lambda<void(mx&,mx&,array<image>&)>;
+using GraphicsGen = lambda<void(mx&,array<u32>&,array<image>&)>;
 
 struct GraphicsData {
     str         name;

@@ -457,7 +457,7 @@ struct IMesh {
         array<int> verts_oldEdges;
 
         for (int i = 0; i < verts.len(); i++) {
-            verts[i]->quadList.clear();
+            verts[i]->quadList.clear(); // why does he populate neighbors on load only to clear htem after?
             verts[i]->vertList.clear();
         }
 
@@ -497,8 +497,8 @@ struct IMesh {
         
         copyEdges(catmullEdges);
         copyQuads(catmullQuads);
-        catmullEdges.clear();
-        catmullQuads.clear();
+        //catmullEdges.clear();
+        //catmullQuads.clear();
         delete[] tempVert;
     }
 
@@ -506,7 +506,7 @@ struct IMesh {
 
 mx_implement(Mesh, mx, IMesh)
 
-Mesh Mesh::import_vbo(mx vbo, mx ibo, bool convert_from_tris) {
+Mesh Mesh::import_vbo(mx vbo, array<u32> ibo, bool triangles) {
     Mesh mesh;
     mesh->vtype = vbo.type();
     array<Quad> &quads = mesh->quads;
@@ -521,9 +521,9 @@ Mesh Mesh::import_vbo(mx vbo, mx ibo, bool convert_from_tris) {
         mx velement(vtype, &vdata[v * stride]);
         mesh->verts += Vertex(v, velement);
     }
-    if (convert_from_tris) {
-        u32 *tris = ibo.origin<u32>();
-        for (int itri = 0; itri < ibo.count() / 6; itri++) {
+    if (triangles) {
+        u32 *tris = ibo.data;
+        for (int itri = 0; itri < ibo.len() / 6; itri++) {
             u32 t0_A = tris[itri * 6 + 0]; // A
             u32 t0_B = tris[itri * 6 + 1]; // B
             u32 t0_C = tris[itri * 6 + 2]; // C
@@ -547,40 +547,53 @@ Mesh Mesh::import_vbo(mx vbo, mx ibo, bool convert_from_tris) {
                 mesh->makeVertsNeighbor(t1_C, t0_A);
                 assert(t0_B == t1_A && t0_C == t1_D);
             } else {
+                assert(false);
             }
         }
     } else {
-        u32 *quads = ibo.origin<u32>();
-        for (int iquad = 0; iquad < ibo.count() / 4; iquad++) {
+        u32 *quads = ibo.data;
+        for (int iquad = 0; iquad < ibo.len() / 4; iquad++) {
             u32 qA = quads[iquad * 4 + 0]; // A
             u32 qB = quads[iquad * 4 + 1]; // B
             u32 qC = quads[iquad * 4 + 2]; // C
             u32 qD = quads[iquad * 4 + 3]; // D
             mesh->addQuad(qA, qB, qD, qC); // ABCD is a bow-tie layout from blender, so lets flip C and D, making a clock-wise Quad
+            mesh->makeVertsNeighbor(qA, qB);
+            mesh->makeVertsNeighbor(qB, qC);
+            mesh->makeVertsNeighbor(qC, qD);
+            mesh->makeVertsNeighbor(qD, qA);
         }
     }
     return mesh;
 }
 
-void Mesh::export_vbo(mx &vbo, mx &quads, mx &out_tris, bool convert_to_tris) {
+void Mesh::export_vbo(mx &vbo, array<u32> &quads, array<u32> &out_tris, bool convert_to_tris) {
     /// simple tessellation from quads (maybe TOO simple!)
-    auto tessellate = [](array<Quad> &quads) {
+    auto tessellate = [](array<u32> &quads) {
         array<u32> tris(quads.len() / 4 * 6);
-        for (Quad &quad: quads) {
-            tris += quad->v1i;
-            tris += quad->v2i;
-            tris += quad->v3i;
-            tris += quad->v3i;
-            tris += quad->v4i;
-            tris += quad->v1i;
+        u32 *src = quads.data;
+        for (int i = 0; i < quads.len(); i += 4) {
+            tris += src[i + 0];
+            tris += src[i + 1];
+            tris += src[i + 2];
+            tris += src[i + 2];
+            tris += src[i + 3];
+            tris += src[i + 0];
         }
-        return tris.hold();
+        return tris;
     };
 
     /// convert ibo buffer to triangles from quads
-    quads = data->quads.hold(); /// we can always use quads for rendering wireframe
+    quads = array<u32>(data->quads.len());
+    for (Quad &q: data->quads) {
+        quads += q->v1i;
+        quads += q->v2i;
+        quads += q->v3i;
+        quads += q->v4i;
+    }
+
     if (convert_to_tris)
-        out_tris = tessellate(data->quads);
+        out_tris = tessellate(quads);
 
     vbo        = memory::alloc(data->vtype, data->verts.len(), 0, null);
     u8* dst    = vbo.origin<u8>();
@@ -591,15 +604,12 @@ void Mesh::export_vbo(mx &vbo, mx &quads, mx &out_tris, bool convert_to_tris) {
         memcpy(&dst[v * stride], src, stride);
     }
 
-    u32 *indices = quads.origin<u32>();
+    u32 *indices = quads.data;
 
     glm::vec3 &v_t0_TL = *(glm::vec3*)&dst[indices[0] * stride];
     glm::vec3 &v_t0_TR = *(glm::vec3*)&dst[indices[1] * stride];
     glm::vec3 &v_t0_BR = *(glm::vec3*)&dst[indices[2] * stride];
-
-    glm::vec3 &v_t1_BR = *(glm::vec3*)&dst[indices[3] * stride];
-    glm::vec3 &v_t1_BL = *(glm::vec3*)&dst[indices[4] * stride];
-    glm::vec3 &v_t1_TL = *(glm::vec3*)&dst[indices[5] * stride];
+    glm::vec3 &v_t0_BL = *(glm::vec3*)&dst[indices[3] * stride];
 
     debug_break();
 }

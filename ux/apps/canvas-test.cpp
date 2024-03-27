@@ -87,9 +87,12 @@ int main(int argc, const char* argv[]) {
                 ObjectUniform(UState),
                 ObjectVector(float, 2)
             },
-            /// with this lambda, we are providing our own vertices and faces (quads)
-            [](mx &vertices, mx &quads, array<image> &images) {
-                quads = array<u32> { 0, 1, 2, 3 }.hold();
+            /// with this lambda, we are providing our own vertices and triangles (we want to support quads as soon as extension to glTF plugin is working)
+            [](mx &vertices, array<u32> &tris, array<image> &images) {
+                tris = array<u32> {
+                    0, 1, 2, // ABC
+                    0, 2, 3  // ACD (same as blender)
+                };
                 vertices = array<CanvasAttribs> {
                     {{ -1.0f, -1.0f, 0.0f, 1.0f }, {  0.0f, 0.0f }},
                     {{  1.0f, -1.0f, 0.0f, 1.0f }, {  1.0f, 0.0f }},
@@ -101,15 +104,13 @@ int main(int argc, const char* argv[]) {
     });
     Object o_canvas = m_canvas.instance();
 
-    Model m_human = Model(device, "plane", {
-        Graphics { "Plane", typeof(HumanVertex), { ObjectUniform(HumanState) }, null, "plane" }
+    Model m_human = Model(device, "human", {
+        Graphics { "Body", typeof(HumanVertex), { ObjectUniform(HumanState) }, null, "human" }
     });
 
     Object o_human = m_human.instance();
-    
     Canvas canvas;
     num s = millis();
-
 
     states<Clear> clear_states { Clear::Color, Clear::Depth };
     clear_states[Clear::Color] = false;
@@ -133,17 +134,19 @@ int main(int argc, const char* argv[]) {
             canvas.fill(top);
             canvas.flush();
 
-            HumanState &u_human = o_human.uniform<HumanState>("Plane");
-            //glm::vec3 eye    = glm::vec3(0.0f, 1.5f, -0.8f);
-            //glm::vec3 target = glm::vec3(0.0f, 1.5f, 0.0f);
-            //glm::vec3 up     = glm::vec3(0.0f, 1.0f, 0.0f);
-            glm::vec3 eye     = glm::vec3(0.0f, 1.0f, -0.8f);
+            HumanState &u_human = o_human.uniform<HumanState>("Body");
+            glm::vec3 eye    = glm::vec3(0.0f, 1.5f, -0.8f);
+            glm::vec3 target = glm::vec3(0.0f, 1.5f, 0.0f);
+            glm::vec3 up     = glm::vec3(0.0f, 1.0f, 0.0f);
+            /*
+            glm::vec3 eye     = glm::vec3(0.0f, 1.0f, -0.8f) * 2.0f;
             glm::vec3 target  = glm::vec3(0.0f, 0.0f, 0.0f);
             glm::vec3 forward = glm::normalize(target - eye);
             glm::vec3 w_up    = glm::vec3(0.0f, 1.0f, 0.0f);
             glm::vec3 right   = glm::normalize(glm::cross(forward, w_up));
             glm::vec3 up      = glm::cross(right, forward);
-            
+            */
+           
             static float inc = 0;
             inc += 0.0004f;
             glm::quat r = glm::angleAxis(inc, glm::vec3(0.0f, 1.0f, 0.0f));

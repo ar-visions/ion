@@ -46,9 +46,9 @@ struct attribs {
     @location(8) weights1 : vec4<f32>
 };
 
-fn _vertex(a : attribs) -> vary {
+fn _vertex(a : attribs, offset: f32) -> vary {
     var v : vary;
-    let pos4 = vec4f(a.pos, 1.0f);
+    let pos4 = vec4f(a.pos + a.normal * offset, 1.0f);
     var skin_pos : vec4f = vec4f(0.0f);
     for (var i:u32 = 0u; i < 4u; i += 1u) {
         skin_pos = skin_pos + joints[a.joints0[i]] * a.weights0[i] * pos4;
@@ -75,12 +75,12 @@ fn _vertex(a : attribs) -> vary {
 
 @vertex
 fn vertex_main(a : attribs) -> vary {
-    return _vertex(a);
+    return _vertex(a, 0.0f);
 }
 
 @vertex
 fn vertex_wire(a : attribs) -> vary {
-    return _vertex(a);
+    return _vertex(a, 0.001f);
 }
 
 fn _fragment(v : vary) -> vec4f {
