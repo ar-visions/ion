@@ -3,5 +3,7 @@ dep(
     mx:mx
     ion:media
     ion:dawn
+    OpenSubdiv:osdCPU
+    OpenSubdiv:osdGPU
 )
 cpp(20)

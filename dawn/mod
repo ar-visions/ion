@@ -42,6 +42,7 @@ if(linux)
     includes(${EXTERN_DIR}/SPIRV-Tools)
     includes(${EXTERN_DIR}/SPIRV-Tools/ion-${cfg_lower})
     includes(${EXTERN_DIR}/Vulkan-Utility-Libraries)
+    dep(SPIRV-Tools)
 endif()
 
 # abseil-cpp combined
@@ -115,6 +116,18 @@ src(
     ${dawn_src}/glfw/*.cpp
     ${dawn_src}/platform/**.cpp)
 
+
+# things we are using somehow but shouldnt be
+
+defines(SRC_TINT_CMD_FUZZ_IR_FUZZ_H_
+        SRC_TINT_CMD_FUZZ_WGSL_FUZZ_H_)
+
+#src(
+#    ${dawn_src}/../tint/cmd/fuzz/wgsl/fuzz.cc
+#    ${dawn_src}/../tint/cmd/fuzz/ir/fuzz.cc
+#)
+
+
 # add generated source (built by .py)
 # -----------------------------
 src(
@@ -144,6 +157,9 @@ endif()
 # benchmark / test code removal
 # -----------------------------
 src(-_test.cc
+    -_other.cc
+    -gaussian_distribution_gentables.cc
+    -webgpu_dawn_native_proc.cpp
     -_testing.cc
     -_bench.cc
     -_benchmark.cc
@@ -162,6 +178,7 @@ src(
     -_mock.cpp
     -_win.cpp
     -_fuzz.cpp
+    -_fuzz.cc
     -_coretext.cpp
     -public_headers_warnings_check.cpp
 )

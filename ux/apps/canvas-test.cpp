@@ -1,6 +1,6 @@
 
 #include <ux/ux.hpp>
-#include <trinity/subdiv.hpp>
+#include <trinity/mesh.hpp>
 
 using namespace ion;
 
@@ -37,7 +37,7 @@ struct HumanVertex {
     glm::vec2 uv1;
     glm::vec4 tangent;
     u32       joints0[4];
-    u32       joints1[4];
+    u32       joints1[4]; /// convert u32 -> float in glTF (this kind of data is not supported in the osd library); cast required in shader but far better than member-by-member interpolation
     float     weights0[4];
     float     weights1[4];
 
@@ -104,8 +104,8 @@ int main(int argc, const char* argv[]) {
     });
     Object o_canvas = m_canvas.instance();
 
-    Model m_human = Model(device, "human", {
-        Graphics { "Body", typeof(HumanVertex), { ObjectUniform(HumanState) }, null, "human" }
+    Model m_human = Model(device, "cube", {
+        Graphics { "Cube", typeof(HumanVertex), { ObjectUniform(HumanState) }, null, "plane" }
     });
 
     Object o_human = m_human.instance();
@@ -134,18 +134,18 @@ int main(int argc, const char* argv[]) {
             canvas.fill(top);
             canvas.flush();
 
-            HumanState &u_human = o_human.uniform<HumanState>("Body");
-            glm::vec3 eye    = glm::vec3(0.0f, 1.5f, -0.8f);
-            glm::vec3 target = glm::vec3(0.0f, 1.5f, 0.0f);
-            glm::vec3 up     = glm::vec3(0.0f, 1.0f, 0.0f);
-            /*
+            HumanState &u_human = o_human.uniform<HumanState>("Cube");
+            //glm::vec3 eye    = glm::vec3(0.0f, 1.5f, -0.8f);
+            //glm::vec3 target = glm::vec3(0.0f, 1.5f, 0.0f);
+            //glm::vec3 up     = glm::vec3(0.0f, 1.0f, 0.0f);
+            
             glm::vec3 eye     = glm::vec3(0.0f, 1.0f, -0.8f) * 2.0f;
             glm::vec3 target  = glm::vec3(0.0f, 0.0f, 0.0f);
             glm::vec3 forward = glm::normalize(target - eye);
             glm::vec3 w_up    = glm::vec3(0.0f, 1.0f, 0.0f);
             glm::vec3 right   = glm::normalize(glm::cross(forward, w_up));
             glm::vec3 up      = glm::cross(right, forward);
-            */
+            
            
             static float inc = 0;
             inc += 0.0004f;

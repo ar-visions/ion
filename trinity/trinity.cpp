@@ -2,7 +2,7 @@
 
 #include <trinity/trinity.hpp>
 #include <trinity/gltf.hpp>
-#include <trinity/subdiv.hpp>
+#include <trinity/mesh.hpp>
 
 using namespace ion;
 
@@ -342,6 +342,7 @@ struct IPipeline {
 
     str                         name;
     
+    array<Mesh>                 meshes;
     wgpu::Buffer                triangle_buffer;
     wgpu::Buffer                line_buffer;
     wgpu::Buffer                vertex_buffer;
@@ -669,7 +670,7 @@ struct IPipeline {
             render_desc.primitive.topology = wgpu::PrimitiveTopology::LineList;
         } else {
             render_desc.primitive.frontFace = wgpu::FrontFace::CCW;
-            render_desc.primitive.cullMode = wgpu::CullMode::Back;
+            render_desc.primitive.cullMode = wgpu::CullMode::None;
             render_desc.primitive.topology = wgpu::PrimitiveTopology::TriangleList;
         }
 
@@ -822,40 +823,26 @@ struct IModel {
         for (Pipeline &sub: pipelines) {
             Graphics &     gfx    = sub->gfx;
             array<u32>     quads, triangles;
-            mx             vertices, bones;
+            mx             bones;
+            Mesh           mesh;
             array<image>   images;
             gltf::Joints   joints;
-            int            subdiv = 0;
+            int            subdiv_level = 0;
+
             if (gfx->gen)
-                gfx->gen(vertices, triangles, images); /// generate vbo/ibo based on user routine
+                gfx->gen(mesh->verts, mesh->tris, images); /// generate vbo/ibo based on user routine
             else {
-                sub->load_from_gltf(m, gfx->name, vertices, triangles, joints); /// otherwise load from gltf
-                subdiv = 0;
-            }
-            /// sub-divide and tessellate
-            Mesh mesh = Mesh::import_vbo(vertices, triangles, true); /// our model is stored as triangles, but it would be nice to parameterize this as soon as glTF quads support works
-            while (subdiv-- > 0)
-                mesh.catmull_clark();
-            mesh.export_vbo(vertices, quads, triangles, true);
-
-            array<u32> lines(quads.count() / 4 * 8);
-            u32 *quad_data = quads.origin<u32>();
-            for (int i = 0; i < quads.count(); i += 4) {
-                lines += quad_data[i + 0];
-                lines += quad_data[i + 1];
-                lines += quad_data[i + 1];
-                lines += quad_data[i + 2];
-                lines += quad_data[i + 2];
-                lines += quad_data[i + 3];
-                lines += quad_data[i + 3];
-                lines += quad_data[i + 0];
+                sub->load_from_gltf(m, gfx->name, mesh->verts, mesh->tris, joints); /// otherwise load from gltf
+                subdiv_level = 1;
             }
 
-            sub->triangle_buffer = device->create_buffer(triangles, wgpu::BufferUsage::Index);
-            sub->line_buffer     = device->create_buffer(lines,     wgpu::BufferUsage::Index);
-            sub->vertex_buffer   = device->create_buffer(vertices,  wgpu::BufferUsage::Vertex);
-            sub->triangle_count  = triangles.len() / 3;
-            sub->line_count      = lines.len() / 2;
+            sub->meshes = Mesh::process(mesh, { Polygon::quad, Polygon::tri, Polygon::wire }, 0, subdiv_level);
+            Mesh selected = Mesh::select(sub->meshes, subdiv_level);
+            sub->triangle_buffer = device->create_buffer(selected->tris,  wgpu::BufferUsage::Index);
+            sub->line_buffer     = device->create_buffer(selected->wire,  wgpu::BufferUsage::Index);
+            sub->vertex_buffer   = device->create_buffer(selected->verts, wgpu::BufferUsage::Vertex);
+            sub->triangle_count  = selected->tris.len() / 3;
+            sub->line_count      = selected->wire.len() / 2;
             sub->load_shader(gfx);
             sub->load_bindings(gfx, joints);
             sub->create_with_attrs(gfx, false);

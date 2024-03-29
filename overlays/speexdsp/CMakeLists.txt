@@ -24,7 +24,7 @@ if(EXISTS "./configure")
 endif()
 
 add_library(
-    speexdsp STATIC
+    speexdsp $ENV{LINK}
     libspeexdsp/buffer.c
 	libspeexdsp/filterbank.c
 	libspeexdsp/jitter.c
@@ -34,9 +34,12 @@ add_library(
 	libspeexdsp/preprocess.c
     libspeexdsp/resample.c
     libspeexdsp/scal.c
-    libspeexdsp/smallft.c)
+    libspeexdsp/smallft.c
+    libspeexdsp/fftwrap.c)
 
-target_compile_definitions(speexdsp PUBLIC FLOATING_POINT=1)
+set_property(TARGET speexdsp PROPERTY POSITION_INDEPENDENT_CODE ON)
+
+target_compile_definitions(speexdsp PUBLIC FLOATING_POINT=1 USE_KISS_FFT=1)
          
 if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64") 
     target_compile_definitions(speexdsp PUBLIC USE_SSE=1)

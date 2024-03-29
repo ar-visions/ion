@@ -629,7 +629,9 @@ Canvas::Canvas(Texture texture) : Canvas() {
 
         data->fGraphiteContext = skgpu::graphite::ContextFactory::MakeDawn(
                 backendContext, params.fGraphiteContextOptions.fOptions);
-        data->fGraphiteRecorder = data->fGraphiteContext->makeRecorder(ToolUtils::CreateTestingRecorderOptions());
+
+        skgpu::graphite::RecorderOptions opts;
+        data->fGraphiteRecorder = data->fGraphiteContext->makeRecorder(opts);
 
         wgpu::Texture *itexture = (wgpu::Texture*)data->texture.handle();
 

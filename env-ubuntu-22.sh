@@ -13,4 +13,5 @@ sudo apt update
 sudo apt-get install build-essential v4l-utils libv4l-dev ffmpeg git libtool libx11-dev \
 	libxrandr-dev libxext-dev cmake vulkan-sdk libmagic-dev python3 python3-magic \
 	python3-pip libxinerama-dev libxcursor-dev libxi-dev gobjc++ g++ \
-	clang libxkbcommon-x11-dev ninja-build libfftw3-dev pkg-config libasound2-dev
+	clang libxkbcommon-x11-dev ninja-build libfftw3-dev pkg-config libasound2-dev \
+	libxxf86vm-dev

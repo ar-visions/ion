@@ -40,6 +40,11 @@
 #endif
 
 
+#ifndef USE_KISS_FFT
+#define USE_KISS_FFT
+#endif
+
+
 /* A couple test to catch stupid option combinations */
 #ifdef FIXED_POINT
 

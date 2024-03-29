@@ -31,6 +31,9 @@ enums(Key, undefined,
     RIGHT_SHIFT=344, RIGHT_CONTROL=345, RIGHT_ALT=346, RIGHT_SUPER=347, MENU=348
 )
 
+enums(Polygon, undefined,
+    undefined, tri, quad, wire, mixed, ngon)
+
 /// having Asset lets us abstract away the usage, format and even dimension
 /// the asset we wouldnt have in resource is depth_stencil
 enums(Asset, undefined, 

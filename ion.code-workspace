@@ -211,7 +211,8 @@
 			"scene_manager.h": "c",
 			"expected": "cpp",
 			"hash_set": "cpp",
-			"slist": "cpp"
+			"slist": "cpp",
+			"smallft.h": "c"
 		},
 		"git.ignoreLimitWarning": true
 	}
