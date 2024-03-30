@@ -90,7 +90,7 @@
             "recursive": false,
             "prebuild": "prebuild.py",
             "cmake": {
-                "args": ["-DTINT_BUILD_DOCS=Off", "-DTINT_DOCS_WARN_AS_ERROR=Off"]
+                "args": ["-DTINT_BUILD_DOCS=OFF", "-DTINT_DOCS_WARN_AS_ERROR=OFF", "-DTINT_BUILD_TESTS=OFF"]
             }
         },
         {

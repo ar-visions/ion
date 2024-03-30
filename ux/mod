@@ -3,7 +3,7 @@ dep(mx:mx
     mx:async
     mx:watch
     ion:media
-    ion:regex
+    #ion:regex
     ion:composer
     ion:ssh
     ion:dawn
@@ -18,5 +18,5 @@ if (win)
 elseif (mac)
     dep(CoreFoundation IOKit IOSurface QuartzCore Metal AppKit CoreGraphics Cocoa)
 elseif (linux)
-    dep(X11 Vulkan)
+    dep(X11 Vulkan xcb Xau Xdmcp) # no idea what is using these libs.. some external
 endif()

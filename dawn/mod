@@ -28,7 +28,7 @@ elseif (mac)
         TINT_BUILD_MSL_WRITER
         DAWN_ENABLE_BACKEND_METAL)
 elseif (linux)
-    dep(@X11 @Vulkan)
+    dep(@X11 @Vulkan @xcb)
     defines(
         TINT_BUILD_IS_LINUX
         TINT_BUILD_SPV_WRITER
@@ -145,6 +145,9 @@ endif()
 if (linux)
     src(${dawn_src}/native/vulkan/**.cpp)
 endif()
+
+cxxflags(+-Os)
+set(debuggable FALSE)
 
 if (mac)
     src(${dawn_src}/native/Surface_metal.mm)

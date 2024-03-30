@@ -71,7 +71,7 @@ if (sctp_inet6)
 	add_definitions(-DINET6)
 endif ()
 
-option(sctp_werror "Treat warning as error" 1)
+option(sctp_werror "Treat warning as error" 0)
 
 option(sctp_build_shared_lib "Build USRSCTP as shared library" 0)
 

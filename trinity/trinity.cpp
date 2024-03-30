@@ -2,7 +2,6 @@
 
 #include <trinity/trinity.hpp>
 #include <trinity/gltf.hpp>
-#include <trinity/mesh.hpp>
 
 using namespace ion;
 
@@ -23,9 +22,11 @@ struct IDevice {
     wgpu::Queue         queue;
 
     wgpu::Buffer create_buffer(mx mx_data, wgpu::BufferUsage usage) {
+        type_t base_type = mx_data.type();
+        type_t data_type = (base_type->traits & traits::array) ? base_type->schema->bind->data : base_type; /// var brings issues for this, but schema solves it. i believe array should not set the type.  i just dont want to make a drastic change
         namespace WGPU = wgpu;
         wgpu::Device wgpu_device = this->wgpu;
-        uint64_t size = mx_data.total_size();
+        uint64_t size = data_type->base_sz * mx_data.count();
         void    *data = mx_data.mem->origin;
         WGPU::BufferDescriptor descriptor {
             .usage = usage | WGPU::BufferUsage::CopyDst,
@@ -827,17 +828,16 @@ struct IModel {
             Mesh           mesh;
             array<image>   images;
             gltf::Joints   joints;
-            int            subdiv_level = 0;
 
             if (gfx->gen)
-                gfx->gen(mesh->verts, mesh->tris, images); /// generate vbo/ibo based on user routine
+                gfx->gen(mesh, images); /// generate vbo/ibo based on user routine
             else {
                 sub->load_from_gltf(m, gfx->name, mesh->verts, mesh->tris, joints); /// otherwise load from gltf
-                subdiv_level = 1;
+                mesh->level = 1;
             }
 
-            sub->meshes = Mesh::process(mesh, { Polygon::quad, Polygon::tri, Polygon::wire }, 0, subdiv_level);
-            Mesh selected = Mesh::select(sub->meshes, subdiv_level);
+            sub->meshes = Mesh::process(mesh, { Polygon::quad, Polygon::tri, Polygon::wire }, 0, mesh->level);
+            Mesh selected = Mesh::select(sub->meshes, mesh->level);
             sub->triangle_buffer = device->create_buffer(selected->tris,  wgpu::BufferUsage::Index);
             sub->line_buffer     = device->create_buffer(selected->wire,  wgpu::BufferUsage::Index);
             sub->vertex_buffer   = device->create_buffer(selected->verts, wgpu::BufferUsage::Vertex);
@@ -1046,17 +1046,18 @@ struct IWindow {
 
         wgpu::TextureView swap_view = swapchain.GetCurrentTextureView();
         states<Clear> clear_states { Clear::Color, Clear::Depth };
+
         for (Presentation p: presentations) {
             Scene scene = p.on_present();
-            for (Object &o: scene) { /// this will change to Object/Entity/Visual iteration
+            for (Object &o: scene) {
                 int ipipeline = 0;
                 assert(o->renderables.count() == o->model->pipelines.count());
                 for (IRenderable &renderable: o->renderables) {
                     Pipeline &pl = o->model->pipelines[ipipeline];
                     pl->submit(renderable, swap_view, color->view, depth_stencil->view, clear_states, pl->clear_color);
-                    clear_states[Clear::Color] = false;
-                    clear_states[Clear::Depth] = false;
-                    clear_states[Clear::Stencil] = false;
+                    clear_states.clear(Clear::Color);
+                    clear_states.clear(Clear::Depth);
+                    clear_states.clear(Clear::Stencil);
                     ipipeline++;
                 }
             }

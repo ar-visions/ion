@@ -1,6 +1,6 @@
 
 #include <ux/ux.hpp>
-#include <trinity/mesh.hpp>
+#include <trinity/trinity.hpp>
 
 using namespace ion;
 
@@ -36,10 +36,10 @@ struct HumanVertex {
     glm::vec2 uv0;
     glm::vec2 uv1;
     glm::vec4 tangent;
-    u32       joints0[4];
-    u32       joints1[4]; /// convert u32 -> float in glTF (this kind of data is not supported in the osd library); cast required in shader but far better than member-by-member interpolation
+    float     joints0[4];
+    float     joints1[4]; /// convert u32 -> float in glTF (this kind of data is not supported in the osd library); cast required in shader but far better than member-by-member interpolation
     float     weights0[4];
-    float     weights1[4];
+    float     weights1[4]; // 30 floats
 
     doubly<prop> meta() const {
         return {
@@ -57,14 +57,12 @@ struct HumanVertex {
 };
 
 
-
 struct UState {
     float x_scale = 1.0f;
     float y_scale = 1.0f;
 };
 
 int main(int argc, const char* argv[]) {
-
     Mesh mesh;
 
     type_t hv_type = typeof(HumanVertex);
@@ -76,7 +74,7 @@ int main(int argc, const char* argv[]) {
     Device  device  = window.device();
     Texture canvas_texture = device.create_texture(window.size(), Asset::attachment);
 
-    window.set_title("Canvas Test");
+    window.set_title("Canvas Test2");
 
     Model m_canvas = Model(device, null, {
         Graphics {
@@ -88,25 +86,55 @@ int main(int argc, const char* argv[]) {
                 ObjectVector(float, 2)
             },
             /// with this lambda, we are providing our own vertices and triangles (we want to support quads as soon as extension to glTF plugin is working)
-            [](mx &vertices, array<u32> &tris, array<image> &images) {
-                tris = array<u32> {
-                    0, 1, 2, // ABC
-                    0, 2, 3  // ACD (same as blender)
-                };
-                vertices = array<CanvasAttribs> {
+            [](Mesh &mesh, array<image> &images) {
+                /// set vertices
+                mesh->verts = array<CanvasAttribs> {
                     {{ -1.0f, -1.0f, 0.0f, 1.0f }, {  0.0f, 0.0f }},
                     {{  1.0f, -1.0f, 0.0f, 1.0f }, {  1.0f, 0.0f }},
                     {{ -1.0f,  1.0f, 0.0f, 1.0f }, { -1.0f, 1.0f }},
                     {{  1.0f,  1.0f, 0.0f, 1.0f }, {  1.0f, 1.0f }}
                 }.hold();
+                /// set triangles
+                mesh->tris = array<u32> {
+                    0, 1, 2, // ABC
+                    0, 2, 3  // ACD (same as blender)
+                };
             }
         }
     });
     Object o_canvas = m_canvas.instance();
 
     Model m_human = Model(device, "cube", {
-        Graphics { "Cube", typeof(HumanVertex), { ObjectUniform(HumanState) }, null, "plane" }
+        Graphics { "Cube", typeof(HumanVertex), { ObjectUniform(HumanState) },
+        
+            [](Mesh &mesh, array<image> &images) {
+                mesh->verts = array<HumanVertex> {
+                    {{ -0.5f, -0.5f,  0.5f }},
+                    {{  0.5f, -0.5f,  0.5f }},
+                    {{ -0.5f,  0.5f,  0.5f }},
+                    {{  0.5f,  0.5f,  0.5f }},
+                    {{ -0.5f,  0.5f, -0.5f }},
+                    {{  0.5f, -0.5f, -0.5f }},
+                    {{ -0.5f, -0.5f, -0.5f }},
+                    {{  0.5f, -0.5f, -0.5f }}
+                }.hold();
+                /// set quads field if we want to setup a mesh by those primitives
+                mesh->quads = array<u32> {
+                    0, 1, 3, 2,
+                    2, 3, 5, 4,
+                    4, 5, 7, 6,
+                    6, 7, 1, 0,
+                    1, 7, 5, 3,
+                    6, 0, 2, 4 };
+                
+                mesh->level = 0; /// this tells trinity to apply 1 iteration of subdiv; she then cracks IRS dbase
+            },
+            
+            "plane" }
     });
+
+
+
 
     Object o_human = m_human.instance();
     Canvas canvas;
@@ -139,7 +167,7 @@ int main(int argc, const char* argv[]) {
             //glm::vec3 target = glm::vec3(0.0f, 1.5f, 0.0f);
             //glm::vec3 up     = glm::vec3(0.0f, 1.0f, 0.0f);
             
-            glm::vec3 eye     = glm::vec3(0.0f, 1.0f, -0.8f) * 2.0f;
+            glm::vec3 eye     = glm::vec3(0.0f, 1.0f, -0.8f) * 4.0f;
             glm::vec3 target  = glm::vec3(0.0f, 0.0f, 0.0f);
             glm::vec3 forward = glm::normalize(target - eye);
             glm::vec3 w_up    = glm::vec3(0.0f, 1.0f, 0.0f);

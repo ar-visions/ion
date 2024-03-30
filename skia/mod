@@ -1,13 +1,15 @@
 defines(XML_STATIC)
 
 
-dep(harfbuzz:harfbuzz libexpat:expat freetype:freetype2 ion:dawn icu:icuuc brotli:brotlicommon brotli:brotlienc brotli:brotlidec libpng:png)
+dep(harfbuzz:harfbuzz libexpat:expat freetype:freetype ion:dawn icu:icuuc brotli:brotlicommon brotli:brotlienc brotli:brotlidec libpng:png)
 
 if (NOT win)
     dep(icu:icudata)
 endif()
 
 include(${r_path}/skia/defs)
+
+cxxflags(+-Wl,--gc-sections +-Os)
 
 includes(
     ${INSTALL_PREFIX}/include/harfbuzz

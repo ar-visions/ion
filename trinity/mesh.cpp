@@ -1,5 +1,4 @@
-#include <trinity/mesh.hpp>
-#include <math/math.hpp>
+#include <trinity/trinity.hpp>
 #include <opensubdiv/far/topologyDescriptor.h>
 #include <opensubdiv/far/primvarRefiner.h>
 
@@ -11,13 +10,21 @@ namespace ion {
 /// for that, we would convert GLSL to WGL
 
 array<Mesh> Mesh::process(Mesh &mesh, const array<Polygon> &modes, int start_level, int max_level) {
-    type_t vtype = mesh->verts.type();
 
+    type_t mtype = mesh->verts.type();
+    type_t vtype = (mtype->traits & traits::array) ? mtype->schema->bind->data : mtype;
+    int    vertex_size = vtype->base_sz;
+    float *f_origin = mesh->verts.origin<float>();
+    
     using namespace OpenSubdiv;
     /// assert we are not overflowing the MAX_VERTEX_SIZE defined
-    assert(vtype->base_sz % sizeof(float) == 0);
-    assert(vtype->base_sz / sizeof(float) <= MAX_VERTEX_SIZE);
-    
+
+    assert(vertex_size % sizeof(float) == 0);
+    assert(vertex_size / sizeof(float) <= MAX_VERTEX_SIZE);
+    static int n_floats;
+    n_floats = vertex_size / sizeof(float);
+    printf("n_floats = %d\n", n_floats);
+
     array<u32> quads = mesh->quads;
     if (!quads) {
         assert(mesh->tris);
@@ -45,7 +52,9 @@ array<Mesh> Mesh::process(Mesh &mesh, const array<Polygon> &modes, int start_lev
             }
         }
     }
-    static int n_floats = vtype->base_sz / sizeof(float);
+
+
+
     int   n_input_verts = mesh->verts.count();
     int   n_input_quads = quads.len() / 4; /// must be made if it doesnt exist
 
@@ -70,9 +79,9 @@ array<Mesh> Mesh::process(Mesh &mesh, const array<Polygon> &modes, int start_lev
         using Descriptor = Far::TopologyDescriptor;
         Sdc::SchemeType type = OpenSubdiv::Sdc::SCHEME_CATMARK;
         Sdc::Options options;
-        options.SetVtxBoundaryInterpolation(Sdc::Options::VTX_BOUNDARY_EDGE_ONLY);
+        //options.SetVtxBoundaryInterpolation(Sdc::Options::VTX_BOUNDARY_EDGE_ONLY);
 
-        verts_per_face = new int[n_input_quads / 4];
+        verts_per_face = new int[n_input_quads];
         for (int i = 0; i < n_input_quads; i++)
             verts_per_face[i] = 4;
         
@@ -93,7 +102,6 @@ array<Mesh> Mesh::process(Mesh &mesh, const array<Polygon> &modes, int start_lev
         int n_total_max = refiner->GetNumVerticesTotal();
         array<VFloats> vbuffer(n_total_max);
         verts = &vbuffer[0];
-        float *f_origin = mesh->verts.origin<float>();
 
         // Initialize coarse mesh positions
         for (int i=0; i< mesh->verts.count(); ++i) {
@@ -105,7 +113,9 @@ array<Mesh> Mesh::process(Mesh &mesh, const array<Polygon> &modes, int start_lev
         Far::PrimvarRefiner primvarRefiner(*refiner);
         VFloats* src = verts;
         for (int level = 1; level <= max_level; ++level) {
-            VFloats * dst = src + refiner->GetLevel(level-1).GetNumVertices();
+            int level_verts = refiner->GetLevel(level-1).GetNumVertices();
+            printf("level_verts at level %d = %d\n", level-1, level_verts);
+            VFloats * dst = src + level_verts;
             primvarRefiner.Interpolate(level, src, dst);
             src = dst;
         }
@@ -123,29 +133,33 @@ array<Mesh> Mesh::process(Mesh &mesh, const array<Polygon> &modes, int start_lev
         Mesh m;
         m->level = level;
         Far::TopologyLevel const *last_level = 
-                            subdiv ? &refiner -> GetLevel(level)  : null;
-        int  level_vcount = subdiv ? last_level->GetNumVertices() : mesh->verts.count();
-        int  level_qcount = subdiv ? last_level->GetNumFaces()    : quads.len();
+                            subdiv ? &refiner -> GetLevel(level)   : null;
+        int  level_vcount = subdiv ? last_level->GetNumVertices()  : mesh->verts.count();
+        int  level_qcount = subdiv ? last_level->GetNumFaces()     : quads.len() / 4;
 
         /// copy verts (or) simply reference the mesh verts
-        m->verts = (subdiv) ? memory::alloc(mesh->verts.type(), 0, level_vcount, null) : mesh->verts;
+        m->verts = (subdiv) ? memory::alloc(vtype, 0, level_vcount, null) : mesh->verts; /// todo: array<T> type should simply be T; we already have the model of array
         if (subdiv) {
             float *new_origin = m->verts.origin<float>();
             int  level_origin = (refiner->GetNumVerticesTotal() - level_vcount);
-            for (int i = 0; i < level_vcount; ++i)
-                memcpy(&new_origin[i * n_floats],
-                        verts[level_origin + i].f_data,
-                        n_floats * sizeof(float));
+            for (int i = 0; i < level_vcount; ++i) {
+                float *dst = &new_origin[i * n_floats];
+                float *src = verts[level_origin + i].f_data;
+                memcpy(dst, src, n_floats * sizeof(float));
+
+                printf("vertex[%d] = %.2f %.2f %.2f\n", i, dst[0], dst[1], dst[2]);
+                
+            }
             m->verts.set_size(level_vcount);
         }
         
         /// copy quads, tris, and wire
         assert(modes);
-        if (quad) m->quads = memory::alloc(typeof(u32), 0, level_qcount / 4 * 4 * 1, null);
-        if (tri)  m->tris  = memory::alloc(typeof(u32), 0, level_qcount / 4 * 3 * 2, null);
-        if (wire) m->wire  = memory::alloc(typeof(u32), 0, level_qcount / 4 * 2 * 4, null);
+        if (quad) m->quads = memory::alloc(typeof(u32), 0, level_qcount * 4 * 1, null);
+        if (tri)  m->tris  = memory::alloc(typeof(u32), 0, level_qcount * 3 * 2, null);
+        if (wire) m->wire  = memory::alloc(typeof(u32), 0, level_qcount * 2 * 4, null);
         Far::ConstIndexArray fverts;
-        for (int q = 0; q < level_qcount / 4; ++q) { // all refined Catmark faces should be quads
+        for (int q = 0; q < level_qcount; ++q) { // all refined Catmark faces should be quads
             u32 *fv;
             if (subdiv) {
                 fverts = last_level->GetFaceVertices(q);
@@ -178,9 +192,9 @@ array<Mesh> Mesh::process(Mesh &mesh, const array<Polygon> &modes, int start_lev
                 m->wire[q * 8 + 7] = fv[0];
             }
         }
-        if (quad) m->quads.set_size(level_qcount / 4 * 4);
-        if (tri)  m->tris .set_size(level_qcount / 4 * 3 * 2);
-        if (wire) m->wire .set_size(level_qcount / 4 * 4 * 2);
+        if (quad) m->quads.set_size(level_qcount * 4);
+        if (tri)  m->tris .set_size(level_qcount * 3 * 2);
+        if (wire) m->wire .set_size(level_qcount * 4 * 2);
         results += m;
     }
 

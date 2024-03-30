@@ -7,6 +7,8 @@
 
 struct GLFWwindow;
 
+#define MAX_VERTEX_SIZE 64
+
 namespace ion {
 
 enums(Clear, Undefined,
@@ -14,21 +16,22 @@ enums(Clear, Undefined,
 
 #undef DELETE
 
-enums(Key, undefined,
-    undefined=0, Space=32, Apostrophe=39, Comma=44, Minus=45, Period=46, Slash=47,
-    k_0=48, k_1=49, k_2=50, k_3=51, k_4=52, k_5=53, k_6=54, k_7=55, k_8=56, k_9=57,
+/// inline with glfw data
+enums(Key, Undefined,
+    Undefined=0, Space=32, Apostrophe=39, Comma=44, Minus=45, Period=46, Slash=47,
+    K0=48, K1=49, K2=50, K3=51, K4=52, K5=53, K6=54, K7=55, K8=56, K9=57,
     SemiColon=59, Equal=61,
     A=65, B=66, C=67, D=68, E=69, F=70, G=71, H=72, I=73, J=74, K=75, L=76, M=77,
     N=78, O=79, P=80, Q=81, R=82, S=83, T=84, U=85, V=86, W=87, X=88, Y=89, Z=90,
-    LeftBracket=91, BackSlash=92, RightBracket=93, GraveAccent=96, World1 = 161, World2 = 162,
-    Escape=256, ENTER=257, TAB=258, BACKSPACE=259, INSERT=260, DELETE=261, RIGHT=262, LEFT=263, DOWN=264, UP=265,
-    PAGE_UP=266, PAGE_DOWN=267, HOME=268, END=269, CAPS_LOCK=280, SCROLL_LOCK=281, NUM_LOCK=282, PRINT_SCREEN=283, PAUSE=284,
+    LeftBracket=91, BackSlash=92, RightBracket=93, GraveAccent=96, World1=161, World2=162,
+    Escape=256, Enter=257, Tab=258, Backspace=259, Insert=260, Delete=261, Right=262, Left=263, Down=264, Up=265,
+    PageUp=266, PageDown=267, Home=268, End=269, CapsLock=280, ScrollLock=281, NumLock=282, PrintScreen=283, Pause=284,
     F1=290,  F2=291,  F3=292,  F4=293,  F5=294,  F6=295,  F7=296,  F8=297,  F9=298,  F10=299, F11=300, F12=301, F13=302, F14=303,
     F15=304, F16=305, F17=306, F18=307, F19=308, F20=309, F21=310, F22=311, F23=312, F24=313, F25=314,
-    KP_0=320, KP_1=321, KP_2=322, KP_3=323, KP_4=324, KP_5=325, KP_6=326, KP_7=327, KP_8=328, KP_9=329,
-    KP_DECIMAL=330, KP_DIVIDE=331, KP_MULTIPLY=332, KP_SUBTRACT=333, KP_ADD=334, KP_ENTER=335, KP_EQUAL=336,
-    LEFT_SHIFT=340, LEFT_CONTROL=341, LEFT_ALT=342, LEFT_SUPER=343,
-    RIGHT_SHIFT=344, RIGHT_CONTROL=345, RIGHT_ALT=346, RIGHT_SUPER=347, MENU=348
+    Kp0=320, Kp1=321, Kp2=322, Kp3=323, Kp4=324, Kp5=325, Kp6=326, Kp7=327, Kp8=328, Kp9=329,
+    KpDecimal=330, KpDivide=331, KpMultiply=332, KpSubtract=333, KpAdd=334, KpEnter=335, KpEqual=336,
+    LeftShift=340, LeftControl=341, LeftAlt=342, LeftSuper=343,
+    RightShift=344, RightControl=345, RightAlt=346, RightSuper=347, Menu=348
 )
 
 enums(Polygon, undefined,
@@ -45,6 +48,22 @@ enums(Sampling, undefined, undefined, nearest, linear, ansio);
 
 /// Storage is more complex, because we need cases covered for Bone data
 /// It may not be generalizable due to the dynamically indexed nature of skin model
+
+struct Mesh:mx {
+    struct M {
+        Polygon     mode;
+        int         level;
+        mx          verts;
+        array<u32>  quads;
+        array<u32>  tris;
+        array<u32>  wire;
+    };
+
+    /// returns the start to max level meshes using Pixar algorithm
+    static array<Mesh> process(Mesh &mesh, const array<Polygon> &modes, int start_level, int max_level);
+    static const Mesh &select(array<Mesh> &meshes, int level);
+    mx_basic(Mesh)
+};
 
 /// we dont expose Usage/Format because we have Asset, path (from name); thats enough context to make things
 struct Texture:mx {
@@ -155,7 +174,7 @@ struct Model;
 enums(ShaderModule, undefined,
      undefined, vertex, fragment, compute);
 
-using GraphicsGen = lambda<void(mx&,array<u32>&,array<image>&)>;
+using GraphicsGen = lambda<void(Mesh&, array<image>&)>;
 
 struct GraphicsData {
     str         name;
