@@ -331,7 +331,7 @@ else()
     if(MSVC)
         target_compile_options(mp4v2 PUBLIC /MT)
     endif()
-    target_compile_definitions(mp4v2 PUBLIC MP4V2_USE_STATIC_LIB)
+    #target_compile_definitions(mp4v2 PUBLIC MP4V2_USE_STATIC_LIB)
 endif()
 
 #

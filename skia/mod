@@ -9,8 +9,6 @@ endif()
 
 include(${r_path}/skia/defs)
 
-cxxflags(+-Wl,--gc-sections +-Os)
-
 includes(
     ${INSTALL_PREFIX}/include/harfbuzz
     ${INSTALL_PREFIX}/include/freetype2
