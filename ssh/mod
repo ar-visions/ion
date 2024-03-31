@@ -3,6 +3,8 @@
 cpp(20)
 dep(ion:net zlib:zlib ion:composer)
 
+set(use_pch FALSE)
+
 includes(${module_path}
          ${EXTERN_DIR}/libssh/include)
 defines(LIBSSH_STATIC HAVE_LIBMBEDCRYPTO)

@@ -1,6 +1,6 @@
 #include <ux/app.hpp>
 #include <ssh/ssh.hpp>
-#include <ux/canvas.hpp>
+#include <skia/canvas.hpp>
 #include <GLFW/glfw3.h>
 
 #ifdef __APPLE__

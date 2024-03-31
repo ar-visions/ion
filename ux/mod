@@ -8,8 +8,7 @@ dep(mx:mx
     ion:ssh
     ion:dawn
     ion:skia
-    ion:trinity
-)
+    ion:trinity)
 
 cpp(17)
 include(${r_path}/skia/defs)

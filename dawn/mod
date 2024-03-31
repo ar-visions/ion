@@ -127,7 +127,6 @@ defines(SRC_TINT_CMD_FUZZ_IR_FUZZ_H_
 #    ${dawn_src}/../tint/cmd/fuzz/ir/fuzz.cc
 #)
 
-
 # add generated source (built by .py)
 # -----------------------------
 src(

@@ -1,6 +1,6 @@
 #include <ux/ux.hpp>
 #include <ux/controls.hpp>
-#include <ux/canvas.hpp>
+#include <skia/canvas.hpp>
 #include <ssh/ssh.hpp>
 #include <media/streams.hpp>
 

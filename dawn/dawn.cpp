@@ -1,1 +1,1 @@
-void dawn() { }
+void dawn2() { }

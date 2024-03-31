@@ -65,9 +65,10 @@ struct UState {
 int main(int argc, const char* argv[]) {
     Mesh mesh;
 
+
     type_t hv_type = typeof(HumanVertex);
     
-    static constexpr uint32_t kWidth = 1024;
+    static constexpr uint32_t kWidth  = 1024;
     static constexpr uint32_t kHeight = 1024;
 
     Window window   = Window::create("dawn", {kWidth, kHeight});

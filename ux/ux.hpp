@@ -5,7 +5,7 @@
 #include <net/net.hpp>
 #include <media/media.hpp>
 #include <composer/composer.hpp>
-#include <ux/canvas.hpp>
+#include <skia/canvas.hpp>
 
 struct GLFWwindow;
 
