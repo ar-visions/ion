@@ -36,7 +36,7 @@
             "label": "build-canvas-test",
             "type": "shell",
 			"options": {
-                "cwd": "${workspaceFolder}/../hyperspace/build"
+                "cwd": "${workspaceFolder}/../hyperspace/build-clang"
             },
             "group": {
                 "kind": "build",

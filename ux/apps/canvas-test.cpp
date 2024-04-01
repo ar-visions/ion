@@ -1,6 +1,6 @@
 
-#include <ux/ux.hpp>
-#include <trinity/trinity.hpp>
+//#include <ux/ux.hpp>
+//#include <trinity/trinity.hpp>
 
 using namespace ion;
 
@@ -65,7 +65,6 @@ struct UState {
 int main(int argc, const char* argv[]) {
     Mesh mesh;
 
-
     type_t hv_type = typeof(HumanVertex);
     
     static constexpr uint32_t kWidth  = 1024;
@@ -75,7 +74,7 @@ int main(int argc, const char* argv[]) {
     Device  device  = window.device();
     Texture canvas_texture = device.create_texture(window.size(), Asset::attachment);
 
-    window.set_title("Canvas Test2");
+    window.set_title("Canvas Test");
 
     Model m_canvas = Model(device, null, {
         Graphics {
@@ -109,6 +108,7 @@ int main(int argc, const char* argv[]) {
         Graphics { "Cube", typeof(HumanVertex), { ObjectUniform(HumanState) },
         
             [](Mesh &mesh, array<image> &images) {
+                /// verify these as well as the count of 8
                 mesh->verts = array<HumanVertex> {
                     {{ -0.5f, -0.5f,  0.5f }},
                     {{  0.5f, -0.5f,  0.5f }},
@@ -120,7 +120,7 @@ int main(int argc, const char* argv[]) {
                     {{  0.5f, -0.5f, -0.5f }}
                 }.hold();
                 /// set quads field if we want to setup a mesh by those primitives
-                mesh->quads = array<u32> {
+                mesh->quads = array<u32> { /// verify these 24
                     0, 1, 3, 2,
                     2, 3, 5, 4,
                     4, 5, 7, 6,

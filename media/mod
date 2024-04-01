@@ -24,7 +24,7 @@ elseif(WIN32)
 elseif(UNIX)
     src(camera-linux.cpp)
     dep(v4l2 asound) # Video4Linux2 and ALSA Sound
-    cxxflags(+-Wno-volatile +-Wno-deprecated-declarations)
+    cxxflags(+-Wno-ignored-qualifiers +-Wno-deprecated-declarations)
 endif()
 
 set(bsd ${EXTERN_DIR}/h264bsd/src)

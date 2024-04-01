@@ -172,6 +172,9 @@ array<Mesh> Mesh::process(Mesh &mesh, const array<Polygon> &modes, int start_lev
                 m->quads[q * 4 + 1] = fv[1];
                 m->quads[q * 4 + 2] = fv[2];
                 m->quads[q * 4 + 3] = fv[3];
+                if (!subdiv) {
+                    printf("quad: %d %d %d %d\n", fv[0], fv[1], fv[2], fv[3]);
+                }
             }
             if (tri) {
                 m->tris[q * 6 + 0] = fv[0];

@@ -21,8 +21,8 @@ set(skia_src ${EXTERN_DIR}/skia/src)
 includes(
     ${dawn_dir}/include
     ${dawn_dir}/src
-    ${dawn_dir}/ion-${cfg_lower}/include
-    ${dawn_dir}/ion-${cfg_lower}/gen/include
+    ${dawn_dir}/ion-${extern_cfg_lower}/include
+    ${dawn_dir}/ion-${extern_cfg_lower}/gen/include
     ${skia_dir}
     ${skia_dir}/include
     ${skia_dir}/modules/svg/include

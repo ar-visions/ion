@@ -188,6 +188,9 @@ static int read_frame(camera_t *cam)
 
 		break;
     }
+    default:
+        console.fault("not supported");
+        break;
 	}
 	return 1;
 }

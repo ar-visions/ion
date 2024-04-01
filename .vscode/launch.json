@@ -58,10 +58,10 @@
             "name": "canvas-test",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/../hyperspace/build/canvas-test",
+            "program": "${workspaceFolder}/../hyperspace/build-clang/canvas-test",
             "args": [],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/../hyperspace/build",
+            "cwd": "${workspaceFolder}/../hyperspace/build-clang",
             "environment": [
                 {
                     "name": "ASAN_OPTIONS",

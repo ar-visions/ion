@@ -697,7 +697,7 @@ struct node:mx {
     C(memory*         mem) : B(mem), state(mx::data<D>()) { }\
     C(type_t ty, initial<arg>  props) : B(ty,        props), state(defaults<intern>()) { }\
     C(initial<arg>  props) :            B(typeof(C), props), state(defaults<intern>()) { }\
-    C(nullptr_t) : C() { }\
+    C(null_t) : C() { }\
     C(mx                o) : C(o.mem->hold())  { }\
     C()                    : C(mx::alloc<C>()) { }\
     intern    *operator->() { return  state; }\

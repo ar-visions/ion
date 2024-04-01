@@ -60,9 +60,10 @@
         },
         {
             "name":    "Vulkan-Headers",
-            "version": "1.2.140",
+            "version": "1.3.281",
             "url":     "https://github.com/KhronosGroup/Vulkan-Headers",
-            "commit":  "9250d5ae8f50202005233dc0512a1d460c8b4833",
+            "commit":  "cfebfc96b2b0bce93da7d12f2c14cc01793ae25c",
+            "resource": true,
             "platforms": ["lin"]
         },
         {
@@ -70,6 +71,7 @@
             "version": "m122",
             "url":     "https://chromium.googlesource.com/external/github.com/KhronosGroup/Vulkan-Utility-Libraries",
             "commit":  "4cfc176e3242b4dbdfd3f6c5680c5d8f2cb7db45",
+            "resource": true,
             "platforms": ["lin"]
         },
         {

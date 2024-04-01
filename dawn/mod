@@ -40,7 +40,7 @@ if(linux)
     # spriv tools
     # -----------------------------
     includes(${EXTERN_DIR}/SPIRV-Tools)
-    includes(${EXTERN_DIR}/SPIRV-Tools/ion-${cfg_lower})
+    includes(${EXTERN_DIR}/SPIRV-Tools/ion-${extern_cfg_lower})
     includes(${EXTERN_DIR}/Vulkan-Utility-Libraries)
     dep(SPIRV-Tools)
 endif()
@@ -81,7 +81,7 @@ endif()
 
 # dawn
 # -----------------------------
-set(dawn_gen ${EXTERN_DIR}/dawn/ion-${cfg_lower}/gen)
+set(dawn_gen ${EXTERN_DIR}/dawn/ion-${extern_cfg_lower}/gen)
 set(dawn_src ${EXTERN_DIR}/dawn/src/dawn)
 
 includes(
@@ -145,9 +145,6 @@ if (linux)
     src(${dawn_src}/native/vulkan/**.cpp)
 endif()
 
-cxxflags(+-Os)
-set(debuggable FALSE)
-
 if (mac)
     src(${dawn_src}/native/Surface_metal.mm)
     src(${dawn_src}/native/metal/**.cpp)
@@ -163,6 +160,7 @@ src(-_test.cc
     -gaussian_distribution_gentables.cc
     -webgpu_dawn_native_proc.cpp
     -_testing.cc
+    #-StreamImplVk.cpp # missing an extension when using Vk SDK + Vulkan-Headers -- would be nice to investigate this feature, once working -- as-is Dawn may need to be pulled to a more recent date
     -_bench.cc
     -_benchmark.cc
     -_test_common.cc
@@ -232,6 +230,10 @@ set(dawn_dir ${EXTERN_DIR}/dawn)
 includes(
     ${dawn_dir}/include
     ${dawn_dir}/src
-    ${dawn_dir}/ion-${cfg_lower}/include
-    ${dawn_dir}/ion-${cfg_lower}/gen/include
+    ${dawn_dir}/ion-${extern_cfg_lower}/include
+    ${dawn_dir}/ion-${extern_cfg_lower}/gen/include
+)
+
+includes(
+    ${dawn_dir}/third_party/vulkan-deps/vulkan-headers/src/include
 )
