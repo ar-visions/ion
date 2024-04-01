@@ -24,7 +24,7 @@ struct attribs {
     @location(0) pos      : vec3f,
     @location(1) normal   : vec3f,
     @location(2) uv0      : vec2f,
-    @location(4) tangent  : vec4f,
+    @location(3) tangent  : vec4f,
 };
 
 fn _vertex_main(a : attribs, offset : f32) -> vary {
@@ -34,7 +34,7 @@ fn _vertex_main(a : attribs, offset : f32) -> vary {
     let world_pos = u.view * model_pos;//skin_pos;
     let  clip_pos = u.proj * world_pos;
 
-    var light = vec3f(0.0f);
+    var light = vec3f(0.2f, 0.0f, 0.2f);
     for (var i:u32 = 0u; i < u.light_count; i += 1u) {
         let light_dir = normalize(u.lights[i].pos.xyz - model_pos.xyz);
         let amount = max(dot(a.normal, light_dir), 0.0);

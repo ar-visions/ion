@@ -104,49 +104,23 @@ int main(int argc, const char* argv[]) {
     });
     Object o_canvas = m_canvas.instance();
 
-    Model m_human = Model(device, "cube", {
-        Graphics { "Cube", typeof(HumanVertex), { ObjectUniform(HumanState) },
-        
-            [](Mesh &mesh, array<image> &images) {
-                /// verify these as well as the count of 8
-                mesh->verts = array<HumanVertex> {
-                    {{ -0.5f, -0.5f,  0.5f }},
-                    {{  0.5f, -0.5f,  0.5f }},
-                    {{ -0.5f,  0.5f,  0.5f }},
-                    {{  0.5f,  0.5f,  0.5f }},
-                    {{ -0.5f,  0.5f, -0.5f }},
-                    {{  0.5f, -0.5f, -0.5f }},
-                    {{ -0.5f, -0.5f, -0.5f }},
-                    {{  0.5f, -0.5f, -0.5f }}
-                }.hold();
-                /// set quads field if we want to setup a mesh by those primitives
-                mesh->quads = array<u32> { /// verify these 24
-                    0, 1, 3, 2,
-                    2, 3, 5, 4,
-                    4, 5, 7, 6,
-                    6, 7, 1, 0,
-                    1, 7, 5, 3,
-                    6, 0, 2, 4 };
-                
-                mesh->level = 0; /// this tells trinity to apply 1 iteration of subdiv; she then cracks IRS dbase
-            },
-            
-            "plane" }
+    Model m_human = Model(device, "human", {
+        Graphics { "Body", typeof(HumanVertex), { ObjectUniform(HumanState) }, null, "human" }
     });
 
-
-
+    usleep(1000 * 1000 * 1000);
 
     Object o_human = m_human.instance();
     Canvas canvas;
     num s = millis();
 
     states<Clear> clear_states { Clear::Color, Clear::Depth };
-    clear_states[Clear::Color] = false;
+    clear_states.clear(Clear::Color);
 
     window.register_presentation(
         [&]() -> Scene {
-            UState &u_canvas   = o_canvas.uniform<UState>("canvas"); /// todo: defaults not set
+            /// todo: defaults not set
+            UState &u_canvas   = o_canvas.uniform<UState>("canvas"); 
             float  *test_store = o_canvas.vector <float> ("canvas");
             test_store[0] = 1.0f;
             test_store[1] = 1.0f;
@@ -163,19 +137,20 @@ int main(int argc, const char* argv[]) {
             canvas.fill(top);
             canvas.flush();
 
-            HumanState &u_human = o_human.uniform<HumanState>("Cube");
-            //glm::vec3 eye    = glm::vec3(0.0f, 1.5f, -0.8f);
-            //glm::vec3 target = glm::vec3(0.0f, 1.5f, 0.0f);
-            //glm::vec3 up     = glm::vec3(0.0f, 1.0f, 0.0f);
+            HumanState &u_human = o_human.uniform<HumanState>("Body");
+            glm::vec3 eye    = glm::vec3(0.0f, 1.5f, -0.8f);
+            glm::vec3 target = glm::vec3(0.0f, 1.5f, 0.0f);
+            glm::vec3 up     = glm::vec3(0.0f, 1.0f, 0.0f);
             
+            /*
             glm::vec3 eye     = glm::vec3(0.0f, 1.0f, -0.8f) * 4.0f;
             glm::vec3 target  = glm::vec3(0.0f, 0.0f, 0.0f);
             glm::vec3 forward = glm::normalize(target - eye);
             glm::vec3 w_up    = glm::vec3(0.0f, 1.0f, 0.0f);
             glm::vec3 right   = glm::normalize(glm::cross(forward, w_up));
             glm::vec3 up      = glm::cross(right, forward);
+            */
             
-           
             static float inc = 0;
             inc += 0.0004f;
             glm::quat r = glm::angleAxis(inc, glm::vec3(0.0f, 1.0f, 0.0f));

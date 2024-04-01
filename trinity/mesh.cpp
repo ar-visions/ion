@@ -146,9 +146,6 @@ array<Mesh> Mesh::process(Mesh &mesh, const array<Polygon> &modes, int start_lev
                 float *dst = &new_origin[i * n_floats];
                 float *src = verts[level_origin + i].f_data;
                 memcpy(dst, src, n_floats * sizeof(float));
-
-                printf("vertex[%d] = %.2f %.2f %.2f\n", i, dst[0], dst[1], dst[2]);
-                
             }
             m->verts.set_size(level_vcount);
         }
@@ -172,9 +169,6 @@ array<Mesh> Mesh::process(Mesh &mesh, const array<Polygon> &modes, int start_lev
                 m->quads[q * 4 + 1] = fv[1];
                 m->quads[q * 4 + 2] = fv[2];
                 m->quads[q * 4 + 3] = fv[3];
-                if (!subdiv) {
-                    printf("quad: %d %d %d %d\n", fv[0], fv[1], fv[2], fv[3]);
-                }
             }
             if (tri) {
                 m->tris[q * 6 + 0] = fv[0];

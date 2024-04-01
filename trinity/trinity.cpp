@@ -79,6 +79,7 @@ struct ITexture {
             case wgpu::TextureDimension::e1D: return wgpu::TextureViewDimension::e1D;
             case wgpu::TextureDimension::e2D: return wgpu::TextureViewDimension::e2D;
             case wgpu::TextureDimension::e3D: return wgpu::TextureViewDimension::e3D;
+            default: break;
         }
         return wgpu::TextureViewDimension::Undefined;
     }
@@ -313,7 +314,7 @@ struct IDawn {
         #ifdef __APPLE__
         //AllowKeyRepeats(); // can go in ux module perhaps
         #endif
-        assert(glfwInit());
+        glfwInit();
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         glfwWindowHint(GLFW_COCOA_RETINA_FRAMEBUFFER, GLFW_FALSE);
         glfwSetErrorCallback(PrintGLFWError);
@@ -513,7 +514,7 @@ struct IPipeline {
 
     void load_shader(Graphics &gfx) {
         if (!mod_cache->count(gfx->shader)) {
-            path shader_path = fmt { "shaders/{0}.wgl", { gfx->shader } };
+            path shader_path = fmt { "shaders/{0}.wsl", { gfx->shader } };
             str  shader_code = shader_path.read<str>();
             mod_cache[gfx->shader] = dawn::utils::CreateShaderModule(device->wgpu, shader_code);
         }
@@ -665,7 +666,7 @@ struct IPipeline {
         dawn::utils::ComboRenderPipelineDescriptor render_desc;
         render_desc.layout = pipeline_layout;
 
-        render_desc.multisample.count = 4;
+        render_desc.multisample.count = 4; /// todo: make interface
 
         if (wire) {
             render_desc.primitive.topology = wgpu::PrimitiveTopology::LineList;

@@ -193,6 +193,34 @@ struct Graphics:mx {
         data->bindings  = bindings;
     }
     mx_object(Graphics, mx, GraphicsData);
+
+    template <typename V>
+    static inline GraphicsGen cube(float s, int levels) {
+        return [s, levels](Mesh &mesh, array<image> &images) {
+            /// verify these as well as the count of 8
+            mesh->verts = array<V> {
+                {{ -0.5f * s, -0.5f * s,  0.5f * s }},
+                {{  0.5f * s, -0.5f * s,  0.5f * s }},
+                {{ -0.5f * s,  0.5f * s,  0.5f * s }},
+                {{  0.5f * s,  0.5f * s,  0.5f * s }},
+                {{ -0.5f * s,  0.5f * s, -0.5f * s }},
+                {{  0.5f * s,  0.5f * s, -0.5f * s }},
+                {{ -0.5f * s, -0.5f * s, -0.5f * s }},
+                {{  0.5f * s, -0.5f * s, -0.5f * s }}
+            }.hold();
+            /// set quads field if we want to setup a mesh by those primitives
+            mesh->quads = array<u32> { /// verify these 24 spartans
+                0, 1, 3, 2,
+                2, 3, 5, 4,
+                4, 5, 7, 6,
+                6, 7, 1, 0,
+                1, 7, 5, 3,
+                6, 0, 2, 4 };
+            
+            mesh->level = levels; /// this tells trinity to apply 1 iteration of subdiv; she then cracks IRS dbase
+        };
+    };
+
 };
 
 struct Pipeline:mx {

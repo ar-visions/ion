@@ -10,11 +10,10 @@ includes(${module_path}
 defines(LIBSSH_STATIC HAVE_LIBMBEDCRYPTO)
 set(dir ${EXTERN_DIR}/libssh/src)
 
-if(UNIX)
-    cflags(+-Wno-unused-value)
-else()
-    cflags(+-Wdeprecated-declarations)
-endif()
+cflags(
+    +-Wno-unused-value
+    +-Wno-deprecated-declarations
+    +-Wno-implicit-function-declaration)
 
 # add source references
 src(${dir}/agent.c              ${dir}/auth.c                   ${dir}/base64.c  

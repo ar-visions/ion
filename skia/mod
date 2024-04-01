@@ -7,6 +7,8 @@ if (NOT win)
     dep(icu:icudata)
 endif()
 
+cxxflags(+-Wno-psabi +-Wno-macro-redefined)
+
 include(${r_path}/skia/defs)
 
 includes(

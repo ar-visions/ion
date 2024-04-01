@@ -52,16 +52,31 @@ struct attribs {
 /// we can also solve by duplicating joint data and putting neighbors together; this may end up populating too much data
 /// we may also need to re-order to best fit alignment of interpolative values
 
+
+fn mat4_mix(m1: mat4x4f, m2: mat4x4f, weight: f32) -> mat4x4f
+{
+  var result: mat4x4f = mat4x4f(
+    0.0f, 0.0f, 0.0f, 0.0f,
+    0.0f, 0.0f, 0.0f, 0.0f,
+    0.0f, 0.0f, 0.0f, 0.0f,
+    0.0f, 0.0f, 0.0f, 0.0f);
+
+  for (var i:u32 = 0; i < 4; i++) {
+    result[i] = mix(m1[i], m2[i], weight);
+  }
+  return result;
+}
+
 fn floating_joint(i: u32, joint_index: vec4<f32>) -> mat4x4f {
     let jf = joint_index[i]; // floaty joint-index
-    let joint = mix(
-        joints[ floor(jf)],
-        joints[  ceil(jf)],
-            jf - floor(jf));
+    let joint = mat4_mix(
+        joints[ u32(     floor(jf))],
+        joints[ u32(      ceil(jf))],
+                    jf - floor(jf) );
     return joint;
 }
 
-fn _vertex(a : attribs, offset: f32) -> vary {
+fn vertex(a : attribs, offset: f32) -> vary {
     var v : vary;
     let pos4 = vec4f(a.pos + a.normal * offset, 1.0f);
     var skin_pos : vec4f = vec4f(0.0f);
@@ -92,25 +107,25 @@ fn _vertex(a : attribs, offset: f32) -> vary {
 
 @vertex
 fn vertex_main(a : attribs) -> vary {
-    return _vertex(a, 0.0f);
+    return vertex(a, 0.0f);
 }
 
 @vertex
 fn vertex_wire(a : attribs) -> vary {
-    return _vertex(a, 0.001f);
+    return vertex(a, 0.001f);
 }
 
-fn _fragment(v : vary) -> vec4f {
+fn fragment(v : vary) -> vec4f {
     //let color = textureSample(color, color_sa, v.uv0);
     return v.color;
 }
 
 @fragment
 fn fragment_main(v : vary) -> @location(0) vec4f {
-    return _fragment(v);
+    return fragment(v);
 }
 
 @fragment
 fn fragment_wire(v : vary) -> @location(0) vec4f {
-    return mix(_fragment(v), vec4f(1.0f, 1.0f, 0.0f, 1.0f), 0.66f);
+    return mix(fragment(v), vec4(1.0f, 1.0f, 0.0f, 1.0f), 0.66f);
 }
