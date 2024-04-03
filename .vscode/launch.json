@@ -88,6 +88,29 @@
             }
         },
         {
+            "name": "json",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/../hyperspace/build-clang/json",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/../hyperspace/build-clang",
+            "MIMode": "gdb",
+            "presentation": {
+                "hidden": false,
+                "group": "",
+                "order": 1,
+            },
+            "windows":{
+                "type": "cppvsdbg",
+                "program": "${workspaceFolder}/../hyperspace/build/Debug/json",
+                "cwd": "${workspaceFolder}/../hyperspace/build"
+            },
+            "osx": {
+                "MIMode": "lldb"
+            }
+        },
+        {
             "name": "ux-test1",
             "type": "cppdbg",
             "request": "launch",

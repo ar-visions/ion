@@ -63,6 +63,39 @@
                 }
             }
         },
+    
+        {
+            "label": "build-json",
+            "type": "shell",
+			"options": {
+                "cwd": "${workspaceFolder}/../hyperspace/build-clang"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "group": "build0",
+                "clear": true
+            },
+			"isBackground": false,
+			"problemMatcher": ["$gcc"],
+            "windows": {
+                "command": "msbuild hyperspace.sln /t:json"
+            },
+            "osx": {
+                "command": "make json -j32"
+            },
+            "linux": {
+                "command": "make json -j32",
+                "options":{
+                    "env":{"VERBOSE":"1"}
+                }
+            }
+        },
+
         {
             "label": "build-ux-test1",
             "type": "shell",
