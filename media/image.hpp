@@ -383,8 +383,8 @@ struct Vec2:mx {
 };
 
 /// always have a beginning, middle and end -- modules && classes && functions
-struct image:array<rgba8> {
-    mx_object_0(image, array, rgba8);
+struct image:array {
+    mx_object(image, array, rgba8);
 
     image(size  sz) : array<rgba8>(sz) {
         mem->count = mem->reserve;
@@ -395,13 +395,6 @@ struct image:array<rgba8> {
     image(ion::size sz, rgba8 *px, int scanline = 0);
 
     path vector_path();
-
-    image &operator=(const image b) {
-        mx::drop();
-        mx::mem = b.mem->hold();
-        array<rgba8>::data = b.array<rgba8>::data;
-        return *this;
-    }
 
     ///
     bool    save(path p) const;
