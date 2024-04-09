@@ -6,7 +6,7 @@ struct ModelView:Element {
     struct props {
         callback    clicked;
         ///
-        doubly<prop> meta() {
+        properties meta() {
             return {
                 prop { "clicked", clicked}
             };
@@ -17,8 +17,8 @@ struct ModelView:Element {
 };
 
 int main(int argc, char *argv[]) {
-    map<mx> defs { { "debug", uri { "ssh://ar-visions.com:1022" } } };
-    map<mx> config { args::parse(argc, argv, defs) };
+    map defs { { "debug", uri { "ssh://ar-visions.com:1022" } } };
+    map config { args::parse(argc, argv, defs) };
     if    (!config) return args::defaults(defs);
     return App(config, [](App &app) -> node {
         return ModelView {

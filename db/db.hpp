@@ -4,7 +4,7 @@ namespace ion {
 
 typedef map<str, var> Schema;
 typedef map<str, var> SMap;
-typedef array<var>     Table;
+typedef Array<var>     Table;
 typedef map<str, var>  ModelMap;
 
 inline var ModelDef(str name, Schema schema) {

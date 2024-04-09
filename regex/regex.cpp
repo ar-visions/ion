@@ -78,7 +78,7 @@ RegEx::RegEx(utf16 pattern, Behaviour b) : RegEx() {
     load_patterns(&pattern, 1);
 }
 
-RegEx::RegEx(array<utf16> patterns, Behaviour b) : RegEx() {
+RegEx::RegEx(Array<utf16> patterns, Behaviour b) : RegEx() {
     data->b = b;
     load_patterns(patterns.data, patterns.len());
 }
@@ -116,7 +116,7 @@ void RegEx::set_cursor(num from, num to) {
 }
 
 /// 
-array<indexed<utf16>> RegEx::exec(utf16 input) {
+Array<indexed<utf16>> RegEx::exec(utf16 input) {
     if (input.mem != data->last_mem || data->b == Behaviour::none) {
         ::drop(data->last_mem);
         data->last_index = 0;
@@ -124,7 +124,7 @@ array<indexed<utf16>> RegEx::exec(utf16 input) {
         data->last_mem = input.hold();
     }
     for (size_t i = 0; i < data->regex_count; i++) {
-        array<indexed<utf16>> result;
+        Array<indexed<utf16>> result;
         oniguruma *state = &data->states[i];
 
         if (state->regex && (!data->last_index || data->bytes_left)) {
@@ -173,7 +173,7 @@ array<indexed<utf16>> RegEx::exec(utf16 input) {
 }
 
 /// debug above first
-array<indexed<str>> RegEx::exec(str input) {
+Array<indexed<str>> RegEx::exec(str input) {
     return {};
 }
 

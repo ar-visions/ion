@@ -9,20 +9,20 @@ static str root_app_class;
 /// to debug style, place conditional breakpoint on member->s_key == "your-prop" (used in a style block) and n->data->id == "id-you-are-debugging"
 /// hopefully we dont have to do this anymore.  its simple and it works.  we may be doing our own style across service component and elemental component but having one system for all is preferred,
 /// and brings a sense of orthogonality to the react-like pattern, adds type-based contextual grabs and field lookups with prop accessors
-style::entry *style::impl::best_match(node *n, prop *member, array<style::entry*> &entries) {
-    array<style::block*> &blocks = members[*member->s_key]; /// instance function when loading and updating style, managed map of [style::block*]
+style::entry *style::impl::best_match(node *n, prop *member, Array<style::entry*> &entries) {
+    Array<style::block*> &blocks = members.get<Array<style::block*>>(*member->s_key); /// instance function when loading and updating style, managed map of [style::block*]
     style::entry *match = null; /// key is always a symbol, and maps are keyed by symbol
     real     best_score = 0;
 
     /// should narrow down by type used in the various blocks by referring to the qualifier
     /// find top style pair for this member
     type_t type = n->mem->type;
-    for (style::entry *e: entries) {
+    for (style::entry *e: entries.elements<style::entry*>()) {
         block *bl = e->bl;
         real score = bl->score(n, true);
         str &prop = *member->s_key;
         if (score > 0 && score >= best_score) { /// Edit:focus is eval'd as false?
-            match = bl->entries[prop];
+            match = bl->entries.get<style::entry*>(prop);
             assert(match);
             best_score = score;
         }
@@ -35,7 +35,7 @@ size_t style::block::score(node *pn, bool score_state) {
     double best_sc = 0;
     node   cur     = n;
 
-    for (Qualifier q:quals) {
+    for (Qualifier &q : quals.elements<Qualifier>()) {
         double best_this = 0;
         for (;;) {
             bool    id_match  = q->id    &&  q->id == cur->id;
@@ -52,7 +52,7 @@ size_t style::block::score(node *pn, bool score_state) {
                 assert(q->state.len() > 0);
                 u8*   addr   = (u8*)cur.find_prop_value(q->state, member);
                 if   (addr)
-                    state_match = member->type->functions->boolean((none*)null, (none*)addr);
+                    state_match = member->type->f.boolean(addr);
             }
 
             bool state_reject = score_state && q->state && !state_match;
@@ -89,8 +89,8 @@ double duration_millis(duration dur) {
 
 /// id's can be dynamic so we cant enforce symbols, and it would be a bit lame to make the caller symbolize
 str node_id(node &e) {
-    array<arg> &args = e->args;
-    for (arg &a: args) {
+    array &args = e->args;
+    for (arg &a: args.elements<arg>()) {
         if (strcmp((symbol)a.key.mem->origin, "id") == 0)
             return (cstr)a.value.mem->origin; /// convert to str
     }
@@ -114,7 +114,7 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
     if (e.type() == typeof(node) && e->children) {
         size_t clen = e->children.len();
         size_t i    = 0;
-        array<node*> a_instances = instance ? instance->data->children : array<node*>(clen, clen);
+        Array<node*> a_instances = instance ? instance->data->children : Array<node*>(clen, clen);
 
         /// set instances node array, then we specify the item pointer for each
         if (!instance)
@@ -129,16 +129,18 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
     if (!diff) {
         /// instance != null, so we can check attributes
         /// compare args for diffs
-        array<arg>    &p = (*(node*)instance)->args; /// previous args
-        array<arg>    &n = e->args; /// new args
+        Array<arg>    &p = (*(node*)instance)->args; /// previous args
+        Array<arg>    &n = e->args; /// new args
         diff = args_len != p.len();
         if (!diff) {
             /// no reason to check against a map
             for (size_t i = 0; i < args_len; i++) {
                 arg &p_pair = p[i];
                 arg &n_pair = n[i];
-                if (p_pair.key   != n_pair.key ||
-                    p_pair.value != n_pair.value) {
+                mx key  (p_pair.key);
+                mx value(p_pair.value);
+                if (key   != n_pair.key ||
+                    value != n_pair.value) {
                     diff = true;
                     break;
                 }
@@ -158,7 +160,7 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
             instance = e.new_instance();
             str   id = node_id(e); /// needed for style computation of available entries in the style blocks
             (*instance)->parent = parent;
-            (*instance)->id     = id.hold();
+            (*instance)->id     = hold(id);
             (*instance)->composer = composer;
             
             /// compute available properties for this Element given its type, placement, and props styled 
@@ -184,7 +186,7 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
                 continue;
             u8* data_origin = (u8*)instance->mem->typed_data(tdata, 0);
             prop_map* meta_map = (prop_map*)tdata->meta_map;
-            doubly<prop>* props = (doubly<prop>*)tdata->meta;
+            properties* props = (properties*)tdata->meta;
 
             /// its possible some classes may not have meta information defined, just skip
             if (!meta_map)
@@ -193,18 +195,20 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
             /// apply style to props (only do this when we need to, as this will be inefficient to do per update)
             /// dom uses invalidation for this such as property changed in a parent, element added, etc
             /// it does not need to be perfect we are not making a web browser
-            for (prop &p: *props) {
+            for (prop &p: props->elements<prop>()) {
                 str &name = *p.s_key;
-                field<array<style::entry*>> *entries = style_avail->lookup(name); // ctx name is Button, name == id, and it has a null entry for entries[0] == null with count > 
+                field *entries = style_avail->lookup(name); // ctx name is Button, name == id, and it has a null entry for entries[0] == null with count > 
                 if (entries) {
                     /// get best style matching entry for this property
-                    style::entry *best = composer->style->best_match(instance, &p, *entries);
+                    Array<style::entry*> e(entries->value);
+                    style::entry *best = composer->style->best_match(instance, &p, e);
                     ///
                     type_t prop_type = p.type;
                     u8    *prop_dst  = &data_origin[p.offset];
                     
                     /// dont repeat this; store best in transitions lookup for this member name
-                    node::selection &sel = instance->data->selections[name];
+                    /// this must be allocated in the map
+                    node::selection &sel = instance->data->selections.get<node::selection>(name);
 
                     /// in cases there will be no match, in other cases we have already selected
                     if (best && (best != sel.entry)) {
@@ -212,22 +216,37 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
 
                         /// create instance and immediately assign if there is no transition
                         if (prop_type->traits & traits::mx_obj) {
-                            if (!best->mx_instance) best->mx_instance = (mx*)prop_type->functions->from_string(null, best->value.cs());
-                            if (!should_trans) prop_type->functions->set_memory((none*)prop_dst, best->mx_instance->mem);
+                            if (!best->mx_instance) {
+                                void *alloc = prop_type->ctr_str(str(best->value));
+                                best->mx_instance = new mx(((MX*)alloc)->mem);
+                                prop_type->f.dtr(alloc);
+                            }
+                            if (!should_trans) {
+                                prop_type->f.dtr(prop_dst);
+                                prop_type->f.ctr_mem(prop_dst, hold(best->mx_instance->mem));
+                            }
                         } else {
-                            if (!best->raw_instance) best->raw_instance = prop_type->functions->from_string(null, best->value.cs());
-                            if (!should_trans) prop_type->functions->assign((none*)null, (none*)prop_dst, (none*)best->raw_instance);
+                            if (!best->raw_instance) {
+                                void *alloc = prop_type->ctr_str(str(best->value));
+                                best->raw_instance = alloc;
+                            }
+                            if (!should_trans) {
+                                prop_type->f.dtr(prop_dst);
+                                prop_type->f.ctr_cp(prop_dst, best->raw_instance);
+                            }
                         }
 
                         /// if we had a prior transition, delete the memory
-                        if (sel.from) prop_type->functions->del((none*)null, (none*)sel.from);
+                        if (sel.from) prop_type->f.dtr(sel.from);
 
                         /// handle transitions, only when we have previously selected (otherwise we are transitioning from default state)
                         if (should_trans) {
                             /// get copy of current value (new instance, and assign from current)
-                            raw_t cur = prop_type->functions->alloc_new();
-                            prop_type->functions->assign((none*)null, (none*)cur, (none*)prop_dst);
-                            
+                            raw_t cur;
+                            if (prop_type->traits & traits::mx_obj)
+                                cur = prop_type->ctr_mem(((MX*)prop_dst)->mem);
+                            else
+                                cur = prop_type->ctr_cp(prop_dst);
                             /// setup data
                             double ms = duration_millis(best->trans.dur.type);
                             sel.start  = now;
@@ -245,11 +264,11 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
                         ///
                     } else if (!best) {
                         /// if there is nothing to set to, we must set to its default initialization value
-                        if (prop_type->traits & traits::mx_obj) {
-                            prop_type->functions->set_memory((none*)prop_dst, ((mx*)p.init_value)->mem);
-                        } else {
-                            prop_type->functions->assign((none*)null, (none*)prop_dst, (none*)p.init_value);
-                        }
+                        if (prop_type->traits & traits::mx_obj)
+                            prop_type->f.ctr_mem(prop_dst, hold(((mx*)p.init_value)->mem));
+                        else
+                            prop_type->f.ctr_cp(prop_dst, p.init_value);
+                        
                         sel.start  = 0;
                         sel.end    = 0;
                         sel.from   = null;
@@ -260,31 +279,28 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
             }
 
             /// handle selected transitions
-            for (auto &field: instance->data->selections) {
-                node::selection &sel = field.value;
+            for (auto &field: instance->data->selections.fields()) {
+                node::selection &sel = field.value.ref<node::selection>();
                 if (sel.start > 0 && sel.member->parent_type == tdata) { /// make sure we have the correct data origin!
                     real   amount = math::clamp(real(now - sel.start) / real(sel.end - sel.start), 0.0, 1.0);
                     real   curve  = sel.entry->trans.pos(amount);
                     type_t prop_type = sel.member->type;
                     u8    *prop_dst  = &data_origin[sel.member->offset];
 
-                    raw_t temp;
+                    raw_t temp = calloc(1, sizeof(prop_type->base_sz));
                     if (prop_type == typeof(double)) {
                         temp = new double(*(double*)sel.from * (1.0 - curve) + *(double*)sel.to * curve);
                     } else {
-                        assert(prop_type->functions->mix);
-                        temp = prop_type->functions->mix((none*)sel.from, (none*)sel.to, curve);
+                        assert(prop_type->f.mix);
+                        prop_type->f.mix(sel.from, sel.to, temp, curve);
                     }
-                    
-                    //mixes++;
-                    ///
-                    if (prop_type->traits & traits::mx_obj) {
-                        prop_type->functions->set_memory((none*)prop_dst, ((mx*)temp)->mem);
-                    } else {
-                        prop_type->functions->assign((none*)null, (none*)prop_dst, (none*)temp);
-                    }
+                    if (prop_type->traits & traits::mx_obj)
+                        prop_type->f.ctr_mem(prop_dst, hold(((mx*)temp)->mem));
+                    else
+                        prop_type->f.ctr_cp(prop_dst, temp);
 
-                    prop_type->functions->del((none*)null, (none*)temp);
+                    prop_type->f.dtr(temp);
+                    free(temp);
                 }
             }
 
@@ -309,6 +325,7 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
                         u8    *prop_dst  = &data_origin[def->offset];
                         u8    *arg_src   = (u8*)a.value.mem->typed_data(arg_type, 0); /// passing int into mx recovers int, but passing lambda will give data inside.  we want to store a context
                         u8    *conv_inst = null;
+                        str   str_res;
 
                         /// if prop type is mx, we can generalize
                         if (prop_type == typeof(mx)) {
@@ -321,33 +338,34 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
                         /// if going to string and arg is not, we convert
                         else if (prop_type == typeof(str) && arg_type != prop_type) {
                             /// general to_string conversion (memory of char)
-                            assert(arg_type->functions->to_string);
-                            memory *m_str = arg_type->functions->to_string((none*)arg_src);
-                            conv_inst = (u8*)new str(m_str); /// no hold here
+                            assert(arg_type->f.str);
+                            conv_inst = (u8*)arg_type->f.str(arg_src);
                             arg_src   = (u8*)conv_inst;
                             arg_type  = typeof(str);
                         }
                         /// general from_string conversion.  the class needs to have a cstr constructor
                         else if ((arg_type == typeof(char) || arg_type == typeof(str)) && prop_type != arg_type) {
-                            assert(prop_type->functions->from_string);
-                            conv_inst = (u8*)prop_type->functions->from_string(null,
-                                arg_type == typeof(str) ? (cstr)a.value.mem->origin : (cstr)arg_src);
+                            assert(prop_type->f.ctr_str);
+                            conv_inst = (u8*)prop_type->ctr_str(arg_type == typeof(str) ?
+                                (cstr)a.value.mem->origin : (cstr)arg_src);
                             arg_src = (u8*)conv_inst;
                             arg_type = prop_type;
                         }
                         /// types should match
                         assert(arg_type == prop_type || arg_type->ref == prop_type);
+
+                        prop_type->f.dtr(prop_dst);
                         if (prop_type->traits & traits::mx_obj) {
                             /// set by memory construction (cast conv_inst as mx which it must be)
                             assert(!conv_inst || (arg_type->traits & traits::mx_obj) ||
                                                  (arg_type->traits & traits::mx));
-                            prop_type->functions->set_memory((none*)prop_dst, conv_inst ? ((mx*)conv_inst)->mem : a.value.mem);
+                            prop_type->f.ctr_mem(prop_dst, hold(conv_inst ? ((mx*)conv_inst)->mem : a.value.mem));
                         } else {
                             /// assign property with data that is of the same type
-                            prop_type->functions->assign((none*)null, (none*)prop_dst, (none*)arg_src);
+                            prop_type->f.ctr_cp(prop_dst, arg_src);
                         }
                         pset[i] = true;
-                        if (conv_inst) arg_type->functions->del((none*)null, (none*)conv_inst);
+                        if (conv_inst) arg_type->f.dtr(conv_inst);
                     }
                 } else {
                     console.fault("unsupported key type");
@@ -369,8 +387,8 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
                     update(composer, instance, n_mount, *e);
                 }
             /// can also be stored in a map
-            } else if (render->type == typeof(map<node>)) {
-            } else if (render->type == typeof(array<node>)) {
+            } else if (render->type == typeof(map)) {
+            } else if (render->type == typeof(Array<node>)) {
             } else {
                 str id = node_id(render);
                 update(composer, instance, n->mounts[id], render);
@@ -410,7 +428,7 @@ bool ws(cstr &cursor) {
     return *cursor != 0;
 }
 
-bool scan_to(cstr &cursor, array<char> chars) {
+bool scan_to(cstr &cursor, Array<char> chars) {
     bool sl  = false;
     bool qt  = false;
     bool qt2 = false;
@@ -430,7 +448,7 @@ bool scan_to(cstr &cursor, array<char> chars) {
     return false;
 }
 
-doubly<style::Qualifier> parse_qualifiers(style::block &bl, cstr *p) {
+doubly parse_qualifiers(style::block &bl, cstr *p) {
     str   qstr;
     cstr start = *p;
     cstr end   = null;
@@ -454,7 +472,7 @@ doubly<style::Qualifier> parse_qualifiers(style::block &bl, cstr *p) {
     
     ///
     auto  quals = qstr.split(",");
-    doubly<style::Qualifier> result;
+    doubly result;
 
     ///
     for (str &qs:quals) {
@@ -466,7 +484,7 @@ doubly<style::Qualifier> parse_qualifiers(style::block &bl, cstr *p) {
         /// we need to scan by >
 
         style::Qualifier v = vv;
-        array<str> parent_to_child = qq.split("/"); /// we choose not to use > because it interferes with ops
+        Array<str> parent_to_child = qq.split("/"); /// we choose not to use > because it interferes with ops
         style::Qualifier *processed = null;
 
         if (parent_to_child.len() > 1) {
@@ -484,7 +502,7 @@ doubly<style::Qualifier> parse_qualifiers(style::block &bl, cstr *p) {
             str tail;
             ///
             if (idot >= 0) {
-                array<str> sp = q.split(".");
+                Array<str> sp = q.split(".");
                 v->type   = sp[0];
                 v->id     = sp[1].split(":")[0];
                 if (icol >= 0)
@@ -503,7 +521,7 @@ doubly<style::Qualifier> parse_qualifiers(style::block &bl, cstr *p) {
                     bl.types += v->ty;
                 }
             }
-            array<str> ops {"!=",">=","<=",">","<","="};
+            Array<str> ops {"!=",">=","<=",">","<","="};
             if (tail) {
                 // check for ops
                 bool is_op = false;
@@ -539,15 +557,15 @@ style::style_map style::impl::compute(node *n) {
             continue;
 
         ///
-        array<entry *> all(32);
-        for (prop &p: *(doubly<prop>*)data->meta) { /// the blocks can contain a map of types with entries associated, with a * key for all
+        Array<entry *> all(32);
+        for (prop &p: *(properties*)data->meta) { /// the blocks can contain a map of types with entries associated, with a * key for all
             if (*p.s_key == "fill-color") {
                 int test = 0;
             }
             if (applicable(n, &p, all)) {
                 str   s_name  = p.key->hold(); /// it will free if you dont hold it
                 avail[s_name] = all;
-                all = array<entry *>(32);
+                all = Array<entry *>(32);
             }
         }
     }
@@ -560,7 +578,7 @@ void style::impl::cache_members() {
     cache_b = [&](block *bl) -> void {
         for (entry *e: bl->entries) {
             bool  found = false;
-            array<block*> &cache = members[e->member];
+            Array<block*> &cache = members[e->member];
             for (block *cb:cache)
                  found |= cb == bl;
             ///
@@ -660,7 +678,7 @@ void style::load_from_file(path css_path) {
 }
 
 style::style(type_t app_type) : style() {
-    watch::fn reload = [&](bool first, array<path_op> &ops) {
+    watch::fn reload = [&](bool first, Array<path_op> &ops) {
         style &s = (style&)*this;
         str  root_class = app_type->name;
         path css_path   = fmt { "style/{0}.css", { root_class } };
@@ -671,8 +689,8 @@ style::style(type_t app_type) : style() {
     data->reloader = watch::spawn({"./style"}, {".css"}, {}, reload);
 }
 
-bool style::impl::applicable(node *n, prop *member, array<style::entry*> &result) {
-    array<style::block*> &blocks = members[*member->s_key]; /// members must be 'sample' on load, and retrieving it should return a block
+bool style::impl::applicable(node *n, prop *member, Array<style::entry*> &result) {
+    Array<style::block*> &blocks = members.get<style::block*>(*member->s_key); /// members must be 'sample' on load, and retrieving it should return a block
     type_t type = n->mem->type;
     bool ret = false;
 

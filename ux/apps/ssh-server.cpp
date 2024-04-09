@@ -4,15 +4,15 @@ using namespace ion;
 
 int main(int argc, char **argv) {
     /// parse args with defaults; print when not enough given
-    map<mx> defs {
+    map defs {
         {"ssh", str("ssh://ar-visions.com:10022")}
     };
-    map<mx> config { args::parse(argc, argv, defs) };
+    map config { args::parse(argc, argv, defs) };
     if    (!config) return args::defaults(defs);
     
     SSHService service;
     return Services(config, [&](Services &app) {
-        return array<node> {
+        return Array<node> {
             SSHService {
                 { "id",      "ssh" },
                 { "bind",    app["ssh"] },

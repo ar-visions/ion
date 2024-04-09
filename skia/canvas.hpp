@@ -22,123 +22,121 @@ struct text_metrics {
 
 using tm_t = text_metrics;
 
-namespace graphics {
-    enums(cap, none,
-        none, blunt, round);
+enums(cap, none,
+    none, blunt, round);
+
+enums(join, miter,
+    miter, round, bevel);
+
+struct outline:mx {
+    using Rect    = ion::Rect;
+    using Rounded = ion::Rounded;
+
+    ///
+    struct sdata {
+        type_t      type;           /// type of shape (null for operations)
+        Rect        bounds;         /// boundaries, or identity of shape primitive
+        doubly      ops;            /// operation list (or verbs)
+        vec2d       mv;             /// movement cursor
+        void*       sk_path;        /// saved sk_path; (invalidated when changed)
+        void*       sk_offset;      /// applied offset; this only works for positive offset
+        real        cache_offset;   /// when sk_path/sk_offset made, this is set
+        real        offset;         /// current state for offset; an sk_path is not made because it may not be completed by the user
+    };
     
-    enums(join, miter,
-        miter, round, bevel);
+    ///
+    mx_object(outline, mx, sdata);
 
-    struct shape:mx {
-        using Rect    = ion::Rect   <r64>;
-        using Rounded = ion::Rounded<r64>;
+    operator rectd &() {
+        if (!data->bounds)
+            bounds();
+        return data->bounds;
+    }
 
-        ///
-        struct sdata {
-            type_t      type;           /// type of shape (null for operations)
-            Rectd       bounds;         /// boundaries, or identity of shape primitive
-            doubly<mx>  ops;            /// operation list (or verbs)
-            vec2d       mv;             /// movement cursor
-            void*       sk_path;        /// saved sk_path; (invalidated when changed)
-            void*       sk_offset;      /// applied offset; this only works for positive offset
-            real        cache_offset;   /// when sk_path/sk_offset made, this is set
-            real        offset;         /// current state for offset; an sk_path is not made because it may not be completed by the user
-        };
+    bool contains(vec2d p) {
+        if (!data->bounds)
+            bounds();
         
+        return data->bounds->contains(p);
+    }
+    ///
+    rectd &bounds() {
+        real min_x = 0, max_x = 0;
+        real min_y = 0, max_y = 0;
+        int  index = 0;
         ///
-        mx_object(shape, mx, sdata);
-
-        operator rectd &() {
-            if (!data->bounds)
-                bounds();
-            return data->bounds;
-        }
-
-        bool contains(vec2d p) {
-            if (!data->bounds)
-                bounds();
-            
-            return data->bounds->contains(p);
-        }
-        ///
-        rectd &bounds() {
-            real min_x = 0, max_x = 0;
-            real min_y = 0, max_y = 0;
-            int  index = 0;
-            ///
-            if (!data->bounds && data->ops) {
-                /// get aabb from vec2d
-                for (mx &v:data->ops) {
-                    vec2d *vd = v.get<vec2d>(0); 
-                    if (!vd) continue;
-                    if (!index || vd->x < min_x) min_x = vd->x;
-                    if (!index || vd->y < min_y) min_y = vd->y;
-                    if (!index || vd->x > max_x) max_x = vd->x;
-                    if (!index || vd->y > max_y) max_y = vd->y;
-                    index++;
-                }
-            }
-            return data->bounds;
-        }
-
-        shape(rectd r4, real rx = nan<real>(), real ry = nan<real>()) : shape() {
-            bool use_rect = std::isnan(rx) || rx == 0 || ry == 0;
-            data->type   = use_rect ? typeof(Rectd) : typeof(Rounded);
-            data->bounds = use_rect ? Rectd(r4) : 
-                                      Rectd(Rounded(r4, rx, std::isnan(ry) ? rx : ry)); /// type forwards
-        }
-
-        bool is_rect () { return data->bounds.type() == typeof(rectd)          && !data->ops; }
-        bool is_round() { return data->bounds.type() == typeof(Rounded::rdata) && !data->ops; }    
-
-        /// following ops are easier this way than having a last position which has its exceptions for arc/line primitives
-        inline void line    (vec2d  l) {
-            Line::ldata ld { data->mv, l };
-            data->ops += ion::Line(ld);
-            data->mv = l;
-        }
-        inline void bezier  (Bezier b) { data->ops += b; }
-        inline void move    (vec2d  v) {
-            data->mv = v;
-            data->ops += ion::Movement(v);
-        }
-
-        //void quad    (graphics::quad   q) { data->ops += q; }
-        inline void arc(Arc a) { data->ops += a; }
-        operator        bool() { bounds(); return bool(data->bounds); }
-        bool       operator!() { return !operator bool(); }
-        shape::sdata *handle() { return data; }
-    };
-
-    struct border {
-        real size, tl, tr, bl, br;
-        rgbad color;
-        inline bool operator==(const border &b) const { return b.tl == tl && b.tr == tr && b.bl == bl && b.br == br; }
-        inline bool operator!=(const border &b) const { return !operator==(b); }
-
-        /// members are always null from the memory::allocation
-        border() { }
-        ///
-        border(str raw) : border() {
-            str        trimmed = raw.trim();
-            size_t     tlen    = trimmed.len();
-            array<str> values  = raw.split();
-            size_t     ncomps  = values.len();
-            ///
-            if (tlen > 0) {
-                size = values[0].real_value<real>();
-                if (ncomps == 5) {
-                    tl = values[1].real_value<real>();
-                    tr = values[2].real_value<real>();
-                    br = values[3].real_value<real>();
-                    bl = values[4].real_value<real>();
-                } else if (tlen > 0 && ncomps == 2)
-                    tl = tr = bl = br = values[1].real_value<real>();
-                else
-                    console.fault("border requires 1 (size) or 2 (size, roundness) or 5 (size, tl tr br bl) values");
+        if (!data->bounds && data->ops) {
+            /// get aabb from vec2d
+            for (mx &v:data->ops) {
+                vec2d *vd = v.get<vec2d>(0); 
+                if (!vd) continue;
+                if (!index || vd->x < min_x) min_x = vd->x;
+                if (!index || vd->y < min_y) min_y = vd->y;
+                if (!index || vd->x > max_x) max_x = vd->x;
+                if (!index || vd->y > max_y) max_y = vd->y;
+                index++;
             }
         }
-    };
+        return data->bounds;
+    }
+
+    outline(rectd r4, real rx = nan<real>(), real ry = nan<real>()) : outline() {
+        bool use_rect = std::isnan(rx) || rx == 0 || ry == 0;
+        data->type   = use_rect ? typeof(Rectd) : typeof(Rounded);
+        data->bounds = use_rect ? Rectd(r4) : 
+                                    Rectd(Rounded(r4, rx, std::isnan(ry) ? rx : ry)); /// type forwards
+    }
+
+    bool is_rect () { return data->bounds.type() == typeof(rectd)          && !data->ops; }
+    bool is_round() { return data->bounds.type() == typeof(Rounded::rdata) && !data->ops; }    
+
+    /// following ops are easier this way than having a last position which has its exceptions for arc/line primitives
+    inline void line    (vec2d  l) {
+        Line::ldata ld { data->mv, l };
+        data->ops += ion::Line(ld);
+        data->mv = l;
+    }
+    inline void bezier  (Bezier b) { data->ops += b; }
+    inline void move    (vec2d  v) {
+        data->mv = v;
+        data->ops += ion::Movement(v);
+    }
+
+    //void quad    (graphics::quad   q) { data->ops += q; }
+    inline void arc(Arc a) { data->ops += a; }
+    operator        bool() { bounds(); return bool(data->bounds); }
+    bool       operator!() { return !operator bool(); }
+    outline::sdata *handle() { return data; }
+};
+
+struct border {
+    real size, tl, tr, bl, br;
+    rgbad color;
+    inline bool operator==(const border &b) const { return b.tl == tl && b.tr == tr && b.bl == bl && b.br == br; }
+    inline bool operator!=(const border &b) const { return !operator==(b); }
+
+    /// members are always null from the memory::allocation
+    border() { }
+    ///
+    border(str raw) : border() {
+        str        trimmed = raw.trim();
+        size_t     tlen    = trimmed.len();
+        Array<str> values  = raw.split();
+        size_t     ncomps  = values.len();
+        ///
+        if (tlen > 0) {
+            size = values[0].real_value<real>();
+            if (ncomps == 5) {
+                tl = values[1].real_value<real>();
+                tr = values[2].real_value<real>();
+                br = values[3].real_value<real>();
+                bl = values[4].real_value<real>();
+            } else if (tlen > 0 && ncomps == 2)
+                tl = tr = bl = br = values[1].real_value<real>();
+            else
+                console.fault("border requires 1 (size) or 2 (size, roundness) or 5 (size, tl tr br bl) values");
+        }
+    }
 };
 
 enums(nil, none, none);
@@ -167,7 +165,7 @@ struct alignment {
     alignment(real x, real y) : x(x), y(y), is_default(false) { }
 
     alignment(str s) : is_default(false) {
-        array<str> a = s.split();
+        Array<str> a = s.split();
         str s0 = a[0];
         str s1 = a.len() > 1 ? a[1] : a[0];
 
@@ -220,7 +218,7 @@ struct font:mx {
     }
 
     font(str s):font() {
-        array<str> sp = s.split();
+        Array<str> sp = s.split();
         data->sz   = sp[0].real_value<real>();
         if (sp.len() > 1)
             data->name = sp[1];
@@ -242,8 +240,8 @@ struct font:mx {
         return font(fd);
     }
 
-    array<double> advances(Canvas& canvas);
-    array<double> advances(Canvas& canvas, str line);
+    Array<double> advances(Canvas& canvas);
+    Array<double> advances(Canvas& canvas, str line);
 
             operator bool()    { return  data->sz; }
     bool    operator!()        { return !data->sz; }
@@ -263,7 +261,7 @@ template <typename> struct simple_content : true_type { };
 struct LineInfo {
     str            data;
     num            len;
-    array<double>  adv;
+    Array<double>  adv;
     rectd          bounds;     /// bounds of area of the text line
     rectd          placement;  /// effective bounds of the aligned text, with y and h same as bounds
 };
@@ -273,7 +271,7 @@ struct TextSel {
     num     row = 0;
 
     /// common function for TextSel used in 2 parts; updates the sel_start and sel_end
-    static void replace(doubly<LineInfo> &lines, TextSel &sel_start, TextSel &sel_end, doubly<LineInfo> &text) {
+    static void replace(doubly &lines, TextSel &sel_start, TextSel &sel_end, doubly &text) {
         assert(sel_start.row <= sel_end.row);
         assert(sel_start.row != sel_end.row || sel_start.column <= sel_end.column);
         LineInfo &ls = lines[sel_start.row];
@@ -385,9 +383,9 @@ struct EProps:mx {
     mx_basic(EProps);
 
     EProps(str s) : EProps() {
-        array<str> a = s.split("|");
+        Array<str> a = s.split("|");
         for (str &v: a) {
-            array<str> kv = v.split("=");
+            Array<str> kv = v.split("=");
             assert(kv.len() == 2);
             data->eprops[kv[0]] = EStr(kv[1]);
         }
@@ -453,22 +451,22 @@ struct Canvas:mx {
     void image(ion::image img, rectd rect, alignment align, vec2d offset, bool attach_tx = false);
     void text(str text, rectd rect, alignment align, vec2d offset, bool ellip, rectd *placement = null);
     void clip(rectd path);
-    void projection(glm::mat4 &m, glm::mat4 &v, glm::mat4 &p);
-    void outline(array<glm::vec3> v3);
-    void outline(array<glm::vec2> v2);
-    void line(glm::vec3 &a, glm::vec3 &b);
+    void projection(m44f      &m, m44f      &v, m44f      &p);
+    void outline(Array<vec3f> v3);
+    void outline(Array<vec2f> v2);
+    void line(vec3f &a, vec3f &b);
     void outline(rectd rect);
     void outline_sz(double sz);
-    void cap(graphics::cap c);
-    void join(graphics::join j);
+    void cap(cap c);
+    void join(join j);
     void translate(vec2d tr);
     void scale(vec2d sc);
     void rotate(double degs);
     void fill(rectd rect);
-    void fill(graphics::shape path);
-    void clip(graphics::shape path);
+    void fill(outline path);
+    void clip(outline path);
     void gaussian(vec2d sz, rectd crop);
-    void arc(glm::vec3 pos, real radius, real startAngle, real endAngle, bool is_fill = false);
+    void arc(vec3f pos, real radius, real startAngle, real endAngle, bool is_fill = false);
 };
 
 }

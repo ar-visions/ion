@@ -29,7 +29,7 @@ struct Button:Element {
 
     void down() {
         if (state->behavior == Button::Behavior::radio) {
-            array<node*> buttons = collect(node::data->group, false);
+            Array<node*> buttons = collect(node::data->group, false);
             for (node *b: buttons) {
                 if (b->type() != typeof(Button))
                     continue;
@@ -62,7 +62,7 @@ struct Edit:Element {
             callback change;
         } ev;
 
-        doubly<prop> meta() {
+        properties meta() {
             return {
                 prop { "on-change", ev.change },
             };
@@ -102,8 +102,8 @@ struct list_view:node {
         }
     };
     
-    array<Column> columns;
-    using Columns = array<Column>;
+    Array<Column> columns;
+    using Columns = Array<Column>;
     
     struct Members {
         ///
@@ -121,7 +121,7 @@ struct list_view:node {
 
         rgba8 odd_bg;
 
-        doubly<prop> meta() {
+        properties meta() {
             return {
                 prop { "cell-fg",    cell.fg    }, /// designer gets to set app-defaults in css; designer gets to know entire component model; designer almost immediately regrets
                 prop { "cell-fg",    cell.fg    },
@@ -135,7 +135,7 @@ struct list_view:node {
     } m;
     
     void update_columns() {
-        columns       = array<Column>(m.column.ids);
+        columns       = Array<Column>(m.column.ids);
         double  tsz   = 0;
         double  warea = node::std.drawings[operation::fill].shape.w();
         double  t     = 0;
@@ -223,7 +223,7 @@ struct list_view:node {
         }
         
         /// paint visible rows
-        array<mx> d_array(data.hold());
+        Array<mx> d_array(data.hold());
         double  sy = std.scroll.data.y;
         int  limit = sy + fill.h() - (columns ? 2.0 : 0.0);
         for (int i = sy; i < math::min(limit, int(d_array.length())); i++) {

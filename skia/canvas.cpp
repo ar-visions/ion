@@ -63,7 +63,7 @@ struct ICanvas {
         vec2d       blur;
         ion::font   font;
         SkPaint     ps;
-        glm::mat4   model, view, proj;
+        m44f        model, view, proj;
     };
 
     ~ICanvas() {
@@ -72,7 +72,7 @@ struct ICanvas {
     }
 
     state *top = null;
-    doubly<state> stack;
+    doubly stack;
 
     void outline_sz(double sz) {
         top->outline_sz = sz;
@@ -175,7 +175,7 @@ struct ICanvas {
     }
     
     void save() {
-        state &s = stack->push();
+        state &s = stack->push_default<state>();
         if (top) {
             s = *top;
         } else {
@@ -393,15 +393,15 @@ struct ICanvas {
         sk_canvas->clipRect(r);
     }
 
-    void outline(array<glm::vec2> &line, bool is_fill = false) {
+    void outline(Array<vec2f> &line, bool is_fill = false) {
         SkPaint ps = SkPaint(top->ps);
         ps.setAntiAlias(true);
         ps.setColor(sk_color(top->color));
         ps.setStrokeWidth(is_fill ? 0 : top->outline_sz);
         ps.setStroke(!is_fill);
-        glm::vec2 *a = null;
+        vec2f *a = null;
         SkPath path;
-        for (glm::vec2 &b: line) {
+        for (vec2f &b: line) {
             SkPoint bp = { b.x, b.y };
             if (a) {
                 path.lineTo(bp);
@@ -413,46 +413,46 @@ struct ICanvas {
         sk_canvas->drawPath(path, ps);
     }
 
-    void projection(glm::mat4 &m, glm::mat4 &v, glm::mat4 &p) {
+    void projection(m44f      &m, m44f      &v, m44f      &p) {
         top->model      = m;
         top->view       = v;
         top->proj       = p;
     }
 
-    void outline(array<glm::vec3> &v3, bool is_fill = false) {
-        glm::vec2 sz = { this->sz.x / this->dpi_scale.x, this->sz.y / this->dpi_scale.y };
-        array<glm::vec2> projected { v3.len() };
-        for (glm::vec3 &vertex: v3) {
-            glm::vec4 cs  = top->proj * top->view * top->model * glm::vec4(vertex, 1.0f);
-            glm::vec3 ndc = cs / cs.w;
+    void outline(Array<vec3f> &v3, bool is_fill = false) {
+        vec2f sz = { this->sz.x / this->dpi_scale.x, this->sz.y / this->dpi_scale.y };
+        Array<vec2f> projected { v3.len() };
+        for (vec3f &vertex: v3) {
+            vec4f cs  = top->proj * top->view * top->model * vec4f(vertex, 1.0f);
+            vec3f ndc = cs / cs.w;
             float screenX = ((ndc.x + 1) / 2.0) * sz.x;
             float screenY = ((1 - ndc.y) / 2.0) * sz.y;
-            glm::vec2  v2 = { screenX, screenY };
+            vec2f  v2 = { screenX, screenY };
             projected    += v2;
         }
         outline(projected, is_fill);
     }
 
-    void line(glm::vec3 &a, glm::vec3 &b) {
-        array<glm::vec3> ab { size_t(2) };
+    void line(vec3f &a, vec3f &b) {
+        Array<vec3f> ab { size_t(2) };
         ab.push(a);
         ab.push(b);
         outline(ab);
     }
 
-    void arc(glm::vec3 position, real radius, real startAngle, real endAngle, bool is_fill = false) {
+    void arc(vec3f position, real radius, real startAngle, real endAngle, bool is_fill = false) {
         const int segments = 36;
-        ion::array<glm::vec3> arcPoints { size_t(segments) };
+        ion::Array<vec3f> arcPoints { size_t(segments) };
         float angleStep = (endAngle - startAngle) / segments;
 
         for (int i = 0; i <= segments; ++i) {
-            float     angle = glm::radians(startAngle + angleStep * i);
-            glm::vec3 point;
+            float     angle = radians(startAngle + angleStep * i);
+            vec3f point;
             point.x = position.x + radius * cos(angle);
             point.y = position.y;
             point.z = position.z + radius * sin(angle);
-            glm::vec4 viewSpacePoint = top->view * glm::vec4(point, 1.0f);
-            glm::vec3 clippingSp     = glm::vec3(viewSpacePoint);
+            vec4f viewSpacePoint = top->view * vec4f(point, 1.0f);
+            vec3f clippingSp     = vec3f(viewSpacePoint);
             arcPoints += clippingSp;
         }
         arcPoints.set_size(segments);
@@ -687,16 +687,16 @@ void Canvas::join(graphics::join j)         { data->join(j); }
 void Canvas::translate(vec2d tr)            { data->translate(tr); }
 void Canvas::scale(vec2d sc)                { data->scale(sc); }
 void Canvas::rotate(double degs)            { data->rotate(degs); }
-void Canvas::outline(array<glm::vec3> v3)   { data->outline(v3); }
-void Canvas::outline(array<glm::vec2> line) { data->outline(line); }
+void Canvas::outline(Array<vec3f> v3)   { data->outline(v3); }
+void Canvas::outline(Array<vec2f> line) { data->outline(line); }
 void Canvas::fill(rectd rect)               { data->fill(rect); }
 void Canvas::fill(graphics::shape path)     { data->fill(path); }
 void Canvas::clip(graphics::shape path)     { data->clip(path); }
 void Canvas::gaussian(vec2d sz, rectd crop) { data->gaussian(sz, crop); }
-void Canvas::line(glm::vec3 &a, glm::vec3 &b) { data->line(a, b); }
-void Canvas::projection(glm::mat4 &m, glm::mat4 &v, glm::mat4 &p) { return data->projection(m, v, p); }
+void Canvas::line(vec3f &a, vec3f &b) { data->line(a, b); }
+void Canvas::projection(m44f      &m, m44f      &v, m44f      &p) { return data->projection(m, v, p); }
 
-void Canvas::arc(glm::vec3 pos, real radius, real startAngle, real endAngle, bool is_fill) {
+void Canvas::arc(vec3f pos, real radius, real startAngle, real endAngle, bool is_fill) {
     return data->arc(pos, radius, startAngle, endAngle, is_fill);
 }
 
@@ -732,10 +732,10 @@ vec2i SVG::sz() { return { data->w, data->h }; }
 
 void SVG::set_props(EProps &eprops) {
     // iterate through fields in map (->eprops)
-    for (field<EStr> &f: eprops->eprops) {
-        str id_attr = f.key.hold();
-        str value   = str(f.value); /// call operator str()
-        array<str> ida = id_attr.split(".");
+    for (field &f: eprops->eprops.fields()) {
+        str id_attr(f.key);
+        str value(f.value); /// call operator str()
+        Array<str> ida = id_attr.split(".");
         assert(ida.len() == 2);
 
         symbol id   = ida[0].cs();
@@ -762,9 +762,9 @@ void SVG::render(SkCanvas *sk_canvas, int w, int h) {
     (*data->svg_dom)->render(sk_canvas);
 }
 
-array<double> font::advances(Canvas& canvas, str text) {
+Array<double> font::advances(Canvas& canvas, str text) {
     num l = text.len();
-    array<double> res(l+1, l+1);
+    Array<double> res(l+1, l+1);
     ///
     for (num i = 0; i <= l; i++) {
         str    s   = text.mid(0, i);

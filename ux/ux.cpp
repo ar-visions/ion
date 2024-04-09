@@ -8,10 +8,6 @@
 
 namespace ion {
 
-//static NewFn<path> path_fn = NewFn<path>(path::_new);
-//static NewFn<array<rgba8>> ari_fn = NewFn<array<rgba8>>(array<rgba8>::_new);
-//static NewFn<image> img_fn = NewFn<image>(image::_new);
-
 struct color:mx {
     mx_object(color, mx, rgba8);
 };
@@ -57,14 +53,14 @@ void Element::up()        { }
 void Element::click()     { }
 void Element::leave()     { }
 
-doubly<LineInfo> &Element::get_lines(Canvas *p_canvas) {
+doubly &Element::get_lines(Canvas *p_canvas) {
 
     if (data->content && !data->lines) {
         str         s_content = data->content.hold();
-        array<str>  line_strs = s_content.split("\n");
+        Array<str>  line_strs = s_content.split("\n");
         int        line_count = (int)line_strs.len();
         ///
-        data->lines = doubly<LineInfo>();
+        data->lines = doubly();
         ///
         size_t i = 0;
         for (int i = 0; i < line_count; i++) {
@@ -99,7 +95,7 @@ void Element::draw_text(Canvas& canvas, rectd& rect) {
     const double line_height_basis = 2.0;
     double       lh = tm.line_height * (Element::data->text_spacing.y * line_height_basis); /// this stuff can all transition, best to live update the bounds
     ///
-    doubly<LineInfo> &lines = get_lines(&canvas);
+    doubly &lines = get_lines(&canvas);
 
     /// iterate through lines
     int i = 0;
@@ -441,17 +437,17 @@ void Element::on_text(event e) {
     bool       swap = data->sel_start > data->sel_end;
     TextSel     &ss = swap ? data->sel_end : data->sel_start;
     TextSel     &se = swap ? data->sel_start : data->sel_end;
-    array<str> text = e->text.split("\n");
+    Array<str> text = e->text.split("\n");
     bool      enter = e->text == "\n";
     bool       back = e->text == "\b";
 
     /// do not insert control characters
     if (back)
-        text = array<str> {""};
+        text = Array<str> {""};
 
-    doubly<LineInfo> add;
+    doubly add;
     for (str &line: text) {
-        LineInfo &l = add->push();
+        LineInfo &l = add->push_default<LineInfo>();
         l.data = line;
         l.len  = line.len();
     }
@@ -538,15 +534,16 @@ vec2d Element::offset() {
     return o;
 }
 
-array<Element*> Element::select(lambda<Element*(Element*)> fn) {
-    array<Element*> result;
+Array<Element*> Element::select(lambda<Element*(Element*)> fn) {
+    Array<Element*> result;
     lambda<Element *(Element *)> recur;
     recur = [&](Element* n) -> Element* {
         Element* r = fn(n);
         if   (r) result += r;
         /// go through mount fields mx(symbol) -> Element*
-        for (field<node*> &f:n->node::data->mounts)
-            if (f.value) recur((Element*)f.value);
+        for (field &f:n->node::data->mounts) {
+            if (f.value) recur(f.value.ref<Element*>());
+        }
         return null;
     };
     recur(this);
@@ -557,8 +554,8 @@ void Element::exec(lambda<void(node*)> fn) {
     lambda<node*(node*)> recur;
     recur = [&](node* n) -> node* {
         fn(n);
-        for (field<node*> &f: n->node::data->mounts)
-            if (f.value) recur(f.value);
+        for (field &f: n->node::data->mounts)
+            if (f.value) recur(f.value.ref<node*>());
         return null;
     };
     recur(this);

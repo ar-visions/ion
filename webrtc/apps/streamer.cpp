@@ -18,7 +18,7 @@ struct View:Element {
         int         sample2;
         callback    clicked;
         ///
-        doubly<prop> meta() {
+        properties meta() {
             return {
                 prop { "sample",  sample },
                 prop { "sample2", sample2 },
@@ -29,7 +29,7 @@ struct View:Element {
 
     int context_var;
 
-    doubly<prop> meta() {
+    properties meta() {
         return {
             prop { "context_var", context_var }
         };
@@ -42,7 +42,7 @@ struct View:Element {
     }
  
     node update() {
-        return ion::array<node> {
+        return ion::Array<node> {
             Edit {
                 { "content", "Multiline edit test" }
             }
@@ -51,7 +51,7 @@ struct View:Element {
 };
 
 int main(int argc, char **argv) {
-    ion::map<mx> defs {
+    ion::map defs {
         {"audio",   str("opus")},
         {"video",   str("h264")},
         {"ip",      str("127.0.0.1")},
@@ -59,7 +59,7 @@ int main(int argc, char **argv) {
     };
 
     /// parse args with mx parser in map type
-    ion::map<mx> config = args::parse(argc, argv, defs);
+    ion::map config = args::parse(argc, argv, defs);
     if (!config) return args::defaults(defs);
 
     ///
@@ -76,7 +76,7 @@ int main(int argc, char **argv) {
     /// Stream  - stream instance
 
     return Services([&](Services &app) {
-        return ion::array<node> {
+        return ion::Array<node> {
             VideoStream {
                 { "id",             "streamer" },
                 { "source",         "" },

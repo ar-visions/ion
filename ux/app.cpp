@@ -35,7 +35,7 @@ void App::shell_server(uri bind) {
             p->send_message(null, msg.hold());
         };
         data->services = Services({}, [&](Services &app) {
-            return array<node> {
+            return Array<node> {
                 SSHService {
                     { "id",   "ssh" },
                     { "bind",  bind },
@@ -75,9 +75,9 @@ void App::shell_server(uri bind) {
 }
 
 struct CanvasAttribs {
-    glm::vec4 pos;
-    glm::vec2 uv;
-    doubly<prop> meta() {
+    vec4f pos;
+    vec2f uv;
+    properties meta() {
         return {
             { "pos", pos },
             { "uv",  uv  }
@@ -101,11 +101,11 @@ int App::run() {
     style root_style { ee->type }; /// this is a singleton, so anyone else doing style s; will get the style. (those should not exec first, though.)
     window.set_title(ee->type->name);
     
-    array<ShaderVar> v = { texture, Sampling(Sampling::linear) };
-    Model canvas_pipeline = Model(device, null, array<Graphics> {
+    Array<ShaderVar> v = { texture, Sampling(Sampling::linear) };
+    Model canvas_pipeline = Model(device, null, Array<Graphics> {
         Graphics {
             "canvas", typeof(CanvasAttribs), { texture, Sampling::linear },
-            [](mx &vbo, mx &ibo, array<image> &images) {
+            [](mx &vbo, mx &ibo, Array<image> &images) {
                 static const uint32_t indexData[6] = {
                     0, 1, 2,
                     2, 1, 3
@@ -199,7 +199,7 @@ int App::run() {
             app->hover->Element::data->hover = false;
         printf("play-pause hover = false\n");
         
-        array<Element*> hovers = app.select_at(app->cursor, cd->buttons[0]);
+        Array<Element*> hovers = app.select_at(app->cursor, cd->buttons[0]);
         app->hover = hovers ? hovers[0] : null;
 
         Element *last = null;
@@ -238,7 +238,7 @@ int App::run() {
             app->active->Element::data->active = false;
         
         if (state) {
-            array<Element*> all_active = app.select_at(app->cursor, false);
+            Array<Element*> all_active = app.select_at(app->cursor, false);
             app->active = all_active ? all_active[0] : null;
         } else
             app->active = null;

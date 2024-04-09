@@ -24,9 +24,70 @@ extern "C" {
 
 namespace ion {
 
+
+MediaBuffer::MediaBuffer(Media type, const mx &buf, int id):MediaBuffer() {
+    /// assert supported media and their respective mx data formats
+    if (buf.type() == typeof(float)) {
+        assert(type == Media::PCMf32);
+    } else if (buf.type() == typeof(short)) {
+        assert(type == Media::PCM);
+    } else if (buf.type() == typeof(u8)) {
+        assert(type == Media::YUY2 || type == Media::NV12);
+    } else
+        assert(false);
+
+    data->type = type;
+    data->buf  = buf;
+    data->id   = id;
+}
+
+MediaBuffer::MediaBuffer(PCMInfo &pcm, const mx &buf, int id) : MediaBuffer() {
+    data->pcm  = pcm;
+    data->type = pcm->format;
+    data->buf  = buf;
+    data->id   = id;
+    assert(pcm->format == Media::PCM || pcm->format == Media::PCMf32);
+}
+
+/// hand-off constructor
+MediaBuffer::MediaBuffer(PCMInfo &pcm) : MediaBuffer() {
+    data->pcm  = pcm;
+    data->type = pcm->format;
+    data->buf  = pcm->audio_buffer; /// no copy
+    pcm->audio_buffer = array(typeof(u8), 0, data->buf.reserve()); /// recycle potential
+}
+
+PCMu32 ::PCMu32(const array &buf) : MediaBuffer(Media::PCMu32, buf, 0) { }
+PCMf32 ::PCMf32(const array &buf) : MediaBuffer(Media::PCMf32, buf, 0) { }
+PCM    ::PCM   (const array &buf) : MediaBuffer(Media::PCM,    buf, 0) { }
+YUY2   ::YUY2  (const array &buf) : MediaBuffer(Media::YUY2,   buf, 0) { }
+NV12   ::NV12  (const array &buf) : MediaBuffer(Media::NV12,   buf, 0) { }
+MJPEG  ::MJPEG (const array &buf) : MediaBuffer(Media::MJPEG,  buf, 0) { }
+H264   ::H264  (const array &buf) : MediaBuffer(Media::H264,   buf, 0) { }
+
+struct iaudio {
+    ion::i32    sample_rate; /// hz
+    ion::i16   *samples;
+    ion::i8     channels;
+    ion::i64    total_samples;
+    ion::str    artist;
+    ion::str    title;
+    
+    static i16 *alloc_pcm(int samples, int channels) {
+        const int pad = 2048; /// mp3/aac never goes over this size
+        sz_t sz = samples * channels + pad;
+        i16 *pcm = new i16[sz];
+        memset(pcm, 0, sz * sizeof(i16));
+        return pcm;
+    }
+
+    ~iaudio()       { delete[] samples; }
+    operator bool() { return samples; }
+};
+
 mx inflate(mx input) {
     size_t sz = input.byte_len();
-    array<char> out(sz * 4);
+    array out(typeof(char), sz * 4);
     
     // setup zlib inflate stream
     z_stream stream { };
@@ -41,7 +102,7 @@ mx inflate(mx input) {
         return {};
     }
 
-    u8 *src = input.data<u8>();
+    u8 *src = input.get<u8>(0);
     stream.avail_in = u32(sz);
     stream.next_in  = src;
     const size_t CHUNK_SIZE = 1024;
@@ -55,7 +116,7 @@ mx inflate(mx input) {
             res == Z_DATA_ERROR ||
             res == Z_MEM_ERROR) {
             ::inflateEnd(&stream);
-            console.fault("inflate failure: {0}", int(res));
+            console.fault("inflate failure: {0}", { res });
             return {};
         }
         ///
@@ -294,14 +355,16 @@ audio::audio(path res, bool force_mono) : audio() {
 }
 
 /// obtain short waves from skinny aliens
-array<short> audio::pcm_data() {
+array audio::pcm_data() {
     return mx::wrap<short>(data->samples, data->total_samples * data->channels);
 }
 
 int           audio::channels() { return  data->channels;                    }
 audio::operator          bool() { return  data->total_samples >  0;          }
 bool         audio::operator!() { return  data->total_samples == 0;          }
-size_t            audio::size() { return  data->total_samples * data->channels; }
-size_t       audio::mono_size() { return  data->total_samples;               }
-
+sz_t              audio::size() { return  data->total_samples * data->channels; }
+sz_t         audio::mono_size() { return  data->total_samples;               }
+sz_t     audio::total_samples() { return  data->total_samples;               }
+sz_t       audio::sample_rate() { return  data->sample_rate; }
+i16 *          audio::samples() { return  data->samples; }
 }

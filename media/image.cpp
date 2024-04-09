@@ -5,20 +5,53 @@
 namespace ion {
 
 yuv420::yuv420(image img) : 
-        array<u8>(size_t(img.width() * img.height() +
+        array(typeof(u8), size_t(img.width() * img.height() +
                          img.width() * img.height() / 4 +
                          img.width() * img.height() / 4),
                   size_t(img.width() * img.height() +
                          img.width() * img.height() / 4 +
                          img.width() * img.height() / 4)) {
+    u8 *data = &array::get<u8>(0);
     w  = img.width();
     h  = img.height();
-    y  =  data;
+    y  = data;
     u  = &data[w * h];
     v  = &data[w * h + (w/2 * h/2)];
     sz = w * h * 3 / 2;
     rgb32_yuv420(
         w, h, (u8*)img.data, 4 * w, y, u, v, w, (w+1)/2, YCBCR_JPEG);
+}
+
+yuv420::operator bool() {
+    return mem && mem->count;
+}
+
+bool yuv420::operator!() {
+    return !mem || !mem->count;
+}
+
+yuv420::yuv420() : array(typeof(u8), 0, 1) { }
+size_t      yuv420:: width() const { return w; }
+size_t      yuv420::height() const { return h; }
+
+
+image::image(size  sz) : array(typeof(rgba8), sz) {
+    mem->count = mem->reserve;
+}
+image::image(null_t n) : image() { }
+image::image(cstr   s) : image(path(s)) { }
+
+///
+rgba8  *image::    pixels() const { return array::data<rgba8>(); }
+size_t  image::     width() const { return (mem && mem->shape) ? (*mem->shape)[1] : 0; }
+size_t  image::    height() const { return (mem && mem->shape) ? (*mem->shape)[0] : 0; }
+size_t  image::    stride() const { return (mem && mem->shape) ? (*mem->shape)[1] : 0; }
+rect    image::      rect() const { return { 0.0, 0.0, double(width()), double(height()) }; }
+vec2i   image::        sz() const { return { int(width()), int(height()) }; }
+///
+rgba8 &image::operator[](ion::size pos) const {
+    size_t index = mem->shape->index_value(pos);
+    return array::data<rgba8>()[index];
 }
 
 /// load an image into 32bit rgba format
@@ -171,6 +204,78 @@ image::image(path p) : array() {
     png_destroy_read_struct(&png, &info, NULL);
     fclose(file);
     mem->origin = data;
+}
+
+
+Rounded::rdata::rdata() { } /// this is implicit zero fill
+Rounded::rdata::rdata(vec4 tl, vec4 tr, vec4 br, vec4 bl) {
+    /// top-left
+    p_tl  = ion::xy(tl);
+    v_tl  = ion::xy(tr) - p_tl;
+    l_tl  = v_tl.length();
+    d_tl  = v_tl / l_tl;
+
+    /// top-right
+    p_tr  = ion::xy(tr);
+    v_tr  = ion::xy(br) - p_tr;
+    l_tr  = v_tr.length();
+    d_tr  = v_tr / l_tr;
+
+    // bottom-right
+    p_br  = ion::xy(br);
+    v_br  = ion::xy(bl) - p_br;
+    l_br  = v_br.length();
+    d_br  = v_br / l_br;
+
+    /// bottom-left
+    p_bl  = ion::xy(bl);
+    v_bl  = ion::xy(tl) - p_bl;
+    l_bl  = v_bl.length();
+    d_bl  = v_bl / l_bl;
+
+    /// set-radius
+    r_tl  = { math::min(tl.w, l_tl / 2), math::min(tl.z, l_bl / 2) };
+    r_tr  = { math::min(tr.w, l_tr / 2), math::min(tr.z, l_br / 2) };
+    r_br  = { math::min(br.w, l_br / 2), math::min(br.z, l_tr / 2) };
+    r_bl  = { math::min(bl.w, l_bl / 2), math::min(bl.z, l_tl / 2) };
+    
+    /// pos +/- [ dir * radius ]
+    tl_x = p_tl + d_tl * r_tl;
+    tl_y = p_tl - d_bl * r_tl;
+    tr_x = p_tr - d_tl * r_tr;
+    tr_y = p_tr + d_tr * r_tr;
+    br_x = p_br + d_br * r_br;
+    br_y = p_br + d_bl * r_br;
+    bl_x = p_bl - d_br * r_bl;
+    bl_y = p_bl - d_tr * r_bl;
+
+    c0   = (p_tr + tr_x) / T(2);
+    c1   = (p_tr + tr_y) / T(2);
+    p1   =  tr_y;
+    c0b  = (p_br + br_y) / T(2);
+    c1b  = (p_br + br_x) / T(2);
+    c0c  = (p_bl + bl_x) / T(2);
+    c1c  = (p_bl + bl_y) / T(2);
+    c0d  = (p_tl + bl_x) / T(2);
+    c1d  = (p_bl + bl_y) / T(2);
+}
+
+Rounded::rdata::rdata(rect &r, T rx, T ry) : rdata(vec4 {r.x, r.y, rx, ry}, vec4 {r.x + r.w, r.y, rx, ry},
+                                                    vec4 {r.x + r.w, r.y + r.h, rx, ry}, vec4 {r.x, r.y + r.h, rx, ry}) { }
+
+
+/// needs routines for all prims
+bool Rounded::contains(vec2 v) { return (v >= data->p_tl && v < data->p_br); }
+///
+double     Rounded:: w() { return data->p_br.x - data->p_tl.x; }
+double     Rounded:: h() { return data->p_br.y - data->p_tl.y; }
+vec2d      Rounded::xy() { return data->p_tl; }
+Rounded::operator bool() { return data->l_tl <= 0; }
+
+/// set og rect (rectd) and compute the bezier
+Rounded::Rounded(rect &r, T rx, T ry) : Rounded() {
+    *Rect::data = r;
+    *data = rdata { r, rx, ry };
 }
 
 }

@@ -9,7 +9,7 @@ namespace ion {
 /// submit pull-request diff with that patch!
 /// for that, we would convert GLSL to WGL
 
-array<Mesh> Mesh::process(Mesh &mesh, const array<Polygon> &modes, int start_level, int max_level) {
+Array<Mesh> Mesh::process(Mesh &mesh, const Array<Polygon> &modes, int start_level, int max_level) {
 
     type_t mtype = mesh->verts.type();
     type_t vtype = (mtype->traits & traits::array) ? mtype->schema->bind->data : mtype;
@@ -25,7 +25,7 @@ array<Mesh> Mesh::process(Mesh &mesh, const array<Polygon> &modes, int start_lev
     n_floats = vertex_size / sizeof(float);
     printf("n_floats = %d\n", n_floats);
 
-    array<u32> quads = mesh->quads;
+    Array<u32> quads = mesh->quads;
     if (!quads) {
         assert(mesh->tris);
         u32 *tris = mesh->tris.data;
@@ -100,7 +100,7 @@ array<Mesh> Mesh::process(Mesh &mesh, const array<Polygon> &modes, int start_lev
 
         // allocate a buffer for vertex primvar data.
         int n_total_max = refiner->GetNumVerticesTotal();
-        array<VFloats> vbuffer(n_total_max);
+        Array<VFloats> vbuffer(n_total_max);
         verts = &vbuffer[0];
 
         // Initialize coarse mesh positions
@@ -126,7 +126,7 @@ array<Mesh> Mesh::process(Mesh &mesh, const array<Polygon> &modes, int start_lev
     bool tri  = modes.contains(Polygon::tri);
     bool wire = modes.contains(Polygon::wire);
     
-    array<Mesh> results(level_count);
+    Array<Mesh> results(level_count);
 
     for (int level = start_level; level <= max_level; level++) {
         bool subdiv = level > 0;
@@ -138,7 +138,7 @@ array<Mesh> Mesh::process(Mesh &mesh, const array<Polygon> &modes, int start_lev
         int  level_qcount = subdiv ? last_level->GetNumFaces()     : quads.len() / 4;
 
         /// copy verts (or) simply reference the mesh verts
-        m->verts = (subdiv) ? memory::alloc(vtype, 0, level_vcount, null) : mesh->verts; /// todo: array<T> type should simply be T; we already have the model of array
+        m->verts = (subdiv) ? memory::alloc(vtype, 0, level_vcount, null) : mesh->verts; /// todo: Array<T> type should simply be T; we already have the model of array
         if (subdiv) {
             float *new_origin = m->verts.origin<float>();
             int  level_origin = (refiner->GetNumVerticesTotal() - level_vcount);
@@ -201,7 +201,7 @@ array<Mesh> Mesh::process(Mesh &mesh, const array<Polygon> &modes, int start_lev
     return results;
 }
 
-const Mesh &Mesh::select(array<Mesh> &meshes, int level) {
+const Mesh &Mesh::select(Array<Mesh> &meshes, int level) {
     for (Mesh &m: meshes) {
         if (m->level == level)
             return m;

@@ -471,7 +471,7 @@ void VideoStream::mounted() {
                 if (peer == PeerConnection::GatheringState::Complete) {
                     if(auto pc = wpc.lock()) {
                         auto description = pc->localDescription();
-                        var message = ion::map<mx> {
+                        var message = ion::map {
                             {"id", id},
                             {"type", description->typeString()},
                             {"sdp", string(description.value())}
@@ -639,10 +639,11 @@ void VideoStream::mounted() {
         state->client_count = [state](Stream stream) -> int {
             int r = 0;
             memory *mem = stream.mem;
-            for (field<Client> &field: state->clients)
-                if (field.value->stream == mem)
+            for (field &field: state->clients.fields()) {
+                Client client(field.value);
+                if (client->stream == mem)
                     r++;
-            
+            }
             return r;
         };
 

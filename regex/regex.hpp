@@ -27,13 +27,13 @@ struct RegEx:mx {
     RegEx(str           pattern,  Behaviour b = Behaviour::none);
     RegEx(utf16         pattern,  Behaviour b = Behaviour::none);
     RegEx(symbol        pattern,  Behaviour b = Behaviour::none);
-    RegEx(array<utf16>  patterns, Behaviour b = Behaviour::none);
+    RegEx(Array<utf16>  patterns, Behaviour b = Behaviour::none);
 
     static str    escape(str input);
     static utf16  escape(utf16 input);
 
-    array<indexed<str>>     exec(str input);
-    array<indexed<utf16>>   exec(utf16 input);
+    Array<indexed<str>>     exec(str input);
+    Array<indexed<utf16>>   exec(utf16 input);
 
     void      set_cursor(num from, num to = -1);
     void   load_patterns(utf16 *patterns, size_t len);
@@ -48,11 +48,11 @@ struct RegEx:mx {
 
     template <typename T>
     T replace(T input, mx mx_replacement) {
-        array<T> matches = exec(input);
+        Array<T> matches = exec(input);
         T result = input;
         lambda<T(T, T)> fn = (mx_replacement.type()->traits & traits::lambda) ?
-            mx_replacement.hold() : lambda<T(T, T)> {};
-        T s_replacement = !fn ? mx_replacement.hold() : lambda<T(T, T)> {};
+            hold(mx_replacement) : lambda<T(T, T)> {};
+        T s_replacement = !fn ? hold(mx_replacement) : lambda<T(T, T)> {};
         ///
         for (T& match : matches) {
             int pos = result.index_of(match);

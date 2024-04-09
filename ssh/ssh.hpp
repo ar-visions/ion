@@ -51,7 +51,7 @@ struct SSHService:node {
         bool                        running;
         ssh_bind                    sshbind;
 
-        doubly<SSHPeer>             peers;
+        doubly                      peers;
 
         /// meta
         lambda<bool(str, str, str)> on_auth; // user-id, user, pass
@@ -64,7 +64,7 @@ struct SSHService:node {
         str                         banner = "default message here\n";
         int                         max_attempts = 3;
 
-        doubly<prop> meta() const {
+        properties meta() const {
             return {
                 prop { "on-auth",       on_auth       },
                 prop { "on-peer",       on_peer       },
@@ -101,12 +101,12 @@ struct Services:composer {
         composer::cmdata*        cmdata;
         bool                     running;
         lambda<node(Services&)>  service_fn;
-        map<mx>                  args;
+        map                  args;
         bool                     stop, stopped;
     };
     mx_object(Services, composer, internal);
 
-    Services(map<mx> args, lambda<node(Services&)> service_fn) : Services() {
+    Services(map args, lambda<node(Services&)> service_fn) : Services() {
         data->args = args;
         data->cmdata = composer::data;
         data->cmdata->app = mem;

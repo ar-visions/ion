@@ -350,7 +350,7 @@ struct Session {
         return ret;
     }
 
-    ssize_t send(str templ, array<mx> args) {
+    ssize_t send(str templ, Array<mx> args) {
         str val = str::format(templ.cs(), args);
         return send(val.cs(), val.len());
     }
@@ -360,19 +360,19 @@ struct Session {
         return send((const char*)v.mem->origin, v.count() * v.mem->type->size()); /// total_size if it has a schema, base_sz otherwise
     }
 
-    array<char> read_until(str s, int max_len) {
-        auto rbytes = array<char>(size_t(max_len));
+    Array<char> read_until(str s, int max_len) {
+        auto rbytes = Array<char>(size_t(max_len));
         size_t slen = s.len();
         ///
         for (;;) {
             rbytes   += '\0';
             size_t sz = rbytes.len();
             if (!recv(&rbytes[sz - 1], size_t(1)))
-                return array<char> { };
+                return Array<char> { };
             if (sz >= slen && memcmp(&rbytes[sz - slen], s.cs(), slen) == 0)
                 break;
             if (sz == max_len)
-                return array<char> { };
+                return Array<char> { };
         }
         return rbytes;
     }
@@ -426,9 +426,9 @@ void        sock::set_timeout(i64 t)                { data->set_timeout(t); }
 bool        sock::read_sz(char *v, size_t sz)       { return data->read_sz(v, sz); }
 ssize_t     sock::recv(char* buf, size_t len)       { return data->recv(buf, len); }
 ssize_t     sock::send(const char* buf, size_t len) { return data->send(buf, len); }
-ssize_t     sock::send(str templ, array<mx> args)   { return data->send(templ, args); }
+ssize_t     sock::send(str templ, Array<mx> args)   { return data->send(templ, args); }
 ssize_t     sock::send(mx &v)                       { return data->send(v); }
-array<char> sock::read_until(str s, int max_len)    { return data->read_until(s, max_len); }
+Array<char> sock::read_until(str s, int max_len)    { return data->read_until(s, max_len); }
 sock        sock::accept(TLS tls)                   {
     Session *session = Session::accept(tls);
     if (!session) // not handled properly in the wrap case
@@ -524,14 +524,14 @@ message::message(path p, mx modified_since) : message() {
     data->code                      = 200;
 }
 
-message::message(mx content, map<mx> headers, uri query) : message() {
+message::message(mx content, map headers, uri query) : message() {
     data->query   = query;
     data->headers = headers;
     data->content = content; /// assuming the content isnt some error thing
     data->code    = 200;
 }
 
-message::message(uri url, map<mx> headers) : message() {
+message::message(uri url, map headers) : message() {
     data->query   = url;
     data->headers = headers; // ion::pair<ion::mx, ion::mx>    ion::pair<ion::mx, ion::mx>
 }
@@ -542,7 +542,7 @@ message::message(sock &sc) : message() {
         //console.log("received headers:");
         //data->headers.print();
         read_content(sc);
-        str status = data->headers["Status"].hold();
+        str status = hold(data->headers["Status"]);
         data->code = int(status.integer_value());
     }
 }
@@ -553,7 +553,7 @@ bool message::read_headers(sock &sc) {
     int line = 0;
     ///
     for (;;) {
-        array<char> rbytes = sc.read_until({ "\r\n" }, 8192);
+        Array<char> rbytes = sc.read_until({ "\r\n" }, 8192);
         size_t sz = rbytes.len();
         if (sz == 0)
             return false;
@@ -562,9 +562,9 @@ bool message::read_headers(sock &sc) {
             break;
         ///
         if (line++ == 0) {
-            str hello = str(rbytes.data, int(sz - 2));
+            str hello = str(rbytes.data<char>(), int(sz - 2));
             i32  code = 0;
-            auto   sp = hello.split(" ");
+            Array<str> sp = hello.split(" ");
             /// this needs to adjust for from-server or from-client (HTTP/1.1 200 OK) (GET uri type)
             if (hello.len() >= 12) { // HTTP/1.1 200 OK is the smallest, 12 chars
                 if (sp.len() >= 3) { /// METHOD URI HTTP_VER <- minimum
@@ -593,15 +593,15 @@ bool message::read_content(sock &sc) {
     str              te = "Transfer-Encoding";
     str              cl = "Content-Length";
     str              ce = "Content-Encoding";
-    str        encoding =     data->headers->count(te) ? str(data->headers[ce].hold()) : str();
-    int            clen = int(data->headers->count(cl) ? str(data->headers[cl].hold()).integer_value() : -1);
+    str        encoding =     data->headers->count(te) ? str(hold(data->headers[ce])) : str();
+    int            clen = int(data->headers->count(cl) ? str(hold(data->headers[cl])).integer_value() : -1);
     bool        chunked = encoding && data->headers[te] == "chunked";
     num     content_len = clen;
     num            rlen = 0;
     const num     r_max = 1024;
     bool          error = false;
     int            iter = 0;
-    array<char> v_data;
+    Array<char> v_data;
     ///
     assert(!(clen >= 0 && chunked));
 
@@ -620,13 +620,13 @@ bool message::read_content(sock &sc) {
                         break;
                     }
                 }
-                array<char> rbytes = sc.read_until({ "\r\n" }, 64);
+                Array<char> rbytes = sc.read_until({ "\r\n" }, 64);
                 if (!rbytes) {
                     error = true;
                     break;
                 }
                 std::stringstream ss;
-                ss << std::hex << rbytes.data;
+                ss << std::hex << rbytes.data<char>();
                 ss >> content_len;
                 if (content_len == 0) /// this will effectively drop out of the while loop
                     break;
@@ -653,7 +653,7 @@ bool message::read_content(sock &sc) {
     }
     ///
     mx    rcv = error ? mx() : mx(v_data);
-    str ctype = data->headers->count("Content-Type") ? str(data->headers["Content-Type"].hold()) : str("");
+    str ctype = data->headers->count("Content-Type") ? str(hold(data->headers["Content-Type"])) : str("");
 
     ///
     if (ctype.split(";").count_of("application/json")) {
@@ -663,7 +663,7 @@ bool message::read_content(sock &sc) {
             }
         }
         /// read content
-        array<char> js { rcv };
+        Array<char> js { rcv };
         var   obj = var::json(js, null);
         data->content = obj;
     }
@@ -678,53 +678,64 @@ bool message::read_content(sock &sc) {
 }
 
 /// query/request construction
-message message::query(uri server, map<mx> headers, mx content) {
+message message::query(uri server, map headers, mx content) {
     message m;
-    message::M& q = m;
-    q.query   = { server, method::get };
-    q.headers = headers;
-    q.content = content;
+    m->query   = { server, web::Get };
+    m->headers = headers;
+    m->content = content;
     return m;
 }
 
 /// response construction, uri is not needed
-message message::response(uri query, mx code, mx content, map<mx> headers) {
-    message rs;
-    message::M& r = rs;
-    r.query    = { query, method::response };
-    r.code     = code;
-    r.headers  = headers;
-    r.content  = content;
-    return rs;
+message message::response(uri query, mx code, mx content, map headers) {
+    message r;
+    r->query    = { query, web::Response };
+    r->code     = code;
+    r->headers  = headers;
+    r->content  = content;
+    return r;
 }
 
 message::operator bool() {
     type_t ct = data->code.type();
     assert(ct == typeof(i32) || ct == typeof(str));
     int ic = int(data->code);
-    return (data->query.mtype() != method::undefined || 
+    return (data->query.mtype() != web::undefined || 
         (ct == typeof(i32) && (ic == 0 && (data->content || data->headers)) || 
         (ic >= 200 && ic < 300)));
 }
 
 bool message::operator!() { return !(operator bool()); }
 
-bool message::printable_value(mx &v) {
+bool message::printable_value(const mx &v) {
     return v.type() != typeof(mx) || v.count() > 0;
 }
 
 symbol message::code_symbol(int code) {
-    static map<symbol> symbols = {
-        {200, "OK"}, {201, "Created"}, {202, "Accepted"}, {203, "Non-Authoritative Information"},
-        {204, "No Content"}, {205, "Reset Content"}, {206, "Partial Content"},
-        {300, "Multiple Choices"}, {301, "Moved Permanently"}, {302, "Found"},
-        {303, "See Other"}, {304, "Not Modified"}, {307, "Temporary Redirect"},
-        {308, "Permanent Redirect"}, {400, "Bad Request"}, {402, "Payment Required"},
-        {403, "Forbidden"}, {404, "Not Found"}, {500, "Internal Server Error"},
-        {0,   "Unknown"}
+    static map symbols = {
+        field {200, "OK"},
+        field {201, "Created"},
+        field {202, "Accepted"},
+        field {203, "Non-Authoritative Information"},
+        field {204, "No Content"},
+        field {205, "Reset Content"},
+        field {206, "Partial Content"},
+        field {300, "Multiple Choices"},
+        field {301, "Moved Permanently"},
+        field {302, "Found"},
+        field {303, "See Other"},
+        field {304, "Not Modified"},
+        field {307, "Temporary Redirect"},
+        field {308, "Permanent Redirect"},
+        field {400, "Bad Request"},
+        field {402, "Payment Required"},
+        field {403, "Forbidden"},
+        field {404, "Not Found"},
+        field {500, "Internal Server Error"},
+        field {0,   "Unknown"}
     };
     size_t count  = symbols->count(code);
-    symbol result = count ? symbols[code] : symbols[0]; /// map doesnt work.
+    symbol result = count ? symbols.get<symbol>(code) : symbols.get<symbol>(0); /// map doesnt work.
     return result;
 }
 
@@ -736,11 +747,12 @@ bool message::write_status(sock &sc) {
 
 ///  code is in headers.
 bool message::write_headers(sock &sc) {
-    for (auto &[v, k]: data->headers) { /// mx key, mx value
+    for (auto &[k,v]: data->headers.fields()) { /// mx key, mx value
         /// check if header is valid data; holding ref to mx
         /// requires one to defer valid population of a
         /// resulting header injected by query
-        if (k == "Status" || !printable_value(v))
+        mx mx_k(k);
+        if (mx_k == "Status" || !printable_value(v))
             continue;
         
         console.log("{0}: {1}", { k, v });
@@ -772,7 +784,7 @@ bool message::write(sock &sc) {
     if (data->content) {
         type_t ct = data->content.type();
         /// map of mx must be json compatible, or be structured in that process
-        if (!data->headers->count("Content-Type") && (ct == typeof(map<mx>) || ct == typeof(mx)))
+        if (!data->headers->count("Content-Type") && (ct == typeof(map) || ct == typeof(mx)))
             data->headers["Content-Type"] = "application/json";
         ///
         data->headers["Connection"] = "keep-alive";
@@ -786,9 +798,9 @@ bool message::write(sock &sc) {
             write_headers(sc);
             return sc.send(json);
             ///
-        } else if (ct == typeof(map<mx>)) {
+        } else if (ct == typeof(map)) {
             /// post fields transfer
-            str post = uri::encode_fields(map<mx>(data->content));
+            str post = uri::encode_fields(map(data->content));
             data->headers["Content-Length"] = str::from_integer(post.len());
             write_headers(sc);
             return sc.send(post);
@@ -821,18 +833,19 @@ bool message::write(sock &sc) {
 str message::text() { return data->content.to_string(); }
 
 /// structure cookies into usable format
-map<str> message::cookies() {
-    str  dec = uri::decode(data->headers["Set-Cookie"].hold());
-    str  all = dec.split(",")[0];
+map message::cookies() {
+    str  dec = uri::decode(hold(data->headers["Set-Cookie"]));
+    Array<str> sp = dec.split(",");
+    str  all = sp[0];
     auto sep = all.split(";");
-    auto res = map<str>();
+    auto res = map();
     ///
-    for (str &s: sep) {
+    for (str &s: sep.elements<str>()) {
         auto pair = s.split("="); assert(pair.len() >= 2);
-        str   key = pair[0];
+        str  &key = pair.get<str>(0);
         if (!key)
             break;
-        str   val = pair[1];
+        str  &val = pair.get<str>(1);
         res[key]  = val;
     }
     ///
@@ -849,18 +862,18 @@ mx &message::header(mx key) {
 
 /// utility function for web requests
 /// uri is copied as a methodized uri based on the type given
-future request(uri url, map<mx> args) {
+future request(uri url, map args) {
     return async(1, [url, args](auto p, int i) -> mx {
-        map<mx> st_headers;
+        map st_headers;
         mx    null_content; /// consider null static on var, assertions on its write by sequence on debug
-        map<mx>         &a = *(map<mx> *)&args; /// so lame.  stop pretending that this cant change C++
-        map<mx>    headers = a->count("headers") ? map<mx>(a["headers"]) : st_headers;
-        mx         content = a->count("content") ?         a["content"]  : null_content;
-        method        type = a->count("method")  ?  method(a["method"])  : method(method::get);
+        map         &a = *(map *)&args; /// so lame.  stop pretending that this cant change C++
+        map    headers = a->count("headers") ? map(a["headers"]) : st_headers;
+        mx         content = a->count("content") ?     a["content"] : null_content;
+        web           type = a->count("method")  ? web(a["method"]) : web(web::Get);
         uri          query = url.methodize(type);
         
         ///
-        assert(query != method::undefined);
+        assert(query != web::undefined);
         sock client { query };
         console.log("(net) request: {0}", { url });
         if (!client.connect()) return {};
@@ -870,7 +883,7 @@ future request(uri url, map<mx> args) {
         console.log("{0} {1} HTTP/1.1\r\n", { query.mtype().name().ucase(), query.string() });
         
         /// default headers
-        array<field<mx>> defs = {
+        Array<field> defs = {
             { "User-Agent",      "ion:net"              },
             { "Accept",          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" },
             { "Accept-Language", "en-US,en;q=0.9"       },
@@ -901,12 +914,12 @@ future request(uri url, map<mx> args) {
     });
 }
 
-future json(uri addr, map<mx> args, map<mx> headers) {
+future json(uri addr, map args, map headers) {
     lambda<void(mx)> success, failure;
     completer c  = { success, failure };
     ///
     request(addr, headers).then([ success, failure ](mx d) {
-        (d.type() == typeof(map<mx>)) ?
+        (d.type() == typeof(map)) ?
         success(d) : failure(d);
         ///
     }).except([ failure ](mx d) {

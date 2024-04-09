@@ -5,9 +5,9 @@
 using namespace ion;
 
 struct CanvasAttribs {
-    glm::vec4 pos;
-    glm::vec2 uv;
-    doubly<prop> meta() {
+    vec4f pos;
+    vec2f uv;
+    properties meta() {
         return {
             { "pos", pos },
             { "uv",  uv  }
@@ -16,32 +16,32 @@ struct CanvasAttribs {
 };
 
 struct Light {
-    glm::vec4 pos;
-    glm::vec4 color;
+    vec4f pos;
+    vec4f color;
 };
 
 struct HumanState {
-    glm::mat4  model;
-    glm::mat4  view;
-    glm::mat4  proj;
-    glm::vec4  eye;
+    m44f       model;
+    m44f       view;
+    m44f       proj;
+    vec4f  eye;
     Light      lights[4];
     u32        light_count;
     u32        padding[3];
 };
 
 struct HumanVertex {
-    glm::vec3 pos;
-    glm::vec3 normal;
-    glm::vec2 uv0;
-    glm::vec2 uv1;
-    glm::vec4 tangent;
+    vec3f pos;
+    vec3f normal;
+    vec2f uv0;
+    vec2f uv1;
+    vec4f tangent;
     float     joints0[4];
     float     joints1[4]; /// convert u32 -> float in glTF (this kind of data is not supported in the osd library); cast required in shader but far better than member-by-member interpolation
     float     weights0[4];
     float     weights1[4]; // 30 floats
 
-    doubly<prop> meta() const {
+    properties meta() const {
         return {
             prop { "POSITION",      pos      },
             prop { "NORMAL",        normal   },
@@ -86,16 +86,16 @@ int main(int argc, const char* argv[]) {
                 ObjectVector(float, 2)
             },
             /// with this lambda, we are providing our own vertices and triangles (we want to support quads as soon as extension to glTF plugin is working)
-            [](Mesh &mesh, array<image> &images) {
+            [](Mesh &mesh, Array<image> &images) {
                 /// set vertices
-                mesh->verts = array<CanvasAttribs> {
+                mesh->verts = Array<CanvasAttribs> {
                     {{ -1.0f, -1.0f, 0.0f, 1.0f }, {  0.0f, 0.0f }},
                     {{  1.0f, -1.0f, 0.0f, 1.0f }, {  1.0f, 0.0f }},
                     {{ -1.0f,  1.0f, 0.0f, 1.0f }, { -1.0f, 1.0f }},
                     {{  1.0f,  1.0f, 0.0f, 1.0f }, {  1.0f, 1.0f }}
                 }.hold();
                 /// set triangles
-                mesh->tris = array<u32> {
+                mesh->tris = Array<u32> {
                     0, 1, 2, // ABC
                     0, 2, 3  // ACD (same as blender)
                 };
@@ -138,30 +138,30 @@ int main(int argc, const char* argv[]) {
             canvas.flush();
 
             HumanState &u_human = o_human.uniform<HumanState>("Body");
-            glm::vec3 eye    = glm::vec3(0.0f, 1.5f, -0.8f);
-            glm::vec3 target = glm::vec3(0.0f, 1.5f, 0.0f);
-            glm::vec3 up     = glm::vec3(0.0f, 1.0f, 0.0f);
+            vec3f eye    = vec3f(0.0f, 1.5f, -0.8f);
+            vec3f target = vec3f(0.0f, 1.5f, 0.0f);
+            vec3f up     = vec3f(0.0f, 1.0f, 0.0f);
             
             /*
-            glm::vec3 eye     = glm::vec3(0.0f, 1.0f, -0.8f) * 4.0f;
-            glm::vec3 target  = glm::vec3(0.0f, 0.0f, 0.0f);
-            glm::vec3 forward = glm::normalize(target - eye);
-            glm::vec3 w_up    = glm::vec3(0.0f, 1.0f, 0.0f);
-            glm::vec3 right   = glm::normalize(glm::cross(forward, w_up));
-            glm::vec3 up      = glm::cross(right, forward);
+            vec3f eye     = vec3f(0.0f, 1.0f, -0.8f) * 4.0f;
+            vec3f target  = vec3f(0.0f, 0.0f, 0.0f);
+            vec3f forward = glm::normalize(target - eye);
+            vec3f w_up    = vec3f(0.0f, 1.0f, 0.0f);
+            vec3f right   = glm::normalize(glm::cross(forward, w_up));
+            vec3f up      = glm::cross(right, forward);
             */
             
             static float inc = 0;
             inc += 0.0004f;
-            glm::quat r = glm::angleAxis(inc, glm::vec3(0.0f, 1.0f, 0.0f));
+            glm::quat r = glm::angleAxis(inc, vec3f(0.0f, 1.0f, 0.0f));
             u_human.model = glm::mat4_cast(r);
             u_human.view  = glm::lookAt(eye, target, up);
             u_human.proj  = glm::perspective(64.0f, window.aspect(), 0.1f, 100.0f);
 
-            u_human.lights[0].pos = glm::vec4(0.0f, 1.5f, -0.8f, 0.0f);
+            u_human.lights[0].pos = vec4f(0.0f, 1.5f, -0.8f, 0.0f);
             u_human.light_count = 1;
 
-            array<Object> scene(1);
+            Array<Object> scene(1);
             scene.push(o_human);
 
             return scene;

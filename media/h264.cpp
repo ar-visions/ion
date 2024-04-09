@@ -178,12 +178,14 @@ public:
     }
 
     /// called from outside thread; we must maintain sync with encoder
-    array<u8> encode(yuv420 &frame) {
+    array encode(yuv420 &frame) {
         num w = frame.width();
         num h = frame.height();
         num w_prev = width;
         num h_prev = height;
-        array<u8> res(size(w * h * 4 * 2));
+        array res(typeof(u8), size(w * h * 4 * 2));
+        u8* res_data = &res.get<u8>(0);
+
         int w_cursor = 0;
 
         if (!started)
@@ -218,7 +220,7 @@ public:
         assert(!H264E_encode(enc, scratch, &run_param, &yuv, (u8**)&encoded_raw, &encoded_len));
         iframes++;
 
-        memcpy(&res.data[w_cursor], (u8*)encoded_raw, (size_t)encoded_len);
+        memcpy(&res_data[w_cursor], (u8*)encoded_raw, (size_t)encoded_len);
         res.set_size((size_t)encoded_len);
         return res;
     }
@@ -318,7 +320,7 @@ MStream h264bsd_test() {
 
 mx_implement(h264, mx, i264);
 
-array<u8> h264::encode(yuv420 image) { /// its not a ref, so we can pass image and have it auto convert to yuv420
+array h264::encode(yuv420 image) { /// its not a ref, so we can pass image and have it auto convert to yuv420
     return data->encode(image); /// handles resize with the proper nalu packet here, so the controller doesnt need to
 }
 

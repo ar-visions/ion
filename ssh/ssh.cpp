@@ -204,7 +204,6 @@ SSHPeer SSHService::accept() {
         async(1, [this, state=state, peer](runtime *rt, int i) -> mx {
             SSHPeer &p = (SSHPeer&)peer;
             int n_bytes = 0;
-            doubly<char> chars;
             int          index = 0;
             do {
                 char buf[2048];

@@ -200,7 +200,7 @@ struct Service: node {
 		uri 					  url;
 		lambda<message(message&)> on_message;
 		///
-		doubly<prop> meta() {
+		properties meta() {
 			return {
 				prop { "url", url },
 				prop { "on-message", on_message }
@@ -227,7 +227,7 @@ struct VideoStream: node {
 		/// will need to explain this thing
 		ion::map<Client> clients;
 
-        doubly<Stream> avStreams;
+        doubly avStreams;
 
 		/// internal states
 		async service; /// if props are changed, the service must be restarted
@@ -267,7 +267,7 @@ struct VideoStream: node {
 
 		webrtc::DispatchQueue *MainThread;
 
-		doubly<prop> meta() {
+		properties meta() {
 			return {
 				prop { "source", source },
                 prop { "stream-select", stream_select }

@@ -40,11 +40,11 @@ namespace gltf {
             size_t        input;
             size_t        output;
             Interpolation interpolation;
-            doubly<prop> meta() {
+            properties meta() {
                 return {
-                    { "input",          input },
-                    { "output",         output },
-                    { "interpolation",  interpolation },
+                    prop { "input",          input },
+                    prop { "output",         output },
+                    prop { "interpolation",  interpolation },
                 };
             }
         };
@@ -55,10 +55,10 @@ namespace gltf {
         struct M {
             size_t          node;
             str             path; /// field name of node
-            doubly<prop> meta() {
+            properties meta() {
                 return {
-                    { "node",           node },
-                    { "path",           path }
+                    prop { "node",           node },
+                    prop { "path",           path }
                 };
             }
         };
@@ -69,10 +69,10 @@ namespace gltf {
         struct M {
             size_t          sampler; /// sampler id
             ChannelTarget   target;
-            doubly<prop> meta() {
+            properties meta() {
                 return {
-                    { "sampler",        sampler },
-                    { "target",         target }
+                    prop { "sampler",        sampler },
+                    prop { "target",         target }
                 };
             }
         };
@@ -82,13 +82,13 @@ namespace gltf {
     struct Animation:mx {
         struct M {
             str             name;
-            array<Sampler>  samplers;
-            array<Channel>  channels;
-            doubly<prop> meta() {
+            Array<Sampler>  samplers;
+            Array<Channel>  channels;
+            properties meta() {
                 return {
-                    { "name",           name },
-                    { "samplers",       samplers },
-                    { "channels",       channels }
+                    prop { "name",           name },
+                    prop { "samplers",       samplers },
+                    prop { "channels",       channels }
                 };
             }
         };
@@ -103,10 +103,10 @@ namespace gltf {
             /// sub-accessor type for bufferView, only for index types
             /// for value types, we are using the componentType of the accessor
             /// we assert that its undefined or set to the same
-            doubly<prop> meta() {
+            properties meta() {
                 return {
-                    { "bufferView",     bufferView    },
-                    { "componentType",  componentType }
+                    prop { "bufferView",     bufferView    },
+                    prop { "componentType",  componentType }
                 };
             }
         };
@@ -119,11 +119,11 @@ namespace gltf {
             SparseInfo    indices;
             SparseInfo    values;
             ///
-            doubly<prop> meta() {
+            properties meta() {
                 return {
-                    { "count",          count       },
-                    { "indices",        indices     },
-                    { "values",         values      }
+                    prop { "count",          count       },
+                    prop { "indices",        indices     },
+                    prop { "values",         values      }
                 };
             }
         };
@@ -136,19 +136,19 @@ namespace gltf {
             ComponentType componentType;
             CompoundType  type;
             size_t        count;
-            array<float>  min;
-            array<float>  max;
+            Array<float>  min;
+            Array<float>  max;
             Sparse        sparse;
             ///
-            doubly<prop> meta() {
+            properties meta() {
                 return {
-                    { "bufferView",     bufferView    },
-                    { "componentType",  componentType },
-                    { "count",          count         },
-                    { "type",           type          },
-                    { "min",            min           },
-                    { "max",            max           },
-                    { "sparse",         sparse        } /// these are overlays we use to make a copied buffer instance with changes made to it
+                    prop { "bufferView",     bufferView    },
+                    prop { "componentType",  componentType },
+                    prop { "count",          count         },
+                    prop { "type",           type          },
+                    prop { "min",            min           },
+                    prop { "max",            max           },
+                    prop { "sparse",         sparse        } /// these are overlays we use to make a copied buffer instance with changes made to it
                 };
             }
 
@@ -200,12 +200,12 @@ namespace gltf {
             size_t      byteOffset;
             TargetType  target;
             ///
-            doubly<prop> meta() {
+            properties meta() {
                 return {
-                    { "buffer",       buffer       },
-                    { "byteLength",   byteLength   },
-                    { "byteOffset",   byteOffset   },
-                    { "target",       target       }
+                    prop { "buffer",       buffer       },
+                    prop { "byteLength",   byteLength   },
+                    prop { "byteOffset",   byteOffset   },
+                    prop { "target",       target       }
                 };
             }
         };
@@ -215,18 +215,18 @@ namespace gltf {
     struct Skin:mx {
         struct M {
             str             name;
-            array<int>      joints; /// references nodes!
+            Array<int>      joints; /// references nodes!
             int             inverseBindMatrices; /// buffer-view index of mat44 (before index ordering) (assert data type must be matrix 4x4)
             mx              extras;
             mx              extensions;
             ///
-            doubly<prop> meta() {
+            properties meta() {
                 return {
-                    { "name",                name        },
-                    { "joints",              joints      },
-                    { "inverseBindMatrices", inverseBindMatrices },
-                    { "extensions",          extensions  },
-                    { "extras",              extras      }
+                    prop { "name",                name        },
+                    prop { "joints",              joints      },
+                    prop { "inverseBindMatrices", inverseBindMatrices },
+                    prop { "extensions",          extensions  },
+                    prop { "extras",              extras      }
                 };
             }
         };
@@ -239,18 +239,18 @@ namespace gltf {
         struct M {
             JData              *jdata;
             int                 istate;
-            glm::mat4           local;
-            glm::mat4           local_default;
+            m44f                local;
+            m44f                local_default;
             int                 iparent;
-            array<int>          ichildren; /// all of these are added into Joints::transforms (as well as root Transforms)
+            Array<int>          ichildren; /// all of these are added into Joints::transforms (as well as root Transforms)
         };
 
-        void multiply(const glm::mat4 &m) {
+        void multiply(const m44f &m) {
             data->local *= m;
             propagate();
         }
 
-        void set(const glm::mat4 &m) {
+        void set(const m44f &m) {
             data->local = m;
             propagate();
         }
@@ -262,7 +262,7 @@ namespace gltf {
 
         void propagate();
 
-        void operator*=(glm::mat4 m) {
+        void operator*=(const m44f &m) {
             multiply(m);
         }
 
@@ -272,35 +272,37 @@ namespace gltf {
     };
 
     struct JData {
-        array<glm::mat4>    states;     /// wgpu::Buffer updated with this information per frame
-        array<Transform>    transforms; /// same identity as joints array in skin
+        Array<m44f>         states;     /// wgpu::Buffer updated with this information per frame
+        Array<Transform>    transforms; /// same identity as joints array in skin
     };
 
     /// references JData
     void Transform::propagate() {
-        static glm::mat4 ident(1.0); /// iparent's istate will always == iparent
-        glm::mat4 &m = (data->iparent != -1) ? data->jdata->states[data->iparent] : ident;
+        static m44f ident(1.0f); /// iparent's istate will always == iparent
+        m44f &m = (data->iparent != -1) ? data->jdata->states[data->iparent] : ident;
         data->jdata->states[data->istate] = m * data->local;
-        for (int &t: data->ichildren)
+        for (int &t: data->ichildren.elements<int>())
             data->jdata->transforms[t].propagate();
     }
 
     struct Joints:mx {
         memory *copy() const {
             Joints joints;
-            joints->states = array<glm::mat4>(data->states.len());
-            memcpy(joints->states.data, data->states.data, sizeof(glm::mat4) * data->states.len());
+            joints->states = Array<m44f     >(data->states.len());
+            memcpy(joints->states.data<m44f>(), data->states.data<m44f>(), sizeof(m44f) * data->states.len());
             joints->states.set_size(data->states.len());
 
             /// fix mx::copy()
-            joints->transforms = array<Transform>(data->transforms.len());
-            memcpy(joints->transforms.data, data->transforms.data, sizeof(Transform::M) * data->transforms.len());
+            joints->transforms = Array<Transform>(data->transforms.len());
+            memcpy(joints->transforms.data<Transform>(),
+                     data->transforms.data<Transform>(),
+                     sizeof(Transform) * data->transforms.len());
             joints->transforms.set_size(data->transforms.len());
 
-            for (Transform &transform: joints->transforms) {
+            for (Transform &transform: joints->transforms.elements<Transform>()) {
                 transform->jdata = joints.data;
             }
-            return joints.hold();
+            return hold(joints);
         }
         size_t total_size() { return data->states.total_size(); }
         size_t count()      { return data->states.len(); }
@@ -316,26 +318,26 @@ namespace gltf {
             str             name;
             int             skin        = -1; /// armature index
             int             mesh        = -1; /// mesh index; this is sometimes not set when there are children referenced and its a group-only
-            array<float>    translation = { 0.0, 0.0, 0.0 };
-            array<float>    rotation    = { 0.0, 0.0, 0.0, 1.0 };
-            array<float>    scale       = { 1.0, 1.0, 1.0 };
-            array<float>    weights     = { }; /// no weights, for no vertices
-            array<int>      children;
+            Array<float>    translation = { 0.0, 0.0, 0.0 };
+            Array<float>    rotation    = { 0.0, 0.0, 0.0, 1.0 };
+            Array<float>    scale       = { 1.0, 1.0, 1.0 };
+            Array<float>    weights     = { }; /// no weights, for no vertices
+            Array<int>      children;
             int             joint_index = -1;
             bool            processed;
             bool test;
 
             ///
-            doubly<prop> meta() {
+            properties meta() {
                 return {
-                    { "name",          name        },
-                    { "mesh",          mesh        },
-                    { "skin",          skin        }, /// armature index: Models::skins 
-                    { "children",      children    },
-                    { "translation",   translation }, /// apply first
-                    { "rotation",      rotation    }, /// apply second
-                    { "scale",         scale       }, /// apply third [these are done on load after json is read in; this is only done in cases where ONE of these are set (we want to set defaults of 1,1,1 for scale, 0,0,0 for translate, etc)]
-                    { "weights",       weights     }
+                    prop { "name",          name        },
+                    prop { "mesh",          mesh        },
+                    prop { "skin",          skin        }, /// armature index: Models::skins 
+                    prop { "children",      children    },
+                    prop { "translation",   translation }, /// apply first
+                    prop { "rotation",      rotation    }, /// apply second
+                    prop { "scale",         scale       }, /// apply third [these are done on load after json is read in; this is only done in cases where ONE of these are set (we want to set defaults of 1,1,1 for scale, 0,0,0 for translate, etc)]
+                    prop { "weights",       weights     }
                 };
             }
         };
@@ -345,19 +347,19 @@ namespace gltf {
 
     struct Primitive:mx {
         struct M {
-            map<mx>          attributes; /// Vertex Attribute Type -> index into accessor
+            map          attributes; /// Vertex Attribute Type -> index into accessor
             size_t           indices;
             int              material = -1;
             Mode             mode;
-            array<map<mx>>   targets; /// (optional) accessor id for attribute name
+            Array<map>   targets; /// (optional) accessor id for attribute name
             ///
-            doubly<prop> meta() {
+            properties meta() {
                 return {
-                    { "attributes",    attributes },
-                    { "indices",       indices    },
-                    { "material",      material   },
-                    { "mode",          mode       },
-                    { "targets",       targets    }
+                    prop { "attributes",    attributes },
+                    prop { "indices",       indices    },
+                    prop { "material",      material   },
+                    prop { "mode",          mode       },
+                    prop { "targets",       targets    }
                 };
             }
         };
@@ -366,11 +368,11 @@ namespace gltf {
 
     struct MeshExtras:mx {
         struct M {
-            array<str>       target_names;
+            Array<str>       target_names;
             ///
-            doubly<prop> meta() {
+            properties meta() {
                 return {
-                    { "targetNames",  target_names }
+                    prop { "targetNames",  target_names }
                 };
             }
         };
@@ -380,16 +382,16 @@ namespace gltf {
     struct Mesh:mx {
         struct M {
             str              name;
-            array<Primitive> primitives;
-            array<float>     weights;
+            Array<Primitive> primitives;
+            Array<float>     weights;
             MeshExtras       extras;
             ///
-            doubly<prop> meta() {
+            properties meta() {
                 return {
-                    { "name",         name       },
-                    { "primitives",   primitives },
-                    { "weights",      weights    },
-                    { "extras",       extras     }
+                    prop { "name",         name       },
+                    prop { "primitives",   primitives },
+                    prop { "weights",      weights    },
+                    prop { "extras",       extras     }
                 };
             }
         };
@@ -399,12 +401,12 @@ namespace gltf {
     struct Scene:mx {
         struct M {
             str              name;
-            array<size_t>    nodes;
+            Array<size_t>    nodes;
             ///
-            doubly<prop> meta() {
+            properties meta() {
                 return {
-                    { "name",   name  },
-                    { "nodes",  nodes }
+                    prop { "name",   name  },
+                    prop { "nodes",  nodes }
                 };
             }
         };
@@ -417,11 +419,11 @@ namespace gltf {
             str copyright;
             str version;
             ///
-            doubly<prop> meta() {
+            properties meta() {
                 return {
-                    { "generator", generator },
-                    { "copyright", copyright },
-                    { "version",   version   }
+                    prop { "generator", generator },
+                    prop { "copyright", copyright },
+                    prop { "version",   version   }
                 };
             }
         };
@@ -431,12 +433,12 @@ namespace gltf {
     struct Buffer:mx {
         struct M {
             size_t    byteLength;
-            array<u8> uri;
+            Array<u8> uri;
             ///
-            doubly<prop> meta() {
+            properties meta() {
                 return {
-                    { "byteLength", byteLength },
-                    { "uri",        uri        }
+                    prop { "byteLength", byteLength },
+                    prop { "uri",        uri        }
                 };
             }
         };
@@ -445,29 +447,29 @@ namespace gltf {
 
     struct Model:mx {
         struct M {
-            array<Node>       nodes;
-            array<Skin>       skins;
-            array<Accessor>   accessors;
-            array<BufferView> bufferViews;
-            array<Mesh>       meshes;
+            Array<Node>       nodes;
+            Array<Skin>       skins;
+            Array<Accessor>   accessors;
+            Array<BufferView> bufferViews;
+            Array<Mesh>       meshes;
             size_t            scene; // default scene
-            array<Scene>      scenes;
+            Array<Scene>      scenes;
             AssetDesc         asset;
-            array<Buffer>     buffers;
-            array<Animation>  animations;
+            Array<Buffer>     buffers;
+            Array<Animation>  animations;
             ///
-            doubly<prop> meta() {
+            properties meta() {
                 return {
-                    { "nodes",       nodes },
-                    { "skins",       skins },
-                    { "accessors",   accessors },
-                    { "bufferViews", bufferViews },
-                    { "meshes",      meshes },
-                    { "scene",       scene },
-                    { "scenes",      scenes },
-                    { "asset",       asset },
-                    { "buffers",     buffers },
-                    { "animations",  animations }
+                    prop { "nodes",       nodes },
+                    prop { "skins",       skins },
+                    prop { "accessors",   accessors },
+                    prop { "bufferViews", bufferViews },
+                    prop { "meshes",      meshes },
+                    prop { "scene",       scene },
+                    prop { "scenes",      scenes },
+                    prop { "asset",       asset },
+                    prop { "buffers",     buffers },
+                    prop { "animations",  animations }
                 };
             }
         };
@@ -476,7 +478,7 @@ namespace gltf {
         static Model load(path p) { return p.read<Model>(); }
 
         Node *find(str name) {
-            for (Node &node: data->nodes) {
+            for (Node &node: data->nodes.elements<Node>()) {
                 if (node->name != name) continue;
                 return &node;
             }
@@ -492,9 +494,9 @@ namespace gltf {
                 Skin &skin = data->skins[node->skin];
 
                 ion::uniques<int> all_children; /// pre-alloc'd at the size of nodes array
-                for (int &node_index: skin->joints) {
+                for (int &node_index: skin->joints.elements<int>()) {
                     Node &node = data->nodes[node_index];
-                    for (int i: node->children) {
+                    for (int i: node->children.elements<int>()) {
                         assert(!all_children.contains(i));
                         all_children.set(i);
                     }
@@ -504,8 +506,8 @@ namespace gltf {
                 for (int &node_index: skin->joints)
                     data->nodes[node_index]->joint_index = j_index++;
 
-                joints->transforms = array<Transform>(skin->joints.len()); /// we are appending, so dont set size (just verify)
-                joints->states     = array<glm::mat4>(skin->joints.len());
+                joints->transforms = Array<Transform>(skin->joints.len()); /// we are appending, so dont set size (just verify)
+                joints->states     = Array<m44f     >(skin->joints.len());
                 joints->states    .set_size(skin->joints.len());
                 Transform null;
                 /// for each root joint, resolve the local and global matrices
@@ -513,13 +515,13 @@ namespace gltf {
                     if (all_children.contains(node_index))
                         continue;
                     
-                    glm::mat4 ident = glm::mat4(1.0f);
+                    m44f      ident = m44f(1.0f);
                     node_transform(joints, ident, node_index, null);
                 }
             }
             /// test code!
-            for (glm::mat4 &state: joints->states) {
-                state = glm::mat4(1.0f);
+            for (m44f      &state: joints->states) {
+                state = m44f(1.0f);
             }
 
             /// adding transforms twice
@@ -530,7 +532,7 @@ namespace gltf {
         protected:
 
         /// builds Transform, separate from Model/Skin/Node and contains usable glm types
-        Transform node_transform(Joints joints, const glm::mat4 &parent_mat, int node_index, Transform &parent) {
+        Transform node_transform(Joints joints, const m44f      &parent_mat, int node_index, Transform &parent) {
             Node &node = data->nodes[node_index];
             assert(node->processed == false);
 
@@ -538,15 +540,15 @@ namespace gltf {
             Transform transform;
             if (node->joint_index >= 0) {
                 transform->jdata     = joints.data;
-                transform->local     = glm::mat4(1.0f);
+                transform->local     = m44f(1.0f);
                 glm::quat quat(node->rotation[3], node->rotation[0], node->rotation[1], node->rotation[2]);
-                transform->local     = glm::translate(transform->local, glm::vec3(node->translation[0], node->translation[1], node->translation[2]));
+                transform->local     = glm::translate(transform->local, vec3f(node->translation[0], node->translation[1], node->translation[2]));
                 transform->local    *= glm::mat4_cast(quat);
-                transform->local     = glm::scale    (transform->local, glm::vec3(node->scale[0], node->scale[1], node->scale[2]));
+                transform->local     = glm::scale    (transform->local, vec3f(node->scale[0], node->scale[1], node->scale[2]));
                 transform->local_default = transform->local;
                 transform->iparent   = parent->istate;
                 transform->istate    = node->joint_index;
-                glm::mat4 &state_mat = joints->states[transform->istate] = parent_mat * transform->local_default;
+                m44f      &state_mat = joints->states[transform->istate] = parent_mat * transform->local_default;
 
                 for (int node_index: node->children) {
                     /// ch is referenced from the ops below, when called here (not released)

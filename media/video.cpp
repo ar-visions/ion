@@ -35,12 +35,13 @@ namespace ion {
 bool audio::save_m4a(path dest, i64 bitrate) {
     // AAC encoder initialization (you need to add error checks and configuration)
     HANDLE_AACENCODER encoder;
-    aacEncOpen(&encoder, 0, data->channels);
+    int channels = this->channels();
+    aacEncOpen(&encoder, 0, channels);
 
     aacEncoder_SetParam(encoder, AACENC_SAMPLERATE,     48000);
     aacEncoder_SetParam(encoder, AACENC_AOT,            2);
     aacEncoder_SetParam(encoder, AACENC_CHANNELORDER,   0);
-    aacEncoder_SetParam(encoder, AACENC_CHANNELMODE,    data->channels == 1 ? MODE_1 : MODE_2);
+    aacEncoder_SetParam(encoder, AACENC_CHANNELMODE,    channels == 1 ? MODE_1 : MODE_2);
     aacEncoder_SetParam(encoder, AACENC_BITRATE,        bitrate);
     aacEncoder_SetParam(encoder, AACENC_SIGNALING_MODE, 0);
     aacEncoder_SetParam(encoder, AACENC_TRANSMUX,       2); /// ADTS mode; this may have been the issue?
@@ -54,7 +55,7 @@ bool audio::save_m4a(path dest, i64 bitrate) {
     assert(aacEncInfo(encoder, &info) == AACENC_OK);
 
     int frame_size = info.frameLength; /// this is before we * (PCM short) (2) * channels
-    int n_frames   = (int)std::ceil((double)data->total_samples / (double)frame_size);
+    int n_frames   = (int)std::ceil((double)total_samples() / (double)frame_size);
 
     // Encoding loop
     int            in_identifier = IN_AUDIO_DATA, out_identifier = OUT_BITSTREAM_DATA;
@@ -64,15 +65,16 @@ bool audio::save_m4a(path dest, i64 bitrate) {
     MP4FileHandle mp4file = MP4Create((symbol)dest.cs(), 0);
 
     MP4TrackId track = MP4AddAudioTrack(
-        mp4file, data->sample_rate, frame_size, MP4_MPEG4_AAC_LC_AUDIO_TYPE);
+        mp4file, sample_rate(), frame_size, MP4_MPEG4_AAC_LC_AUDIO_TYPE);
 
-    MP4SetTrackIntegerProperty(mp4file, track, "mdia.minf.stbl.stsd.*[0].channels", data->channels);
+    MP4SetTrackIntegerProperty(mp4file, track, "mdia.minf.stbl.stsd.*[0].channels", channels);
     MP4SetAudioProfileLevel(mp4file, 1);
 
+    i16 *samples = this->samples();
     for (int i = 0; i < n_frames; i++) {
         // Set up input buffer
-        in_ptr                     = &data->samples[i * frame_size * data->channels];
-        in_size                    = frame_size * data->channels * sizeof(short);
+        in_ptr                     = &samples[i * frame_size * channels];
+        in_size                    = frame_size * channels * sizeof(short);
         in_elem_size               = sizeof(short);
         in_buf.numBufs             = 1;
         in_buf.bufs                = &in_ptr;
@@ -91,7 +93,7 @@ bool audio::save_m4a(path dest, i64 bitrate) {
         out_buf.bufElSizes         = &out_elem_size;
 
         // Set up in_args
-        in_args.numInSamples       = frame_size * data->channels;
+        in_args.numInSamples       = frame_size * channels;
         
         // Encode frame
         if (aacEncEncode(encoder, &in_buf, &out_buf, &in_args, &out_args) != AACENC_OK)
@@ -184,13 +186,13 @@ struct Nalu:mx {
         }
     };
 
-    static Nalu find(array<Nalu> nalus, Nalu::Type type) {
-        for (Nalu &n: nalus) if (n->type == type) return n;
+    static Nalu find(array nalus, Nalu::Type type) {
+        for (Nalu &n: nalus.elements<Nalu>()) if (n->type == type) return n;
         return {};
     }
 
-    static array<Nalu> extract(mx nalus, Annex annex = Annex::A) {
-        array<Nalu> res(8);
+    static array extract(mx nalus, Annex annex = Annex::A) {
+        array res(typeof(Nalu), 8);
 
         u8    *origin = nalus.origin<u8>();
         size_t count  = nalus.count();
@@ -350,7 +352,7 @@ struct iVideo {
         current_image = seek_frame(0);
 
         spec       = get_audio_spectrum(2, 1, 128, 0.25,
-            array<rgbad> {
+            Array<rgba> {
                 {0.0, 0.0, 0.0, 1.0},
                 {1.0, 0.0, 0.0, 1.0},
                 {0.0, 1.0, 0.0, 1.0},
@@ -360,7 +362,7 @@ struct iVideo {
                 {0.0, 1.0, 1.0, 1.0},
                 {1.0, 1.0, 1.0, 1.0}
             },
-            array<float> {
+            Array<float> {
                 2000.0,
                 1000.0 /// this is magnitude needed to get max color; so we interpolate across the cropped spectrum
             });
@@ -461,7 +463,7 @@ struct iVideo {
     }
 
     void write_image(image &im) {
-        ion::array<u8> nalus = h264_encoder.encode(im); /// needs a quality setting; this default is very high quality and constant quality too; meant for data science work
+        ion::array nalus = h264_encoder.encode(im); /// needs a quality setting; this default is very high quality and constant quality too; meant for data science work
         write_video(nalus);
     }
 
@@ -540,11 +542,10 @@ struct iVideo {
 
     image get_audio_spectrum(
             int frame_units, int frame_overlap, const int spectral_height, float crop, /// crop value of 0.25 means we are extracting 11khz on 48k
-            array<rgbad> colors, array<float> scales) { /// scales across the color range is a reasonable idea, so one can make use of frequencies often maxed out (by raising scale), and vice versa.
+            const Array<rgba> &colors, const Array<float> &scales) { /// scales across the color range is a reasonable idea, so one can make use of frequencies often maxed out (by raising scale), and vice versa.
         u8           *sample_data  = null;
         u32           sample_len   = 0;
         bool          is_key_frame = false;
-        doubly<mx>    samples;
         //MP4Timestamp ts     = MP4ConvertToTrackTimestamp(mp4, audio_track, 0, audio_timescale);
         MP4SampleId  sample = 0;//MP4GetSampleIdFromEditTime(mp4, audio_track, ts, null, null);
         HANDLE_AACDECODER dec = aacDecoder_Open(TT_MP4_ADTS, 1);
@@ -624,13 +625,13 @@ struct iVideo {
                     int   c_index0 = floor(c_indexf);
                     int   c_index1 = c_indexf >= (colors.count() - 1) ? c_index0 : (c_index0 + 1);
                     float c_blend1 = c_indexf - c_index0;
-                    rgbad    color = colors[c_index0].mix(colors[c_index1], c_blend1);
+                    rgba     color = colors[c_index0].mix(colors[c_index1], c_blend1);
                     rgba8   &pixel = res[size { j, x_image }];
                     pixel          = rgba8 {
-                        u8(std::round(color.r * 255.0)),
-                        u8(std::round(color.g * 255.0)),
-                        u8(std::round(color.b * 255.0)),
-                        u8(std::round(color.a * 255.0))
+                        u8(std::round(color.x * 255.0)),
+                        u8(std::round(color.y * 255.0)),
+                        u8(std::round(color.z * 255.0)),
+                        u8(std::round(color.w * 255.0))
                     };
                 }
 
@@ -667,7 +668,7 @@ struct iVideo {
         
         bool is_sync_sample = false;
         bool sequential = current_frame_id < 0 ? false : frame_id == (current_frame_id + 1);
-        doubly<array<Nalu>> sample_nalus = {};
+        doubly sample_nalus = {};
 
         if (!sequential)
             h264bsdResetStorage(&dec);
@@ -681,15 +682,15 @@ struct iVideo {
                                                      &sample_len, null, null, null, &is_sync_sample);
             assert(read);
 
-            array<u8>   sample = memory::wrap(typeof(u8), sample_data, sz_t(sample_len));
-            bool        A      = sample[0] != 0 && sample[1] != 0 &&
-                                 sample[2] != 0 && sample[3] != 1;
+            array       sample = memory::wrap(typeof(u8), sample_data, sz_t(sample_len));
+            bool        A      = sample_data[0] != 0 && sample_data[1] != 0 &&
+                                 sample_data[2] != 0 && sample_data[3] != 1;
             assert(!A);
 
             /// mp4 dec should be framing agnostic but it seems to require Annex B
-            array<Nalu> nalus = Nalu::extract(sample, A ? Nalu::Annex::A : Nalu::Annex::B);
+            array nalus = Nalu::extract(sample, A ? Nalu::Annex::A : Nalu::Annex::B);
             bool is_key_frame = Nalu::find(nalus, Nalu::Type::idr);
-            for (Nalu &n: nalus) {
+            for (Nalu &n: nalus.elements<Nalu>()) {
                 n->frame_id  = sample_id;
                 n->key_frame = is_key_frame;
             }
@@ -701,8 +702,8 @@ struct iVideo {
         assert(sample_nalus->len() && (sequential || sample_nalus[0][0]->key_frame));
 
         bool pic_ready = false;
-        for (array<Nalu> &nalus: sample_nalus) {
-            for (Nalu &nalu: nalus) {
+        for (array &nalus: sample_nalus.elements<array>()) {
+            for (Nalu &nalu: nalus.elements<Nalu>()) {
                 u8* payload    = nalu->payload.origin<u8>();
                 u32 len        = nalu->payload.count();
                 u32 bytes_read = 0;

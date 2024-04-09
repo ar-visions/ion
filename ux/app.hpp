@@ -15,7 +15,7 @@ struct adata {
     Element*            active;
     Element*            hover;
     lambda<node(struct App&)>  app_fn;
-    map<mx>             args;
+    map             args;
     Services            services;
 };
 
@@ -24,7 +24,7 @@ struct WebService:node {
         uri url;
         lambda<message(message)> on_message;
 
-		doubly<prop> meta() {
+		properties meta() {
 			return {
 				prop { "url", url },
 				prop { "on-message", on_message }
@@ -65,7 +65,7 @@ struct WebService:node {
 struct App:composer {
     mx_object(App, composer, adata);
 
-    App(map<mx> args, lambda<node(App&)> app_fn) : App() {
+    App(map args, lambda<node(App&)> app_fn) : App() {
         data->args   = args;
         data->cmdata = composer::data; /// perhaps each data should be wrapped instance with an awareness of its peers
         data->app_fn = app_fn;
@@ -91,11 +91,11 @@ struct App:composer {
     mx operator[](symbol s) { return data->args[s]; }
 
     /// support 1 vec2, and 2 vec2's for a rectangular selection
-    array<Element *> select_at(vec2d cur, bool active = true) {
-        array<Element*> result = array<Element*>();
+    Array<Element *> select_at(vec2d cur, bool active = true) {
+        Array<Element*> result = Array<Element*>();
         lambda<void(Element*)> proc;
         proc = [&](Element *e) {
-            array<Element*> inside = e->select([&](Element *ee) {
+            Array<Element*> inside = e->select([&](Element *ee) {
                 node          &n = *(node*)ee;
                 real           x = cur.x, y = cur.y;
                 vec2d          o = ((Element*)n->parent)->offset(); // ee->offset(); // get parent offset
@@ -109,7 +109,7 @@ struct App:composer {
                 return (in && (!active || !eedata->active)) ? ee : null;
             });
             
-            array<Element*> actives = e->select([&](Element *ee) -> Element* {
+            Array<Element*> actives = e->select([&](Element *ee) -> Element* {
                 return (active && ee->data->active) ? ee : null;
             });
 

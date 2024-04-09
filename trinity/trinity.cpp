@@ -138,8 +138,10 @@ struct ITexture {
         this->format    = asset_format(asset_type);
         this->sz        = vec2i(w, h);
         this->usage     = usage;
-        for (field<Texture::OnTextureResize> &f: resize_fns)
-            f.value(sz);
+        for (field &f: resize_fns.fields()) {
+            Texture::OnTextureResize &fn = f.value.ref<Texture::OnTextureResize>();
+            fn(sz);
+        }
     }
 
     operator bool() { return bool(texture); }
@@ -175,7 +177,7 @@ void Texture::resize(vec2i sz) {
 }
 
 ion::image Texture::asset_image(symbol name, Asset type) {
-    array<ion::path> paths = {
+    Array<ion::path> paths = {
         fmt {"models/{0}.{1}.png", { name, type.symbol() }},
         fmt {"models/{0}.png",     { type.symbol() }}
     };
@@ -323,12 +325,12 @@ struct IDawn {
 
 struct IRenderable {
     str name; /// needs the same identification
-    array<mx> var_data; /// from ShaderVar::alloc()
+    Array<mx> var_data; /// from ShaderVar::alloc()
 };
 
 struct IObject {
     Model model;
-    array<IRenderable> renderables;
+    Array<IRenderable> renderables;
 };
 
 struct IVar {
@@ -344,11 +346,11 @@ struct IPipeline {
 
     str                         name;
     
-    array<Mesh>                 meshes;
+    Array<Mesh>                 meshes;
     wgpu::Buffer                triangle_buffer;
     wgpu::Buffer                line_buffer;
     wgpu::Buffer                vertex_buffer;
-    array<IVar>                 ivars;
+    Array<IVar>                 ivars;
 
     wgpu::RenderPipeline        pipeline, pipeline_wire;
     wgpu::BindGroup             bind_group;
@@ -364,7 +366,7 @@ struct IPipeline {
     size_t                      triangle_count, line_count;
     Texture                     textures[Asset::count - 1];
 
-    void load_from_gltf(gltf::Model &m, str &part, mx &vertices, array<u32> &tris, gltf::Joints &joints) {
+    void load_from_gltf(gltf::Model &m, str &part, mx &vertices, Array<u32> &tris, gltf::Joints &joints) {
         /// model must have been loaded
         assert(m->nodes);
 
@@ -385,14 +387,14 @@ struct IPipeline {
                 num                   offset;
             };
 
-            array<vstride> strides { prim->attributes->count() };
+            Array<vstride> strides { prim->attributes->count() };
             size_t pcount = 0;
             size_t vlen = 0;
-            for (field<mx> f: prim->attributes) {
-                str       prop_bind      = f.key.hold();
+            for (field &f: prim->attributes.fields()) {
+                str       prop_bind      = f.key;
                 symbol    prop_sym       = symbol(prop_bind);
                 num       accessor_index = num(f.value);
-                gltf::Accessor &accessor       = m->accessors[accessor_index];
+                gltf::Accessor &accessor = m->accessors[accessor_index];
 
                 /// the src stride is the size of struct_type[n_components]
                 assert(gfx->vtype->meta_map);
@@ -416,15 +418,15 @@ struct IPipeline {
                     assert(accessor->componentType == gltf::ComponentType::FLOAT);
                     assert(accessor->type == gltf::CompoundType::SCALAR);
                 }
-                if (stride.compound_type == typeof(glm::vec2)) {
+                if (stride.compound_type == typeof(vec2f)) {
                     assert(accessor->componentType == gltf::ComponentType::FLOAT);
                     assert(accessor->type == gltf::CompoundType::VEC2);
                 }
-                if (stride.compound_type == typeof(glm::vec3)) {
+                if (stride.compound_type == typeof(vec3f)) {
                     assert(accessor->componentType == gltf::ComponentType::FLOAT);
                     assert(accessor->type == gltf::CompoundType::VEC3);
                 }
-                if (stride.compound_type == typeof(glm::vec4)) {
+                if (stride.compound_type == typeof(vec4f)) {
                     assert(accessor->componentType == gltf::ComponentType::FLOAT);
                     assert(accessor->type == gltf::CompoundType::VEC4);
                 }
@@ -524,8 +526,8 @@ struct IPipeline {
     /// loads/associates uniforms here (change from vk where that was a separate process)
     void load_bindings(Graphics &gfx, gltf::Joints joints) {
         wgpu::Device device = this->device->wgpu;
-        array<wgpu::BindGroupEntry>       bind_values (gfx->bindings.count());
-        array<wgpu::BindGroupLayoutEntry> bind_entries(gfx->bindings.count());
+        Array<wgpu::BindGroupEntry>       bind_values (gfx->bindings.count());
+        Array<wgpu::BindGroupLayoutEntry> bind_entries(gfx->bindings.count());
         size_t bind_id = 0;
 
         /// iterate through ShaderVar bindings
@@ -646,12 +648,12 @@ struct IPipeline {
     void create_with_attrs(Graphics &gfx, bool wire) {
         wgpu::Device  device        = this->device->wgpu;
         size_t        attrib_count  = 0;
-        doubly<prop> &props         = *(doubly<prop>*)gfx->vtype->meta;
+        properties &props         = *(properties*)gfx->vtype->meta;
 
         auto get_wgpu_format = [](prop &p) {
-            if (p.type == typeof(glm::vec2))  return wgpu::VertexFormat::Float32x2;
-            if (p.type == typeof(glm::vec3))  return wgpu::VertexFormat::Float32x3;
-            if (p.type == typeof(glm::vec4))  return wgpu::VertexFormat::Float32x4;
+            if (p.type == typeof(vec2f))  return wgpu::VertexFormat::Float32x2;
+            if (p.type == typeof(vec3f))  return wgpu::VertexFormat::Float32x3;
+            if (p.type == typeof(vec4f))  return wgpu::VertexFormat::Float32x4;
             if (p.type == typeof(glm::ivec4)) return wgpu::VertexFormat::Sint32x4;
             if (p.type == typeof(float))      return wgpu::VertexFormat::Float32;
             if (p.type == typeof(float[4]))   return wgpu::VertexFormat::Float32x4;
@@ -813,7 +815,7 @@ struct IModel {
     Device                      device;
     ion::gltf::Model            m;
     symbol                      model;
-    array<Pipeline>             pipelines;
+    Array<Pipeline>             pipelines;
 
     void submit(IRenderable &renderable, wgpu::TextureView swap_view, wgpu::TextureView color_view, wgpu::TextureView depth_stencil_view, states<Clear> clear_states, rgbaf clear_color) {
         for (auto p: pipelines)
@@ -824,10 +826,10 @@ struct IModel {
     void reload() {
         for (Pipeline &sub: pipelines) {
             Graphics &     gfx    = sub->gfx;
-            array<u32>     quads, triangles;
+            Array<u32>     quads, triangles;
             mx             bones;
             Mesh           mesh;
-            array<image>   images;
+            Array<image>   images;
             gltf::Joints   joints;
 
             if (gfx->gen)
@@ -852,7 +854,7 @@ struct IModel {
     }
 };
 
-Model::Model(Device &device, symbol model, array<Graphics> select):Model() {
+Model::Model(Device &device, symbol model, Array<Graphics> select):Model() {
     data->device = device;
     data->model = model;
 
@@ -900,7 +902,7 @@ Object Model::instance() {
 
     size_t n_pipelines = data->pipelines.count();
     o->model = *this;
-    o->renderables = array<IRenderable>(n_pipelines);
+    o->renderables = Array<IRenderable>(n_pipelines);
 
     for (Pipeline &pl: data->pipelines) {
         IRenderable &renderable = o->renderables.push();
@@ -961,7 +963,7 @@ struct IWindow {
     wgpu::SwapChain             swapchain;
     Texture                     color;
 
-    array<Presentation>         presentations;
+    Array<Presentation>         presentations;
     vec2i                       sz;
     void                       *user_data;
 

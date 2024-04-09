@@ -30,7 +30,7 @@ struct unit {
             char   first = s[0];
             bool   is_numeric = first == '-' || isdigit(first);
             assert(is_numeric);
-            array<str> v = s.split([&](char ch) -> int {
+            Array<str> v = s.split([&](char ch) -> int {
                 bool n = ch == '-' || ch == '.' || isdigit(ch);
                 if (is_numeric != n) {
                     is_numeric = !is_numeric;
@@ -270,7 +270,7 @@ struct style:mx {
 
         transition(str s) : transition() {
             if (s) {
-                array<str> sp = s.split();
+                Array<str> sp = s.split();
                 size_t    len = sp.length();
                 /// syntax:
                 /// 500ms [ease [out]]
@@ -300,10 +300,10 @@ struct style:mx {
     ///
     struct block {
         block*             parent; /// pattern: reduce type rather than create pointer to same type in delegation
-        doubly<Qualifier>  quals;  /// an array of qualifiers it > could > be > this:state, or > just > that [it picks the best score, moves up for a given node to match style in]
-        map<entry*>        entries;
-        doubly<block*>     blocks;
-        array<type_t>      types; // if !types then its all types.
+        doubly             quals;  /// an array of qualifiers it > could > be > this:state, or > just > that [it picks the best score, moves up for a given node to match style in]
+        map                entries; // value = entry*
+        doubly             blocks;
+        Array<type_t>      types; // if !types then its all types.
 
         size_t score(node *n, bool score_state);
         
@@ -311,18 +311,18 @@ struct style:mx {
         inline operator bool() { return quals || entries || blocks; }
     };
 
-    using style_map = map<array<entry*>>;
+    using style_map = map;
 
     struct impl {
         mutex               mtx;
-        array<block*>       root;
-        map<array<block*>>  members;
+        Array<block*>       root;
+        map                 members; // value = Array<block*>
         watch               reloader;
         bool                reloaded;
         bool                loaded; /// composer user will need to lock to use; clear root and members for
         style_map        compute(node *dst);
-        entry        *best_match(node *n, prop *member, array<entry*> &entries);
-        bool          applicable(node *n, prop *member, array<entry*> &all);
+        entry        *best_match(node *n, prop *member, Array<entry*> &entries);
+        bool          applicable(node *n, prop *member, Array<entry*> &all);
         void                load(str code);
 
         /// optimize member access by caching by member name, and type
@@ -436,7 +436,7 @@ struct listener:mx {
 /// need to implement an assign with a singular callback.  these can support more than one, though.  in a component tree you can use multiple with use of context
 struct dispatch:mx {
     struct ddata {
-        doubly<listener> listeners;
+        doubly listeners;
     };
     ///
     mx_object(dispatch, mx, ddata);
@@ -458,7 +458,7 @@ struct composer:mx {
         struct vk_interface *vk;
         //fn_render     render;
         lambda<node()> render;
-        map<mx>       args;
+        map       args;
         ion::style    style;
         bool          shift;
         bool          alt;
@@ -495,18 +495,18 @@ struct node:mx {
         ax                      args;       /// arguments
         str                     group;      /// group used for button behaviors
         mx                      value;
-        array<str>              tags;       /// style tags
-        array<node*>            children;   /// children elements (if provided in children { } pair<mx,mx> inherited data struct; sets key='children')
+        Array<str>              tags;       /// style tags
+        Array<node*>            children;   /// children elements (if provided in children { } pair<mx,mx> inherited data struct; sets key='children')
         node*                   instance;   /// node instance is 1:1 (allocated, then context is copied in place)
-        map<node*>              mounts;     /// store instances of nodes in element data, so the cache management can go here where element turns to node
+        map                     mounts;     /// store instances of nodes in element data, so the cache management can go here where element turns to node
         node*                   parent;
         style::style_map        style_avail; /// properties outside of meta are effectively internal state only; it can be labelled as such
-        map<selection>          selections; /// style selected per member
+        map                     selections; /// style selected per member
         ion::composer::cmdata*  composer;
         lambda<void(mx)>        ref;
 
         ///
-        doubly<prop> meta() {
+        properties meta() {
             return {
                 prop { "id",        id        },
                 prop { "children",  children  },
@@ -536,13 +536,13 @@ struct node:mx {
     }
 
     /// collect from a group -- lets just use a single depth here
-    array<node*> collect(str group_name, bool include_this) {
+    Array<node*> collect(str group_name, bool include_this) {
         node *dont_inc = include_this ? this : null;
-        array<node*> res;
+        Array<node*> res;
         //console.log("looking for group called {0}", {group_name});
         if (data->parent) {
-            for (field<node*> &f: data->parent->data->mounts) {
-                node *c = f.value;
+            for (field &f: data->parent->data->mounts.fields()) {
+                node *c = f.value.ref<node*>();
                 //console.log("found element {0}", {c->data->id});
                 if (c->data->group == group_name && c != dont_inc)
                     res += c;
@@ -581,7 +581,7 @@ struct node:mx {
 
     mx_object(node, mx, edata);
 
-    static memory *args_id(type_t type, initial<arg> args) {
+    static memory *args_id(type_t type, std::initializer_list<arg> args) {
         static memory *m_id = memory::symbol("id"); /// im a token!
         for (auto &a:args)
             if (a.key.mem == m_id)
@@ -590,28 +590,27 @@ struct node:mx {
         return memory::symbol(symbol(type->name));
     }
 
-    node(str id, array<str> tags, array<node> ch):node(ch) {
+    node(str id, Array<str> tags, Array<node> ch):node(ch) {
         node::data->id = id;
         node::data->tags = tags;
     }
 
-    node(str id, array<node> ch):node(ch) {
+    node(str id, Array<node> ch):node(ch) {
         node::data->id = id;
     }
 
-    node(array<node*> ch) : node() {
+    node(Array<node*> ch) : node() {
         data->children = ch;
     }
 
-    node(array<node> ch) : node() {
+    node(Array<node> ch) : node() {
         /// these are unrolled in the iterators
-        data->children = array<node*>(size(ch.len()), size(0));
-        for (auto &child:ch) {
+        data->children = Array<node*>(ch.len());
+        for (node &child:ch.elements<node>())
             data->children += new node(child);
-        }
     }
 
-    node(type_t type, initial<arg> args) : node() {
+    node(type_t type, std::initializer_list<arg> args) : node() {
         data->type = type;
         data->id   = args_id(type, args);
         data->args = args;
@@ -621,12 +620,12 @@ struct node:mx {
     node(type_t type, size_t sz) : node() { 
         data->type = type;
         data->id   = null;
-        data->children = array<node*>(sz, size_t(0));
+        data->children = Array<node*>(sz);
     }
 
     template <typename T>
-    static node each(array<T> a, lambda<node(T &v)> fn) {
-        node res(typeof(array<node>), a.length());
+    static node each(Array<T> a, lambda<node(T &v)> fn) {
+        node res(typeof(Array<node>), a.length());
         for (auto &v:a) {
             node ve = fn(v);
             if  (ve) res.data->children += new node(ve);
@@ -635,16 +634,16 @@ struct node:mx {
     }
     
     template <typename K, typename V>
-    static node each(map<V> m, lambda<node(K &k, V &v)> fn) {
-        node res(typeof(map<node>), m.len());
-        for (field<V> f:m) {
-            K key = f.key.hold();
-            node r = fn(key, f.value);
+    static node each(map m, lambda<node(K &k, V &v)> fn) {
+        node res(typeof(map), m.len());
+        for (field &f: m.fields()) {
+            K key = hold(f.key);
+            node r = fn(key, hold(f.value));
             if  (r) {
-                /// unroll any array<node> here
+                /// unroll any Array<node> here
                 if (!r->id) {
                     assert(r->children);
-                    for (node* c: r->children)
+                    for (node* c: r->children.elements<node*>())
                         res.data->children += c; /// transfer ownership here
                 } else
                     res.data->children += new node(r);
@@ -654,7 +653,7 @@ struct node:mx {
     }
 
     inline size_t count(memory *symbol) {
-        for (node *c: node::data->children)
+        for (node *c: node::data->children.elements<node*>())
             if (c->data->id == symbol)
                 return 1;
         ///
@@ -666,9 +665,9 @@ struct node:mx {
         recur = [&](node* n) -> node* {
             node* r = fn(n);
             if   (r) return r;
-            for (field<node*> &f: n->node::data->mounts) {
-                if (!f.value) continue;
-                node* r = recur(f.value);
+            for (field &f: n->node::data->mounts.fields()) {
+                //if (!f.value) continue; <- should be in here, or not
+                node* r = recur(f.value.ref<node*>());
                 if   (r) return r;
             }
             return null;
@@ -678,7 +677,7 @@ struct node:mx {
 
     /// the element can create its instance.. that instance is a sub-class of Element2 too so we use a forward
     struct node *new_instance() {
-        return (struct node*)data->type->functions->alloc_new();
+        return (struct node*)data->type->ctr();
     }
 };
 
@@ -695,8 +694,8 @@ struct node:mx {
     static const inline type_t data_t = typeof(D);\
     intern* state;\
     C(memory*         mem) : B(mem), state(mx::data<D>()) { }\
-    C(type_t ty, initial<arg>  props) : B(ty,        props), state(defaults<intern>()) { }\
-    C(initial<arg>  props) :            B(typeof(C), props), state(defaults<intern>()) { }\
+    C(type_t ty, std::initializer_list<arg>  props) : B(ty,        props), state(defaults<intern>()) { }\
+    C(std::initializer_list<arg>  props) :            B(typeof(C), props), state(defaults<intern>()) { }\
     C(null_t) : C() { }\
     C(mx                o) : C(o.mem->hold())  { }\
     C()                    : C(mx::alloc<C>()) { }\

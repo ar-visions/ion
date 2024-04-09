@@ -30,7 +30,7 @@ var SQLite::record(var &view, int64_t primary_key) {
     }
     /// set fields on all keyed resources
     for (auto &[model_name, fields]: ref.map())
-        for (var &field: *ref[model_name].a) {
+        for (var &field: *ref[model_name].a.elements<var>()) {
             str s_field  = field;
             row[s_field] = var {
                 int64_t(s_field == pk_field ? primary_key : -1), var::ReadOnly
@@ -69,7 +69,7 @@ static bool create(sqlite3 *db, str table_name, var &model) {
     string   fields = string(1024);
     int       index = 0;
     ///
-    for (auto &[k,v]: model.map()) {
+    for (auto &[k,v]: model.map().fields()) {
         string field_name = k;
         bool      is_last = index   == sz - 1;
         bool    primary_k = index++ == 0;
@@ -98,7 +98,7 @@ static inline str sql_encode(str s) {
 static str model_key(var &model) {
     /// get the primary key (always the first field)
     str kname = null;
-    for (auto &[k,v]: model.map()) {
+    for (auto &[k,v]: model.map().fields()) {
         kname = k;
         assert(v == var::i64);
         break;
@@ -250,7 +250,7 @@ void SQLite::observe(str model_name) {
 ///
 /// fetch data for all models, resolve and then observe
 void SQLite::fetch() {
-    for (auto &[k,v]: ctx.mcache)
+    for (auto &[k,v]: ctx.mcache.fields())
         delete v;
     ///
     ctx.mcache = {};

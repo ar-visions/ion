@@ -93,7 +93,7 @@ bool camera_t::select(const char *video_alias) {
     return false;
 }
 
-static bool camera_select_format(camera_t *cam, const array<ion::Media> &priority, int *selected_v4l, ion::Media *video_format) {
+static bool camera_select_format(camera_t *cam, const Array<ion::Media> &priority, int *selected_v4l, ion::Media *video_format) {
     int     format_index = -1;
     int     index = 0;
 
@@ -178,8 +178,8 @@ static int read_frame(camera_t *cam)
 		}
 		assert(buf.index < cam->n_buffers);
 
-        array<u8> buffer(buf.bytesused / sizeof(u8));
-        memcpy(buffer.data, cam->buffers[buf.index].start, buf.bytesused);
+        Array<u8> buffer(buf.bytesused / sizeof(u8));
+        memcpy(buffer.window, cam->buffers[buf.index].start, buf.bytesused);
         buffer.set_size(buf.bytesused / sizeof(u8));
         process_image(cam, buffer);
         
@@ -671,7 +671,7 @@ struct audio_t {
 
 
 MStream camera(
-        array<StreamType> stream_types, array<Media> priority,
+        Array<StreamType> stream_types, Array<Media> priority,
         str video_alias, str audio_alias, int width, int height) {
     return MStream(stream_types, priority, [stream_types, priority, video_alias, audio_alias, width, height](MStream s) -> void {
         
@@ -752,13 +752,13 @@ MStream camera(
                     
                     mtx.lock();
                     if (audio.audio_format == Media::PCMf32) {
-                        array<float> frame(audio.frame_size);
-                        memcpy(frame.data, audio_frame, frame.reserve() * audio.unit_size);
+                        Array<float> frame(audio.frame_size);
+                        memcpy(frame.window, audio_frame, frame.reserve() * audio.unit_size);
                         frame.set_size(frame.reserve());
                         s.push_audio(frame);
                     } else {
-                        array<short> frame(audio.frame_size);
-                        memcpy(frame.data, audio_frame, frame.reserve() * audio.unit_size);
+                        Array<short> frame(audio.frame_size);
+                        memcpy(frame.window, audio_frame, frame.reserve() * audio.unit_size);
                         frame.set_size(frame.reserve());
                         s.push_audio(frame);
                     }

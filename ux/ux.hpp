@@ -16,7 +16,7 @@ struct Texture;
 
 using Path    = path;
 using Image   = image;
-using strings = array<str>;
+using strings = Array<str>;
 using Assets  = map<Texture *>;
 
 struct coord {
@@ -33,7 +33,7 @@ struct coord {
         align(al), offset(offset), x_type(xt), y_type(yt), x_rel(x_rel), y_rel(y_rel), x_per(x_per), y_per(y_per) { }
 
     coord(str s) {
-        array<str> sp = s.split();
+        Array<str> sp = s.split();
         str       &sx = sp[0];
         str       &sy = sp[1];
         assert(sp.len() == 2);
@@ -142,7 +142,7 @@ struct region:mx {
     }
 
     region(str s) : region() {
-        array<str> a = s.split();
+        Array<str> a = s.split();
         if (a.length() == 4) {
             str s0  = a[0] + " " + a[1];
             str s1  = a[2] + " " + a[3];
@@ -198,98 +198,11 @@ struct region:mx {
 struct Element;
 
 struct ch:pair<mx,mx> {
-    ch(array<node> a) {
+    ch(Array<node> a) {
         key   = "children";
         value = a;
     }
 };
-
-/// simple wavefront obj
-template <typename V>
-struct OBJ:mx {
-    /// prefer this to typedef
-    using strings = array<str>;
-
-    struct group:mx {
-        struct gdata {
-            str        name;
-            array<u32> ibo;
-        };
-        mx_object(group, mx, gdata);
-    };
-
-    struct M {
-        array<V>   vbo;
-        map<group> groups;
-    };
-
-    mx_object(OBJ, mx, M);
-
-    OBJ(path p, lambda<V(group&, vec3d*, vec2d*, vec3d*)> fn) : OBJ() {
-        str g;
-        path pp = p.exists() ? p : fmt {"models/{0}.obj", { p }};
-        str contents  = str::read_file(pp.cs());
-        assert(contents.len() > 0);
-        
-        auto lines    = contents.split("\n");
-        size_t line_c = lines.len();
-        auto wlines   = array<strings>();
-        auto v        = array<vec3d>(line_c); // need these
-        auto vn       = array<vec3d>(line_c);
-        auto vt       = array<vec2d>(line_c);
-        auto indices  = std::unordered_map<memory*, u32>(); /// symbol memory as key; you can instantiate str or other objects with this data
-        size_t verts  = 0;
-
-        ///
-        for (str &l:lines)
-            wlines += l.split(" ");
-        
-        /// assert triangles as we count them
-        map<int> gcount = {};
-        for (strings &w: wlines) {
-            if (w[0] == "g" || w[0] == "o") {
-                g = w[1];
-                data->groups[g].name  = g;
-                data->gcount[g]       = 0;
-            } else if (w[0] == "f") {
-                if (!g.len() || w.len() != 4)
-                    console.fault("import requires triangles"); /// f pos/uv/norm pos/uv/norm pos/uv/norm
-                data->gcount[g]++;
-            }
-        }
-
-        /// add vertex data
-        for (auto &w: wlines) {
-            if (w[0] == "g" || w[0] == "o") {
-                g = w[1];
-                if (!data->groups[g].ibo)
-                     data->groups[g].ibo = array<u32>(data->gcount[g] * 3);
-            }
-            else if (w[0] == "v")  v  += vec3d { w[1].real_value<real>(), w[2].real_value<real>(), w[3].real_value<real>() };
-            else if (w[0] == "vt") vt += vec2d { w[1].real_value<real>(), w[2].real_value<real>() };
-            else if (w[0] == "vn") vn += vec3d { w[1].real_value<real>(), w[2].real_value<real>(), w[3].real_value<real>() };
-            else if (w[0] == "f") {
-                assert(g.len());
-                for (size_t i = 1; i < 4; i++) {
-                    auto key = w[i].symbolize();
-                    if (indices.count(key) == 0) {
-                        indices[key] = u32(verts++);
-                        auto      sp =  w[i].split("/");
-                        int      iv  = sp[0].integer_value();
-                        int      ivt = sp[1].integer_value();
-                        int      ivn = sp[2].integer_value();
-                        data->vbo       += fn(data->groups[g],
-                                                iv  ? & v[ iv-1] : null,
-                                                ivt ? &vt[ivt-1] : null,
-                                                ivn ? &vn[ivn-1] : null);
-                    }
-                    data->groups[g].ibo += indices[key];
-                }
-            }
-        }
-    }
-};
-
 
 struct adata *app_instance();
 
@@ -357,7 +270,7 @@ struct Element:node {
         std::queue<fn_t>    queue;
         vec2d               text_spacing = { 1.0, 1.0 }; /// kerning & line-height scales here
         mx                  content;    /// lines could be an 'attachment' to content; thus when teh user sets content explicitly, it will then be recomputed
-        doubly<LineInfo>    lines;
+        doubly              lines;
         double              opacity = 1.0;
         rectd               bounds;     /// local coordinates of this control; xy are relative to parent xy
         rectd               fill_bounds;
@@ -371,7 +284,7 @@ struct Element:node {
         bool                count_height = true;
         bool                count_width  = true;
 
-        doubly<prop> meta() const {
+        properties meta() const {
             return {
                 prop { "on-hover",       ev.hover  },
                 prop { "on-out",         ev.out    },
@@ -455,7 +368,7 @@ struct Element:node {
 
     double effective_opacity();
 
-    doubly<LineInfo> &get_lines(Canvas*);
+    doubly &get_lines(Canvas*);
 
     virtual void focused();
     virtual void unfocused();
@@ -472,13 +385,13 @@ struct Element:node {
 
     vec2d offset();
 
-    array<Element*> select(lambda<Element*(Element*)> fn);
+    Array<Element*> select(lambda<Element*(Element*)> fn);
 
     mx_object(Element, node, props);
 
-    Element(type_t type, initial<arg> args) : node(type, args), data(defaults<props>()) { }
+    Element(type_t type, std::initializer_list<arg> args) : node(type, args), data(defaults<props>()) { }
 
-    Element(str id, array<node> ch):node(id, ch) { }
+    Element(str id, Array<node> ch):node(id, ch) { }
 
     style *fetch_style() const { return  ((Element*)root())->data->root_style; }
 

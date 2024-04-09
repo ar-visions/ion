@@ -54,14 +54,14 @@ struct Mesh:mx {
         Polygon     mode;
         int         level;
         mx          verts;
-        array<u32>  quads;
-        array<u32>  tris;
-        array<u32>  wire;
+        Array<u32>  quads;
+        Array<u32>  tris;
+        Array<u32>  wire;
     };
 
     /// returns the start to max level meshes using Pixar algorithm
-    static array<Mesh> process(Mesh &mesh, const array<Polygon> &modes, int start_level, int max_level);
-    static const Mesh &select(array<Mesh> &meshes, int level);
+    static Array<Mesh> process(Mesh &mesh, const Array<Polygon> &modes, int start_level, int max_level);
+    static const Mesh &select(Array<Mesh> &meshes, int level);
     mx_basic(Mesh)
 };
 
@@ -174,18 +174,18 @@ struct Model;
 enums(ShaderModule, undefined,
      undefined, vertex, fragment, compute);
 
-using GraphicsGen = lambda<void(Mesh&, array<image>&)>;
+using GraphicsGen = lambda<void(Mesh&, Array<image>&)>;
 
 struct GraphicsData {
     str         name;
     str         shader;
     type_t      vtype;
     GraphicsGen gen;
-    array<ShaderVar> bindings; /// ordered the same as shader
+    Array<ShaderVar> bindings; /// ordered the same as shader
 };
 
 struct Graphics:mx {
-    Graphics(str name, type_t vtype, array<ShaderVar> bindings, GraphicsGen gen = null, str shader = null) : Graphics() {
+    Graphics(str name, type_t vtype, Array<ShaderVar> bindings, GraphicsGen gen = null, str shader = null) : Graphics() {
         data->name      = name;
         data->shader    = shader ? shader : name;
         data->vtype     = vtype;
@@ -196,9 +196,9 @@ struct Graphics:mx {
 
     template <typename V>
     static inline GraphicsGen cube(float s, int levels) {
-        return [s, levels](Mesh &mesh, array<image> &images) {
+        return [s, levels](Mesh &mesh, Array<image> &images) {
             /// verify these as well as the count of 8
-            mesh->verts = array<V> {
+            mesh->verts = Array<V> {
                 {{ -0.5f * s, -0.5f * s,  0.5f * s }},
                 {{  0.5f * s, -0.5f * s,  0.5f * s }},
                 {{ -0.5f * s,  0.5f * s,  0.5f * s }},
@@ -209,7 +209,7 @@ struct Graphics:mx {
                 {{  0.5f * s, -0.5f * s, -0.5f * s }}
             }.hold();
             /// set quads field if we want to setup a mesh by those primitives
-            mesh->quads = array<u32> { /// verify these 24 spartans
+            mesh->quads = Array<u32> { /// verify these 24 spartans
                 0, 1, 3, 2,
                 2, 3, 5, 4,
                 4, 5, 7, 6,
@@ -233,7 +233,7 @@ struct IObject;
 /// our Object impl needs to access IObject internal, so we forward declare
 mx &object_data(IObject *o, str name, type_t type);
 
-using Bones = glm::mat4x4*;
+using Bones = Array<m44f>;
 
 struct Object:mx {
     Model &model(); /// if operator on Model is called, you may obtain Model by calling this
@@ -245,25 +245,25 @@ struct Object:mx {
         return *o_data.origin<T>();
     }
     template <typename T>
-    T *vector(str name) {
+    Array<T> vector(str name) {
         mx &o_data = object_data(data, name, typeof(T));
-        return o_data.origin<T>();
+        return o_data;
     }
-    Bones bones(str name) {
-        return vector<glm::mat4x4>(name);
-    }
+    
+    Bones bones(str name) { return vector<m44f>(name); }
+
     mx_declare(Object, mx, struct IObject);
 };
 
 struct Model:mx {
     mx_declare(Model, mx, struct IModel);
-    Model(Device &device, symbol model, array<Graphics> select); /// select Graphics in the Model with user defined functionality
+    Model(Device &device, symbol model, Array<Graphics> select); /// select Graphics in the Model with user defined functionality
     Pipeline &operator[](str s);
     Object instance(); /// instance Object for rendering
     operator Object(); /// Model ref is stored on Object, so its useful
 };
 
-using Scene           = array<Object>; /// this must change to be array<Object> so we render instances (change in progress)
+using Scene           = Array<Object>; /// this must change to be Array<Object> so we render instances (change in progress)
 using OnWindowResize  = lambda<void(vec2i)>;
 using OnWindowPresent = lambda<Scene()>;
 

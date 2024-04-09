@@ -6,7 +6,7 @@
 namespace ion {
 
 MStream camera(
-        array<StreamType> stream_types, array<Media> priority,
+        Array<StreamType> stream_types, Array<Media> priority,
         str video_alias, str audio_alias, int width, int height);
 
 }

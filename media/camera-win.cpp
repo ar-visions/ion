@@ -34,7 +34,7 @@ struct GuidEqual {
     }
 };
 
-MStream camera(array<StreamType> stream_types, array<Media> priority, str video_alias, str audio_alias, int rwidth, int rheight) {
+MStream camera(Array<StreamType> stream_types, Array<Media> priority, str video_alias, str audio_alias, int rwidth, int rheight) {
     return MStream(stream_types, priority, [stream_types, priority, video_alias, audio_alias, rwidth, rheight](MStream s) -> void {
         HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
         assert(!FAILED(hr));
@@ -71,7 +71,7 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
             DWORD               dwStreamIndex;
         };
 
-        doubly<Routine*> routines;
+        doubly routines;
 
         /// enum video capture devices, select one we have highest priority for
         MediaCategory search[2] = {
@@ -242,7 +242,7 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
                     s.init_output_pcm(Media::PCM, 1, 48000 / 30);
                     s.init_input_pcm (format, channels, samples_per_second / 30);
                 }
-                routines += r;
+                routines.push(r);
             }
         }
 
@@ -252,12 +252,12 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
         s.ready();
 
         /// capture loop
-        Routine *r_video = routines[0];
+        Routine *r_video = routines.get<Routine*>(0);
         s.set_video_format(r_video->selected_format);
 
         assert(r_video->selected_format);
 
-        for (Routine *r: routines)
+        for (Routine *r: routines.elements<Routine*>())
             if (r_video->selected_format != Media::undefined)
                 async(1, [r, s](runtime *rt, int i) -> mx {
                     MStream &ms = (MStream &)s;
@@ -281,7 +281,7 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
                             if (!r->video) {
                                 if (r->selected_format == Media::PCMf32) {
                                     assert(data_len % 4 == 0);
-                                    array<float> audio(sz_t(data_len) / 4);
+                                    Array<float> audio(sz_t(data_len) / 4);
                                     memcpy(audio.data, data, data_len / 4);
                                     audio.set_size(data_len / 4);
                                     ms.push_audio(audio);
@@ -291,14 +291,14 @@ MStream camera(array<StreamType> stream_types, array<Media> priority, str video_
                                     fclose(f);
                                     
                                     assert(data_len % 2 == 0);
-                                    array<short> audio(sz_t(data_len) / 2);
+                                    Array<short> audio(sz_t(data_len) / 2);
                                     memcpy(audio.data, data, data_len / 2);
                                     audio.set_size(data_len / 2);
                                     ms.push_audio(audio);
                                 }
                             } else {
                                 /// video-based method is to simply send the nalu frames received
-                                array<u8> video = array<u8>(sz_t(data_len));
+                                Array<u8> video = Array<u8>(sz_t(data_len));
                                 memcpy(video.data, data, data_len);
                                 video.set_size(data_len);
                                 ms.push_video(video);

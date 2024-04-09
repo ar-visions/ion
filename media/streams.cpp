@@ -64,10 +64,10 @@ void nv12_rgba(const uint8_t* nv12, uint8_t* rgba, int width, int height) {
 
             // Set RGBA values
             rgba8 *dst = (rgba8*)(rgba + 4 * Yindex);
-            dst->r = clamp((298 * Yvalue + 409 * V + 128) >> 8);
-            dst->g = clamp((298 * Yvalue - 100 * U - 208 * V + 128) >> 8);
-            dst->b = clamp((298 * Yvalue + 516 * U + 128) >> 8);
-            dst->a = 255;
+            dst->x = clamp((298 * Yvalue + 409 * V + 128) >> 8);
+            dst->y = clamp((298 * Yvalue - 100 * U - 208 * V + 128) >> 8);
+            dst->z = clamp((298 * Yvalue + 516 * U + 128) >> 8);
+            dst->w = 255;
         }
 }
 
@@ -78,26 +78,27 @@ MediaBuffer MediaBuffer::convert_pcm(PCMInfo &pcm_to, int id) {
         pcm_to->samples  == pcm->samples)
         return MediaBuffer(pcm, data->buf, id);
     
-    array<float> combined(sz_t(pcm->frame_samples * 2)); /// must be reduced to float32 so resampling can take place after
-    sz_t         combined_samples = 0;
+    array combined(typeof(float), sz_t(pcm->frame_samples * 2)); /// must be reduced to float32 so resampling can take place after
+    sz_t  combined_samples = 0;
+    float *combined_data = combined.data<float>();
 
     if (pcm->format == Media::PCMf32) {
         float *input = data->buf.origin<float>();
         if (pcm_to->channels == pcm->channels) {
             combined_samples = pcm->frame_samples;
             for (int i = 0; i < pcm->frame_samples; i++)
-                combined[i] = input[i];
+                combined_data[i] = input[i];
         } else if (pcm->channels == 1 && pcm_to->channels == 2) {
             combined_samples = pcm->frame_samples * 2;
             for (int i = 0; i < pcm->frame_samples; i++) {
                 float cv = input[i];
-                combined[i * 2 + 0] = cv;
-                combined[i * 2 + 1] = cv;
+                combined_data[i * 2 + 0] = cv;
+                combined_data[i * 2 + 1] = cv;
             }
         } else if (pcm_to->channels == 1) {
             combined_samples = pcm->frame_samples / 2;
             for (sz_t i = 0; i < combined_samples; i++) {
-                combined[i] =
+                combined_data[i] =
                     (float)((input[i * 2 + 0] + 
                              input[i * 2 + 1]) / 2.0f);
             }
@@ -109,19 +110,19 @@ MediaBuffer MediaBuffer::convert_pcm(PCMInfo &pcm_to, int id) {
         if (pcm_to->channels == pcm->channels) {
             combined_samples = pcm->frame_samples;
             for (int i = 0; i < pcm->frame_samples; i++)
-                combined[i] = std::max(input[i] / 32767.0f, -1.0f);
+                combined_data[i] = std::max(input[i] / 32767.0f, -1.0f);
         } else if (pcm->channels == 1 && pcm_to->channels == 2) {
             combined_samples = pcm->frame_samples * 2;
             for (int i = 0; i < pcm->frame_samples; i++) {
                 float cv = std::max(input[i] / 32767.0f, -1.0f);
-                combined[i * 2 + 0] = cv;
-                combined[i * 2 + 1] = cv;
+                combined_data[i * 2 + 0] = cv;
+                combined_data[i * 2 + 1] = cv;
             }
         } else if (pcm_to->channels == 1) {
             combined_samples = pcm->frame_samples / 2;
             for (sz_t i = 0; i < combined_samples; i++) {
                 /// frame size is channel-2 based on this struct
-                combined[i] = std::max(
+                combined_data[i] = std::max(
                     (float)((input[i * 2 + 0] / 32767.0f + 
                              input[i * 2 + 1] / 32767.0f) / 2.0f), -1.0f);
             }
@@ -135,16 +136,18 @@ MediaBuffer MediaBuffer::convert_pcm(PCMInfo &pcm_to, int id) {
         return MediaBuffer(pcm_to, combined, id);
 
     /// channels are pcm_to, but rate is different
-    array<float> res;
+    array res;
     if (pcm_to->samples != pcm->samples) {
-        array<float> resampled = array<float>(pcm_to->samples);
+        array resampled(typeof(float), pcm_to->samples);
         int err;
         SpeexResamplerState *resampler = speex_resampler_init(
-            pcm_to->channels, pcm->samples, pcm_to->samples, SPEEX_RESAMPLER_QUALITY_DEFAULT, &err);
+            pcm_to->channels, pcm->samples, pcm_to->samples,
+            SPEEX_RESAMPLER_QUALITY_DEFAULT, &err);
         assert(err == RESAMPLER_ERR_SUCCESS);
         u32    in_len  = combined.len()      / pcm_to->channels;
         u32    out_len = resampled.reserve() / pcm_to->channels;
-        speex_resampler_process_interleaved_float(resampler, combined.data, &in_len, resampled.data, &out_len);
+        speex_resampler_process_interleaved_float(
+            resampler, combined.data<float>(), &in_len, resampled.data<float>(), &out_len);
         speex_resampler_destroy(resampler);
         res = resampled;
         res.set_size(out_len);
@@ -158,9 +161,11 @@ MediaBuffer MediaBuffer::convert_pcm(PCMInfo &pcm_to, int id) {
 
     /// convert final
     sz_t sz = res.len();
-    array<short> conv(sz);
+    array conv(typeof(short), sz);
+    short *conv_data = conv.data<short>();
+    float *res_data  = res.data<float>();
     for (sz_t i = 0; i < sz; i++)
-        conv[i] = (short)(res[i] * 32767.0f);
+        conv_data[i] = (short)(res_data[i] * 32767.0f);
     
     conv.set_size(sz);
     ///
@@ -176,7 +181,7 @@ static void set_pcminfo(PCMInfo &pcm, Media format, int channels, int samples) {
     pcm->channels        = channels;
     pcm->frame_samples   = samples * channels;
     pcm->bytes_per_frame = pcm->frame_samples * nb;
-    pcm->audio_buffer    = array<u8>(size_t(pcm->bytes_per_frame) * 16);
+    pcm->audio_buffer    = array(typeof(u8), size_t(pcm->bytes_per_frame) * 16);
 }
 
 void MStream::init_input_pcm(Media format, int channels, int samples) {
@@ -215,9 +220,11 @@ void MStream::start() {
 void MStream::dispatch() {
     data->mtx_.lock();
     int acount = data->audio_queue->count();
-    mx  audio  = acount > 0 ? data->audio_queue->shift_v() : mx {};
+    mx  audio;
+    if (acount > 0)
+        data->audio_queue->shift(&audio);
     Frame frame { .image = data->image, .audio = audio };
-    for (Remote &listener: data->listeners)
+    for (Remote &listener: data->listeners.elements<Remote>())
         listener->callback(frame);
     data->frames++;
     data->mtx_.unlock();
@@ -235,10 +242,11 @@ bool MStream::push_audio(mx audio) {
     if (type == typeof(float)) {
         int  n_floats = audio.count();
         float *floats = audio.origin<float>();
-        array<short> shorts(n_floats);
+        array shorts(typeof(short), n_floats);
+        short *shorts_data = shorts.data<short>();
         for (int i = 0; i < n_floats; i++) {
             float v = floats[i];
-            shorts[i] = v * 32767.0;
+            shorts_data[i] = v * 32767.0;
         }
         shorts.set_size(n_floats);
         result = shorts;
@@ -266,7 +274,7 @@ bool MStream::push_video(mx video) {
     data->video = video;
     if (data->resolve_image) {
         u8 *src = (u8*)video.origin<u8>();
-        u8 *dst = (u8*)data->image.data;
+        u8 *dst = data->image.array::data<u8>();
         i64 a = millis();
         switch (data->video_format.value) {
             case Media::YUY2:
@@ -299,7 +307,7 @@ void Remote::close() {
 
     streams->mtx_.lock();
     num i = 0, index = -1;
-    for (mx &r: streams->listeners) {
+    for (Remote &r: streams->listeners.elements<Remote>()) {
         if (r.mem->origin == key) {
             index = i;
             break;

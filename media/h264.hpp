@@ -5,6 +5,6 @@ namespace ion {
 struct i264;
 struct h264:mx {
     mx_declare(h264, mx, i264);
-    array<u8> encode(yuv420 frame);
+    array encode(yuv420 frame);
 };
 }

@@ -39,17 +39,17 @@ struct MStream:mx {
     struct M {
         runtime*             rt;
         mutex                mtx_;
-        array<StreamType>    stream_types;
-        array<Media>         media;
+        Array<StreamType>    stream_types;
+        Array<Media>         media;
         Media                video_format;
-        doubly<Remote>       listeners;
+        doubly               listeners; // Remote
         u64                  frames;
         int                  channels; /// number of audio channels contained (float32 format!)
         bool                 ready;
         bool                 stop;
         bool                 error;
         int                  w, h, hz;
-        doubly<mx>           audio_queue; /// a user need only know frame for the video, but then access audio from here; storage is not kept but its far easier to keep this integral
+        doubly               audio_queue; /// mx: a user need only know frame for the video, but then access audio from here; storage is not kept but its far easier to keep this integral
         mx                   video;
         i64                  start_time;
         bool                 use_audio;
@@ -62,7 +62,7 @@ struct MStream:mx {
         int                  audio_next_id;
     };
 
-    MStream(array<StreamType> stream_types, array<Media> media, lambda<void(MStream)> fn):MStream() {
+    MStream(Array<StreamType> stream_types, Array<Media> media, lambda<void(MStream)> fn):MStream() {
         data->stream_types   = stream_types;
         data->media          = media;
         StreamType audio_t   = StreamType::Audio;
@@ -106,7 +106,7 @@ struct MStream:mx {
     void init_input_pcm (Media format, int channels, int samples);
     void init_output_pcm(Media format, int channels, int samples);
 
-    //array<MediaBuffer> audio_packets(u8 *buffer, int len);
+    //Array<MediaBuffer> audio_packets(u8 *buffer, int len);
         /// frameless pcm, MStreams will reframe and resample for the user
 
     bool contains(StreamType type) { return data->stream_types.index_of(type) >= 0; }
