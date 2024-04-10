@@ -4,6 +4,33 @@ dep(
     ion:media
     ion:dawn
     OpenSubdiv:osdCPU
-    OpenSubdiv:osdGPU
+    OpenSubdiv:osdGPU)
+
+set(dawn_gen ${EXTERN_DIR}/dawn/ion-${extern_cfg_lower}/gen)
+set(dawn_src ${EXTERN_DIR}/dawn/src/dawn)
+
+includes(
+    ${EXTERN_DIR}/dawn
+    ${dawn_gen}/include
+    ${dawn_gen}/src
+    ${dawn_gen}/src/dawn/wire
+    ${dawn_gen}/src/dawn/wire/server
+    ${dawn_gen}/src/dawn/wire/client
+    ${EXTERN_DIR}/dawn/src
+    ${dawn_src}/partition_alloc
+    ${dawn_src}/native/utils
+    ${dawn_src}/utils
+    ${dawn_src}/wire
+    ${dawn_src}/wire/server
+    ${dawn_src}/wire/client)
+
+set(dawn_dir ${EXTERN_DIR}/dawn)
+
+includes(
+    ${dawn_dir}/include
+    ${dawn_dir}/src
+    ${dawn_dir}/ion-${extern_cfg_lower}/include
+    ${dawn_dir}/ion-${extern_cfg_lower}/gen/include
 )
+
 cpp(20)

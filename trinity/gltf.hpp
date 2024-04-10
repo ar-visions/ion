@@ -520,7 +520,7 @@ namespace gltf {
                 }
             }
             /// test code!
-            for (m44f      &state: joints->states) {
+            for (m44f &state: joints->states) {
                 state = m44f(1.0f);
             }
 
@@ -532,7 +532,7 @@ namespace gltf {
         protected:
 
         /// builds Transform, separate from Model/Skin/Node and contains usable glm types
-        Transform node_transform(Joints joints, const m44f      &parent_mat, int node_index, Transform &parent) {
+        Transform node_transform(Joints joints, const m44f &parent_mat, int node_index, Transform &parent) {
             Node &node = data->nodes[node_index];
             assert(node->processed == false);
 
@@ -541,10 +541,14 @@ namespace gltf {
             if (node->joint_index >= 0) {
                 transform->jdata     = joints.data;
                 transform->local     = m44f(1.0f);
-                glm::quat quat(node->rotation[3], node->rotation[0], node->rotation[1], node->rotation[2]);
-                transform->local     = glm::translate(transform->local, vec3f(node->translation[0], node->translation[1], node->translation[2]));
-                transform->local    *= glm::mat4_cast(quat);
-                transform->local     = glm::scale    (transform->local, vec3f(node->scale[0], node->scale[1], node->scale[2]));
+                
+                quatf q(
+                    node->rotation[3], node->rotation[0],
+                    node->rotation[1], node->rotation[2]);
+                
+                transform->local     = translate(transform->local, vec3f(node->translation[0], node->translation[1], node->translation[2]));
+                transform->local    *= m44f(q);
+                transform->local     = scale    (transform->local, vec3f(node->scale[0], node->scale[1], node->scale[2]));
                 transform->local_default = transform->local;
                 transform->iparent   = parent->istate;
                 transform->istate    = node->joint_index;

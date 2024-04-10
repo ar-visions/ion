@@ -690,15 +690,15 @@ struct node:mx {
     using parent_class   = B;\
     using context_class  = C;\
     using intern         = D;\
-    static const inline type_t ctx_t  = typeof(C);\
-    static const inline type_t data_t = typeof(D);\
+    static inline type_t ctx_t  = typeof(C);\
+    static inline type_t data_t = typeof(D);\
     intern* state;\
-    C(memory*         mem) : B(mem), state(mx::data<D>()) { }\
+    C(memory* mem) : B(mem), state(mx::get<D>(0)) { }\
     C(type_t ty, std::initializer_list<arg>  props) : B(ty,        props), state(defaults<intern>()) { }\
     C(std::initializer_list<arg>  props) :            B(typeof(C), props), state(defaults<intern>()) { }\
     C(null_t) : C() { }\
-    C(mx                o) : C(o.mem->hold())  { }\
-    C()                    : C(mx::alloc<C>()) { }\
+    C(const mx &o) : C(hold(o.mem))  { }\
+    C() : C(mx::alloc<C>()) { }\
     intern    *operator->() { return  state; }\
 
 //typedef node* (*FnFactory)();

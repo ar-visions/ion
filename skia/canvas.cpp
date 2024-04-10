@@ -2,10 +2,7 @@
 #include <mx/mx.hpp>
 #include <media/image.hpp>
 #include <trinity/trinity.hpp>
-
-/// all header files for dawn & skia
-#include <dawn/dawn.hpp>
-#include <skia/skia.hpp>
+#include <skia/system.hpp>
 
 #define CANVAS_IMPL
 #include <skia/canvas.hpp>
@@ -14,18 +11,18 @@ using namespace ion;
 
 namespace ion {
 
-inline SkColor sk_color(rgbad c) {
+inline SkColor sk_color(rgba c) {
     rgba8 i = {
-        u8(math::round(c.r * 255)), u8(math::round(c.g * 255)),
-        u8(math::round(c.b * 255)), u8(math::round(c.a * 255)) };
-    auto sk = SkColor(uint32_t(i.b)        | (uint32_t(i.g) << 8) |
-                     (uint32_t(i.r) << 16) | (uint32_t(i.a) << 24));
+        u8(math::round(c.x * 255)), u8(math::round(c.y * 255)),
+        u8(math::round(c.z * 255)), u8(math::round(c.w * 255)) };
+    auto sk = SkColor(uint32_t(i.z)        | (uint32_t(i.y) << 8) |
+                     (uint32_t(i.x) << 16) | (uint32_t(i.w) << 24));
     return sk;
 }
 
 inline SkColor sk_color(rgba8 c) {
-    auto sk = SkColor(uint32_t(c.b)        | (uint32_t(c.g) << 8) |
-                     (uint32_t(c.r) << 16) | (uint32_t(c.a) << 24));
+    auto sk = SkColor(uint32_t(c.z)        | (uint32_t(c.y) << 8) |
+                     (uint32_t(c.x) << 16) | (uint32_t(c.w) << 24));
     return sk;
 }
 
@@ -57,9 +54,9 @@ struct ICanvas {
         double      outline_sz = 0.0;
         double      font_scale = 1.0;
         double      opacity    = 1.0;
-        m44d        m;
-        rgbad       color;
-        graphics::shape clip;
+        m44f        m;
+        rgba        color;
+        ion::outline clip;
         vec2d       blur;
         ion::font   font;
         SkPaint     ps;
@@ -78,7 +75,7 @@ struct ICanvas {
         top->outline_sz = sz;
     }
 
-    void color(rgbad &c) {
+    void color(rgba &c) {
         top->color = c;
     }
 
@@ -91,22 +88,22 @@ struct ICanvas {
         identity();
     }
 
-    SkPath *sk_path(graphics::shape &sh) {
-        graphics::shape::sdata &shape = sh.ref<graphics::shape::sdata>();
+    SkPath *sk_path(ion::outline &sh) {
+        ion::outline::sdata &shape = sh.ref<ion::outline::sdata>();
         // shape.sk_path 
         if (!shape.sk_path) {
             shape.sk_path = new SkPath { };
             SkPath &p     = *(SkPath*)shape.sk_path;
 
             /// efficient serialization of types as Skia does not spend the time to check for these primitives
-            if (shape.type == typeof(rectd)) {
-                rectd &m = sh->bounds;
+            if (shape.type == typeof(rect)) {
+                rect &m = sh->bounds;
                 SkRect r = SkRect {
                     float(m.x), float(m.y), float(m.x + m.w), float(m.y + m.h)
                 };
                 p.Rect(r);
-            } else if (shape.type == typeof(Rounded<double>)) {
-                Rounded<double>::rdata &m = sh->bounds.mem->ref<Rounded<double>::rdata>();
+            } else if (shape.type == typeof(Rounded)) {
+                Rounded::rdata &m = sh->bounds.mem->ref<Rounded::rdata>();
                 p.moveTo  (m.tl_x.x, m.tl_x.y);
                 p.lineTo  (m.tr_x.x, m.tr_x.y);
                 p.cubicTo (m.c0.x,   m.c0.y, m.c1.x, m.c1.y, m.tr_y.x, m.tr_y.y);
@@ -117,8 +114,8 @@ struct ICanvas {
                 p.lineTo  (m.tl_y.x, m.tl_y.y);
                 p.cubicTo (m.c0d.x,  m.c0d.y, m.c1d.x, m.c1d.y, m.tl_x.x, m.tl_x.y);
             } else {
-                graphics::shape::sdata &m = *sh.data;
-                for (mx &o:m.ops) {
+                ion::outline::sdata &m = *sh.data;
+                for (mx &o:m.ops.elements<mx>()) {
                     type_t t = o.type();
                     if (t == typeof(Movement)) {
                         Movement m(o);
@@ -175,7 +172,7 @@ struct ICanvas {
     }
     
     void save() {
-        state &s = stack->push_default<state>();
+        state &s = stack->push<state>();
         if (top) {
             s = *top;
         } else {
@@ -193,15 +190,16 @@ struct ICanvas {
     void set_matrix() {
     }
 
-    m44d get_matrix() {
+    m44f get_matrix() {
         SkM44 skm = sk_canvas->getLocalToDevice();
-        m44d res(0.0);
+        m44f res(0.0);
+        skm.getColMajor(reinterpret_cast<SkScalar*>(&res));
         return res;
     }
 
 
     void    clear()        { sk_canvas->clear(SK_ColorTRANSPARENT); }
-    void    clear(rgbad c) { sk_canvas->clear(sk_color(c)); }
+    void    clear(rgba c) { sk_canvas->clear(sk_color(c)); }
 
     void    flush() {
         /// this is what i wasnt doing:
@@ -216,7 +214,7 @@ struct ICanvas {
 
     void  restore() {
         stack->pop();
-        top = stack->len() ? &stack->last() : null;
+        top = stack->len() ? &stack->last<state>() : null;
         sk_canvas->restore();
     }
 
@@ -249,7 +247,7 @@ struct ICanvas {
     /// the text out has a rect, controls line height, scrolling offset and all of that nonsense we need to handle
     /// as a generic its good to have the rect and alignment enums given.  there simply isnt a user that doesnt benefit
     /// it effectively knocks out several redundancies to allow some components to be consolidated with style difference alone
-    str ellipsis(str &text, rectd &rect, text_metrics &tm) {
+    str ellipsis(str &text, ion::rect &rect, text_metrics &tm) {
         const str el = "...";
         str       cur, *p = &text;
         int       trim = p->len();
@@ -271,7 +269,7 @@ struct ICanvas {
     }
 
 
-    void image(ion::SVG &image, rectd &rect, alignment &align, vec2d &offset) {
+    void image(ion::SVG &image, ion::rect &rect, alignment &align, vec2d &offset) {
         SkPaint ps = SkPaint(top->ps);
         vec2d  pos = { 0, 0 };
         vec2i  isz = image.sz();
@@ -297,7 +295,7 @@ struct ICanvas {
         sk_canvas->restore();
     }
 
-    void image(ion::image &image, rectd &rect, alignment &align, vec2d &offset, bool attach_tx) {
+    void image(ion::image &image, ion::rect &rect, alignment &align, vec2d &offset, bool attach_tx) {
         SkPaint ps = SkPaint(top->ps);
         vec2d  pos = { 0, 0 };
         vec2i  isz = image.sz();
@@ -355,7 +353,7 @@ struct ICanvas {
     }
 
     /// the lines are most definitely just text() calls, it should be up to the user to perform multiline.
-    void text(str &text, rectd &rect, alignment &align, vec2d &offset, bool ellip, rectd *placement) {
+    void text(str &text, ion::rect &rect, alignment &align, vec2d &offset, bool ellip, ion::rect *placement) {
         SkPaint ps = SkPaint(top->ps);
         ps.setColor(sk_color(top->color));
         if (top->opacity != 1.0f)
@@ -386,7 +384,7 @@ struct ICanvas {
                 SkScalar(pos.y + offset.y + skia_y_offset), ps);
     }
 
-    void clip(rectd &rect) {
+    void clip(ion::rect &rect) {
         SkRect   r = SkRect {
             SkScalar(rect.x),          SkScalar(rect.y),
             SkScalar(rect.x + rect.w), SkScalar(rect.y + rect.h) };
@@ -420,11 +418,11 @@ struct ICanvas {
     }
 
     void outline(Array<vec3f> &v3, bool is_fill = false) {
-        vec2f sz = { this->sz.x / this->dpi_scale.x, this->sz.y / this->dpi_scale.y };
+        vec2f sz = { float(this->sz.x / this->dpi_scale.x), float(this->sz.y / this->dpi_scale.y) };
         Array<vec2f> projected { v3.len() };
         for (vec3f &vertex: v3) {
-            vec4f cs  = top->proj * top->view * top->model * vec4f(vertex, 1.0f);
-            vec3f ndc = cs / cs.w;
+            vec4f cs  = top->proj * top->view * top->model * vec4f(vertex.x, vertex.y, vertex.z, 1.0f);
+            vec3f ndc = (cs / cs.w).xyz();
             float screenX = ((ndc.x + 1) / 2.0) * sz.x;
             float screenY = ((1 - ndc.y) / 2.0) * sz.y;
             vec2f  v2 = { screenX, screenY };
@@ -459,7 +457,7 @@ struct ICanvas {
         outline(arcPoints, is_fill);
     }
 
-    void outline(rectd &rect) {
+    void outline(ion::rect &rect) {
         SkPaint ps = SkPaint(top->ps);
         ///
         ps.setAntiAlias(true);
@@ -472,7 +470,7 @@ struct ICanvas {
         draw_rect(rect, ps);
     }
 
-    void outline(graphics::shape &shape) {
+    void outline(ion::outline &shape) {
         SkPaint ps = SkPaint(top->ps);
         ///
         ps.setAntiAlias(!shape.is_rect());
@@ -486,16 +484,16 @@ struct ICanvas {
         sk_canvas->drawPath(*sk_path(shape), ps);
     }
 
-    void cap(graphics::cap &c) {
-        top->ps.setStrokeCap(c == graphics::cap::blunt ? SkPaint::kSquare_Cap :
-                             c == graphics::cap::round ? SkPaint::kRound_Cap  :
-                                                         SkPaint::kButt_Cap);
+    void cap(ion::cap &c) {
+        top->ps.setStrokeCap(c == ion::cap::blunt ? SkPaint::kSquare_Cap :
+                             c == ion::cap::round ? SkPaint::kRound_Cap  :
+                                               SkPaint::kButt_Cap);
     }
 
-    void join(graphics::join &j) {
-        top->ps.setStrokeJoin(j == graphics::join::bevel ? SkPaint::kBevel_Join :
-                              j == graphics::join::round ? SkPaint::kRound_Join  :
-                                                          SkPaint::kMiter_Join);
+    void join(join &j) {
+        top->ps.setStrokeJoin(j == ion::join::bevel ? SkPaint::kBevel_Join :
+                              j == ion::join::round ? SkPaint::kRound_Join  :
+                                                 SkPaint::kMiter_Join);
     }
 
     void translate(vec2d &tr) {
@@ -510,7 +508,7 @@ struct ICanvas {
         sk_canvas->rotate(degs);
     }
 
-    void draw_rect(rectd &rect, SkPaint &ps) {
+    void draw_rect(ion::rect &rect, SkPaint &ps) {
         SkRect   r = SkRect {
             SkScalar(rect.x),          SkScalar(rect.y),
             SkScalar(rect.x + rect.w), SkScalar(rect.y + rect.h) };
@@ -530,7 +528,7 @@ struct ICanvas {
         }
     }
 
-    void fill(rectd &rect) {
+    void fill(ion::rect &rect) {
         SkPaint ps = SkPaint(top->ps);
         ///
         ps.setColor(sk_color(top->color));
@@ -543,7 +541,7 @@ struct ICanvas {
     }
 
     // we are to put everything in path.
-    void fill(graphics::shape &path) {
+    void fill(ion::outline &path) {
         if (path.is_rect())
             return fill(path->bounds);
         ///
@@ -558,11 +556,11 @@ struct ICanvas {
         sk_canvas->drawPath(*sk_path(path), ps);
     }
 
-    void clip(graphics::shape &path) {
+    void clip(ion::outline &path) {
         sk_canvas->clipPath(*sk_path(path));
     }
 
-    void gaussian(vec2d &sz, rectd &crop) {
+    void gaussian(vec2d &sz, ion::rect &crop) {
         SkImageFilters::CropRect crect = { };
         if (crop) {
             SkRect rect = { SkScalar(crop.x),          SkScalar(crop.y),
@@ -673,26 +671,26 @@ u32 Canvas::get_virtual_height() { return data->sz.y / data->dpi_scale.y; }
 void Canvas::font(ion::font f)              { data->font(f); }
 void Canvas::save()                         { data->save(); }
 void Canvas::clear()                        { data->clear(); }
-void Canvas::clear(rgbad c)                 { data->clear(c); }
-void Canvas::color(rgbad c)                 { data->color(c); }
+void Canvas::clear(rgba c)                 { data->clear(c); }
+void Canvas::color(rgba c)                 { data->color(c); }
 void Canvas::opacity(double o)              { data->opacity(o); }
 void Canvas::flush()                        { data->flush(); }
 void Canvas::restore()                      { data->restore(); }
 vec2i Canvas::size()                        { return data->size(); }
-void Canvas::clip(rectd path)               { data->clip(path); }
+void Canvas::clip(ion::rect path)           { data->clip(path); }
 void Canvas::outline_sz(double sz)          { data->outline_sz(sz); }
-void Canvas::outline(rectd rect)            { data->outline(rect); }
-void Canvas::cap(graphics::cap c)           { data->cap(c); }
-void Canvas::join(graphics::join j)         { data->join(j); }
+void Canvas::outline(ion::rect rect)        { data->outline(rect); }
+void Canvas::cap(ion::cap c)                { data->cap(c); }
+void Canvas::join(ion::join j)              { data->join(j); }
 void Canvas::translate(vec2d tr)            { data->translate(tr); }
 void Canvas::scale(vec2d sc)                { data->scale(sc); }
 void Canvas::rotate(double degs)            { data->rotate(degs); }
 void Canvas::outline(Array<vec3f> v3)   { data->outline(v3); }
 void Canvas::outline(Array<vec2f> line) { data->outline(line); }
-void Canvas::fill(rectd rect)               { data->fill(rect); }
-void Canvas::fill(graphics::shape path)     { data->fill(path); }
-void Canvas::clip(graphics::shape path)     { data->clip(path); }
-void Canvas::gaussian(vec2d sz, rectd crop) { data->gaussian(sz, crop); }
+void Canvas::fill(ion::rect rect)               { data->fill(rect); }
+void Canvas::fill(ion::outline path)     { data->fill(path); }
+void Canvas::clip(ion::outline path)     { data->clip(path); }
+void Canvas::gaussian(vec2d sz, ion::rect crop) { data->gaussian(sz, crop); }
 void Canvas::line(vec3f &a, vec3f &b) { data->line(a, b); }
 void Canvas::projection(m44f      &m, m44f      &v, m44f      &p) { return data->projection(m, v, p); }
 
@@ -708,19 +706,19 @@ double Canvas::measure_advance(char *text, size_t len) {
     return data->measure_advance(text, len);
 }
 
-str Canvas::ellipsis(str text, rectd rect, text_metrics &tm) {
+str Canvas::ellipsis(str text, ion::rect rect, text_metrics &tm) {
     return data->ellipsis(text, rect, tm);
 }
 
-void Canvas::image(ion::SVG img, rectd rect, alignment align, vec2d offset) {
+void Canvas::image(ion::SVG img, ion::rect rect, alignment align, vec2d offset) {
     return data->image(img, rect, align, offset);
 }
 
-void Canvas::image(ion::image img, rectd rect, alignment align, vec2d offset, bool attach_tx) {
+void Canvas::image(ion::image img, ion::rect rect, alignment align, vec2d offset, bool attach_tx) {
     return data->image(img, rect, align, offset, attach_tx);
 }
 
-void Canvas::text(str text, rectd rect, alignment align, vec2d offset, bool ellip, rectd *placement) {
+void Canvas::text(str text, ion::rect rect, alignment align, vec2d offset, bool ellip, ion::rect *placement) {
     return data->text(text, rect, align, offset, ellip, placement);
 }
 

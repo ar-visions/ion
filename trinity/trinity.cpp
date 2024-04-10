@@ -1,4 +1,4 @@
-#include <dawn/dawn.hpp>
+#include <dawn/system.hpp>
 
 #include <trinity/trinity.hpp>
 #include <trinity/gltf.hpp>
@@ -64,7 +64,7 @@ struct ITexture {
     wgpu::TextureUsage  usage;
     vec2i               sz;
     Asset               asset_type;
-    map<Texture::OnTextureResize> resize_fns;
+    map                 resize_fns;
 
     wgpu::TextureFormat asset_format(Asset &asset) {
         switch (asset.value) {
@@ -95,7 +95,7 @@ struct ITexture {
     void set_content(mx content) {
         ion::image img;
         if (content.type() == typeof(ion::image))
-            img = content.hold();
+            img = hold(content);
 
         if (!img) {
             img = ion::size { 2, 2 };
@@ -164,7 +164,7 @@ void *Texture::handle() {
 }
 
 void Texture::on_resize(str user, OnTextureResize fn) {
-    data->resize_fns[user] = fn;
+    data->resize_fns.set(user, fn);
 }
 
 void Texture::cleanup_resize(str user) {
@@ -342,7 +342,7 @@ struct IVar {
 };
 
 struct IPipeline {
-    static inline ion::map<wgpu::ShaderModule> mod_cache;
+    static inline map mod_cache;
 
     str                         name;
     
@@ -391,14 +391,14 @@ struct IPipeline {
             size_t pcount = 0;
             size_t vlen = 0;
             for (field &f: prim->attributes.fields()) {
-                str       prop_bind      = f.key;
+                str       prop_bind      = hold(f.key);
                 symbol    prop_sym       = symbol(prop_bind);
-                num       accessor_index = num(f.value);
+                num       accessor_index = f.value.ref<num>();
                 gltf::Accessor &accessor = m->accessors[accessor_index];
 
                 /// the src stride is the size of struct_type[n_components]
                 assert(gfx->vtype->meta_map);
-                prop*  p = (*gfx->vtype->meta_map)[prop_sym];
+                ion::prop*  p = gfx->vtype->meta_map->get<ion::prop*>(prop_sym);
                 assert(p);
 
                 vstride &stride    = strides[pcount++];
@@ -440,7 +440,7 @@ struct IPipeline {
             /// we need to perform conversion on u16 to u32
             for (vstride &stride: strides) {
                 u8 *dst        = vbuf;
-                u8 *src        = (u8*)&stride.buffer->uri.data[stride.buffer_view->byteOffset];
+                u8 *src        = &stride.buffer->uri.data<u8>()[stride.buffer_view->byteOffset];
                 num member_sz  = stride.compound_type->base_sz; /// size of member / accessor compound-type
 
                 size_t src_vcount       = stride.accessor->vcount();
@@ -496,14 +496,14 @@ struct IPipeline {
             memory *mem_indices;
 
             if (a_indices->componentType == gltf::ComponentType::UNSIGNED_SHORT) {
-                u16 *u16_window = (u16*)(buf->uri.data + view->byteOffset);
+                u16 *u16_window = &buf->uri.data<u16>()[view->byteOffset];
                 u32 *u32_alloc  = (u32*)calloc(sizeof(u32), a_indices->count);
                 for (int i = 0; i < a_indices->count; i++)
                     u32_alloc[i] = u32(u16_window[i]);
                 mem_indices = memory::wrap(typeof(u32), u32_alloc, a_indices->count);
             } else {
                 assert(a_indices->componentType == gltf::ComponentType::UNSIGNED_INT);
-                u32 *u32_window = (u32*)(buf->uri.data + view->byteOffset);
+                u32 *u32_window = &buf->uri.data<u32>()[view->byteOffset];
                 mem_indices = memory::window(typeof(u32), u32_window, a_indices->count);
             }
             tris = mem_indices->hold();
@@ -518,9 +518,9 @@ struct IPipeline {
         if (!mod_cache->count(gfx->shader)) {
             path shader_path = fmt { "shaders/{0}.wsl", { gfx->shader } };
             str  shader_code = shader_path.read<str>();
-            mod_cache[gfx->shader] = dawn::utils::CreateShaderModule(device->wgpu, shader_code);
+            mod_cache.set(gfx->shader, dawn::utils::CreateShaderModule(device->wgpu, shader_code));
         }
-        mod = mod_cache[gfx->shader];
+        mod = mod_cache.get<wgpu::ShaderModule>(gfx->shader);
     }
 
     /// loads/associates uniforms here (change from vk where that was a separate process)
@@ -532,7 +532,7 @@ struct IPipeline {
 
         /// iterate through ShaderVar bindings
         ivars.clear();
-        for (ShaderVar& binding: gfx->bindings) {
+        for (ShaderVar& binding: gfx->bindings.elements<ShaderVar>()) {
             wgpu::BindGroupLayoutEntry entry { .binding = u32(bind_id) };
             wgpu::BindGroupEntry bind_value  { .binding = u32(bind_id) };
             type_t btype = binding->type;
@@ -610,7 +610,7 @@ struct IPipeline {
 
             ivars += IVar {
                 .buffer  = bind_value.buffer,
-                .svar    = ShaderVar(typeof(glm::mat4x4), joints.count(),
+                .svar    = ShaderVar(typeof(m44f), joints.count(),
                     ShaderVar::Flag::object | ShaderVar::Flag::read_only),
                 .instance = [joints]() -> mx {
                     return joints.copy();
@@ -618,7 +618,7 @@ struct IPipeline {
                 .update = [](mx &mx_joints) -> mx {
                     /// use this instead of var_data
                     /// assert it matches the size provided above
-                    gltf::Joints joints(mx_joints.hold());
+                    gltf::Joints joints(hold(mx_joints));
                     return joints->states;
                 }
             };
@@ -630,14 +630,14 @@ struct IPipeline {
 
         wgpu::BindGroupLayoutDescriptor ld {
             .entryCount         = size_t(bind_id),
-            .entries            = bind_entries.data
+            .entries            = bind_entries.data<wgpu::BindGroupLayoutEntry>()
         };
         bgl = device.CreateBindGroupLayout(&ld);
 
         wgpu::BindGroupDescriptor bg {
             .layout             = bgl,
             .entryCount         = size_t(bind_id),
-            .entries            = bind_values.data
+            .entries            = bind_values.data<wgpu::BindGroupEntry>()
         };
 
         bind_group = device.CreateBindGroup(&bg);
@@ -654,7 +654,7 @@ struct IPipeline {
             if (p.type == typeof(vec2f))  return wgpu::VertexFormat::Float32x2;
             if (p.type == typeof(vec3f))  return wgpu::VertexFormat::Float32x3;
             if (p.type == typeof(vec4f))  return wgpu::VertexFormat::Float32x4;
-            if (p.type == typeof(glm::ivec4)) return wgpu::VertexFormat::Sint32x4;
+            if (p.type == typeof(vec4i))  return wgpu::VertexFormat::Sint32x4;
             if (p.type == typeof(float))      return wgpu::VertexFormat::Float32;
             if (p.type == typeof(float[4]))   return wgpu::VertexFormat::Float32x4;
           //if (p.type == typeof(u16[4]))     return wgpu::VertexFormat::Uint16x4; # not supported in shader (still used in glTF buffer-view; convert when loading)
@@ -695,7 +695,7 @@ struct IPipeline {
         
         render_desc.EnableDepthStencil(wgpu::TextureFormat::Depth24PlusStencil8);
 
-        for (prop &p: props) {
+        for (prop &p: props.elements<prop>()) {
             render_desc.cAttributes[attrib_count].shaderLocation = attrib_count;
             render_desc.cAttributes[attrib_count].format         = get_wgpu_format(p);
             render_desc.cAttributes[attrib_count].offset         = p.offset;
@@ -752,7 +752,7 @@ struct IPipeline {
             wgpu::RenderPassColorAttachment color_attachment {
                 .loadOp = (!wire && clear_states[Clear::Color]) ? wgpu::LoadOp::Clear : wgpu::LoadOp::Load,
                 .storeOp = wgpu::StoreOp::Store,
-                .clearValue = wgpu::Color { clear_color.r, clear_color.g, clear_color.b, 0.0f }
+                .clearValue = wgpu::Color { clear_color.x, clear_color.y, clear_color.z, 0.0f }
             };
             if (color_view) {
                 color_attachment.view = color_view;
@@ -905,9 +905,9 @@ Object Model::instance() {
     o->renderables = Array<IRenderable>(n_pipelines);
 
     for (Pipeline &pl: data->pipelines) {
-        IRenderable &renderable = o->renderables.push();
+        IRenderable &renderable = o->renderables.push<IRenderable>();
         renderable.name = pl->name;
-        for (IVar &ivar: pl->ivars) {
+        for (IVar &ivar: pl->ivars.elements<IVar>()) {
             if (ivar.buffer) {
                 size_t buffer_sz = ivar.buffer.GetSize();
                 assert(buffer_sz == ivar.svar.size());

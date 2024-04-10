@@ -17,7 +17,7 @@ struct Texture;
 using Path    = path;
 using Image   = image;
 using strings = Array<str>;
-using Assets  = map<Texture *>;
+using Assets  = map;
 
 struct coord {
     alignment   align;
@@ -95,7 +95,7 @@ struct coord {
         };
     }
 
-    vec2d plot(rectd &rect, vec2d &rel, double void_width = 0, double void_height = 0) {
+    vec2d plot(ion::rect &rect, vec2d &rel, double void_width = 0, double void_height = 0) {
         double x;
         double y;
         double ox = x_per ? (offset.x / 100.0) * (rect.w - void_width)  : offset.x;
@@ -129,7 +129,7 @@ struct region:mx {
     mx_basic(region);
 
     /// simple rect
-    region(rectd r) : region() {
+    region(ion::rect r) : region() {
         data->tl  = fmt { "l{0} t{1}", { r.x, r.y }};
         data->br  = fmt { "w{0} h{1}", { r.w, r.h }};
         data->set = true;
@@ -171,19 +171,19 @@ struct region:mx {
 
     operator bool() { return data->set; }
     
-    rectd relative_rect(rectd &win, double void_width = 0, double void_height = 0) {
+    ion::rect relative_rect(ion::rect &win, double void_width = 0, double void_height = 0) {
         vec2d rel  = win.xy();
         vec2d v_tl = data->tl.plot(win, rel, void_width, void_height);
         vec2d v_br = data->br.plot(win, v_tl, void_width, void_height);
-        rectd r { v_tl, v_br };
+        ion::rect r { v_tl, v_br };
         r.x -= win.x;
         r.y -= win.y;
         return r;
     }
     
-    rectd rect(rectd &win) {
+    ion::rect rect(ion::rect &win) {
         vec2d rel = win.xy();
-        return rectd { data->tl.plot(win, rel), data->br.plot(win, rel) };
+        return ion::rect { data->tl.plot(win, rel), data->br.plot(win, rel) };
     }
     
     region mix(region &b, double a) {
@@ -196,13 +196,6 @@ struct region:mx {
 };
 
 struct Element;
-
-struct ch:pair<mx,mx> {
-    ch(Array<node> a) {
-        key   = "children";
-        value = a;
-    }
-};
 
 struct adata *app_instance();
 
@@ -240,41 +233,41 @@ struct Element:node {
         /// not ALL are used for all types.  However its useful to have a generic data structure for binding and function
         /// not sure if overflow should be used for all of these.  that might be much to deal with
         struct drawing {
-            rgbad               color;
-            rgbad               secondary;
+            rgba                color;
+            rgba                secondary;
             real                opacity;
             alignment           align;
             SVG                 img; /// feature, not bug or even restriction.  no raster images in UI!
             region              area;
             vec4d               radius;
-            graphics::shape     shape; 
-            graphics::cap       cap;   
-            graphics::join      join;
-            graphics::border    border;
-            inline rectd rect() { return shape.bounds(); }
+            outline             shape; 
+            ion::cap            cap;   
+            ion::join           join;
+            ion::border         border;
+            inline ion::rect rect() { return shape.bounds(); }
         };
 
-        inline graphics::shape shape() {
+        inline ion::outline shape() {
             return drawings[operation::child].shape;
         }
 
-        inline rectd shape_bounds() {
-            return rectd((rectd&)shape());
+        inline ion::rect shape_bounds() {
+            return ion::rect((ion::rect&)shape());
         }
 
         drawing             drawings[operation::count];
-        region              area; /// directly sets the bounds rectd
-        rgbad               sel_color;
-        rgbad               sel_background;
+        region              area; /// directly sets the bounds ion::rect
+        rgba                sel_color;
+        rgba                sel_background;
         vec2d               scroll = { 0, 0 };
         std::queue<fn_t>    queue;
         vec2d               text_spacing = { 1.0, 1.0 }; /// kerning & line-height scales here
         mx                  content;    /// lines could be an 'attachment' to content; thus when teh user sets content explicitly, it will then be recomputed
         doubly              lines;
         double              opacity = 1.0;
-        rectd               bounds;     /// local coordinates of this control; xy are relative to parent xy
-        rectd               fill_bounds;
-        rectd               text_bounds;
+        ion::rect               bounds;     /// local coordinates of this control; xy are relative to parent xy
+        ion::rect               fill_bounds;
+        ion::rect               text_bounds;
         ion::font           font;
         EProps              image_props;
         bool                editable   = false;
@@ -378,7 +371,7 @@ struct Element:node {
     virtual void down();
     virtual void click();
     virtual void up();
-    virtual void draw_text(Canvas& canvas, rectd& rect);
+    virtual void draw_text(Canvas& canvas, ion::rect& rect);
     virtual void draw(Canvas& canvas);
     virtual void update_bounds(Canvas &canvas);
     virtual vec2d child_offset(Element &child);

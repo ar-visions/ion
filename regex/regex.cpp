@@ -121,7 +121,7 @@ Array<indexed<utf16>> RegEx::exec(utf16 input) {
         ::drop(data->last_mem);
         data->last_index = 0;
         data->bytes_left = 0;
-        data->last_mem = input.hold();
+        data->last_mem = hold(input);
     }
     for (size_t i = 0; i < data->regex_count; i++) {
         Array<indexed<utf16>> result;

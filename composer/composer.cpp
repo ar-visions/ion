@@ -199,6 +199,7 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
                 str &name = *p.s_key;
                 field *entries = style_avail->lookup(name); // ctx name is Button, name == id, and it has a null entry for entries[0] == null with count > 
                 if (entries) {
+                    /// this should be in a single function:
                     /// get best style matching entry for this property
                     Array<style::entry*> e(entries->value);
                     style::entry *best = composer->style->best_match(instance, &p, e);
@@ -313,19 +314,20 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
                 /// only support a key type of char.  we can support variables that convert to char array
                 if (key->type == typeof(char)) {
                     symbol s_key = (symbol)key->origin;
-                    prop **pdef = meta_map->lookup(s_key);
+                    mx      pdef = meta_map->lookup(s_key);
                     
                     if (pdef) {
-                        prop *def = *pdef;
+                        prop *def = pdef.get<prop>(0);
                         /// duplicates are not allowed in ux; we could handle it just not now; meta map would need to return a list not the type.  iceman: ugh!
                         assert(def->parent_type == tdata);
 
                         type_t prop_type = def->type;
-                        type_t arg_type  = a.value.type();
+                        type_t arg_type  = a.value.mem->type;
                         u8    *prop_dst  = &data_origin[def->offset];
                         u8    *arg_src   = (u8*)a.value.mem->typed_data(arg_type, 0); /// passing int into mx recovers int, but passing lambda will give data inside.  we want to store a context
                         u8    *conv_inst = null;
                         str   str_res;
+                        bool  free = false;
 
                         /// if prop type is mx, we can generalize
                         if (prop_type == typeof(mx)) {
@@ -333,15 +335,17 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
                                 conv_inst = (u8*)new mx(a.value);
                                 arg_src   = (u8*)conv_inst;
                                 arg_type  = typeof(mx);
+                                free      = true;
                             }
                         }
                         /// if going to string and arg is not, we convert
                         else if (prop_type == typeof(str) && arg_type != prop_type) {
                             /// general to_string conversion (memory of char)
                             assert(arg_type->f.str);
-                            conv_inst = (u8*)arg_type->f.str(arg_src);
+                            conv_inst = (u8*)new mx(arg_type->f.str(arg_src));
                             arg_src   = (u8*)conv_inst;
                             arg_type  = typeof(str);
+                            free      = true;
                         }
                         /// general from_string conversion.  the class needs to have a cstr constructor
                         else if ((arg_type == typeof(char) || arg_type == typeof(str)) && prop_type != arg_type) {
@@ -350,6 +354,7 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
                                 (cstr)a.value.mem->origin : (cstr)arg_src);
                             arg_src = (u8*)conv_inst;
                             arg_type = prop_type;
+                            free     = false;
                         }
                         /// types should match
                         assert(arg_type == prop_type || arg_type->ref == prop_type);
@@ -365,7 +370,10 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
                             prop_type->f.ctr_cp(prop_dst, arg_src);
                         }
                         pset[i] = true;
-                        if (conv_inst) arg_type->f.dtr(conv_inst);
+                        if (conv_inst) {
+                            arg_type->f.dtr(conv_inst);
+                            if (free) ::free(conv_inst);
+                        }
                     }
                 } else {
                     console.fault("unsupported key type");
@@ -383,7 +391,7 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
                 for (node *e: render->children) {
                     if (!e->data->id && !e->data->type) continue;
                     str id = node_id(*e);
-                    node *&n_mount = n->mounts[id];
+                    node *&n_mount = n->mounts.get<node*>(id);
                     update(composer, instance, n_mount, *e);
                 }
             /// can also be stored in a map
@@ -391,7 +399,8 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
             } else if (render->type == typeof(Array<node>)) {
             } else {
                 str id = node_id(render);
-                update(composer, instance, n->mounts[id], render);
+                node *&n_mount = n->mounts.get<node*>(id);
+                update(composer, instance, n_mount, render);
             }
         }
         /// need to know if its mounted, or changed by argument
@@ -475,7 +484,7 @@ doubly parse_qualifiers(style::block &bl, cstr *p) {
     doubly result;
 
     ///
-    for (str &qs:quals) {
+    for (str &qs:quals.elements<str>()) {
         str  qq = qs.trim();
         if (!qq) continue;
         style::Qualifier vv = style::Qualifier(); /// push new qualifier
@@ -495,7 +504,7 @@ doubly parse_qualifiers(style::block &bl, cstr *p) {
             str q = parent_to_child[i].trim();
             if (processed) {
                 v->parent = style::Qualifier();
-                v = v->parent.hold(); /// dont need to cast this
+                v = hold(v->parent); /// dont need to cast this
             }
             num idot = q.index_of(".");
             num icol = q.index_of(":");
@@ -504,7 +513,8 @@ doubly parse_qualifiers(style::block &bl, cstr *p) {
             if (idot >= 0) {
                 Array<str> sp = q.split(".");
                 v->type   = sp[0];
-                v->id     = sp[1].split(":")[0];
+                Array<str> sp2 = sp[1].split(":");
+                v->id     = sp2[0];
                 if (icol >= 0)
                     tail  = q.mid(icol + 1).trim(); /// likely fine to use the [1] component of the split
             } else {
@@ -514,8 +524,8 @@ doubly parse_qualifiers(style::block &bl, cstr *p) {
                 } else
                     v->type = q;
             }
-            if (v->type) {
-                v->ty = types::lookup(v->type);
+            if (v->type) { /// todo: verify idata is correctly registered and looked up
+                v->ty = ident::types->lookup(v->type).get<idata>();
                 if (bl.types.index_of(v->ty) == -1) {
                     assert(v->ty); /// type must exist
                     bl.types += v->ty;
@@ -528,7 +538,7 @@ doubly parse_qualifiers(style::block &bl, cstr *p) {
                 for (str &op:ops) {
                     if (tail.index_of(op.cs()) >= 0) {
                         is_op   = true;
-                        auto sp = tail.split(op);
+                        Array<str> sp = tail.split(op);
                         v->state = sp[0].trim();
                         v->oper  = op;
                         v->value = tail.mid(sp[0].len() + op.len()).trim();
@@ -558,10 +568,8 @@ style::style_map style::impl::compute(node *n) {
 
         ///
         Array<entry *> all(32);
-        for (prop &p: *(properties*)data->meta) { /// the blocks can contain a map of types with entries associated, with a * key for all
-            if (*p.s_key == "fill-color") {
-                int test = 0;
-            }
+        properties *meta = (properties*)data->meta;
+        for (prop &p: meta->elements<prop>()) { /// the blocks can contain a map of types with entries associated, with a * key for all
             if (applicable(n, &p, all)) {
                 str   s_name  = p.key->hold(); /// it will free if you dont hold it
                 avail[s_name] = all;
@@ -576,20 +584,20 @@ void style::impl::cache_members() {
     lambda<void(block*)> cache_b;
     ///
     cache_b = [&](block *bl) -> void {
-        for (entry *e: bl->entries) {
+        for (entry *e: bl->entries.elements<entry*>()) {
             bool  found = false;
-            Array<block*> &cache = members[e->member];
+            Array<block*> &cache = members.get<Array<block*>>(e->member);
             for (block *cb:cache)
                  found |= cb == bl;
             ///
             if (!found)
                  cache += bl;
         }
-        for (block *s:bl->blocks)
+        for (block *s:bl->blocks.elements<block*>())
             cache_b(s);
     };
     if (root)
-        for (block *b:root)
+        for (block *b:root.elements<block*>())
             cache_b(b);
 }
 
@@ -690,12 +698,12 @@ style::style(type_t app_type) : style() {
 }
 
 bool style::impl::applicable(node *n, prop *member, Array<style::entry*> &result) {
-    Array<style::block*> &blocks = members.get<style::block*>(*member->s_key); /// members must be 'sample' on load, and retrieving it should return a block
+    Array<style::block*> &blocks = members.get<Array<style::block*>>(*member->s_key); /// members must be 'sample' on load, and retrieving it should return a block
     type_t type = n->mem->type;
     bool ret = false;
 
-    for (style::block *block:blocks) {
-        style::Qualifier qual = block->quals[0];
+    for (style::block *block:blocks.elements<style::block*>()) {
+        //style::Qualifier &qual = block->quals.get<style::Qualifier>(0);
         if (!block->types || block->types.index_of(type) >= 0) {
             auto f = block->entries->lookup(*member->s_key);
             if (f) {

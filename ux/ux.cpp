@@ -14,7 +14,7 @@ struct color:mx {
 
 listener &dispatch::listen(callback cb) {
     data->listeners += new listener::ldata { this, cb };
-    listener &last = data->listeners->last(); /// last is invalid offset
+    listener &last = data->listeners->last<listener>(); /// last is invalid offset
 
     last->detatch = fn_stub([
             ls_mem=last.mem, 
@@ -22,7 +22,7 @@ listener &dispatch::listen(callback cb) {
     ]() -> void {
         size_t i = 0;
         bool found = false;
-        for (listener &ls: *listeners) {
+        for (listener &ls: listeners->elements<listener>()) {
             if (ls.mem == ls_mem) {
                 found = true;
                 break;
@@ -37,7 +37,7 @@ listener &dispatch::listen(callback cb) {
 }
 
 void dispatch::operator()(event e) {
-    for (listener &l: data->listeners)
+    for (listener &l: data->listeners.elements<listener>())
         l->cb(e);
 }
 
@@ -56,7 +56,7 @@ void Element::leave()     { }
 doubly &Element::get_lines(Canvas *p_canvas) {
 
     if (data->content && !data->lines) {
-        str         s_content = data->content.hold();
+        str         s_content(data->content);
         Array<str>  line_strs = s_content.split("\n");
         int        line_count = (int)line_strs.len();
         ///
@@ -64,7 +64,7 @@ doubly &Element::get_lines(Canvas *p_canvas) {
         ///
         size_t i = 0;
         for (int i = 0; i < line_count; i++) {
-            LineInfo &l = data->lines->push();
+            LineInfo &l = data->lines->push<LineInfo>();
             l.bounds = {}; /// falsey rects have not been computed yet
             l.data   = line_strs[i];
             l.len    = l.data.len();
@@ -73,7 +73,7 @@ doubly &Element::get_lines(Canvas *p_canvas) {
         }
     } else {
         /// this must be done after an update; could set a flag for it too..
-        for (LineInfo &l: data->lines) {
+        for (LineInfo &l: data->lines.elements<LineInfo>()) {
             if (l.len && !l.adv) {
                 l.bounds = {};
                 l.adv = data->font.advances(*p_canvas, l.data);
@@ -85,7 +85,7 @@ doubly &Element::get_lines(Canvas *p_canvas) {
 }
 
 /// we draw the text and plot its placement; the text() function gives us back effectively aligned text
-void Element::draw_text(Canvas& canvas, rectd& rect) {
+void Element::draw_text(Canvas& canvas, ion::rect& rect) {
     props::drawing &text = data->drawings[operation::text];
     canvas.save();
     canvas.color(text.color);
@@ -121,7 +121,7 @@ void Element::draw_text(Canvas& canvas, rectd& rect) {
     }
 
     bool in_sel = false;
-    for (LineInfo &line:lines) {
+    for (LineInfo &line:lines.elements<LineInfo>()) {
         /// implement interactive state to detect mouse clicks and set the cursor position
         line.bounds.x = data->text_bounds.x;
         line.bounds.y = data->text_bounds.y + i * lh;
@@ -137,7 +137,7 @@ void Element::draw_text(Canvas& canvas, rectd& rect) {
         canvas.text(line.data, line.bounds, t_align, {0.0, 0.0}, true, &line.placement);
 
         if (in_sel) {
-            rectd sel_rect = line.bounds;
+            ion::rect sel_rect = line.bounds;
             str sel;
             num start = 0;
 
@@ -217,7 +217,7 @@ vec2d Element::child_offset(Element &child) {
     /// if child does not have any relative boundary then return parent bounds;
     if (compute) {
         node::edata *edata = ((node*)this)->data;
-        for (node *n: edata->mounts) {
+        for (node *n: edata->mounts.fields()) {
             Element* c = (Element*)n;
             /// complex, but bounds is computed on all of these up to child;
             /// we just need flags given for what is +'d
@@ -228,7 +228,7 @@ vec2d Element::child_offset(Element &child) {
         }
         /// first item gets its parent coords
         if (b) {
-            rectd &bb = b->data->bounds;
+            ion::rect &bb = b->data->bounds;
             if (compute_left) offset.x = bb.x + bb.w;
             if (compute_top)  offset.y = bb.y + bb.h;
         }
@@ -240,8 +240,8 @@ void Element::update_bounds(Canvas &canvas) {
     node::edata  *edata      = ((node*)this)->data;
     Element      *eparent    = (Element*)edata->parent;
     vec2d         offset     = eparent ? eparent->child_offset(*this) : vec2d { 0, 0 };
-    rectd      parent_bounds = eparent ? eparent->data->bounds : 
-        rectd { 0, 0, r64(canvas.get_virtual_width()), r64(canvas.get_virtual_height()) };
+    ion::rect      parent_bounds = eparent ? eparent->data->bounds : 
+        ion::rect { r64(0), r64(0), r64(canvas.get_virtual_width()), r64(canvas.get_virtual_height()) };
 
     /// get void_w/h from parent
     double void_width  = eparent ? eparent->data->void_width  : 0;
@@ -270,7 +270,7 @@ void Element::update_bounds(Canvas &canvas) {
     }
 
     if (outline.color && outline.border.size > 0.0) {
-        rectd outline_rect = outline.area ? outline.area.relative_rect(data->bounds) : data->fill_bounds;
+        ion::rect outline_rect = outline.area ? outline.area.relative_rect(data->bounds) : data->fill_bounds;
         if (outline.radius) {
             vec4d r = outline.radius;
             vec2d tl { r.x, r.x };
@@ -286,24 +286,14 @@ void Element::update_bounds(Canvas &canvas) {
     /// will not be taken into account for liquid layouts
     data->void_width  = 0;
     data->void_height = 0;
-    for (node *n: edata->mounts) {
+    for (node *n: edata->mounts.fields()) {
         Element* e = (Element*)n;
         if (!e->data->count_width)
             data->void_width  += e->data->bounds.w;
         if (!e->data->count_height)
             data->void_height += e->data->bounds.h;
     }
-    if (strcmp(type()->name, "Ribbon") == 0) {
-        Element* e0 = (Element*)edata->mounts["side-profile-header"];
-        e0->update_bounds(canvas);
-        Element* e1 = (Element*)edata->mounts["side-profile-content"];
-        e1->update_bounds(canvas);
-        Element* e2 = (Element*)edata->mounts["forward-profile-header"];
-        e2->update_bounds(canvas);
-        Element* e3 = (Element*)edata->mounts["forward-profile-content"];
-        e3->update_bounds(canvas);
-    } else
-    for (node *n: edata->mounts) { /// debug this: for type == Ribbon
+    for (node *n: edata->mounts.fields()) { /// debug this: for type == Ribbon
         Element* e = (Element*)n;
         e->update_bounds(canvas);
     }
@@ -337,7 +327,7 @@ void Element::draw(Canvas& canvas) {
     /// if there is text (its not alpha 0, and there is text)
     if (data->content && ((data->content.type() == typeof(char)) ||
                           (data->content.type() == typeof(str)))) {
-        rectd text_bounds = text.shape;
+        ion::rect text_bounds = text.shape;
         if (!text_bounds)
             text_bounds = data->fill_bounds;
         draw_text(canvas, text_bounds);
@@ -348,30 +338,30 @@ void Element::draw(Canvas& canvas) {
         canvas.color(outline.color);
         canvas.opacity(effective_opacity());
         canvas.outline_sz(outline.border.size);
-        rectd &rect = outline.shape;
+        ion::rect &rect = outline.shape;
         canvas.outline(rect); /// this needs to work with vshape, or border
     }
 
-    for (node *n: node::data->mounts) {
+    for (node *n: node::data->mounts.fields()) {
         Element* c = (Element*)n;
         /// clip to child
         /// translate to child location
         canvas.save();
-        rectd &bounds = c->data->bounds;
+        ion::rect &bounds = c->data->bounds;
         canvas.translate(bounds.xy());
         canvas.opacity(effective_opacity());
-        rectd clip_bounds = { 0, 0, bounds.w, bounds.h };
+        ion::rect clip_bounds = { double(0), double(0), bounds.w, bounds.h };
 
         /// adjust clip for outline if there is one
         props::drawing &outline  = c->data->drawings[operation::outline];
         if (outline.color && outline.border.size > 0.0) {
-            rectd  r0   = clip_bounds;
-            rectd  r1   = (rectd &)outline.shape;
+            ion::rect  r0   = clip_bounds;
+            ion::rect  r1   = (ion::rect &)outline.shape;
             double minx = math::min(r0.x, r1.x - outline.border.size / 2.0);
             double miny = math::min(r0.y, r1.y - outline.border.size / 2.0);
             double maxx = math::max(r0.x, r1.x + r1.w + outline.border.size / 2.0);
             double maxy = math::max(r0.y, r1.y + r1.h + outline.border.size / 2.0);
-            clip_bounds = rectd {
+            clip_bounds = ion::rect {
                 minx, miny, maxx - minx, maxy - miny
             };
         }
@@ -383,7 +373,7 @@ void Element::draw(Canvas& canvas) {
 }
 
 TextSel Element::get_selection(vec2d pos, bool is_down) {
-    rectd r = data->bounds;
+    ion::rect r = data->bounds;
     Element *n = this;
     /// localize mouse pos input to this control (should be done by the caller; why would we repeat this differently)
     while (n) {
@@ -397,7 +387,7 @@ TextSel Element::get_selection(vec2d pos, bool is_down) {
     num     row = 0;
 
     ///
-    for (LineInfo &line: data->lines) {
+    for (LineInfo &line: data->lines.elements<LineInfo>()) {
         if (pos.y >= y && pos.y <= (y + line.bounds.h)) {
             res.row = row;
             if (pos.x < line.placement.x)
@@ -447,7 +437,7 @@ void Element::on_text(event e) {
 
     doubly add;
     for (str &line: text) {
-        LineInfo &l = add->push_default<LineInfo>();
+        LineInfo &l = add->push<LineInfo>();
         l.data = line;
         l.len  = line.len();
     }
@@ -462,7 +452,7 @@ void Element::on_text(event e) {
         if (ss.column < 0) {
             if (ss.row > 0) {
                 ss.row--;
-                ss.column = data->lines[ss.row].len;
+                ss.column = data->lines.get<LineInfo>(ss.row).len;
             } else {
                 se.column = 0;
                 ss.column = 0;
@@ -487,10 +477,10 @@ void Element::on_text(event e) {
 
     /// turn off for very large text boxes
     size_t len = 0;
-    for (LineInfo &li: data->lines)
+    for (LineInfo &li: data->lines.elements<LineInfo>())
         len += li.len;
     str content { len };
-    for (LineInfo &li: data->lines)
+    for (LineInfo &li: data->lines.elements<LineInfo>())
         content += li.data;
     data->content = content;
 
@@ -509,7 +499,7 @@ rgba8 Element::color_with_opacity(rgba8 &input) {
         o *= n->data->opacity;
         n  = (Element*)n->node::data->parent;
     }
-    result.a = math::round(result.a * o);
+    result.w = math::round(result.w * o);
     return result;
 }
 
@@ -541,8 +531,8 @@ Array<Element*> Element::select(lambda<Element*(Element*)> fn) {
         Element* r = fn(n);
         if   (r) result += r;
         /// go through mount fields mx(symbol) -> Element*
-        for (field &f:n->node::data->mounts) {
-            if (f.value) recur(f.value.ref<Element*>());
+        for (Element *n:n->node::data->mounts.fields()) {
+            if (n) recur(n);
         }
         return null;
     };
@@ -554,8 +544,8 @@ void Element::exec(lambda<void(node*)> fn) {
     lambda<node*(node*)> recur;
     recur = [&](node* n) -> node* {
         fn(n);
-        for (field &f: n->node::data->mounts)
-            if (f.value) recur(f.value.ref<node*>());
+        for (node *n: n->node::data->mounts.fields())
+            if (n) recur(n);
         return null;
     };
     recur(this);

@@ -28,7 +28,7 @@ Array<Mesh> Mesh::process(Mesh &mesh, const Array<Polygon> &modes, int start_lev
     Array<u32> quads = mesh->quads;
     if (!quads) {
         assert(mesh->tris);
-        u32 *tris = mesh->tris.data;
+        u32 *tris = mesh->tris.window;
         for (int itri = 0; itri < mesh->tris.len() / 6; itri++) {
             u32 t0_A = tris[itri * 6 + 0]; // A
             u32 t0_B = tris[itri * 6 + 1]; // B
@@ -89,7 +89,7 @@ Array<Mesh> Mesh::process(Mesh &mesh, const Array<Polygon> &modes, int start_lev
         desc.numVertices        = n_input_verts;
         desc.numFaces           = n_input_quads;
         desc.numVertsPerFace    = verts_per_face;
-        desc.vertIndicesPerFace = (const i32*)quads.data;
+        desc.vertIndicesPerFace = (const i32*)quads.data<i32>();
 
         // Instantiate a Far::TopologyRefiner from the descriptor
         refiner = Far::TopologyRefinerFactory<Descriptor>::Create(desc,

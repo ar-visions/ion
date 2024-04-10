@@ -13,9 +13,9 @@ struct Button:Element {
         callback            on_change;
         properties meta() {
             return {
-                {"behavior",  behavior},
-                {"on-change", on_change},
-                {"selected",  selected}
+                prop {"behavior",  behavior},
+                prop {"on-change", on_change},
+                prop {"selected",  selected}
             };
         }
     };
@@ -140,22 +140,22 @@ struct list_view:node {
         double  warea = node::std.drawings[operation::fill].shape.w();
         double  t     = 0;
         
-        for (Column::data &c: columns)
-            if (c.scale)
-                tsz += c.value;
+        for (Column &c: columns)
+            if (c->scale)
+                tsz += c->value;
         ///
-        for (Column::data &c: columns)
-            if (c.scale) {
-                c.value /= tsz;
-                t += c.value;
+        for (Column &c: columns)
+            if (c->scale) {
+                c->value /= tsz;
+                t += c->value;
             } else
-                warea = math::max(0.0, warea - c.value);
+                warea = math::max(0.0, warea - c->value);
         ///
-        for (Column::data &c: columns)
-            if (c.scale)
-                c.final = math::round(warea * (c.value / t));
+        for (Column &c: columns)
+            if (c->scale)
+                c->final = math::round(warea * (c->value / t));
             else
-                c.final = c.value;
+                c->final = c->value;
     }
     
     void draw(gfx &canvas) {
@@ -172,11 +172,11 @@ struct list_view:node {
         if (!data) return; /// use any smooth bool operator
 
         ///
-        rectd &rect   = node::std.drawings[operation::fill].rect();
-        rectd  h_line = { rect.x, rect.y, rect.w, 1.0 };
+        ion::rect &rect   = node::std.drawings[operation::fill].rect();
+        ion::rect  h_line = { rect.x, rect.y, rect.w, 1.0 };
 
         /// would be nice to just draw 1 outline here, canvas should work with that.
-        auto draw_rect = [&](rgba8 &c, rectd &h_line) {
+        auto draw_rect = [&](rgba8 &c, ion::rect &h_line) {
             rectr  r   = h_line;
             shape vs  = r; /// todo: decide on final xy scaling for text and gfx; we need a the same unit scales
             canvas.save();
@@ -185,12 +185,12 @@ struct list_view:node {
             canvas.restore();
         };
         Column  nc = null;
-        auto cells = [&] (lambda<void(Column::data &, rectd &)> fn) {
+        auto cells = [&] (lambda<void(Column &, ion::rect &)> fn) {
             if (columns) {
                 v2d p = h_line.xy();
-                for (Column::data &c: columns) {
-                    double w = c.final;
-                    rectd cell = { p.x, p.y, w - 1.0, 1.0 };
+                for (Column &c: columns) {
+                    double w = c->final;
+                    ion::rect cell = { p.x, p.y, w - 1.0, 1.0 };
                     fn(c, cell);
                     p.x += w;
                 }
@@ -199,25 +199,25 @@ struct list_view:node {
         };
 
         ///
-        auto pad_rect = [&](rectd r) -> rectd {
+        auto pad_rect = [&](ion::rect r) -> ion::rect {
             return {r.x + 1.0, r.y, r.w - 2.0, r.h};
         };
         
         /// paint column text, fills and outlines
         if (columns) {
             bool prev = false;
-            cells([&](Column::data &c, rectd &cell) {
+            cells([&](Column &c, ion::rect &cell) {
                 //var d_id = c.id;
                 str label = "n/a";//context("resolve")(d_id); -- c
                 canvas.color(text.color);
                 canvas.text(label, pad_rect(cell), { xalign::middle, yalign::middle }, { 0, 0 }, true);
                 if (prev) {
-                    rectd cr = cr;
+                    ion::rect cr = cr;
                     draw_rect(outline.border.color(), cr);
                 } else
                     prev = true;
             });
-            rectd rr = { h_line.x - 1.0, h_line.y + 1.0, h_line.w + 2.0, 0.0 }; /// needs to be in props
+            ion::rect rr = { h_line.x - 1.0, h_line.y + 1.0, h_line.w + 2.0, 0.0 }; /// needs to be in props
             draw_rect(outline.border.color(), rr);
             h_line.y += 2.0; /// this too..
         }
@@ -228,8 +228,8 @@ struct list_view:node {
         int  limit = sy + fill.h() - (columns ? 2.0 : 0.0);
         for (int i = sy; i < math::min(limit, int(d_array.length())); i++) {
             mx &d = d_array[i];
-            cells([&](Column::data &c, rectd &cell) {
-                str s = c ? str(d[c.id]) : str(d);
+            cells([&](Column &c, ion::rect &cell) {
+                str s = c ? str(d[c->id]) : str(d);
                 rgba8 &clr = (i & 1) ? m.odd_bg : m.cell.bg;
                 canvas.color(clr);
                 canvas.fill(cell);

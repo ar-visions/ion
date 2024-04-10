@@ -32,14 +32,14 @@ void App::shell_server(uri bind) {
     async([bind, data=this->data](runtime *rt, int i) -> mx {
         SSHService ssh;
         logger::service = [p=&ssh](mx msg) -> void {
-            p->send_message(null, msg.hold());
+            p->send_message(null, msg);
         };
         data->services = Services({}, [&](Services &app) {
             return Array<node> {
                 SSHService {
                     { "id",   "ssh" },
                     { "bind",  bind },
-                    { "ref",     lambda<void(mx)>           ([&](mx obj)                     { ssh = obj.hold(); })},
+                    { "ref",     lambda<void(mx)>           ([&](mx obj)                     { ssh = obj; })},
                     { "on-auth", lambda<bool(str, str, str)>([&](str id, str user, str pass) { return user == "admin" && pass == "admin"; })},
                     { "on-peer", lambda<void(SSHPeer)>      ([&](SSHPeer peer)               { console.log("peer connected: {0}", { peer->id }); })},
                     { "on-recv", lambda<void(SSHPeer, str)> ([&](SSHPeer peer, str msg) {
@@ -79,8 +79,8 @@ struct CanvasAttribs {
     vec2f uv;
     properties meta() {
         return {
-            { "pos", pos },
-            { "uv",  uv  }
+            prop { "pos", pos },
+            prop { "uv",  uv  }
         };
     }
 };
@@ -130,11 +130,11 @@ int App::run() {
         /// presentation: returns the pipelines that renders canvas, also updates the canvas (test code)
         [&]() -> Scene {
             vec2i sz = canvas.size();
-            rectd rect { 0, 0, sz.x, sz.y };
+            ion::rect rect { 0.0, 0.0, double(sz.x), double(sz.y) };
             canvas.color("#00f");
             canvas.fill(rect);
 
-            rectd top { 0, 0, sz.x, sz.y / 2 };
+            ion::rect top { 0, 0, sz.x, sz.y / 2 };
             canvas.color("#ff0");
             canvas.fill(top);
 
@@ -149,7 +149,7 @@ int App::run() {
                 composer::data->instances->data->children[0] : 
                 composer::data->instances);
             if (eroot) {
-                eroot->data->bounds = rectd {
+                eroot->data->bounds = ion::rect {
                     0, 0,
                     (real)canvas.get_virtual_width(),
                     (real)canvas.get_virtual_height()

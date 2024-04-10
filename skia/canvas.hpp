@@ -47,10 +47,10 @@ struct outline:mx {
     ///
     mx_object(outline, mx, sdata);
 
-    operator rectd &() {
+    operator rect &() {
         if (!data->bounds)
             bounds();
-        return data->bounds;
+        return *data->bounds.data;
     }
 
     bool contains(vec2d p) {
@@ -60,14 +60,14 @@ struct outline:mx {
         return data->bounds->contains(p);
     }
     ///
-    rectd &bounds() {
+    ion::rect &bounds() {
         real min_x = 0, max_x = 0;
         real min_y = 0, max_y = 0;
         int  index = 0;
         ///
         if (!data->bounds && data->ops) {
             /// get aabb from vec2d
-            for (mx &v:data->ops) {
+            for (mx &v:data->ops.elements<mx>()) {
                 vec2d *vd = v.get<vec2d>(0); 
                 if (!vd) continue;
                 if (!index || vd->x < min_x) min_x = vd->x;
@@ -80,14 +80,14 @@ struct outline:mx {
         return data->bounds;
     }
 
-    outline(rectd r4, real rx = nan<real>(), real ry = nan<real>()) : outline() {
+    outline(ion::rect r4, real rx = nan<real>(), real ry = nan<real>()) : outline() {
         bool use_rect = std::isnan(rx) || rx == 0 || ry == 0;
-        data->type   = use_rect ? typeof(Rectd) : typeof(Rounded);
-        data->bounds = use_rect ? Rectd(r4) : 
-                                    Rectd(Rounded(r4, rx, std::isnan(ry) ? rx : ry)); /// type forwards
+        data->type   = use_rect ? typeof(Rect) : typeof(Rounded);
+        data->bounds = use_rect ? Rect(r4) : 
+                                    Rect(Rounded(r4, rx, std::isnan(ry) ? rx : ry)); /// type forwards
     }
 
-    bool is_rect () { return data->bounds.type() == typeof(rectd)          && !data->ops; }
+    bool is_rect () { return data->bounds.type() == typeof(ion::rect)          && !data->ops; }
     bool is_round() { return data->bounds.type() == typeof(Rounded::rdata) && !data->ops; }    
 
     /// following ops are easier this way than having a last position which has its exceptions for arc/line primitives
@@ -111,7 +111,7 @@ struct outline:mx {
 
 struct border {
     real size, tl, tr, bl, br;
-    rgbad color;
+    rgba color;
     inline bool operator==(const border &b) const { return b.tl == tl && b.tr == tr && b.bl == bl && b.br == br; }
     inline bool operator!=(const border &b) const { return !operator==(b); }
 
@@ -262,8 +262,8 @@ struct LineInfo {
     str            data;
     num            len;
     Array<double>  adv;
-    rectd          bounds;     /// bounds of area of the text line
-    rectd          placement;  /// effective bounds of the aligned text, with y and h same as bounds
+    ion::rect          bounds;     /// bounds of area of the text line
+    ion::rect          placement;  /// effective bounds of the aligned text, with y and h same as bounds
 };
 
 struct TextSel {
@@ -274,8 +274,8 @@ struct TextSel {
     static void replace(doubly &lines, TextSel &sel_start, TextSel &sel_end, doubly &text) {
         assert(sel_start.row <= sel_end.row);
         assert(sel_start.row != sel_end.row || sel_start.column <= sel_end.column);
-        LineInfo &ls = lines[sel_start.row];
-        LineInfo &le = lines[sel_end  .row]; /// this is fine to do before, because its a doubly
+        LineInfo &ls = lines.get<LineInfo>(sel_start.row);
+        LineInfo &le = lines.get<LineInfo>(sel_end  .row); /// this is fine to do before, because its a doubly
         bool line_insert = text->len() > 1;
 
         /// a buffer with \n is len == 2.  make sense because you start at 1 line, and a new line gives you 2.
@@ -289,7 +289,7 @@ struct TextSel {
         /// manage lines when inserting new ones
         if (line_insert) {
             /// first line is set to text to left of sel + first line of sel
-            ls.data = left + text[0].data;
+            ls.data = left + text.get<LineInfo>(0).data;
             ls.len  = ls.data.len();
 
             /// recompute advances by clearing
@@ -299,14 +299,14 @@ struct TextSel {
             int index = 0;
             int last  = text->len();
 
-            for (LineInfo &l: text) {
-                item<LineInfo> *item;
+            for (LineInfo &l: text.elements<LineInfo>()) {
+                item *item;
                 if (index) {
                     item = lines->insert(sel_start.row + index, l); // this should insert on end, it doesnt with a 1 item list with index = 1
                     /// this function insert before, unless index == count then its a new tail
                     /// always runs as final op, this merges last line with the data we read on right side prior
                     if (index + 1 == last) {
-                        LineInfo &n = item->data;
+                        LineInfo &n = item->ref<LineInfo>();
                         n.data = l.data + right;
                         n.len  = n.data.len();
                         sel_start.column = l.data.len();
@@ -318,7 +318,7 @@ struct TextSel {
             }
         } else {
             /// result is lines removed from ls+1 to le, ls.data = ls[left] + data + le[right]
-            ls.data    = left + text[0].data + right;
+            ls.data    = left + text.get<LineInfo>(0).data + right;
             ls.len     = ls.data.len();
             ls.adv.clear();
         }
@@ -375,7 +375,7 @@ struct EStr {
 /// may have variable suffix but cannot interpolate between units as they are not known here, so dont do 1px to 3cm or 1% to 100px
 struct EProps:mx {
     struct M {
-        map<EStr> eprops;
+        map eprops;
         operator bool() {
             return eprops.len() > 0;
         }
@@ -397,9 +397,11 @@ struct EProps:mx {
         EProps &a = *this;
         EProps r;
         assert(a->eprops.len() == b->eprops.len());
-        for(field<EStr> &af: a->eprops) {
+        for(field &af: a->eprops.fields()) {
             assert(b->eprops->count(af.key));
-            r->eprops[af.key] = af.value.mix(b->eprops[af.key], f);
+            EStr &v1 = b->eprops.get<EStr>(af.key);
+            EStr &v2 = af.value.ref<EStr>();
+            r->eprops[af.key] = v2.mix(v1, f);
         }
         return r;
     }
@@ -438,34 +440,34 @@ struct Canvas:mx {
     void font(ion::font f);
     void save();
     void clear();
-    void clear(rgbad c);
+    void clear(rgba c);
     void flush();
     void restore();
-    void color(rgbad c);
+    void color(rgba c);
     void opacity(double o);
     vec2i size();
     text_metrics measure(str text);
     double measure_advance(char *text, size_t len);
-    str ellipsis(str text, rectd rect, text_metrics &tm);
-    void image(SVG   img, rectd rect, alignment align, vec2d offset);
-    void image(ion::image img, rectd rect, alignment align, vec2d offset, bool attach_tx = false);
-    void text(str text, rectd rect, alignment align, vec2d offset, bool ellip, rectd *placement = null);
-    void clip(rectd path);
+    str ellipsis(str text, ion::rect rect, text_metrics &tm);
+    void image(SVG   img, ion::rect rect, alignment align, vec2d offset);
+    void image(ion::image img, ion::rect rect, alignment align, vec2d offset, bool attach_tx = false);
+    void text(str text, ion::rect rect, alignment align, vec2d offset, bool ellip, ion::rect *placement = null);
+    void clip(ion::rect path);
     void projection(m44f      &m, m44f      &v, m44f      &p);
     void outline(Array<vec3f> v3);
     void outline(Array<vec2f> v2);
     void line(vec3f &a, vec3f &b);
-    void outline(rectd rect);
+    void outline(ion::rect rect);
     void outline_sz(double sz);
-    void cap(cap c);
-    void join(join j);
+    void cap(ion::cap c);
+    void join(ion::join j);
     void translate(vec2d tr);
     void scale(vec2d sc);
     void rotate(double degs);
-    void fill(rectd rect);
-    void fill(outline path);
-    void clip(outline path);
-    void gaussian(vec2d sz, rectd crop);
+    void fill(ion::rect rect);
+    void fill(ion::outline path);
+    void clip(ion::outline path);
+    void gaussian(vec2d sz, ion::rect crop);
     void arc(vec3f pos, real radius, real startAngle, real endAngle, bool is_fill = false);
 };
 

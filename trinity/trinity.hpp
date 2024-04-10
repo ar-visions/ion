@@ -207,7 +207,7 @@ struct Graphics:mx {
                 {{  0.5f * s,  0.5f * s, -0.5f * s }},
                 {{ -0.5f * s, -0.5f * s, -0.5f * s }},
                 {{  0.5f * s, -0.5f * s, -0.5f * s }}
-            }.hold();
+            };
             /// set quads field if we want to setup a mesh by those primitives
             mesh->quads = Array<u32> { /// verify these 24 spartans
                 0, 1, 3, 2,

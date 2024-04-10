@@ -1,6 +1,6 @@
 
-//#include <ux/ux.hpp>
-//#include <trinity/trinity.hpp>
+#include <ux/ux.hpp>
+#include <trinity/trinity.hpp>
 
 using namespace ion;
 
@@ -9,8 +9,8 @@ struct CanvasAttribs {
     vec2f uv;
     properties meta() {
         return {
-            { "pos", pos },
-            { "uv",  uv  }
+            prop { "pos", pos },
+            prop { "uv",  uv  }
         };
     }
 };
@@ -93,7 +93,7 @@ int main(int argc, const char* argv[]) {
                     {{  1.0f, -1.0f, 0.0f, 1.0f }, {  1.0f, 0.0f }},
                     {{ -1.0f,  1.0f, 0.0f, 1.0f }, { -1.0f, 1.0f }},
                     {{  1.0f,  1.0f, 0.0f, 1.0f }, {  1.0f, 1.0f }}
-                }.hold();
+                };
                 /// set triangles
                 mesh->tris = Array<u32> {
                     0, 1, 2, // ABC
@@ -121,7 +121,7 @@ int main(int argc, const char* argv[]) {
         [&]() -> Scene {
             /// todo: defaults not set
             UState &u_canvas   = o_canvas.uniform<UState>("canvas"); 
-            float  *test_store = o_canvas.vector <float> ("canvas");
+            Array<float> test_store = o_canvas.vector <float> ("canvas");
             test_store[0] = 1.0f;
             test_store[1] = 1.0f;
             num diff = millis() - s;
@@ -129,10 +129,10 @@ int main(int argc, const char* argv[]) {
             u_canvas.x_scale = 0.5 + sin(f) * 0.25;
             u_canvas.y_scale = 0.5 + cos(f) * 0.25;
             vec2i sz = canvas.size();
-            rectd rect { 0, 0, sz.x, sz.y };
+            ion::rect rect { 0, 0, sz.x, sz.y };
             canvas.color("#00f");
             canvas.fill(rect);
-            rectd top { 0, 0, sz.x, sz.y / 2 };
+            ion::rect top { 0, 0, sz.x, sz.y / 2 };
             canvas.color("#ff0");
             canvas.fill(top);
             canvas.flush();
@@ -145,18 +145,18 @@ int main(int argc, const char* argv[]) {
             /*
             vec3f eye     = vec3f(0.0f, 1.0f, -0.8f) * 4.0f;
             vec3f target  = vec3f(0.0f, 0.0f, 0.0f);
-            vec3f forward = glm::normalize(target - eye);
+            vec3f forward = normalize(target - eye);
             vec3f w_up    = vec3f(0.0f, 1.0f, 0.0f);
-            vec3f right   = glm::normalize(glm::cross(forward, w_up));
-            vec3f up      = glm::cross(right, forward);
+            vec3f right   = normalize(cross(forward, w_up));
+            vec3f up      = cross(right, forward);
             */
             
             static float inc = 0;
             inc += 0.0004f;
-            glm::quat r = glm::angleAxis(inc, vec3f(0.0f, 1.0f, 0.0f));
-            u_human.model = glm::mat4_cast(r);
-            u_human.view  = glm::lookAt(eye, target, up);
-            u_human.proj  = glm::perspective(64.0f, window.aspect(), 0.1f, 100.0f);
+            quatf       r = quatf(vec3f(0.0f, 1.0f, 0.0f), inc);
+            u_human.model = r;
+            u_human.view  = m44f::look_at(eye, target, up);
+            u_human.proj  = m44f::perspective(64.0f, window.aspect(), 0.1f, 100.0f);
 
             u_human.lights[0].pos = vec4f(0.0f, 1.5f, -0.8f, 0.0f);
             u_human.light_count = 1;
@@ -179,7 +179,7 @@ int main(int argc, const char* argv[]) {
         usleep(1);
         i64 s_cur = millis() / 1000;
         if (s_cur != s_last) {
-            console.log("frames_drawn: {0}", { frames_drawn });
+            console.log("frames_drawn: {0} ", { frames_drawn });
             s_last = s_cur;
             frames_drawn = 0;
         }

@@ -2,6 +2,7 @@ dep(mx:mx
     mx:math
     mx:async
     mx:watch
+    mx:test1
     ion:media
     #ion:regex
     ion:composer
@@ -11,10 +12,11 @@ dep(mx:mx
     ion:trinity)
 
 cpp(17)
-include(${r_path}/skia/defs)
-if (win)
-    cxxflags(+/bigobj)
-elseif (mac)
+
+# ux does not have canvas anymore!
+#include(${r_path}/skia/defs)
+
+if (mac)
     dep(CoreFoundation IOKit IOSurface QuartzCore Metal AppKit CoreGraphics Cocoa)
 elseif (linux)
     dep(X11 Vulkan xcb Xau Xdmcp) # no idea what is using these libs.. some external

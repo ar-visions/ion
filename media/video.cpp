@@ -699,7 +699,7 @@ struct iVideo {
             if (sequential || is_key_frame) break;
         }
 
-        assert(sample_nalus->len() && (sequential || sample_nalus[0][0]->key_frame));
+        assert(sample_nalus->len() && (sequential || sample_nalus.get<array>(0).get<Nalu>(0)->key_frame));
 
         bool pic_ready = false;
         for (array &nalus: sample_nalus.elements<array>()) {

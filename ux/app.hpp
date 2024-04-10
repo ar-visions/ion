@@ -100,7 +100,7 @@ struct App:composer {
                 real           x = cur.x, y = cur.y;
                 vec2d          o = ((Element*)n->parent)->offset(); // ee->offset(); // get parent offset
                 vec2d        rel = cur - o;
-                rectd    &bounds = ee->data->bounds;
+                ion::rect &bounds = ee->data->bounds;
 
                 Element::props *eedata = ee->data;
                 
@@ -126,7 +126,7 @@ struct App:composer {
         } else if (composer::data->instances)
             proc((Element*)composer::data->instances);
         
-        return result.reverse();
+        return result.reverse<Element*>();
     }
     ///
 };

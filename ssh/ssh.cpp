@@ -238,7 +238,7 @@ bool SSHService::send_message(SSHPeer peer, str msg) {
     bool err   = false;
     auto write = [&](SSHPeer &peer) { err |= ssh_channel_write(peer->chan, msg.cs(), msg.len()) != SSH_ERROR; };
     if (peer.is_broadcast()) {
-        for (SSHPeer &peer: state->peers)
+        for (SSHPeer &peer: state->peers.elements<SSHPeer>())
             write(peer);
     } else
         write(peer);
