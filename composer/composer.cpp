@@ -341,8 +341,8 @@ void composer::update(composer::cmdata *composer, node *parent, node *&instance,
                         /// if going to string and arg is not, we convert
                         else if (prop_type == typeof(str) && arg_type != prop_type) {
                             /// general to_string conversion (memory of char)
-                            assert(arg_type->f.str);
-                            conv_inst = (u8*)new mx(arg_type->f.str(arg_src));
+                            assert(arg_type->f.to_str);
+                            conv_inst = (u8*)new mx(arg_type->f.to_str(arg_src));
                             arg_src   = (u8*)conv_inst;
                             arg_type  = typeof(str);
                             free      = true;

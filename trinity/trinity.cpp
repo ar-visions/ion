@@ -164,7 +164,7 @@ void *Texture::handle() {
 }
 
 void Texture::on_resize(str user, OnTextureResize fn) {
-    data->resize_fns.set(user, fn);
+    data->resize_fns[user] = fn;
 }
 
 void Texture::cleanup_resize(str user) {
@@ -270,7 +270,7 @@ struct IDawn {
         dawn::ErrorLog() << "Device log: " << message;
     }
 
-    void init() {
+    IDawn() {
         procs = dawn::native::GetProcs();
         dawnProcSetProcs(&procs);
         wgpu::InstanceDescriptor desc {
@@ -398,7 +398,10 @@ struct IPipeline {
 
                 /// the src stride is the size of struct_type[n_components]
                 assert(gfx->vtype->meta_map);
-                ion::prop*  p = gfx->vtype->meta_map->get<ion::prop*>(prop_sym);
+                mx pr = gfx->vtype->meta_map->lookup(prop_sym);
+                assert(pr);
+                assert(pr.mem->type == typeof(ion::prop));
+                ion::prop *p = (ion::prop *)pr.mem->origin;
                 assert(p);
 
                 vstride &stride    = strides[pcount++];
@@ -518,7 +521,7 @@ struct IPipeline {
         if (!mod_cache->count(gfx->shader)) {
             path shader_path = fmt { "shaders/{0}.wsl", { gfx->shader } };
             str  shader_code = shader_path.read<str>();
-            mod_cache.set(gfx->shader, dawn::utils::CreateShaderModule(device->wgpu, shader_code));
+            mod_cache.set(gfx->shader, mx::move(dawn::utils::CreateShaderModule(device->wgpu, shader_code)));
         }
         mod = mod_cache.get<wgpu::ShaderModule>(gfx->shader);
     }

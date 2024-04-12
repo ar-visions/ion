@@ -212,7 +212,8 @@
 			"expected": "cpp",
 			"hash_set": "cpp",
 			"slist": "cpp",
-			"smallft.h": "c"
+			"smallft.h": "c",
+			"*.hd": "cpp"
 		},
 		"git.ignoreLimitWarning": true
 	}

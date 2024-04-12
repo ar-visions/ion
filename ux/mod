@@ -2,7 +2,6 @@ dep(mx:mx
     mx:math
     mx:async
     mx:watch
-    mx:test1
     ion:media
     #ion:regex
     ion:composer

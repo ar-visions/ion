@@ -87,7 +87,9 @@ struct iTLS {
 #endif
 
     iTLS() { }
-    iTLS(uri url) : url(url) {
+
+    void init(uri url) {
+        this->url = url;
         static bool init;
         if (!init) {
     #ifdef _WIN32
@@ -205,7 +207,8 @@ struct iTLS {
 
 mx_implement(TLS, mx, iTLS);
 
-TLS::TLS(uri url) : TLS(new iTLS(url)) {
+TLS::TLS(uri url) : TLS() {
+    data->init(url);
 }
 
 int uri::port() {
@@ -234,7 +237,7 @@ struct Session {
     }
 
     ///
-    Session(TLS tls) : tls(tls) {
+    void init_accept(TLS tls) {
         mbedtls_ssl_init(&ssl);
         mbedtls_net_init(&fd);
         mbedtls_ssl_setup(&ssl, &tls->conf);
@@ -242,7 +245,10 @@ struct Session {
         //mbedtls_ssl_session_reset(&ssl);
     }
 
-    Session(uri addr) : Session(new iTLS(addr)) { }
+    /// was 
+    void init_connect(uri addr) {
+        tls = TLS(addr);
+    }
 
     ~Session() {
         mbedtls_ssl_free(&ssl);
@@ -357,7 +363,7 @@ struct Session {
 
     /// for already string-like memory; this could do something with the type on mx
     ssize_t send(mx &v) {
-        return send((const char*)v.mem->origin, v.count() * v.mem->type->size()); /// total_size if it has a schema, base_sz otherwise
+        return send((const char*)v.mem->origin, v.count() * v.mem->type->data_size()); /// total_size if it has a schema, base_sz otherwise
     }
 
     Array<char> read_until(str s, int max_len) {
@@ -377,8 +383,9 @@ struct Session {
         return rbytes;
     }
 
-    static Session *accept(TLS &tls) {
-        Session *client = new Session(tls);
+    static sock accept(TLS &tls) {
+        sock client;
+        client->init_accept(tls);
         
         /// only accept client that passes a handshake
         for (;;) {
@@ -389,8 +396,7 @@ struct Session {
             int ret;
             /// accept into client_fd from tls server
             if ((ret = mbedtls_net_accept(&tls->fd, &client->fd, null, 0, null)) != 0) {
-                delete client;
-                return null;
+                return {};
             }
             mbedtls_ssl_session_reset(&client->ssl);
             
@@ -430,11 +436,7 @@ ssize_t     sock::send(str templ, Array<mx> args)   { return data->send(templ, a
 ssize_t     sock::send(mx &v)                       { return data->send(v); }
 Array<char> sock::read_until(str s, int max_len)    { return data->read_until(s, max_len); }
 sock        sock::accept(TLS tls)                   {
-    Session *session = Session::accept(tls);
-    if (!session) // not handled properly in the wrap case
-        return {};
-    sock sc = session; /// in this case you take ownership of this pointer (wrap case)
-    return sc;
+    return Session::accept(tls);
 }
             sock::operator bool()                   { return data->connected; }
 
