@@ -315,14 +315,16 @@ audio::audio(path res, bool force_mono) : audio() {
         mp3dec_t         dec;
         mp3dec_ex_t      api;
         mp3dec_init(&dec);
-        assert(!mp3dec_ex_open(&api, s_path, MP3D_SEEK_TO_SAMPLE));
+        bool success = !mp3dec_ex_open(&api, s_path, MP3D_SEEK_TO_SAMPLE);
+        assert(success);
         data->total_samples = api.samples / data->channels;
         data->channels      = api.info.channels;
         data->sample_rate   = api.info.hz;
         
         /// read samples
         data->samples       = iaudio::alloc_pcm(data->total_samples, data->channels);
-        assert(mp3dec_ex_read(&api, data->samples, api.samples) == data->total_samples * data->channels);
+        bool read = mp3dec_ex_read(&api, data->samples, api.samples) == data->total_samples * data->channels;
+        assert(read);
         mp3dec_ex_close(&api);
         ///
     } else if (ext == ".wav") {

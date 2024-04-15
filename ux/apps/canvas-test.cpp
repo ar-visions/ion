@@ -2,6 +2,11 @@
 #include <ux/ux.hpp>
 #include <trinity/trinity.hpp>
 
+//#include <glm/glm.hpp>
+//#include <glm/gtc/matrix_transform.hpp> // Includes perspective and lookAt
+//#include <glm/gtc/quaternion.hpp> // For glm::quat
+//#include <glm/gtx/quaternion.hpp> // For more quaternion operations
+
 using namespace ion;
 
 struct CanvasAttribs {
@@ -28,32 +33,6 @@ struct HumanState {
     Light      lights[4];
     u32        light_count;
     u32        padding[3];
-};
-
-struct HumanVertex {
-    vec3f pos;
-    vec3f normal;
-    vec2f uv0;
-    vec2f uv1;
-    vec4f tangent;
-    float     joints0[4];
-    float     joints1[4]; /// convert u32 -> float in glTF (this kind of data is not supported in the osd library); cast required in shader but far better than member-by-member interpolation
-    float     weights0[4];
-    float     weights1[4]; // 30 floats
-
-    properties meta() const {
-        return {
-            prop { "POSITION",      pos      },
-            prop { "NORMAL",        normal   },
-            prop { "TEXCOORD_0",    uv0      },
-            prop { "TEXCOORD_1",    uv1      },
-            prop { "TANGENT",       tangent  },
-            prop { "JOINTS_0",      joints0  },
-            prop { "JOINTS_1",      joints1  },
-            prop { "WEIGHTS_0",     weights0 },
-            prop { "WEIGHTS_1",     weights1 }
-        };
-    }
 };
 
 
@@ -108,8 +87,6 @@ int main(int argc, const char* argv[]) {
         Graphics { "Body", typeof(HumanVertex), { ObjectUniform(HumanState) }, null, "human" }
     });
 
-    usleep(1000 * 1000 * 1000);
-
     Object o_human = m_human.instance();
     Canvas canvas;
     num s = millis();
@@ -141,7 +118,7 @@ int main(int argc, const char* argv[]) {
             vec3f eye    = vec3f(0.0f, 1.5f, -0.8f);
             vec3f target = vec3f(0.0f, 1.5f, 0.0f);
             vec3f up     = vec3f(0.0f, 1.0f, 0.0f);
-            
+
             /*
             vec3f eye     = vec3f(0.0f, 1.0f, -0.8f) * 4.0f;
             vec3f target  = vec3f(0.0f, 0.0f, 0.0f);
@@ -154,6 +131,7 @@ int main(int argc, const char* argv[]) {
             static float inc = 0;
             inc += 0.0004f;
             quatf       r = quatf(vec3f(0.0f, 1.0f, 0.0f), inc);
+  
             u_human.model = r;
             u_human.view  = m44f::look_at(eye, target, up);
             u_human.proj  = m44f::perspective(64.0f, window.aspect(), 0.1f, 100.0f);
@@ -176,7 +154,7 @@ int main(int argc, const char* argv[]) {
 
     while (window.process()) {
         frames_drawn++;
-        usleep(1);
+        usleep(2);
         i64 s_cur = millis() / 1000;
         if (s_cur != s_last) {
             console.log("frames_drawn: {0} ", { frames_drawn });

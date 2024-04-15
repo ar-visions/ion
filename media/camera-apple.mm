@@ -353,7 +353,8 @@ MStream camera(Array<StreamType> stream_types, Array<Media> priority, str video_
 
         /// setup audio
         audio_t  audio { };
-        assert(audio.select((str&)audio_alias));
+        bool sel = audio.select((str&)audio_alias);
+        assert(sel);
         audio.selected_format = Media::PCMf32;
         audio.sample_rate     = 48000;
         audio.callback        = [&](void* data, sz_t data_len) {

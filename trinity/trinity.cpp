@@ -139,7 +139,7 @@ struct ITexture {
         this->sz        = vec2i(w, h);
         this->usage     = usage;
         for (field &f: resize_fns.fields()) {
-            Texture::OnTextureResize &fn = f.value.ref<Texture::OnTextureResize>();
+            Texture::OnTextureResize fn = hold(f.value.mem);
             fn(sz);
         }
     }
@@ -366,6 +366,37 @@ struct IPipeline {
     size_t                      triangle_count, line_count;
     Texture                     textures[Asset::count - 1];
 
+    template<typename T>
+    void convert_component(const u8* src, u8* dst, size_t src_sz, size_t vlen, int src_vcount, 
+            size_t offset, gltf::ComponentType componentType, type_t dst_type) {
+        /// supports VEC2 -> MAT16 conversion for u8, s8, u16, s16 -> T
+        switch (componentType) {
+            case gltf::ComponentType::BYTE:
+            case gltf::ComponentType::UNSIGNED_BYTE:
+                for (num i = 0; i < vlen; i++) {
+                    T   *member =   (T*)&dst[offset];
+                    u8  *bsrc   =  (u8*)&src[src_sz * i];
+                    for (int m = 0; m < src_vcount; m++)
+                        member[m] = bsrc[m];
+                    dst += gfx->vtype->base_sz;
+                }
+                break;
+            case gltf::ComponentType::SHORT:
+            case gltf::ComponentType::UNSIGNED_SHORT:
+                for (num i = 0; i < vlen; i++) {
+                    T   *member =   (T*)&dst[offset];
+                    u16 *bsrc   = (u16*)&src[src_sz * i];
+                    for (int m = 0; m < src_vcount; m++)
+                        member[m] = bsrc[m];
+                    dst += gfx->vtype->base_sz;
+                }
+                break;
+            default:
+                console.fault("glTF attribute conversion not implemented: {0} -> {1}",
+                    { componentType, str(dst_type->name) });
+                break;
+        }
+    }
     void load_from_gltf(gltf::Model &m, str &part, mx &vertices, Array<u32> &tris, gltf::Joints &joints) {
         /// model must have been loaded
         assert(m->nodes);
@@ -451,34 +482,17 @@ struct IPipeline {
                 size_t src_sz           = src_vcount * src_component_sz;
 
                 if (src_sz != member_sz) {
-                    /// supports VEC2 -> MAT16 conversion for u8, s8, u16, s16 -> u32
-                    switch (stride.accessor->componentType) {
-                        case gltf::ComponentType::BYTE:
-                        case gltf::ComponentType::UNSIGNED_BYTE:
-                            for (num i = 0; i < vlen; i++) {
-                                u32 *member = (u32*)&dst[stride.offset];
-                                u8  *bsrc   =  (u8*)&src[src_sz * i];
-                                for (int m = 0; m < src_vcount; m++)
-                                    member[m] = bsrc[m];
-                                dst += gfx->vtype->base_sz;
-                            }
-                            break;
-                        case gltf::ComponentType::SHORT:
-                        case gltf::ComponentType::UNSIGNED_SHORT:
-                            for (num i = 0; i < vlen; i++) {
-                                u32 *member = (u32*)&dst[stride.offset];
-                                u16 *bsrc   = (u16*)&src[src_sz * i];
-                                for (int m = 0; m < src_vcount; m++)
-                                    member[m] = bsrc[m];
-                                dst += gfx->vtype->base_sz;
-                            }
-                            break;
-                        default:
-                            console.fault("glTF attribute conversion not implemented: {0} -> {1}",
-                                { stride.accessor->componentType, str(stride.compound_type->name) });
-                            break;
+                    type_t stored_type = stride.prop->type->ref ? stride.prop->type->ref : stride.prop->type;
+                    /// only convert to u32 and float, because short, byte, 64bit types are not supported in WGSL
+                    if (stored_type == typeof(u32)) {
+                        convert_component<u32>(src, dst, src_sz, vlen, src_vcount, 
+                            stride.offset, stride.accessor->componentType, stride.compound_type);
+                    } else if (stored_type == typeof(float)) {
+                        convert_component<r32>(src, dst, src_sz, vlen, src_vcount, 
+                            stride.offset, stride.accessor->componentType, stride.compound_type);
+                    } else {
+                        console.fault("type {0} not supported in WGSL (cannot convert)", { str(stored_type->name) });
                     }
-
                 } else {
                     /// perform simple copies
                     for (num i = 0; i < vlen; i++) {
@@ -499,18 +513,19 @@ struct IPipeline {
             memory *mem_indices;
 
             if (a_indices->componentType == gltf::ComponentType::UNSIGNED_SHORT) {
-                u16 *u16_window = &buf->uri.data<u16>()[view->byteOffset];
+                u16 *u16_window = (u16*)&buf->uri.data<u8>()[view->byteOffset];
                 u32 *u32_alloc  = (u32*)calloc(sizeof(u32), a_indices->count);
-                for (int i = 0; i < a_indices->count; i++)
-                    u32_alloc[i] = u32(u16_window[i]);
+                for (int i = 0; i < a_indices->count; i++) {
+                    u32 value = u32(u16_window[i]);
+                    u32_alloc[i] = value;
+                }
                 mem_indices = memory::wrap(typeof(u32), u32_alloc, a_indices->count);
             } else {
                 assert(a_indices->componentType == gltf::ComponentType::UNSIGNED_INT);
-                u32 *u32_window = &buf->uri.data<u32>()[view->byteOffset];
+                u32 *u32_window = (u32*)&buf->uri.data<u8>()[view->byteOffset];
                 mem_indices = memory::window(typeof(u32), u32_window, a_indices->count);
             }
             tris = mem_indices->hold();
-
             /// load joints for this node (may be default or null state)
             joints = m.joints(node);
             break;
@@ -610,6 +625,9 @@ struct IPipeline {
             bind_value.buffer = device.CreateBuffer(&desc);
             entry.buffer.type = wgpu::BufferBindingType::ReadOnlyStorage;
             entry.visibility  = wgpu::ShaderStage::Vertex;
+
+            printf("joint count = %d * %d = %d -- total size = %d\n", (int)joints.count(), (int)sizeof(m44f), (int)joints.count() * (int)sizeof(m44f),
+                (int)joints.total_size());
 
             ivars += IVar {
                 .buffer  = bind_value.buffer,
@@ -791,7 +809,6 @@ struct IPipeline {
         render.DrawIndexed(triangle_count * 3);
         render.End();
 
-
         wgpu::RenderPassEncoder wire_render = render_encoder(true);
         wire_render.SetPipeline(pipeline_wire);
         wire_render.SetBindGroup(0, bind_group);
@@ -839,7 +856,7 @@ struct IModel {
                 gfx->gen(mesh, images); /// generate vbo/ibo based on user routine
             else {
                 sub->load_from_gltf(m, gfx->name, mesh->verts, mesh->tris, joints); /// otherwise load from gltf
-                mesh->level = 1;
+                mesh->level = 2;
             }
 
             sub->meshes = Mesh::process(mesh, { Polygon::quad, Polygon::tri, Polygon::wire }, 0, mesh->level);
@@ -912,8 +929,9 @@ Object Model::instance() {
         renderable.name = pl->name;
         for (IVar &ivar: pl->ivars.elements<IVar>()) {
             if (ivar.buffer) {
-                size_t buffer_sz = ivar.buffer.GetSize();
-                assert(buffer_sz == ivar.svar.size());
+                sz_t buffer_sz = ivar.buffer.GetSize();
+                sz_t svar_sz   = ivar.svar.size();
+                assert(buffer_sz == svar_sz);
             }
             /// instance and update can be stored on ShaderVar but i think it may be too much for it
             mx m = ivar.instance ? ivar.instance() : ivar.svar.alloc();

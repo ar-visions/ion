@@ -217,7 +217,8 @@ public:
         /// encode
         u8* encoded_raw = null;
         int encoded_len = 0;
-        assert(!H264E_encode(enc, scratch, &run_param, &yuv, (u8**)&encoded_raw, &encoded_len));
+        int encoded_r = H264E_encode(enc, scratch, &run_param, &yuv, (u8**)&encoded_raw, &encoded_len);
+        assert(encoded_r == 0);
         iframes++;
 
         memcpy(&res_data[w_cursor], (u8*)encoded_raw, (size_t)encoded_len);

@@ -122,9 +122,9 @@ Array<Mesh> Mesh::process(Mesh &mesh, const Array<Polygon> &modes, int start_lev
     }
 
     /// copy verts from start of the level, for level_vcount
-    bool quad = modes.contains(Polygon::quad);
-    bool tri  = modes.contains(Polygon::tri);
-    bool wire = modes.contains(Polygon::wire);
+    bool quad = modes.contains(Polygon(Polygon::quad));
+    bool tri  = modes.contains(Polygon(Polygon::tri));
+    bool wire = modes.contains(Polygon(Polygon::wire));
     
     Array<Mesh> results(level_count);
 
@@ -196,7 +196,7 @@ Array<Mesh> Mesh::process(Mesh &mesh, const Array<Polygon> &modes, int start_lev
     }
 
     if (refiner)        delete refiner;
-    if (verts_per_face) delete verts_per_face;
+    if (verts_per_face) delete[] verts_per_face;
     
     return results;
 }

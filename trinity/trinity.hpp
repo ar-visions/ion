@@ -49,6 +49,32 @@ enums(Sampling, undefined, undefined, nearest, linear, ansio);
 /// Storage is more complex, because we need cases covered for Bone data
 /// It may not be generalizable due to the dynamically indexed nature of skin model
 
+struct HumanVertex {
+    vec3f pos;
+    vec3f normal;
+    vec2f uv0;
+    vec2f uv1;
+    vec4f tangent;
+    float     joints0[4];
+    float     joints1[4]; /// convert u32 -> float in glTF (this kind of data is not supported in the osd library); cast required in shader but far better than member-by-member interpolation
+    float     weights0[4];
+    float     weights1[4]; // 30 floats
+
+    properties meta() const {
+        return {
+            prop { "POSITION",      pos      },
+            prop { "NORMAL",        normal   },
+            prop { "TEXCOORD_0",    uv0      },
+            prop { "TEXCOORD_1",    uv1      },
+            prop { "TANGENT",       tangent  },
+            prop { "JOINTS_0",      joints0  },
+            prop { "JOINTS_1",      joints1  },
+            prop { "WEIGHTS_0",     weights0 },
+            prop { "WEIGHTS_1",     weights1 }
+        };
+    }
+};
+
 struct Mesh:mx {
     struct M {
         Polygon     mode;

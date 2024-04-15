@@ -51,8 +51,9 @@ bool audio::save_m4a(path dest, i64 bitrate) {
     AACENC_OutArgs out_args      = { 0 };
     
     aacEncEncode(encoder, NULL, NULL, NULL, NULL); // Initialize encoder
-    AACENC_InfoStruct info = {0}; 
-    assert(aacEncInfo(encoder, &info) == AACENC_OK);
+    AACENC_InfoStruct info = {0};
+    bool enc_info = aacEncInfo(encoder, &info) == AACENC_OK;
+    assert(enc_info);
 
     int frame_size = info.frameLength; /// this is before we * (PCM short) (2) * channels
     int n_frames   = (int)std::ceil((double)total_samples() / (double)frame_size);
@@ -444,7 +445,8 @@ struct iVideo {
                 short *stack_origin = &pcm_buffer[i];
                 input_pcm.bufs = (void**)&stack_origin;
                 args.numInSamples = frame_w_channels;
-                assert(aacEncEncode(aac_encoder, &input_pcm, &output_aac, &args, &out_args) == AACENC_OK);
+                bool enc = aacEncEncode(aac_encoder, &input_pcm, &output_aac, &args, &out_args) == AACENC_OK; 
+                assert(enc);
                 input_pcm.bufs = (void**)0;
                 if (out_args.numOutBytes)
                     MP4WriteSample(mp4, audio_track, buffer_aac, out_args.numOutBytes, audio_frame_size, 0, true);
@@ -505,7 +507,8 @@ struct iVideo {
         output_aac.bufElSizes        = &buffer_aac_el;
         
         // init aac encoder
-        assert(aacEncOpen(&aac_encoder, 0, 1) == AACENC_OK);
+        bool enc_open = aacEncOpen(&aac_encoder, 0, 1) == AACENC_OK;
+        assert(enc_open);
         aacEncoder_SetParam(aac_encoder, AACENC_SAMPLERATE,     48000);
         aacEncoder_SetParam(aac_encoder, AACENC_AOT,            2);
         aacEncoder_SetParam(aac_encoder, AACENC_CHANNELORDER,   0);
@@ -513,10 +516,12 @@ struct iVideo {
         aacEncoder_SetParam(aac_encoder, AACENC_BITRATE,        128000);
         aacEncoder_SetParam(aac_encoder, AACENC_SIGNALING_MODE, 0);
         aacEncoder_SetParam(aac_encoder, AACENC_TRANSMUX,       2); /// ADTS mode; this may have been the issue?
-        assert(aacEncEncode(aac_encoder, NULL, NULL, NULL, NULL) == AACENC_OK);
+        bool encoded = aacEncEncode(aac_encoder, NULL, NULL, NULL, NULL) == AACENC_OK;
+        assert(encoded);
         
         AACENC_InfoStruct aac_info = { 0 };
-        assert(aacEncInfo(aac_encoder, &aac_info) == AACENC_OK);
+        bool info = aacEncInfo(aac_encoder, &aac_info) == AACENC_OK;
+        assert(info);
         audio_frame_size = aac_info.frameLength;
 
         pcm_buffer_sz = audio_frame_size * audio_channels * 64;
@@ -729,8 +734,10 @@ struct iVideo {
         }
 
         assert(pic_ready);
-        assert(h264bsdPicWidth (&dec) * 16 == (u32)std::ceil(width  / 16.0) * 16);
-        assert(h264bsdPicHeight(&dec) * 16 == (u32)std::ceil(height / 16.0) * 16);
+        bool is_w = h264bsdPicWidth (&dec) * 16 == (u32)std::ceil(width  / 16.0) * 16;
+        bool is_h = h264bsdPicHeight(&dec) * 16 == (u32)std::ceil(height / 16.0) * 16;
+        assert(is_w);
+        assert(is_h);
 
         u32   is_idr = 0;
         u32   num_mb = 0;

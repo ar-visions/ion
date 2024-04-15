@@ -683,13 +683,14 @@ MStream camera(
 
         camera_t cam;
         cam.io = IO_METHOD_MMAP;//IO_METHOD_USERPTR;//IO_METHOD_MMAP;
-
-        assert(cam.select(video_alias.data)); /// find camera with this name
+        bool sel = cam.select(video_alias.data);
+        assert(sel); /// find camera with this name
         open_device(&cam);
 
         int     selected_v4l;
         Media   video_format;
-        assert(camera_select_format(&cam, priority, &selected_v4l, &video_format)); /// query formats and priority by Media order
+        bool fmt = camera_select_format(&cam, priority, &selected_v4l, &video_format);
+        assert(fmt); /// query formats and priority by Media order
         s.set_video_format(video_format);
 
         cam.process_fn = [&](camera_t *cam, mx &data) {
