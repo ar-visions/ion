@@ -63,7 +63,37 @@
                 }
             }
         },
-    
+        {
+            "label": "build-canvas-test (debug)",
+            "type": "shell",
+			"options": {
+                "cwd": "${workspaceFolder}/../hyperspace/build-debug"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "group": "build0",
+                "clear": true
+            },
+			"isBackground": false,
+			"problemMatcher": ["$gcc"],
+            "windows": {
+                "command": "msbuild hyperspace.sln /t:canvas-test"
+            },
+            "osx": {
+                "command": "make canvas-test -j32"
+            },
+            "linux": {
+                "command": "make canvas-test -j32",
+                "options":{
+                    "env":{"VERBOSE":"1"}
+                }
+            }
+        },
         {
             "label": "build-json",
             "type": "shell",

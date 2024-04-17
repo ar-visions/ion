@@ -88,6 +88,39 @@
             }
         },
         {
+            "name": "canvas-test (debug)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/../hyperspace/build-debug/canvas-test",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/../hyperspace/build-debug",
+            "environment": [
+                {
+                    "name": "ASAN_OPTIONS",
+                    "value": ""
+                },
+                {
+                    "name": "VK_ICD_FILENAMES",
+                    "value": "/usr/share/vulkan/icd.d/radeon_icd.x86_64.json"
+                }
+            ],
+            "MIMode": "gdb",
+            "presentation": {
+                "hidden": false,
+                "group": "",
+                "order": 1,
+            },
+            "windows":{
+                "type": "cppvsdbg",
+                "program": "${workspaceFolder}/../hyperspace/build-debug/Debug/canvas-test",
+                "cwd": "${workspaceFolder}/../hyperspace/build-debug"
+            },
+            "osx": {
+                "MIMode": "lldb"
+            }
+        },
+        {
             "name": "json",
             "type": "cppdbg",
             "request": "launch",

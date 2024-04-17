@@ -325,6 +325,7 @@ namespace gltf {
             Array<int>      children;
             int             joint_index = -1;
             bool            processed;
+            mx              mx_joints;      /// if we have assembled joints for a previous Graphics object, we can retreive it here
             bool test;
 
             ///
@@ -485,9 +486,27 @@ namespace gltf {
             return (Node*)null;
         }
 
+        int index_of(str name) {
+            int index = 0;
+            for (Node &node: data->nodes.elements<Node>()) {
+                if (node->name == name)
+                    return index;
+                index++;
+            }
+            return -1;
+        }
+
         Node &operator[](str name) { return *find(name); }
 
         Joints joints(Node &node) {
+            if (node->mx_joints)
+                return node->mx_joints;
+
+            int i_eye_target = index_of("Eye Target");
+            int i_eye_target_n = index_of("Eye Target Near");
+            bool found_eye_target = false;
+            bool found_eye_target_n = false;
+
             Joints joints;
             
             if (node->skin != -1) {
@@ -512,6 +531,11 @@ namespace gltf {
                 Transform null;
                 /// for each root joint, resolve the local and global matrices
                 for (int &node_index: skin->joints) {
+                    if (node_index == i_eye_target)
+                        found_eye_target = true;
+                    if (node_index == i_eye_target_n)
+                        found_eye_target_n = true;
+                        
                     if (all_children.contains(node_index))
                         continue;
                     
@@ -520,12 +544,17 @@ namespace gltf {
                 }
             }
             /// test code!
+            /// better way to test is to only store joints for a specific set tied to 'Eye Target'
+            /// todo: Verify Eye Target has influence by its node index in the 'joints' array
             for (m44f &state: joints->states) {
+                int test;
+                test++;
                 state = m44f(1.0f);
             }
 
             /// adding transforms twice
             assert(joints->states.len() == joints->transforms.len());
+            node->mx_joints = joints;
             return joints;
         }
 
@@ -534,7 +563,7 @@ namespace gltf {
         /// builds Transform, separate from Model/Skin/Node and contains usable glm types
         Transform node_transform(Joints joints, const m44f &parent_mat, int node_index, Transform &parent) {
             Node &node = data->nodes[node_index];
-            assert(node->processed == false);
+            //assert(node->processed == false);
 
             node->processed = true;
             Transform transform;

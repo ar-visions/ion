@@ -29,7 +29,7 @@ struct HumanState {
     m44f       model;
     m44f       view;
     m44f       proj;
-    vec4f  eye;
+    vec4f      eye;
     Light      lights[4];
     u32        light_count;
     u32        padding[3];
@@ -83,8 +83,12 @@ int main(int argc, const char* argv[]) {
     });
     Object o_canvas = m_canvas.instance();
 
+    type_t v_type = typeof(HumanVertex);
+    ShaderVar uni = ObjectUniform(HumanState);
     Model m_human = Model(device, "human", {
-        Graphics { "Body", typeof(HumanVertex), { ObjectUniform(HumanState) }, null, "human" }
+        Graphics { "Body",  v_type, { uni }, null, "human" },
+        Graphics { "Eye.L", v_type, { uni }, null, "human" },
+        Graphics { "Eye.R", v_type, { uni }, null, "human" }
     });
 
     Object o_human = m_human.instance();
@@ -96,7 +100,7 @@ int main(int argc, const char* argv[]) {
 
     window.register_presentation(
         [&]() -> Scene {
-            /// todo: defaults not set
+
             UState &u_canvas   = o_canvas.uniform<UState>("canvas"); 
             Array<float> test_store = o_canvas.vector <float> ("canvas");
             test_store[0] = 1.0f;
@@ -114,9 +118,10 @@ int main(int argc, const char* argv[]) {
             canvas.fill(top);
             canvas.flush();
 
-            HumanState &u_human = o_human.uniform<HumanState>("Body");
-            vec3f eye    = vec3f(0.0f, 1.5f, -0.8f);
-            vec3f target = vec3f(0.0f, 1.5f, 0.0f);
+            HumanState &u_human = o_human.uniform<HumanState>("Body"); /// we should tie identity from ShaderVar to these Uniforms
+
+            vec3f eye    = vec3f(0.0f, 1.6f, 0.4f);
+            vec3f target = vec3f(0.0f, 1.6f, 0.0f);
             vec3f up     = vec3f(0.0f, 1.0f, 0.0f);
 
             /*
@@ -129,14 +134,14 @@ int main(int argc, const char* argv[]) {
             */
             
             static float inc = 0;
-            inc += 0.0004f;
+            //inc += 0.0004f;
             quatf       r = quatf(vec3f(0.0f, 1.0f, 0.0f), inc);
   
             u_human.model = r;
             u_human.view  = m44f::look_at(eye, target, up);
             u_human.proj  = m44f::perspective(64.0f, window.aspect(), 0.1f, 100.0f);
 
-            u_human.lights[0].pos = vec4f(0.0f, 1.5f, -0.8f, 0.0f);
+            u_human.lights[0].pos = vec4f(0.0f, 1.5f, 0.8f, 0.0f);
             u_human.light_count = 1;
 
             Array<Object> scene(1);

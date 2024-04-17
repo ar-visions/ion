@@ -333,12 +333,15 @@ struct IObject {
     Array<IRenderable> renderables;
 };
 
-struct IVar {
-    wgpu::Buffer      buffer;
-    wgpu::Sampler     sampler;
-    ShaderVar         svar;
-    lambda<mx()>      instance; /// user-defined routine for instancing mx data
-    lambda<mx(mx&)>   update;   /// user-defined routine for updating mx data
+struct IVar:mx {
+    struct M {
+        wgpu::Buffer      buffer;
+        wgpu::Sampler     sampler;
+        ShaderVar         svar;
+        lambda<mx()>      instance; /// user-defined routine for instancing mx data
+        lambda<mx(mx&)>   update;   /// user-defined routine for updating mx data
+    };
+    mx_basic(IVar);
 };
 
 struct IPipeline {
@@ -350,7 +353,7 @@ struct IPipeline {
     wgpu::Buffer                triangle_buffer;
     wgpu::Buffer                line_buffer;
     wgpu::Buffer                vertex_buffer;
-    Array<IVar>                 ivars;
+    Array<IVar>                 ivars; /// each ivar can be shared across multiple pipeline; like a Uniform buffer for example can be the same identity
 
     wgpu::RenderPipeline        pipeline, pipeline_wire;
     wgpu::BindGroup             bind_group;
@@ -363,8 +366,20 @@ struct IPipeline {
     Device                      device;
     Graphics                    gfx;
     gltf::Model                 m;
+    gltf::Joints                joints;
     size_t                      triangle_count, line_count;
     Texture                     textures[Asset::count - 1];
+    bool                        reload;
+
+    void clear_ivars() {
+        for (ShaderVar& binding: gfx->bindings.elements<ShaderVar>()) {
+            if (binding->ivar) {
+                IVar ivar = binding->ivar;
+                ivar->svar    = ShaderVar();
+                binding->ivar = mx();
+            }
+        } /// this should free resources
+    }
 
     template<typename T>
     void convert_component(const u8* src, u8* dst, size_t src_sz, size_t vlen, int src_vcount, 
@@ -397,12 +412,17 @@ struct IPipeline {
                 break;
         }
     }
-    void load_from_gltf(gltf::Model &m, str &part, mx &vertices, Array<u32> &tris, gltf::Joints &joints) {
+
+    /// 
+    void load_from_gltf(gltf::Model &m, str &part, mx &vertices, Array<u32> &tris, m44f &model_matrix) {
         /// model must have been loaded
         assert(m->nodes);
 
         /// load single part from gltf (Model calls this multiple times)
         gltf::Node &node = m[part];
+
+        /// this must be fixed, because top level objects dont always have a mesh, they apply transforms to their child nodes
+        ///
         assert(node->mesh >= 0);
 
         gltf::Mesh &mesh = m->meshes[node->mesh];
@@ -542,13 +562,14 @@ struct IPipeline {
     }
 
     /// loads/associates uniforms here (change from vk where that was a separate process)
-    void load_bindings(Graphics &gfx, gltf::Joints joints) {
+    void load_bindings(Graphics &gfx) {
         wgpu::Device device = this->device->wgpu;
         Array<wgpu::BindGroupEntry>       bind_values (gfx->bindings.count());
         Array<wgpu::BindGroupLayoutEntry> bind_entries(gfx->bindings.count());
         size_t bind_id = 0;
 
         /// iterate through ShaderVar bindings
+        /// when reloading pipeline, must clear ivar cache; all binding->ivar must be null, as well as 
         ivars.clear();
         for (ShaderVar& binding: gfx->bindings.elements<ShaderVar>()) {
             wgpu::BindGroupLayoutEntry entry { .binding = u32(bind_id) };
@@ -557,8 +578,8 @@ struct IPipeline {
 
             if (btype == typeof(Texture)) {
 
-                binding->tx.on_resize(name, [this, gfx, joints](vec2i sz) mutable {
-                    load_bindings(gfx, joints);
+                binding->tx.on_resize(name, [this](vec2i sz) mutable {
+                    reload = true;
                 });
                 entry.texture.multisampled  = false;
                 entry.texture.sampleType    = wgpu::TextureSampleType::Float;
@@ -577,8 +598,9 @@ struct IPipeline {
                 };
                 entry.sampler.type = nearest ?
                     wgpu::SamplerBindingType::NonFiltering : wgpu::SamplerBindingType::Filtering;
-                bind_value.sampler = device.CreateSampler(&desc);
                 
+                if (!binding->ivar)
+                    bind_value.sampler = device.CreateSampler(&desc);
             } else {
 
                 bool      is_uniform   = binding->flags & ShaderVar::Flag::uniform;
@@ -587,7 +609,7 @@ struct IPipeline {
                 entry.buffer.type =
                     is_uniform ? wgpu::BufferBindingType::Uniform         :
                     read_only  ? wgpu::BufferBindingType::ReadOnlyStorage : 
-                                 wgpu::BufferBindingType::Storage;
+                                wgpu::BufferBindingType::Storage;
 
                 wgpu::BufferDescriptor desc = {
                     .usage = (is_uniform ? wgpu::BufferUsage::Uniform : wgpu::BufferUsage::Storage) |
@@ -595,15 +617,29 @@ struct IPipeline {
                     .size  = binding.size()
                 };
 
-                bind_value.buffer = device.CreateBuffer(&desc); /// updated with mx given from IRenderable, in IPipeline
-                binding.prepare_data();
+                if (!binding->ivar) {
+                    bind_value.buffer = device.CreateBuffer(&desc); /// updated with mx given from IRenderable, in IPipeline
+                    binding.prepare_data();
+                }
             }
 
-            ivars += IVar {
-                .buffer  = bind_value.buffer,
-                .sampler = bind_value.sampler,
-                .svar    = binding
-            };
+            IVar ivar;
+            if (!binding->ivar) {
+                
+                if (bind_value.buffer)
+                    ivar->buffer  = bind_value.buffer;
+                if (bind_value.sampler)
+                    ivar->sampler = bind_value.sampler;
+                ivar->svar    = binding;
+                binding->ivar = mx(ivar.mem); /// weak reference does not hold onto memory
+            } else {
+                ivar = binding->ivar;
+                if (ivar->sampler)
+                    bind_value.sampler = ivar->sampler;
+                if (ivar->buffer)
+                    bind_value.buffer  = ivar->buffer;
+            }
+            ivars        += ivar;
 
             if (binding->flags & ShaderVar::Flag::vertex)   entry.visibility |= wgpu::ShaderStage::Vertex;
             if (binding->flags & ShaderVar::Flag::fragment) entry.visibility |= wgpu::ShaderStage::Fragment;
@@ -629,20 +665,20 @@ struct IPipeline {
             printf("joint count = %d * %d = %d -- total size = %d\n", (int)joints.count(), (int)sizeof(m44f), (int)joints.count() * (int)sizeof(m44f),
                 (int)joints.total_size());
 
-            ivars += IVar {
-                .buffer  = bind_value.buffer,
-                .svar    = ShaderVar(typeof(m44f), joints.count(),
-                    ShaderVar::Flag::object | ShaderVar::Flag::read_only),
-                .instance = [joints]() -> mx {
-                    return joints.copy();
-                },
-                .update = [](mx &mx_joints) -> mx {
-                    /// use this instead of var_data
-                    /// assert it matches the size provided above
-                    gltf::Joints joints(hold(mx_joints));
-                    return joints->states;
-                }
+            IVar ijoint;
+            ijoint->buffer = bind_value.buffer;
+            ijoint->svar   = ShaderVar(typeof(m44f), joints.count(), ShaderVar::Flag::read_only);
+            ijoint->instance = [this]() -> mx {
+                return joints.copy();
             };
+            ijoint->update = [](mx &mx_joints) -> mx {
+                /// use this instead of var_data
+                /// assert it matches the size provided above
+                gltf::Joints joints(hold(mx_joints));
+                return joints->states;
+            };
+            
+            ivars += ijoint;
 
             bind_entries.push(entry);
             bind_values. push(bind_value);
@@ -752,15 +788,20 @@ struct IPipeline {
     }
 
     void submit(IRenderable &renderable, wgpu::TextureView &swap_view, wgpu::TextureView &color_view, wgpu::TextureView &depth_stencil, states<Clear> &clear_states, rgbaf &clear_color) {
+        /// reload could be enumerable for amount to reload
+        if (reload) {
+            reload = false;
+            load_bindings(gfx);
+        }
         /// update ivar buffers where defined
         for (int i = 0; i < ivars.count(); i++) {
             IVar &ivar = ivars[i];
-            wgpu::Buffer &b = ivar.buffer;
+            wgpu::Buffer &b = ivar->buffer;
             if (!b) continue;
-            if (ivar.update)
+            if (ivar->update)
                 debug_break();
             
-            mx data = ivar.update ? ivar.update(renderable.var_data[i]) : renderable.var_data[i];
+            mx data = ivar->update ? ivar->update(renderable.var_data[i]) : renderable.var_data[i];
             size_t bsz = b.GetSize();
             size_t data_sz = data.total_size();
             assert(b.GetSize() == data.total_size());
@@ -844,19 +885,26 @@ struct IModel {
 
     /// create pipeline with shader, textures, vbo/ibo, bindings, attribs, blending and stencil info
     void reload() {
+        /// make sure we clear cache as this is a sub-pipeline-based caching.
+        /// when the entire model reloads, this must start from null
+        for (Pipeline &sub: pipelines)
+            sub->clear_ivars();
+        
         for (Pipeline &sub: pipelines) {
             Graphics &     gfx    = sub->gfx;
             Array<u32>     quads, triangles;
             mx             bones;
             Mesh           mesh;
             Array<image>   images;
-            gltf::Joints   joints;
 
             if (gfx->gen)
                 gfx->gen(mesh, images); /// generate vbo/ibo based on user routine
             else {
-                sub->load_from_gltf(m, gfx->name, mesh->verts, mesh->tris, joints); /// otherwise load from gltf
-                mesh->level = 2;
+                /// load from any node, that means we must load multiple vbo objects
+                /// the trouble is shading, with that!
+                /// do we 'redo' graphics to handle this?
+                sub->load_from_gltf(m, gfx->name, mesh->verts, mesh->tris); /// otherwise load from gltf
+                mesh->level = 0;
             }
 
             sub->meshes = Mesh::process(mesh, { Polygon::quad, Polygon::tri, Polygon::wire }, 0, mesh->level);
@@ -867,7 +915,7 @@ struct IModel {
             sub->triangle_count  = selected->tris.len() / 3;
             sub->line_count      = selected->wire.len() / 2;
             sub->load_shader(gfx);
-            sub->load_bindings(gfx, joints);
+            sub->load_bindings(gfx);
             sub->create_with_attrs(gfx, false);
             sub->create_with_attrs(gfx, true);
         }
@@ -928,13 +976,13 @@ Object Model::instance() {
         IRenderable &renderable = o->renderables.push<IRenderable>();
         renderable.name = pl->name;
         for (IVar &ivar: pl->ivars.elements<IVar>()) {
-            if (ivar.buffer) {
-                sz_t buffer_sz = ivar.buffer.GetSize();
-                sz_t svar_sz   = ivar.svar.size();
+            if (ivar->buffer) {
+                sz_t buffer_sz = ivar->buffer.GetSize();
+                sz_t svar_sz   = ivar->svar.size();
                 assert(buffer_sz == svar_sz);
             }
             /// instance and update can be stored on ShaderVar but i think it may be too much for it
-            mx m = ivar.instance ? ivar.instance() : ivar.svar.alloc();
+            mx m = ivar->instance ? ivar->instance() : ivar->svar.alloc();
             renderable.var_data.push(m);
         }
     }

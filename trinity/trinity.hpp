@@ -116,11 +116,10 @@ struct Texture:mx {
 struct ShaderVar:mx {
     enums(Flag, undefined, 
         undefined = 0,
-        object = 1,
-        uniform = 2,
-        read_only = 4,
-        vertex = 8,
-        fragment = 16);
+        uniform = 1,
+        read_only = 2,
+        vertex = 4,
+        fragment = 8);
     
     struct M {
         Sampling sampling;
@@ -129,20 +128,22 @@ struct ShaderVar:mx {
         size_t   count;
         u32      flags;
         mx       cache; /// if set, this is provided for data (otherwise a unique allocation is given)
+        mx       ivar;
     };
+
     /// handle cases of non-object, or model-based allocation
     mx alloc() {
-        if (data->cache)
-            return data->cache;
         if (data->sampling)
             return data->sampling;
         if (data->tx)
             return data->tx;
-        return memory::alloc(data->type, data->count, 0, null);
+        if (data->cache)
+            return data->cache;
+        data->cache = memory::alloc(data->type, data->count, 0, null);
+        return data->cache;
     }
     void prepare_data() {
-        if (!(data->flags & Flag::object))
-            data->cache = memory::alloc(data->type, data->count, 0, null);
+        alloc(); ///  better to provide unique or repeated instanced ShaderVar for Model than to have object/model specifiers
     }
     size_t size() {
         return data->type->base_sz * data->count;
@@ -181,10 +182,8 @@ struct ShaderVar:mx {
     mx_basic(ShaderVar);
 };
 
-#define   ModelUniform(utype)     ShaderVar(typeof(utype), 1,  ShaderVar::Flag::uniform)
-#define  ObjectUniform(utype)     ShaderVar(typeof(utype), 1,  ShaderVar::Flag::uniform | ShaderVar::Flag::object)
-#define    ModelVector(utype, sz) ShaderVar(typeof(utype), sz, ShaderVar::Flag::read_only)
-#define   ObjectVector(utype, sz) ShaderVar(typeof(utype), sz, ShaderVar::Flag::read_only | ShaderVar::Flag::object)
+#define  ObjectUniform(utype)     ShaderVar(typeof(utype), 1,  ShaderVar::Flag::uniform)
+#define   ObjectVector(utype, sz) ShaderVar(typeof(utype), sz, ShaderVar::Flag::read_only)
 
 struct IDevice;
 struct Device:mx {
@@ -223,7 +222,6 @@ struct Graphics:mx {
     template <typename V>
     static inline GraphicsGen cube(float s, int levels) {
         return [s, levels](Mesh &mesh, Array<image> &images) {
-            /// verify these as well as the count of 8
             mesh->verts = Array<V> {
                 {{ -0.5f * s, -0.5f * s,  0.5f * s }},
                 {{  0.5f * s, -0.5f * s,  0.5f * s }},
