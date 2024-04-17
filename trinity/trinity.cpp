@@ -414,7 +414,7 @@ struct IPipeline {
     }
 
     /// 
-    void load_from_gltf(gltf::Model &m, str &part, mx &vertices, Array<u32> &tris, m44f &model_matrix) {
+    void load_from_gltf(gltf::Model &m, str &part, mx &vertices, Array<u32> &tris) {
         /// model must have been loaded
         assert(m->nodes);
 
