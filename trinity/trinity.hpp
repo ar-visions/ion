@@ -4,6 +4,7 @@
 #include <watch/watch.hpp>
 #include <media/media.hpp>
 #include <media/image.hpp>
+#include <trinity/gltf.hpp>
 
 struct GLFWwindow;
 
@@ -77,6 +78,7 @@ struct HumanVertex {
 
 struct Mesh:mx {
     struct M {
+        m44f        model_matrix = m44f(1.0f);
         Polygon     mode;
         int         level;
         mx          verts;
@@ -251,6 +253,18 @@ struct Pipeline:mx {
     mx_declare(Pipeline, mx, struct IPipeline)
 };
 
+/// store mesh/transforms/pipelines in tree
+struct Group:mx {
+    struct M {
+        mx              parent;
+        Mesh            mesh;
+        gltf::Joints    joints;
+        array           children;
+        Pipeline        pipeline;
+    };
+    mx_basic(Group);
+};
+
 struct Model;
 struct IObject;
 
@@ -282,6 +296,7 @@ struct Object:mx {
 struct Model:mx {
     mx_declare(Model, mx, struct IModel);
     Model(Device &device, symbol model, Array<Graphics> select); /// select Graphics in the Model with user defined functionality
+    Group load_group(const str &part);
     Pipeline &operator[](str s);
     Object instance(); /// instance Object for rendering
     operator Object(); /// Model ref is stored on Object, so its useful

@@ -55,6 +55,31 @@
             }
         },
         {
+            "name": "silver-runtime",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/../silver/build/runtime",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/../silver/build",
+            "environment": [
+            ],
+            "MIMode": "gdb",
+            "presentation": {
+                "hidden": false,
+                "group": "",
+                "order": 1,
+            },
+            "windows":{
+                "type": "cppvsdbg",
+                "program": "${workspaceFolder}/../silver/build/Debug/runtime",
+                "cwd": "${workspaceFolder}/../silver/build"
+            },
+            "osx": {
+                "MIMode": "lldb"
+            }
+        },
+        {
             "name": "canvas-test",
             "type": "cppdbg",
             "request": "launch",

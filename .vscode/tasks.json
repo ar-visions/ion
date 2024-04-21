@@ -33,6 +33,37 @@
             }
         },
         {
+            "label": "build-silver-runtime",
+            "type": "shell",
+			"options": {
+                "cwd": "${workspaceFolder}/../silver/build"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "group": "build0",
+                "clear": true
+            },
+			"isBackground": false,
+			"problemMatcher": ["$gcc"],
+            "windows": {
+                "command": "msbuild silver.sln /t:runtime"
+            },
+            "osx": {
+                "command": "make runtime -j1"
+            },
+            "linux": {
+                "command": "make runtime -j1",
+                "options":{
+                    "env":{"VERBOSE":"1"}
+                }
+            }
+        },
+        {
             "label": "build-canvas-test",
             "type": "shell",
 			"options": {

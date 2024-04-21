@@ -1,7 +1,5 @@
 #include <dawn/system.hpp>
-
 #include <trinity/trinity.hpp>
-#include <trinity/gltf.hpp>
 
 using namespace ion;
 
@@ -413,145 +411,6 @@ struct IPipeline {
         }
     }
 
-    /// 
-    void load_from_gltf(gltf::Model &m, str &part, mx &vertices, Array<u32> &tris) {
-        /// model must have been loaded
-        assert(m->nodes);
-
-        /// load single part from gltf (Model calls this multiple times)
-        gltf::Node &node = m[part];
-
-        /// this must be fixed, because top level objects dont always have a mesh, they apply transforms to their child nodes
-        ///
-        assert(node->mesh >= 0);
-
-        gltf::Mesh &mesh = m->meshes[node->mesh];
-
-        for (gltf::Primitive &prim: mesh->primitives) {
-            /// for each attrib
-            struct vstride {
-                ion::prop            *prop;
-                type_t                compound_type;
-                gltf::Accessor::M    *accessor;
-                gltf::Buffer::M      *buffer;
-                gltf::BufferView::M  *buffer_view;
-                num                   offset;
-            };
-
-            Array<vstride> strides { prim->attributes->count() };
-            size_t pcount = 0;
-            size_t vlen = 0;
-            for (field &f: prim->attributes.fields()) {
-                str       prop_bind      = hold(f.key);
-                symbol    prop_sym       = symbol(prop_bind);
-                num       accessor_index = f.value.ref<num>();
-                gltf::Accessor &accessor = m->accessors[accessor_index];
-
-                /// the src stride is the size of struct_type[n_components]
-                assert(gfx->vtype->meta_map);
-                mx pr = gfx->vtype->meta_map->lookup(prop_sym);
-                assert(pr);
-                assert(pr.mem->type == typeof(ion::prop));
-                ion::prop *p = (ion::prop *)pr.mem->origin;
-                assert(p);
-
-                vstride &stride    = strides[pcount++];
-                stride.prop        = p;
-                stride.compound_type = p->type; /// native glm-type or float
-                stride.accessor    = accessor.data;
-                stride.buffer_view = m->bufferViews[accessor->bufferView].data;
-                stride.buffer      = m->buffers[stride.buffer_view->buffer].data;
-                stride.offset      = stride.prop->offset; /// origin at offset and stride by V type
-                
-                if (vlen)
-                    assert(vlen == accessor->count);
-                else
-                    vlen = accessor->count;
-
-                if (stride.compound_type == typeof(float)) {
-                    assert(accessor->componentType == gltf::ComponentType::FLOAT);
-                    assert(accessor->type == gltf::CompoundType::SCALAR);
-                }
-                if (stride.compound_type == typeof(vec2f)) {
-                    assert(accessor->componentType == gltf::ComponentType::FLOAT);
-                    assert(accessor->type == gltf::CompoundType::VEC2);
-                }
-                if (stride.compound_type == typeof(vec3f)) {
-                    assert(accessor->componentType == gltf::ComponentType::FLOAT);
-                    assert(accessor->type == gltf::CompoundType::VEC3);
-                }
-                if (stride.compound_type == typeof(vec4f)) {
-                    assert(accessor->componentType == gltf::ComponentType::FLOAT);
-                    assert(accessor->type == gltf::CompoundType::VEC4);
-                }
-            }
-            strides.set_size(pcount);
-
-            /// allocate entire vertex buffer for this 
-            u8 *vbuf = (u8*)calloc(vlen, gfx->vtype->base_sz);
-
-            /// copy data into vbuf
-            /// we need to perform conversion on u16 to u32
-            for (vstride &stride: strides) {
-                u8 *dst        = vbuf;
-                u8 *src        = &stride.buffer->uri.data<u8>()[stride.buffer_view->byteOffset];
-                num member_sz  = stride.compound_type->base_sz; /// size of member / accessor compound-type
-
-                size_t src_vcount       = stride.accessor->vcount();
-                size_t src_component_sz = stride.accessor->component_size();
-                size_t src_sz           = src_vcount * src_component_sz;
-
-                if (src_sz != member_sz) {
-                    type_t stored_type = stride.prop->type->ref ? stride.prop->type->ref : stride.prop->type;
-                    /// only convert to u32 and float, because short, byte, 64bit types are not supported in WGSL
-                    if (stored_type == typeof(u32)) {
-                        convert_component<u32>(src, dst, src_sz, vlen, src_vcount, 
-                            stride.offset, stride.accessor->componentType, stride.compound_type);
-                    } else if (stored_type == typeof(float)) {
-                        convert_component<r32>(src, dst, src_sz, vlen, src_vcount, 
-                            stride.offset, stride.accessor->componentType, stride.compound_type);
-                    } else {
-                        console.fault("type {0} not supported in WGSL (cannot convert)", { str(stored_type->name) });
-                    }
-                } else {
-                    /// perform simple copies
-                    for (num i = 0; i < vlen; i++) {
-                        u8 *member = &dst[stride.offset];
-                        u8 *bsrc   = &src[src_sz * i];
-                        memcpy(member, bsrc, src_sz);
-                        dst += gfx->vtype->base_sz; /// next vert
-                    }
-                }
-            }
-            /// create vertex buffer by wrapping what we've copied from allocation (we have a primitive array)
-            vertices = mx { memory::wrap(gfx->vtype, vbuf, vlen) }; /// load indices (always store 32bit uint)
-
-            /// indices data = indexing mesh-primitive->indices
-            gltf::Accessor &a_indices = m->accessors[prim->indices];
-            gltf::BufferView &view = m->bufferViews[ a_indices->bufferView ];
-            gltf::Buffer      &buf = m->buffers    [ view->buffer ];
-            memory *mem_indices;
-
-            if (a_indices->componentType == gltf::ComponentType::UNSIGNED_SHORT) {
-                u16 *u16_window = (u16*)&buf->uri.data<u8>()[view->byteOffset];
-                u32 *u32_alloc  = (u32*)calloc(sizeof(u32), a_indices->count);
-                for (int i = 0; i < a_indices->count; i++) {
-                    u32 value = u32(u16_window[i]);
-                    u32_alloc[i] = value;
-                }
-                mem_indices = memory::wrap(typeof(u32), u32_alloc, a_indices->count);
-            } else {
-                assert(a_indices->componentType == gltf::ComponentType::UNSIGNED_INT);
-                u32 *u32_window = (u32*)&buf->uri.data<u8>()[view->byteOffset];
-                mem_indices = memory::window(typeof(u32), u32_window, a_indices->count);
-            }
-            tris = mem_indices->hold();
-            /// load joints for this node (may be default or null state)
-            joints = m.joints(node);
-            break;
-        }
-    }
-
     void load_shader(Graphics &gfx) {
         if (!mod_cache->count(gfx->shader)) {
             path shader_path = fmt { "shaders/{0}.wsl", { gfx->shader } };
@@ -876,7 +735,7 @@ struct IModel {
     Device                      device;
     ion::gltf::Model            m;
     symbol                      model;
-    Array<Pipeline>             pipelines;
+    Array<Group>                groups;
 
     void submit(IRenderable &renderable, wgpu::TextureView swap_view, wgpu::TextureView color_view, wgpu::TextureView depth_stencil_view, states<Clear> clear_states, rgbaf clear_color) {
         for (auto p: pipelines)
@@ -922,6 +781,202 @@ struct IModel {
     }
 };
 
+/// this loads multiple Mesh objects in Group hierarchy 
+Group Model::load_group(const str &part) {
+    gltf::Model &m = data->m;
+    assert(m->nodes);
+    gltf::Node &node = m[part];
+    assert(node);
+
+    /// now we want to navigate through the node tree from this [node]
+    auto group_faces = [&](Group &res, gltf::Node &node) {
+        gltf::Mesh &mesh = m->meshes[node->mesh];
+        
+        for (gltf::Primitive &prim: mesh->primitives) {
+            /// for each attrib
+            struct vstride {
+                ion::prop            *prop;
+                type_t                compound_type;
+                gltf::Accessor::M    *accessor;
+                gltf::Buffer::M      *buffer;
+                gltf::BufferView::M  *buffer_view;
+                num                   offset;
+            };
+
+            Array<vstride> strides { prim->attributes->count() };
+            size_t pcount = 0;
+            size_t vlen = 0;
+            for (field &f: prim->attributes.fields()) {
+                str       prop_bind      = hold(f.key);
+                symbol    prop_sym       = symbol(prop_bind);
+                num       accessor_index = f.value.ref<num>();
+                gltf::Accessor &accessor = m->accessors[accessor_index];
+
+                /// the src stride is the size of struct_type[n_components]
+                assert(gfx->vtype->meta_map);
+                mx pr = gfx->vtype->meta_map->lookup(prop_sym);
+                assert(pr);
+                assert(pr.mem->type == typeof(ion::prop));
+                ion::prop *p = (ion::prop *)pr.mem->origin;
+                assert(p);
+
+                vstride &stride    = strides[pcount++];
+                stride.prop        = p;
+                stride.compound_type = p->type; /// native glm-type or float
+                stride.accessor    = accessor.data;
+                stride.buffer_view = m->bufferViews[accessor->bufferView].data;
+                stride.buffer      = m->buffers[stride.buffer_view->buffer].data;
+                stride.offset      = stride.prop->offset; /// origin at offset and stride by V type
+                
+                if (vlen)
+                    assert(vlen == accessor->count);
+                else
+                    vlen = accessor->count;
+
+                if (stride.compound_type == typeof(float)) {
+                    assert(accessor->componentType == gltf::ComponentType::FLOAT);
+                    assert(accessor->type == gltf::CompoundType::SCALAR);
+                }
+                if (stride.compound_type == typeof(vec2f)) {
+                    assert(accessor->componentType == gltf::ComponentType::FLOAT);
+                    assert(accessor->type == gltf::CompoundType::VEC2);
+                }
+                if (stride.compound_type == typeof(vec3f)) {
+                    assert(accessor->componentType == gltf::ComponentType::FLOAT);
+                    assert(accessor->type == gltf::CompoundType::VEC3);
+                }
+                if (stride.compound_type == typeof(vec4f)) {
+                    assert(accessor->componentType == gltf::ComponentType::FLOAT);
+                    assert(accessor->type == gltf::CompoundType::VEC4);
+                }
+            }
+            strides.set_size(pcount);
+
+            /// allocate entire vertex buffer for this 
+            u8 *vbuf = (u8*)calloc(vlen, gfx->vtype->base_sz);
+
+            /// copy data into vbuf
+            /// we need to perform conversion on u16 to u32
+            for (vstride &stride: strides) {
+                u8 *dst        = vbuf;
+                u8 *src        = &stride.buffer->uri.data<u8>()[stride.buffer_view->byteOffset];
+                num member_sz  = stride.compound_type->base_sz; /// size of member / accessor compound-type
+
+                size_t src_vcount       = stride.accessor->vcount();
+                size_t src_component_sz = stride.accessor->component_size();
+                size_t src_sz           = src_vcount * src_component_sz;
+
+                if (src_sz != member_sz) {
+                    type_t stored_type = stride.prop->type->ref ? stride.prop->type->ref : stride.prop->type;
+                    /// only convert to u32 and float, because short, byte, 64bit types are not supported in WGSL
+                    if (stored_type == typeof(u32)) {
+                        convert_component<u32>(src, dst, src_sz, vlen, src_vcount, 
+                            stride.offset, stride.accessor->componentType, stride.compound_type);
+                    } else if (stored_type == typeof(float)) {
+                        convert_component<r32>(src, dst, src_sz, vlen, src_vcount, 
+                            stride.offset, stride.accessor->componentType, stride.compound_type);
+                    } else {
+                        console.fault("type {0} not supported in WGSL (cannot convert)", { str(stored_type->name) });
+                    }
+                } else {
+                    /// perform simple copies
+                    for (num i = 0; i < vlen; i++) {
+                        u8 *member = &dst[stride.offset];
+                        u8 *bsrc   = &src[src_sz * i];
+                        memcpy(member, bsrc, src_sz);
+                        dst += gfx->vtype->base_sz; /// next vert
+                    }
+                }
+            }
+            /// create vertex buffer by wrapping what we've copied from allocation (we have a primitive array)
+            res->mesh->verts = mx { memory::wrap(gfx->vtype, vbuf, vlen) }; /// load indices (always store 32bit uint)
+
+            /// indices data = indexing mesh-primitive->indices
+            gltf::Accessor &a_indices = m->accessors[prim->indices];
+            gltf::BufferView &view = m->bufferViews[ a_indices->bufferView ];
+            gltf::Buffer      &buf = m->buffers    [ view->buffer ];
+            memory *mem_indices;
+
+            if (a_indices->componentType == gltf::ComponentType::UNSIGNED_SHORT) {
+                u16 *u16_window = (u16*)&buf->uri.data<u8>()[view->byteOffset];
+                u32 *u32_alloc  = (u32*)calloc(sizeof(u32), a_indices->count);
+                for (int i = 0; i < a_indices->count; i++) {
+                    u32 value = u32(u16_window[i]);
+                    u32_alloc[i] = value;
+                }
+                mem_indices = memory::wrap(typeof(u32), u32_alloc, a_indices->count);
+            } else {
+                assert(a_indices->componentType == gltf::ComponentType::UNSIGNED_INT);
+                u32 *u32_window = (u32*)&buf->uri.data<u8>()[view->byteOffset];
+                mem_indices = memory::window(typeof(u32), u32_window, a_indices->count);
+            }
+            res->mesh->tris = mem_indices->hold();
+
+            /// load joints for this node (may be default or null state)
+            res->joints = m.joints(node);
+        }
+    };
+
+    auto node_matrix = [](gltf::Node &node) -> m44f {
+        m44f local(1.0f);
+
+        if (node->scale) {
+            local = local.scale(vec3f(node->scale[0], node->scale[1], node->scale[2]));
+        }
+        if (node->rotation) {
+            quatf q(node->rotation[3], node->rotation[0], node->rotation[1], node->rotation[2]);
+            m44f rotation(q);
+            local *= rotation;
+        }
+        if (node->translation) {
+            m44f translation = m44f::make_translation(vec3f(node->translation[0], node->translation[1], node->translation[2]));
+            local *= translation;
+        }
+        return local;
+    };
+    
+    lambda<Group(m44f&, gltf::Node&)> group_from_node;
+    group_from_node = [&](m44f &model_matrix, gltf::Node& node) -> Group {
+        Group group;
+        m44f local = node_matrix(node);
+        group->mesh->model_matrix = model_matrix * local;
+        
+        if (node->mesh >= 0)
+            group_faces(group, node);
+
+        for (int &i: node->children.elements<int>()) {
+            gltf::Node child = m->nodes[i];
+            Group gchild     = group_from_node(group->mesh->model_matrix, child);
+            gchild->parent   = group.mem;
+            group->children += gchild;
+        }
+        return group;
+    };
+
+    /// we need the model_matrix for the group
+    /// if this is a root group, it will be identity
+    m44f model_matrix(1.0f);
+    gltf::Node *parent = m.parent(node);
+    Array<gltf::Node*> leading;
+    while (parent) {
+        leading += parent;
+        gltf::Node *next = m.parent(*parent);
+        if (!next) {
+            /// iterate from count - 1 to 0, and apply matrices to model_matrix
+            for (int i = leading.count() - 1; i >= 0; i--) {
+                gltf::Node &n = *leading[i];
+                m44f local = node_matrix(n);
+                model_matrix *= local;
+            }
+            break;
+        } else {
+            parent = next;
+        }
+    }
+
+    return group_from_node(model_matrix, node);
+}
+
 Model::Model(Device &device, symbol model, Array<Graphics> select):Model() {
     data->device = device;
     data->model = model;
@@ -931,6 +986,7 @@ Model::Model(Device &device, symbol model, Array<Graphics> select):Model() {
         data->m = gltf::Model::load(gltf_path);
     }
 
+    /// we will load from Groups, and the amount of Pipelines would be the depth of Groups
     for (Graphics &gfx: select) {
         Pipeline p;
         p->gfx            = gfx;

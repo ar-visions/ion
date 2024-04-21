@@ -192,6 +192,7 @@ Array<Mesh> Mesh::process(Mesh &mesh, const Array<Polygon> &modes, int start_lev
         if (quad) m->quads.set_size(level_qcount * 4);
         if (tri)  m->tris .set_size(level_qcount * 3 * 2);
         if (wire) m->wire .set_size(level_qcount * 4 * 2);
+        m->model_matrix = mesh->model_matrix;
         results += m;
     }
 
