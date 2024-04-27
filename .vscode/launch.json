@@ -80,6 +80,31 @@
             }
         },
         {
+            "name": "tapestry",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/../tapestry/build/tapestry",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/../tapestry/build",
+            "environment": [
+            ],
+            "MIMode": "gdb",
+            "presentation": {
+                "hidden": false,
+                "group": "",
+                "order": 1,
+            },
+            "windows":{
+                "type": "cppvsdbg",
+                "program": "${workspaceFolder}/../tapestry/build/Debug/tapestry",
+                "cwd": "${workspaceFolder}/../tapestry/build"
+            },
+            "osx": {
+                "MIMode": "lldb"
+            }
+        },
+        {
             "name": "canvas-test",
             "type": "cppdbg",
             "request": "launch",

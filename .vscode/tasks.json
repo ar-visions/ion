@@ -33,6 +33,37 @@
             }
         },
         {
+            "label": "build-tapestry",
+            "type": "shell",
+			"options": {
+                "cwd": "${workspaceFolder}/../tapestry/build"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "group": "build0",
+                "clear": true
+            },
+			"isBackground": false,
+			"problemMatcher": ["$gcc"],
+            "windows": {
+                "command": "msbuild tapestry.sln /t:runtime"
+            },
+            "osx": {
+                "command": "make -j32"
+            },
+            "linux": {
+                "command": "make -j32",
+                "options":{
+                    "env":{"VERBOSE":"1"}
+                }
+            }
+        },
+        {
             "label": "build-silver-runtime",
             "type": "shell",
 			"options": {

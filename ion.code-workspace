@@ -1,6 +1,10 @@
 {
 	"folders": [
 		{
+			"name": "tapestry",
+			"path": "../tapestry"
+		},
+		{
 			"name": "prefix",
 			"path": "../prefix"
 		},
@@ -213,7 +217,8 @@
 			"hash_set": "cpp",
 			"slist": "cpp",
 			"smallft.h": "c",
-			"*.hd": "cpp"
+			"*.hd": "cpp",
+			"cuchar": "cpp"
 		},
 		"git.ignoreLimitWarning": true
 	}

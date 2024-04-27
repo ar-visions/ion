@@ -980,7 +980,7 @@ Group Model::load_group(const str &part) {
 Model::Model(Device &device, symbol model, Array<Graphics> select):Model() {
     data->device = device;
     data->model = model;
-
+    
     if (model) {
         path gltf_path = fmt {"models/{0}.gltf", { model }};
         data->m = gltf::Model::load(gltf_path);
