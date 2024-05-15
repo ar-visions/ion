@@ -601,6 +601,37 @@ void style::impl::cache_members() {
             cache_b(b);
 }
 
+/// \\ = \ ... \x = \x
+static str parse_quoted(cstr *cursor, size_t max_len) {
+    cstr first = *cursor;
+    if (*first != '"')
+        return "";
+    ///
+    bool last_slash = false;
+    cstr start     = ++(*cursor);
+    cstr s         = start;
+    ///
+    for (; *s != 0; ++s) {
+        if (*s == '\\')
+            last_slash = true;
+        else if (*s == '"' && !last_slash)
+            break;
+        else
+            last_slash = false;
+    }
+    if (*s == 0)
+        return "";
+    ///
+    size_t len = (size_t)(s - start);
+    if (max_len > 0 && len > max_len)
+        return "";
+    ///
+    *cursor = &s[1];
+    str result(start, len);
+    return result;
+}
+
+
 void style::impl::load(str code) {
     for (cstr sc = code.cs(); ws(sc); sc++) {
         lambda<void(block*)> parse_block;
@@ -648,7 +679,7 @@ void style::impl::load(str code) {
 
                     if (qs && qe) {
                         cstr   cs = cb_value.cs();
-                        cb_value  = str::parse_quoted(&cs, cb_value.len());
+                        cb_value  = parse_quoted(&cs, cb_value.len());
                     }
 
                     num         i = cb_value.index_of(",");

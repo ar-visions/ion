@@ -677,7 +677,7 @@ struct node:mx {
 
     /// the element can create its instance.. that instance is a sub-class of Element2 too so we use a forward
     struct node *new_instance() {
-        return (struct node*)data->type->ctr();
+        return (struct node*)data->type->f.ctr(null);
     }
 };
 

@@ -55,11 +55,13 @@
             }
         },
         {
-            "name": "silver-runtime",
+            "name": "silver",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/../silver/build/runtime",
-            "args": [],
+            "program": "${workspaceFolder}/../silver/build/silver",
+            "args": [
+                "silver.si"
+            ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/../silver/build",
             "environment": [
@@ -72,7 +74,7 @@
             },
             "windows":{
                 "type": "cppvsdbg",
-                "program": "${workspaceFolder}/../silver/build/Debug/runtime",
+                "program": "${workspaceFolder}/../silver/build/Debug/silver",
                 "cwd": "${workspaceFolder}/../silver/build"
             },
             "osx": {

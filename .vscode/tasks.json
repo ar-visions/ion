@@ -51,7 +51,7 @@
 			"isBackground": false,
 			"problemMatcher": ["$gcc"],
             "windows": {
-                "command": "msbuild tapestry.sln /t:runtime"
+                "command": "msbuild tapestry.sln /t:tapestry"
             },
             "osx": {
                 "command": "make -j32"
@@ -64,7 +64,7 @@
             }
         },
         {
-            "label": "build-silver-runtime",
+            "label": "build-silver",
             "type": "shell",
 			"options": {
                 "cwd": "${workspaceFolder}/../silver/build"
@@ -82,13 +82,13 @@
 			"isBackground": false,
 			"problemMatcher": ["$gcc"],
             "windows": {
-                "command": "msbuild silver.sln /t:runtime"
+                "command": "msbuild silver.sln /t:silver"
             },
             "osx": {
-                "command": "make runtime -j1"
+                "command": "make -j16"
             },
             "linux": {
-                "command": "make runtime -j1",
+                "command": "make -j16",
                 "options":{
                     "env":{"VERBOSE":"1"}
                 }

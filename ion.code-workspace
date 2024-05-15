@@ -218,7 +218,8 @@
 			"slist": "cpp",
 			"smallft.h": "c",
 			"*.hd": "cpp",
-			"cuchar": "cpp"
+			"cuchar": "cpp",
+			"assert.h": "c"
 		},
 		"git.ignoreLimitWarning": true
 	}
