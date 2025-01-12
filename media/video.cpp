@@ -434,7 +434,7 @@ struct iVideo {
         for (int i = 0; i < pcm_buffer_len; i += frame_w_channels) {
             int amount = pcm_buffer_len - i;
             if (amount < frame_w_channels) {
-                short *cp = (short*)calloc(sizeof(short), pcm_buffer_sz);
+                short *cp = (short*)calloc(pcm_buffer_sz, sizeof(short));
                 memcpy(cp, &pcm_buffer[i], amount * sizeof(short));
                 pcm_buffer_len = amount;
                 free(pcm_buffer);

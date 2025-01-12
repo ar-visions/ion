@@ -207,8 +207,8 @@ struct iTLS {
 
 mx_implement(TLS, mx, iTLS);
 
-TLS::TLS(uri url) : TLS() {
-    data->init(url);
+void tls_init(tls t, uri url) {
+    t->init(url);
 }
 
 int uri::port() {
