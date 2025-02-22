@@ -489,9 +489,9 @@ namespace gltf {
         Node *parent(Node &n) {
             int node_index = -1;
             for (Node &node: data->nodes.elements<Node>()) {
+                node_index++;
                 if (node == n)
                     break;
-                node_index++;
             }
             for (Node &node: data->nodes.elements<Node>()) {
                 if (node->children.index_of(node_index) >= 0)
