@@ -117,7 +117,8 @@ static real ease_in_out_bounce (real x) {
 }
 
 static i64 distance(cstr s0, cstr s1) {
-    return abs((i64)s1 - (i64)s0);
+    i64 r = (i64)s1 - (i64)s0;
+    return r < 0 ? -r : r;
 }
 
 /// functions are courtesy of easings.net; just organized them into 2 enumerables compatible with web
@@ -338,7 +339,7 @@ style style_with_object(style a, object app) {
 
 
 /// id's can be dynamic so we cant enforce symbols, and it would be a bit lame to make the caller symbolize
-string node_id(node &e) {
+string node_id(node e) {
     array &args = e->args;
     for (arg &a: args.elements<arg>()) {
         if (strcmp((symbol)a.key.mem->origin, "id") == 0)
@@ -363,11 +364,11 @@ void composer_update(composer ux, node parent, ARef r_instance, node e) {
 
     /// recursion here
     if (e.type() == typeof(node) && e->children) {
-        size_t clen = e->children.len();
-        size_t i    = 0;
+        sz clen = len(e->children);
+        sz i    = 0;
         array a_instances = (instance && *instance) ? (*instance)->children : 
             array(alloc, clen);
-        
+
         /// set instances node array, then we specify the item pointer for each
         if (!(instance && *instance))
             *instance = node(instances, a_instances);
@@ -676,8 +677,11 @@ void composer_update_all(composer ux, node e) {
     unlock(ux->style->mtx);
 }
 
+bool is_cmt(symbol c) {
+    return c[0] == '/' && c[1] == '*';
+}
+
 bool ws(cstr &cursor) {
-    auto is_cmt = [](symbol c) -> bool { return c[0] == '/' && c[1] == '*'; };
     while (isspace(*cursor) || is_cmt(cursor)) {
         while (isspace(*cursor))
             cursor++;
@@ -689,7 +693,7 @@ bool ws(cstr &cursor) {
     return *cursor != 0;
 }
 
-bool scan_to(cstr &cursor, Array<char> chars) {
+bool scan_to(cstr &cursor, string chars) {
     bool sl  = false;
     bool qt  = false;
     bool qt2 = false;
@@ -701,10 +705,11 @@ bool scan_to(cstr &cursor, Array<char> chars) {
                 qt2 = !qt2;
         }
         sl = *cursor == '\\';
-        if (!qt && !qt2)
-            for (char &c: chars)
-                if (*cursor == c)
-                    return true;
+        if (!qt && !qt2) {
+            char cur[2] = { *cursor, 0 };
+            if (index_of(chars, cur) >= 0)
+                 return true;
+        }
     }
     return false;
 }
@@ -732,38 +737,38 @@ doubly parse_qualifiers(style::block &bl, cstr *p) {
     }
     
     ///
-    auto  quals = qstr.split(",");
+    array quals = split(qstr, ",");
     list result;
 
     ///
-    for (string &qs:quals.elements<string>()) {
-        string  qq = qs.trim();
-        if (!qq) continue;
+    each (quals, string, qs) {
+        string  qq = trim(qs);
+        if (!len(qq)) continue;
         qualifier vv = qualifier(); /// push new qualifier
         push(result, vv);
 
         /// we need to scan by >
 
-        style::Qualifier v = vv;
-        Array<string> parent_to_child = qq.split("/"); /// we choose not to use > because it interferes with ops
-        style::Qualifier *processed = null;
+        qualifier v = vv;
+        array parent_to_child = split(qq, "/"); /// we choose not to use > because it interferes with ops
+        qualifier processed = null;
 
         /// iterate through reverse
-        for (int i = parent_to_child.len() - 1; i >= 0; i--) {
-            string q = parent_to_child[i].trim();
+        for (int i = len(parent_to_child) - 1; i >= 0; i--) {
+            string q = trim(parent_to_child[i]);
             if (processed) {
-                v->parent = style::Qualifier();
+                v->parent = qualifier();
                 v = hold(v->parent); /// dont need to cast this
             }
-            num idot = q.index_of(".");
-            num icol = q.index_of(":");
+            num idot = index_of(q, ".");
+            num icol = index_of(q, ":");
             string tail;
             ///
             if (idot >= 0) {
-                Array<string> sp = q.split(".");
+                array sp = split(q, ".");
                 v->type   = sp[0];
-                Array<string> sp2 = sp[1].split(":");
-                v->id     = sp2[0];
+                string sp2 = split((string)sp->elements[1], ":");
+                v->id     = sp2->elements[0];
                 if (icol >= 0)
                     tail  = q.mid(icol + 1).trim(); /// likely fine to use the [1] component of the split
             } else {
@@ -884,7 +889,7 @@ none parse_block(block bl, cstr sc) {
         /// read up to ;, {, or }
         ws(sc);
         cstr start = sc;
-        verify(scan_to(sc, {';', '{', '}'}), "expected member expression or qualifier");
+        verify(scan_to(sc, ";{}"), "expected member expression or qualifier");
         if (*sc == '{') {
             ///
             block *bl_n = new style::block();
@@ -900,13 +905,13 @@ none parse_block(block bl, cstr sc) {
         } else if (*sc == ';') {
             /// read member
             cstr cur = start;
-            console.test(scan_to(cur, {':'}) && (cur < sc), "expected [member:]value;");
+            console.test(scan_to(cur, ":") && (cur < sc), "expected [member:]value;");
             string  member = string(chars, start, ref_length, distance(start, cur));
             ws(++cur);
 
             /// read value
             cstr vstart = cur;
-            console.test(scan_to(cur, {';'}), "expected member:[value;]");
+            console.test(scan_to(cur, ";"), "expected member:[value;]");
             
             /// needs escape sequencing?
             size_t len = distance(vstart, cur);
