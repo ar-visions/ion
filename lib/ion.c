@@ -8,15 +8,8 @@ static const real c3 = c1 + 1;
 static const real c4 = (2 * PI) / 3;
 static const real c5 = (2 * PI) / 4.5;
 
-
 /// W10  y-501.1
 array split_numeric(cstr s) {
-    // in C++ i believe we split on and off
-    // from alpha numeric state; however, never
-    // encountered use for that yet
-    // this is better for general parsing
-    // call the function again if needed, on 2nd arg.
-    // -------------------------------
     for (int i = 0, ln = strlen(s); i < ln; i++) {
         int v = s[i];
         if ((v >= '0' && v <= '9') || (v == '-')) {
@@ -1055,10 +1048,6 @@ void composer_init(composer ux) {
     ux->root = ion(id, string("root"));
 }
 
-
-
-
-
 define_meta(unit_Duration, unit, Duration)
 define_enum(Ease)
 define_enum(Direction)
@@ -1083,6 +1072,6 @@ define_class(style_entry)
 define_class(style_qualifier)
 define_class(style_transition)
 define_class(style_selection)
-define_public(ion)
 define_class(element)
 
+define_public(ion)
