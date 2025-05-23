@@ -9,6 +9,258 @@ static const real c4 = (2 * PI) / 3;
 static const real c5 = (2 * PI) / 4.5;
 
 
+/// W10  y-501.1
+array split_numeric(cstr s) {
+    // in C++ i believe we split on and off
+    // from alpha numeric state; however, never
+    // encountered use for that yet
+    // this is better for general parsing
+    // call the function again if needed, on 2nd arg.
+    // -------------------------------
+    for (int i = 0, ln = strlen(s); i < ln; i++) {
+        int v = s[i];
+        if ((v >= '0' && v <= '9') || (v == '-')) {
+            verify(i, "expected unit identifier");
+            return a(
+                string(chars, &s[0], ref_length, i),
+                string(chars, &s[i])
+            );
+        }
+    }
+    return null;
+}
+
+coord coord_with_string(coord a, string s) {
+    array  sp = split_numeric(s->chars);
+    verify(sp, "expected unit-value token such as x-10");
+    verify(len(sp) == 2, "expected two values");
+    string sx = sp->elements[0];
+    string sy = sp->elements[1];
+    
+    /// set x/y types
+    a->x_type = e_val(xalign, sx->chars);
+    a->y_type = e_val(yalign, sy->chars);
+    string sx_offset = mid(sx, 1, len(sx) - 1);
+    string sy_offset = mid(sy, 1, len(sy) - 1);
+
+    /// get numeric attributes (percentage and relative)
+    if (last(sx_offset) == '%') {
+        sx_offset = mid(sx_offset, 0, len(sx_offset) - 1);
+        a->x_per = true;
+    }
+    if (last(sy_offset) == '%') {
+        sy_offset = mid(sy_offset, 0, len(sy_offset) - 1);
+        a->y_per = true;
+    }
+    if (sx_offset)
+        if (last(sx_offset) == '+') {
+            sx_offset = mid(sx_offset, 0, len(sx_offset) - 1);
+            a->x_rel = true;
+        }
+    if (sy_offset)
+        if (last(sy_offset) == '+') {
+            sy_offset = mid(sy_offset, 0, len(sy_offset) - 1);
+            a->y_rel = true;
+        }
+
+    /// set offset
+    a->offset = vec2f(
+        real_value(sx_offset), real_value(sy_offset));
+    
+    /// set align
+    f32 x = 0, y = 0;
+    switch (a->x_type) {
+        case xalign_left:   x = 0.0; break;
+        case xalign_middle: x = 0.5; break;
+        case xalign_right:  x = 1.0; break;
+        case xalign_width:  x = 0.0; break;
+        default: break;
+    }
+    switch (a->y_type) {
+        case yalign_top:    y = 0.0; break;
+        case yalign_middle: y = 0.5; break;
+        case yalign_bottom: y = 1.0; break;
+        case yalign_height: y = 0.0; break;
+        default: break;
+    }
+    a->align = alignment(x, x, y, y);
+    return a;
+}
+
+coord coord_mix(coord a, coord b, f32 f) {
+    alignment   align  = mix( a->align,   b->align,  f);
+    vec2f       offset = vec2f_mix(&a->offset, &b->offset, f);
+    xalign      x_type = b->x_type;
+    yalign      y_type = b->y_type;
+    bool        x_rel  = b->x_rel;
+    bool        y_rel  = b->y_rel;
+    bool        x_per  = b->x_per;
+    bool        y_per  = b->y_per;
+    return coord(
+        align,  align,  offset, offset,
+        x_type, x_type, y_type, y_type,
+        x_rel,  x_rel,  y_rel,  y_rel,
+        x_per,  x_per,  y_per,  y_per);
+}
+
+vec2f coord_plot(coord a, rect r, vec2f rel, f32 void_width, f32 void_height) {
+    f32 x;
+    f32 y;
+    f32 ox = a->x_per ? (a->offset.x / 100.0) * (r->w - void_width)  : a->offset.x;
+    f32 oy = a->y_per ? (a->offset.y / 100.0) * (r->h - void_height) : a->offset.y;
+
+    if (a->x_type == xalign_width)
+        x = rel.x + ox;
+    else
+        x = r->x + (r->w - void_width) * a->align->x + ox;
+    
+    if (a->y_type == yalign_height)
+        y = rel.y + oy;
+    else
+        y = r->y + (r->h - void_height) * a->align->y + oy;
+
+    return vec2f(x, y);
+}
+
+coord coord_with_cstr(coord a, cstr cs) {
+    return coord_with_string(new(coord), string(cs));
+}
+
+bool coord_cast_bool(coord a) {
+    return a->x_type != xalign_undefined;
+}
+
+
+
+
+
+alignment alignment_with_vec2f(alignment a, vec2f xy) {
+    a->x = xy.x;
+    a->y = xy.y;
+    a->set = true;
+    return a;
+}
+
+alignment alignment_with_string(alignment a, string s) {
+    array  ar = split(s, " ");
+    string s0 = ar->elements[0];
+    string s1 = len(ar) > 1 ? ar->elements[1] : ar->elements[0];
+
+    if (is_numeric(s0)) {
+        a->x = real_value(s0);
+    } else {
+        xalign  xa = e_val(xalign, s0->chars);
+        switch (xa) {
+            case xalign_left:   a->x = 0.0; break;
+            case xalign_middle: a->x = 0.5; break; /// todo: needs ability to set a middle in coord/region
+            case xalign_right:  a->x = 1.0; break;
+            default: break;
+        }
+    }
+
+    if (is_numeric(s1)) {
+        a->y = real_value(s1);
+    } else {
+        yalign  ya = e_val(yalign, s1->chars);
+        switch (ya) {
+            case yalign_top:    a->y = 0.0; break;
+            case yalign_middle: a->y = 0.5; break; /// todo: needs ability to set a middle in coord/region
+            case yalign_bottom: a->y = 1.0; break;
+            default: break;
+        }
+    }
+    return a;
+}
+
+alignment alignment_with_cstr(alignment a, cstr cs) {
+    return alignment_with_string(a, string(cs));
+}
+
+alignment alignment_mix(alignment a, alignment b, f32 f) {
+    vec2f v2 = vec2f(a->x * (1.0f - f) + b->x * f,
+                     a->y * (1.0f - f) + b->y * f);
+    return alignment_with_vec2f(new(alignment), v2);
+}
+
+
+
+
+
+/// good primitive for ui, implemented in basic canvas ops.
+/// regions can be constructed from rects if area is static or composed in another way
+
+/// simple rect
+region region_with_rect(region reg, rect r) {
+    reg->tl  = f(coord, "l%f t%f", r->x, r->y);
+    reg->br  = f(coord, "w%f h%f", r->w, r->h);
+    reg->set = true;
+    return reg;
+}
+
+region region_with_array(region reg, array corners) {
+    verify(len(corners) >= 2, "expected 2 coord");
+    coord tl = get(corners, 0);
+    coord br = get(corners, 0);
+    verify(isa(tl) == typeid(coord), "expected coord");
+    verify(isa(br) == typeid(coord), "expected coord");
+    reg->tl  = tl;
+    reg->br  = br;
+    reg->set = true;
+    return reg;
+}
+
+region region_with_string(region reg, string s) {
+    array a = split(s, " ");
+    if (len(a) == 4) {
+        reg->tl    = f(coord, "%o %o", a->elements[0], a->elements[1]);
+        reg->br    = f(coord, "%o %o", a->elements[2], a->elements[3]);
+    } else if (len(a) == 1) {
+        /// if 1 unit given (with or without percent scaling) 
+        /// then its made to fill the area with that amount of padding
+        string f   = first(a);
+        real n     = real_value(f);
+        bool per   = last(f) == '%';
+        reg->tl    = coord(align, alignment(x, n, y, n),
+            x_type, xalign_left,
+            y_type, yalign_top,
+            x_per, per, y_per, per);
+        reg->br    = coord(align, alignment(x, n, y, n),
+            x_type, xalign_right,
+            y_type, yalign_bottom,
+            y_per, per, y_per, per);
+    }
+    reg->set = true;
+    return reg;
+}
+
+region region_with_cstr(region a, cstr s) {
+    return region_with_string(new(region), string(s));
+}
+
+bool region_cast_bool(region a) { return a->set; }
+
+rect region_relative_rect(region data, rect win, f32 void_width, f32 void_height) {
+    vec2f rel  = xy(win);
+    vec2f v_tl = plot(data->tl, win, rel,  void_width, void_height);
+    vec2f v_br = plot(data->br, win, v_tl, void_width, void_height);
+    rect r = rect_from_plots(v_tl, v_br);
+    r->x -= win->x;
+    r->y -= win->y;
+    return r;
+}
+
+rect region_rectangle(region data, rect win) {
+    vec2f rel = vec2f(win->x, win->y);
+    return rect_from_plots(
+        plot(data->tl, win, rel, 0, 0), plot(data->br, win, rel, 0, 0));
+}
+
+region region_mix(region data, region b, f32 a) {
+    coord m_tl = mix(data->tl, b->tl, a);
+    coord m_tr = mix(data->br, b->br, a);
+    return region(a(m_tl, m_tr));
+}
+
 bool qualifier_cast_bool(qualifier q) {
     return len(q->type) || q->id || q->state;
 }
@@ -210,7 +462,7 @@ real style_transition_pos(style_transition a, real tf) {
 /// hopefully we dont have to do this anymore.  its simple and it works.  we may be doing our own style across service component and elemental component but having one system for all is preferred,
 /// and brings a sense of orthogonality to the react-like pattern, adds type-based contextual grabs and field lookups with prop accessors
 
-style_entry style_best_match(node n, string prop_name, array entries) {
+style_entry style_best_match(style a, ion n, string prop_name, array entries) {
   //array       blocks     = get(members, prop_name);
     style_entry match      = null; /// key is always a symbol, and maps are keyed by symbol
     real        best_score = 0;
@@ -227,9 +479,9 @@ style_entry style_best_match(node n, string prop_name, array entries) {
     return match;
 }
 
-num style_block_score(style_block a, node n, bool score_state) {
+num style_block_score(style_block a, ion n, bool score_state) {
     f64 best_sc = 0;
-    node   cur     = n;
+    ion   cur     = n;
 
     each (a->quals, qualifier, q) {
         f64 best_this = 0;
@@ -258,7 +510,7 @@ num style_block_score(style_block a, node n, bool score_state) {
 
             if (q->parent && best_this > 0) {
                 q   = q->parent; // parent qualifier
-                cur = cur->parent ? cur->parent : node(); // parent node
+                cur = cur->parent ? cur->parent : ion(); // parent ion
             } else
                 break;
         }
@@ -277,7 +529,7 @@ f64 Duration_base_millis(Duration dur) {
     return 0.0;
 }
 
-bool style_applicable(style s, node n, string prop_name, array result) {
+bool style_applicable(style s, ion n, string prop_name, array result) {
     array blocks = get(s->members, prop_name);
     AType type   = isa(n);
     bool  ret    = false;
@@ -306,16 +558,52 @@ bool  event_scan_down       (event e, num s) { return  e->key->scan_code == s &&
 bool  event_scan_up         (event e, num s) { return  e->key->scan_code == s &&  e->key->up; }
 
 
-none composer_update(composer ux, node parent, ARef r_instance, node e) {
-    node* instance = r_instance;
+int ion_compare(ion a, ion b) {
+    AType type = isa(a);
+    if (type != isa(b))
+        return -1;
+    if (a == b)
+        return 0;
+    for (int m = 0; m < type->member_count; m++) {
+        type_member_t* mem = &type->members[m];
+        bool is_prop = mem->member_type & A_MEMBER_PROP;
+        if (!is_prop || strcmp(mem->name, "elements") == 0) continue;
+        if (A_is_inlay(mem)) { // works for structs and primitives
+            ARef cur = (ARef)((cstr)a + mem->offset);
+            ARef nxt = (ARef)((cstr)b + mem->offset);
+            bool is_same = (cur == nxt || 
+                memcmp(cur, nxt, mem->type->size) == 0);
+            if (!is_same)
+                return -1;
+        } else {
+            object* cur = (object*)((cstr)a + mem->offset);
+            object* nxt = (object*)((cstr)b + mem->offset);
+            if (*cur != *nxt) {
+                bool is_same = (*cur && *nxt) ? 
+                    compare(*cur, *nxt) == 0 : false;
+                if (!is_same)
+                    return -1;
+            }
+        }
+    }
+    return 0;
 }
+
+map ion_render(ion a, list changed) {
+    return a->elements; /// elements is not allocated for non-container elements, so default behavior is to not host components
+}
+
+none ion_init(ion a) {
+}
+
+
 
 style style_with_path(style a, path css_path) {
     verify(exists(css_path), "css path does not exist");
     string style_str = read(css_path, typeid(string));
-    a->root    = array(alloc, 4);
+    a->base    = array(alloc, 32);
     a->members = map(hsize, 32);
-    load(a, style_str);
+    process(a, style_str);
     cache_members(a);
     a->loaded   = true;
     a->reloaded = true; /// cache validation for composer user
@@ -336,352 +624,11 @@ style style_with_object(style a, object app) {
     return a;
 }
 
-
-
-/// id's can be dynamic so we cant enforce symbols, and it would be a bit lame to make the caller symbolize
-string node_id(node e) {
-    array &args = e->args;
-    for (arg &a: args.elements<arg>()) {
-        if (strcmp((symbol)a.key.mem->origin, "id") == 0)
-            return (cstr)a.value.mem->origin; /// convert to string
-    }
-    return e->type->name;
-}
-
-static memory *_app_memory;
-
-void composer::set_app(memory *app_memory) {
-    _app_memory = app_memory;
-}
-
-void composer_update(composer ux, node parent, ARef r_instance, node e) {
-    node*  instance = r_instance;
-    bool       diff = !instance;
-    bool     is_new = false;
-    size_t args_len = e->args.len();
-    i64         now = millis();
-    bool style_reload = ux->style->reloaded;
-
-    /// recursion here
-    if (e.type() == typeof(node) && e->children) {
-        sz clen = len(e->children);
-        sz i    = 0;
-        array a_instances = (instance && *instance) ? (*instance)->children : 
-            array(alloc, clen);
-
-        /// set instances node array, then we specify the item pointer for each
-        if (!(instance && *instance))
-            *instance = node(instances, a_instances);
-        
-        each (e->children, node, cn)
-            update(ux, parent, &a_instances->elements[i++], cn);
-        
-        return;
-    }
-
-    if (!diff) {
-        /// instance != null, so we can check attributes
-        /// compare args for diffs
-        Array<arg>    &p = (*(node*)instance)->args; /// previous args
-        Array<arg>    &n = e->args; /// new args
-        diff = args_len != p.len();
-        if (!diff) {
-            /// no reason to check against a map
-            for (size_t i = 0; i < args_len; i++) {
-                arg &p_pair = p[i];
-                arg &n_pair = n[i];
-                mx key  (p_pair.key);
-                mx value(p_pair.value);
-                if (key   != n_pair.key ||
-                    value != n_pair.value) {
-                    diff = true;
-                    break;
-                }
-            }
-        }
-    }
-    if (diff || style_reload) {
-        /// if we get this far, its expected that we are a class with schema, and have data associated
-        assert(e->type->schema);
-        assert(e->type->schema->bind && e->type->schema->bind->data);
-
-        /// create instance if its not there, or the type differs (if the type differs we shall delete the node)
-        if (!instance || (e->type != instance->mem->type)) {
-            if (instance)
-                delete instance;
-            is_new   = true;
-            instance = e.new_instance();
-            string   id = node_id(e); /// needed for style computation of available entries in the style blocks
-            (*instance)->parent = parent;
-            (*instance)->id     = hold(id);
-            (*instance)->composer = ux;
-            
-            /// compute available properties for this Element given its type, placement, and props styled 
-        }
-
-        if (style_reload || is_new)
-            (*instance)->style_avail = compute(ux->style, instance);
-
-        /// arg set cache
-        bool *pset = new bool[args_len];
-        memset(pset, 0, args_len * sizeof(bool));
-
-        style::style_map &style_avail = (*instance)->style_avail;
-        /// stores style across the entire poly schema inside which is ok
-        /// we only look them up in context of those data structures
-
-        /// iterate through polymorphic meta info on the schema bindings on these context types (the user instantiates context, not data)
-        for (type_t ctx = e->type; ctx; ctx = ctx->parent) {
-            if (!ctx->schema)
-                continue;
-            type_t tdata = ctx->schema->bind->data;
-            if (!tdata->meta) /// mx type does not contain a schema in itself
-                continue;
-            u8* data_origin = (u8*)instance->mem->typed_data(tdata, 0);
-            prop_map* meta_map = (prop_map*)tdata->meta_map;
-            properties* props = (properties*)tdata->meta;
-
-            /// its possible some classes may not have meta information defined, just skip
-            if (!meta_map)
-                continue;
-
-            /// apply style to props (only do this when we need to, as this will be inefficient to do per update)
-            /// dom uses invalidation for this such as property changed in a parent, element added, etc
-            /// it does not need to be perfect we are not making a web browser
-            for (prop &p: props->elements<prop>()) {
-                string &name = *p.s_key;
-                field *entries = style_avail->lookup(name); // ctx name is Button, name == id, and it has a null entry for entries[0] == null with count > 
-                if (entries) {
-                    /// this should be in a single function:
-                    /// get best style matching entry for this property
-                    Array<style::entry*> e(entries->value);
-                    style::entry *best = composer->style->best_match(instance, &p, e);
-                    ///
-                    type_t prop_type = p.type;
-                    u8    *prop_dst  = &data_origin[p.offset];
-                    
-                    /// dont repeat this; store best in transitions lookup for this member name
-                    /// this must be allocated in the map
-                    node::selection &sel = instance->data->selections.get<node::selection>(name);
-
-                    /// in cases there will be no match, in other cases we have already selected
-                    if (best && (best != sel.entry)) {
-                        bool should_trans = best->trans && sel.member;
-
-                        /// create instance and immediately assign if there is no transition
-                        if (prop_type->traits & traits::mx_obj) {
-                            if (!best->mx_instance) {
-                                void *alloc = prop_type->ctr_str(string(best->value));
-                                best->mx_instance = new mx(((MX*)alloc)->mem);
-                                prop_type->f.dtr(alloc);
-                            }
-                            if (!should_trans) {
-                                prop_type->f.dtr(prop_dst);
-                                prop_type->f.ctr_mem(prop_dst, hold(best->mx_instance->mem));
-                            }
-                        } else {
-                            if (!best->raw_instance) {
-                                void *alloc = prop_type->ctr_str(string(best->value));
-                                best->raw_instance = alloc;
-                            }
-                            if (!should_trans) {
-                                prop_type->f.dtr(prop_dst);
-                                prop_type->f.ctr_cp(prop_dst, best->raw_instance);
-                            }
-                        }
-
-                        /// if we had a prior transition, delete the memory
-                        if (sel.from) prop_type->f.dtr(sel.from);
-
-                        /// handle transitions, only when we have previously selected (otherwise we are transitioning from default state)
-                        if (should_trans) {
-                            /// get copy of current value (new instance, and assign from current)
-                            raw_t cur;
-                            if (prop_type->traits & traits::mx_obj)
-                                cur = prop_type->ctr_mem(((MX*)prop_dst)->mem);
-                            else
-                                cur = prop_type->ctr_cp(prop_dst);
-                            /// setup data
-                            double ms = duration_millis(best->trans.dur.type);
-                            sel.start  = now;
-                            sel.end    = now + best->trans.dur.value * ms;
-                            sel.from   = cur;
-                            sel.to     = best->mx_instance ? best->mx_instance : best->raw_instance; /// redundant
-                        } else {
-                            sel.start  = 0;
-                            sel.end    = 0;
-                            sel.from   = null;
-                            sel.to     = best->mx_instance ? best->mx_instance : best->raw_instance; /// redundant
-                        }
-                        sel.member = &p;
-                        sel.entry  = best;
-                        ///
-                    } else if (!best) {
-                        /// if there is nothing to set to, we must set to its default initialization value
-                        if (prop_type->traits & traits::mx_obj)
-                            prop_type->f.ctr_mem(prop_dst, hold(((mx*)p.init_value)->mem));
-                        else
-                            prop_type->f.ctr_cp(prop_dst, p.init_value);
-                        
-                        sel.start  = 0;
-                        sel.end    = 0;
-                        sel.from   = null;
-                        sel.member = &p;
-                        sel.entry = null;
-                    }
-                }
-            }
-
-            /// handle selected transitions
-            for (auto &field: instance->data->selections.fields()) {
-                node::selection &sel = field.value.ref<node::selection>();
-                if (sel.start > 0 && sel.member->parent_type == tdata) { /// make sure we have the correct data origin!
-                    real   amount = math::clamp(real(now - sel.start) / real(sel.end - sel.start), 0.0, 1.0);
-                    real   curve  = sel.entry->trans.pos(amount);
-                    type_t prop_type = sel.member->type;
-                    u8    *prop_dst  = &data_origin[sel.member->offset];
-
-                    raw_t temp = calloc(1, sizeof(prop_type->base_sz));
-                    if (prop_type == typeof(double)) {
-                        temp = new double(*(double*)sel.from * (1.0 - curve) + *(double*)sel.to * curve);
-                    } else {
-                        assert(prop_type->f.mix);
-                        prop_type->f.mix(sel.from, sel.to, temp, curve);
-                    }
-                    if (prop_type->traits & traits::mx_obj)
-                        prop_type->f.ctr_mem(prop_dst, hold(((mx*)temp)->mem));
-                    else
-                        prop_type->f.ctr_cp(prop_dst, temp);
-
-                    prop_type->f.dtr(temp);
-                    free(temp);
-                }
-            }
-
-            /// iterate through args, skip those we have already set
-            for (size_t i = 0; i < args_len; i++) {
-                if (pset[i]) 
-                    continue;
-                arg &a = e->args[i];
-                memory *key = a.key.mem;
-                /// only support a key type of char.  we can support variables that convert to char array
-                if (key->type == typeof(char)) {
-                    symbol s_key = (symbol)key->origin;
-                    mx      pdef = meta_map->lookup(s_key);
-                    
-                    if (pdef) {
-                        prop *def = pdef.get<prop>(0);
-                        /// duplicates are not allowed in ux; we could handle it just not now; meta map would need to return a list not the type.  iceman: ugh!
-                        assert(def->parent_type == tdata);
-
-                        type_t prop_type = def->type;
-                        type_t arg_type  = a.value.mem->type;
-                        u8    *prop_dst  = &data_origin[def->offset];
-                        u8    *arg_src   = (u8*)a.value.mem->typed_data(arg_type, 0); /// passing int into mx recovers int, but passing lambda will give data inside.  we want to store a context
-                        u8    *conv_inst = null;
-                        string   str_res;
-                        bool  free = false;
-
-                        /// if prop type is mx, we can generalize
-                        if (prop_type == typeof(mx)) {
-                            if (arg_type != prop_type) {
-                                conv_inst = (u8*)new mx(a.value);
-                                arg_src   = (u8*)conv_inst;
-                                arg_type  = typeof(mx);
-                                free      = true;
-                            }
-                        }
-                        /// if going to string and arg is not, we convert
-                        else if (prop_type == typeof(string) && arg_type != prop_type) {
-                            /// general to_string conversion (memory of char)
-                            assert(arg_type->f.to_str);
-                            conv_inst = (u8*)new mx(arg_type->f.to_str(arg_src));
-                            arg_src   = (u8*)conv_inst;
-                            arg_type  = typeof(string);
-                            free      = true;
-                        }
-                        /// general from_string conversion.  the class needs to have a cstr constructor
-                        else if ((arg_type == typeof(char) || arg_type == typeof(string)) && prop_type != arg_type) {
-                            assert(prop_type->f.ctr_str);
-                            conv_inst = (u8*)prop_type->ctr_str(arg_type == typeof(string) ?
-                                (cstr)a.value.mem->origin : (cstr)arg_src);
-                            arg_src = (u8*)conv_inst;
-                            arg_type = prop_type;
-                            free     = false;
-                        }
-                        /// types should match
-                        assert(arg_type == prop_type || arg_type->ref == prop_type);
-
-                        prop_type->f.dtr(prop_dst);
-                        if (prop_type->traits & traits::mx_obj) {
-                            /// set by memory construction (cast conv_inst as mx which it must be)
-                            assert(!conv_inst || (arg_type->traits & traits::mx_obj) ||
-                                                 (arg_type->traits & traits::mx));
-                            prop_type->f.ctr_mem(prop_dst, hold(conv_inst ? ((mx*)conv_inst)->mem : a.value.mem));
-                        } else {
-                            /// assign property with data that is of the same type
-                            prop_type->f.ctr_cp(prop_dst, arg_src);
-                        }
-                        pset[i] = true;
-                        if (conv_inst) {
-                            arg_type->f.dtr(conv_inst);
-                            if (free) ::free(conv_inst);
-                        }
-                    }
-                } else {
-                    console.fault("unsupported key type");
-                }
-            }
-        }
-
-        delete[] pset;
-
-        node render = instance->update(); /// needs a 'changed' arg
-        if (render) {
-            node &n = *(node*)instance;
-            /// nodes have a children container
-            if (render->children) {
-                for (node *e: render->children) {
-                    if (!e->data->id && !e->data->type) continue;
-                    string id = node_id(*e);
-                    node *&n_mount = n->mounts.get<node*>(id);
-                    update(composer, instance, n_mount, *e);
-                }
-            /// can also be stored in a map
-            } else if (render->type == typeof(map)) {
-            } else if (render->type == typeof(Array<node>)) {
-            } else {
-                string id = node_id(render);
-                node *&n_mount = n->mounts.get<node*>(id);
-                update(composer, instance, n_mount, render);
-            }
-        }
-        /// need to know if its mounted, or changed by argument
-        /// it can know if a style is different but i dont see major value here
-        if (is_new) {
-            if (instance->data->ref) {
-                instance->data->ref(mx(instance->mem->hold()));
-            }
-            instance->data->app = (adata*)_app_memory->origin;
-            instance->mounted();
-        }
-    }
-}
-
-void composer_update_all(composer ux, node e) {
-    if (!ux->instances)
-        ux->style = style();
-    lock(ux->style->mtx);
-    update(ux, null, ux->instances, e); /// 'reloaded' is checked inside the update
-    ux->style->reloaded = false;
-    unlock(ux->style->mtx);
-}
-
 bool is_cmt(symbol c) {
     return c[0] == '/' && c[1] == '*';
 }
 
-bool ws(cstr &cursor) {
+bool ws(cstr cursor) {
     while (isspace(*cursor) || is_cmt(cursor)) {
         while (isspace(*cursor))
             cursor++;
@@ -693,7 +640,7 @@ bool ws(cstr &cursor) {
     return *cursor != 0;
 }
 
-bool scan_to(cstr &cursor, string chars) {
+static bool scan_to(cstr cursor, string chars) {
     bool sl  = false;
     bool qt  = false;
     bool qt2 = false;
@@ -714,7 +661,7 @@ bool scan_to(cstr &cursor, string chars) {
     return false;
 }
 
-doubly parse_qualifiers(style::block &bl, cstr *p) {
+static list parse_qualifiers(style_block bl, cstr *p) {
     string   qstr;
     cstr start = *p;
     cstr end   = null;
@@ -739,7 +686,8 @@ doubly parse_qualifiers(style::block &bl, cstr *p) {
     ///
     array quals = split(qstr, ",");
     list result;
-
+    
+    array ops = array_of_cstr("!=", ">=", "<=", ">", "<", "=", null);
     ///
     each (quals, string, qs) {
         string  qq = trim(qs);
@@ -755,7 +703,7 @@ doubly parse_qualifiers(style::block &bl, cstr *p) {
 
         /// iterate through reverse
         for (int i = len(parent_to_child) - 1; i >= 0; i--) {
-            string q = trim(parent_to_child[i]);
+            string q = trim((string)parent_to_child->elements[i]);
             if (processed) {
                 v->parent = qualifier();
                 v = hold(v->parent); /// dont need to cast this
@@ -766,43 +714,44 @@ doubly parse_qualifiers(style::block &bl, cstr *p) {
             ///
             if (idot >= 0) {
                 array sp = split(q, ".");
-                v->type   = sp[0];
-                string sp2 = split((string)sp->elements[1], ":");
-                v->id     = sp2->elements[0];
+                v->type   = first(sp);
+                array sp2 = split((string)sp->elements[1], ":");
+                v->id     = first(sp2);
                 if (icol >= 0)
-                    tail  = q.mid(icol + 1).trim(); /// likely fine to use the [1] component of the split
+                    tail  = trim(mid(q, icol + 1, len(q) - (icol + 1))); /// likely fine to use the [1] component of the split
             } else {
                 if (icol  >= 0) {
-                    v->type = q.mid(0, icol);
-                    tail   = q.mid(icol + 1).trim();
+                    v->type = mid(q, 0, icol);
+                    tail   = trim(mid(q, icol + 1, len(q) - (icol + 1)));
                 } else
                     v->type = q;
             }
             if (v->type) { /// todo: verify idata is correctly registered and looked up
-                v->ty = ident::types->lookup(v->type).get<idata>();
-                if (bl.types.index_of(v->ty) == -1) {
-                    assert(v->ty); /// type must exist
-                    bl.types += v->ty;
-                }
+                v->ty = A_find_type(v->type);
+                verify(v->ty, "type must exist");
+                if (index_of(bl->types, v->ty) == -1)
+                    push(bl->types, v->ty);
             }
-            Array<string> ops {"!=",">=","<=",">","<","="};
+            
             if (tail) {
                 // check for ops
                 bool is_op = false;
-                for (string &op:ops) {
-                    if (tail.index_of(op.cs()) >= 0) {
+                each (ops, string, op) {
+                    if (index_of(tail, cstring(op)) >= 0) {
                         is_op   = true;
-                        Array<string> sp = tail.split(op);
-                        v->state = sp[0].trim();
+                        array sp = split(tail, cstring(op));
+                        string f = first(sp);
+                        v->state = trim(f);
                         v->oper  = op;
-                        v->value = tail.mid(sp[0].len() + op.len()).trim();
+                        int istart = len(f) + len(op);
+                        v->value = trim(mid(tail, istart, len(tail) - istart));
                         break;
                     }
                 }
                 if (!is_op)
                     v->state = tail;
             }
-            processed = &v;
+            processed = v;
         }
     }
     *p = end;
@@ -810,27 +759,28 @@ doubly parse_qualifiers(style::block &bl, cstr *p) {
 }
 
 /// compute available entries for props on a Element
-map style_compute(style a, node n) {
-    map avail = map(hmap, 16);
-    AType ctx = isa(n);
-    while (ctx) {
+map style_compute(style a, ion n) {
+    map avail = map(hsize, 16);
+    AType ty = isa(n);
+    while (ty) {
         array all = array(alloc, 32);
         for (int m = 0; m < ty->member_count; m++) {
-            member_type_t* mem = ty->members[m];
+            type_member_t* mem = &ty->members[m];
             if (mem->member_type != A_MEMBER_PROP)
                 continue;
-            if (applicable(a, n, prop_name, all)) {
-                set(avail, prop_name, all);
+            string name = string(mem->name);
+            if (applicable(a, n, name, all)) {
+                set(avail, name, all);
                 all = array(alloc, 32);
             }
         }
-        ctx = ctx->parent_type;
+        ty = ty->parent_type;
     }
     return avail;
 }
 
 static void cache_b(style a, style_block bl) {
-    each (bl->entries, entry, e) {
+    each (bl->entries, style_entry, e) {
         bool  found = false;
         array cache = get(a->members, e->member);
         each (cache, style_block, cb)
@@ -844,8 +794,8 @@ static void cache_b(style a, style_block bl) {
 }
 
 void style_cache_members(style a) {
-    if (a->root)
-        each (root->elements, style_block, b)
+    if (a->base)
+        each (a->base->elements, style_block, b)
             cache_b(a, b);
 }
 
@@ -879,10 +829,10 @@ static string parse_quoted(cstr *cursor, size_t max_len) {
 }
 
 
-none parse_block(block bl, cstr sc) {
+none parse_block(style_block bl, cstr sc) {
     ws(sc);
     verify(*sc == '.' || isalpha(*sc), "expected Type[.id], or .id");
-    bl->quals = parse_qualifiers(*bl, &sc);
+    bl->quals = parse_qualifiers(bl, &sc);
     ws(++sc);
     ///
     while (*sc && *sc != '}') {
@@ -892,87 +842,247 @@ none parse_block(block bl, cstr sc) {
         verify(scan_to(sc, ";{}"), "expected member expression or qualifier");
         if (*sc == '{') {
             ///
-            block *bl_n = new style::block();
-            bl->blocks->push(bl_n);
+            style_block bl_n = style_block(types, array());
+            push(bl->blocks, bl_n);
             bl_n->parent = bl;
 
             /// parse sub-block
             sc = start;
-            parse_block(bl_n);
+            parse_block(bl_n, sc);
             verify(*sc == '}', "expected }");
             ws(++sc);
             ///
         } else if (*sc == ';') {
             /// read member
             cstr cur = start;
-            console.test(scan_to(cur, ":") && (cur < sc), "expected [member:]value;");
+            verify(scan_to(cur, ":") && (cur < sc), "expected [member:]value;");
             string  member = string(chars, start, ref_length, distance(start, cur));
             ws(++cur);
 
             /// read value
             cstr vstart = cur;
-            console.test(scan_to(cur, ";"), "expected member:[value;]");
+            verify(scan_to(cur, ";"), "expected member:[value;]");
             
             /// needs escape sequencing?
-            size_t len = distance(vstart, cur);
+            size_t len      = distance(vstart, cur);
             string cb_value = trim(string(chars, vstart, ref_length, len));
-            string      end = cb_value.mid(-1, 1);
-            bool       qs = mid(cb_value,  0, 1) == "\"";
-            bool       qe = mid(cb_value, -1, 1) == "\"";
+            string end      = mid(cb_value, -1, 1);
+            bool   qs       = eq(mid(cb_value,  0, 1), "\"");
+            bool   qe       = eq(mid(cb_value, -1, 1), "\"");
 
             if (qs && qe) {
-                cstr   cs = cb_value.cs();
-                cb_value  = parse_quoted(&cs, cb_value.len());
+                cstr   cs = cstring(cb_value);
+                cb_value  = parse_quoted(&cs, len(cb_value));
             }
 
             num         i = index_of(cb_value, ",");
-            string  param = i >= 0 ? trim(mid(cb_value, i + 1, len(cb_value) - (i + 1))) : "";
+            string  param = i >= 0 ? trim(mid(cb_value, i + 1, len(cb_value) - (i + 1))) : string("");
             string  value = i >= 0 ? trim(mid(cb_value, 0, i))  : cb_value;
             style_transition trans = param ? style_transition(param) : null;
             
             /// check
             verify(member, "member cannot be blank");
             verify(value,  "value cannot be blank");
-            bl->entries[member] = new entry { member, value, trans, bl };
+            style_entry e = style_entry(
+                member, member, value, value, trans, trans, bl, bl);
+            set(bl->entries, member, e);
             /// 
             ws(++sc);
         }
     }
-    console.test(!*sc || *sc == '}', "expected closed-brace");
+    verify(!*sc || *sc == '}', "expected closed-brace");
 }
 
-void style_load(style a, string code) {
-    for (cstr sc = code.cs(); ws(sc); sc++) {
-        lambda<void(block*)> parse_block;
-        style_block n_block = style_block();
-        push(root, n_block);
-        parse_block(n_block);
+void style_process(style a, string code) {
+    a->base = array(alloc, 32);
+    for (cstr sc = cstring(code); ws(sc); sc++) {
+        style_block n_block = style_block(types, array());
+        push(a->base, n_block);
+        parse_block(n_block, sc);
     }
 }
 
-define_meta(unit_Duration, unit, Duration)
 
+
+
+
+
+
+
+list composer_apply_args(composer ux, ion i, ion e) {
+    AType type = isa(e);
+    list changed = list();
+
+    // check the difference between members (not elements within)
+    while (type != typeid(A)) {
+        for (int m = 0; m < type->member_count; m++) {
+            type_member_t* mem = &type->members[m];
+            bool is_prop = mem->member_type & A_MEMBER_PROP;
+            if (!is_prop || strcmp(mem->name, "elements") == 0) continue;
+            if (A_is_inlay(mem)) { // works for structs and primitives
+                ARef cur = (ARef)((cstr)i + mem->offset);
+                ARef nxt = (ARef)((cstr)e + mem->offset);
+                bool is_same = (cur == nxt || 
+                    memcmp(cur, nxt, mem->type->size) == 0);
+                if (!is_same) {
+                    memcpy(cur, nxt, mem->type->size);
+                    push(changed, string(mem->name));
+                }
+            } else {
+                object* cur = (object*)((cstr)i + mem->offset);
+                object* nxt = (object*)((cstr)e + mem->offset);
+                if (*cur != *nxt) {
+                    bool is_same = (*cur && *nxt) ? compare(*cur, *nxt) == 0 : false;
+                    if (!is_same) {
+                        drop(*cur);
+                        *cur = hold(*nxt);
+                        push(changed, string(mem->name));
+                    }
+                }
+            }
+        }
+        type = type->parent_type;
+    }
+    return changed;
+}
+
+list composer_apply_style(composer ux, ion i, map style_avail, list exceptions) {
+    AType type    = isa(i);
+    list  changed = list();
+
+    while (type != typeid(A)) {
+        for (int m = 0; m < type->member_count; m++) {
+            type_member_t* mem = &type->members[m];
+            bool is_prop = mem->member_type & A_MEMBER_PROP;
+            if (!is_prop || strcmp(mem->name, "elements") == 0)
+                continue;
+            
+            string prop    = string(mem->name);
+            list   entries = get(style_avail, prop);
+            if (!entries)
+                continue;
+            // dont apply over these exceptional args
+            if (exceptions && index_of(exceptions, prop) >= 0)
+                continue;
+            
+            /// compute best match for this prop against style_entries
+            style_entry best = best_match(ux->style, i, prop, entries);
+            if (!best)
+                continue;
+
+            style_transition t = best->trans;
+            if (t && !i->transitions)
+                i->transitions = map(hsize, 16);
+            style_transition ct = get(i->transitions, prop);
+            
+            if (!ct) {
+                ct = copy(t);
+                ct->reference = hold(t);
+                set(i->transitions, prop, ct);
+            }
+
+            // we know this is a different transition assigned
+            if (ct->reference != t) {
+                object* cur = (object*)((cstr)i + mem->offset);
+                // save the value where it is now
+                ct->from = hold(*cur);
+                // lazily create instance value from string on style entry
+                if (!best->instance)
+                     best->instance = A_formatter(
+                        mem->type, null, (object)false,
+                        (symbol)"%s", best->value->chars);
+                verify(best->instance, "instance must be initialized");
+                ct->to   = best->instance;
+                ct->is_inlay = A_is_inlay(mem);
+            }
+            type = typeid(A);
+            break;
+        }
+        type = type->parent_type;
+    }
+    return changed;
+}
+
+none composer_update(composer ux, ion parent, map rendered_elements) {
+    pairs(rendered_elements, ir) {
+        string id       = ir->key;
+        ion    e        = ir->value;
+        ion    instance = get(parent->elements, id);
+        AType  type     = isa(e);
+        list   changed  = null;
+        bool   new_inst = false;
+        bool   restyle  = false;
+
+        if (!instance) {
+            new_inst         = true;
+            restyle          = true;
+            instance         = e;
+            instance->id     = hold(id);
+            instance->mounts = map (hsize, 32);
+            
+            if (!parent->elements)
+                 parent->elements = map(hsize, 16);
+            set (parent->elements, id, instance);
+        } else {
+            changed = apply_args(ux, instance, e);
+            restyle = index_of(changed, string("tags")) >= 0; // tags effects style application
+        }
+        if (restyle) {
+            map  avail  = compute(ux->style, instance);
+            list styled = apply_style(ux, instance, avail, changed);
+            
+            /// merge unique props changed from style
+            if (styled && changed)
+                each(styled, string, prop) {
+                    int i = index_of(changed, prop);
+                    if (i == -1)
+                        push(changed, prop);
+                }
+        }
+        map irender = render(instance, changed);     // first render has a null changed; clear way to perform init/mount logic
+        if (irender)  update(ux, instance, irender); // there is no mount or init on these (please dont override init!)
+    }
+}
+
+void composer_update_all(composer ux, ion e) {
+    lock(ux->style->mtx);
+    update(ux, ux->root, e); /// 'reloaded' is checked inside the update
+    ux->style->reloaded = false;
+    unlock(ux->style->mtx);
+}
+
+void composer_init(composer ux) {
+    ux->root = ion(id, string("root"));
+}
+
+
+
+
+
+define_meta(unit_Duration, unit, Duration)
 define_enum(Ease)
 define_enum(Direction)
 define_enum(Duration)
+define_enum(xalign)
+define_enum(yalign)
 
+define_class(coord)
+define_class(alignment)
+define_class(region)
 define_class(mouse_state)
 define_class(keyboard_state)
-
 define_class(qualifier)
 define_class(line_info)
 define_class(text_sel)
 define_class(text)
-
 define_class(composer)
-
+define_class(arg)
 define_class(style)
 define_class(style_block)
 define_class(style_entry)
 define_class(style_qualifier)
 define_class(style_transition)
 define_class(style_selection)
-
-define_class(node)
+define_public(ion)
 define_class(element)
 
