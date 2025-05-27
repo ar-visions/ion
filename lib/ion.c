@@ -8,23 +8,16 @@ static const real c3 = c1 + 1;
 static const real c4 = (2 * PI) / 3;
 static const real c5 = (2 * PI) / 4.5;
 
-/// W10  y-501.1
-array split_numeric(cstr s) {
-    for (int i = 0, ln = strlen(s); i < ln; i++) {
-        int v = s[i];
-        if ((v >= '0' && v <= '9') || (v == '-')) {
-            verify(i, "expected unit identifier");
-            return a(
-                string(chars, &s[0], ref_length, i),
-                string(chars, &s[i])
-            );
-        }
-    }
-    return null;
+string coord_cast_string(coord a) {
+    return f(string, "%c%f%s%s %c%f%s%s",
+        e_str(xalign, a->x_type)->chars[0], a->offset.x,
+        a->x_per ? "%" : "", a->x_rel ? "+" : "",
+        e_str(yalign, a->y_type)->chars[0], a->offset.y,
+        a->y_per ? "%" : "", a->y_rel ? "+" : "");
 }
 
 coord coord_with_string(coord a, string s) {
-    array  sp = split_numeric(s->chars);
+    array  sp = split(s, " ");
     verify(sp, "expected unit-value token such as x-10");
     verify(len(sp) == 2, "expected two values");
     string sx = sp->elements[0];
@@ -182,6 +175,17 @@ alignment alignment_mix(alignment a, alignment b, f32 f) {
 /// good primitive for ui, implemented in basic canvas ops.
 /// regions can be constructed from rects if area is static or composed in another way
 
+string region_cast_string(region r) {
+    return f(string, "%o %o", r->tl, r->br);
+}
+
+region region_with_f32(region reg, f32 f) {
+    reg->tl  = f(coord, "l%f t%f", f, f);
+    reg->br  = f(coord, "r%f b%f", f, f);
+    reg->set = true;
+    return reg;
+}
+
 /// simple rect
 region region_with_rect(region reg, rect r) {
     reg->tl  = f(coord, "l%f t%f", r->x, r->y);
@@ -208,16 +212,14 @@ region region_with_string(region reg, string s) {
         reg->tl    = f(coord, "%o %o", a->elements[0], a->elements[1]);
         reg->br    = f(coord, "%o %o", a->elements[2], a->elements[3]);
     } else if (len(a) == 1) {
-        /// if 1 unit given (with or without percent scaling) 
-        /// then its made to fill the area with that amount of padding
         string f   = first(a);
         real n     = real_value(f);
         bool per   = last(f) == '%';
-        reg->tl    = coord(align, alignment(x, n, y, n),
+        reg->tl    = coord(align, alignment(x, 0.0f, y, 0.0f),
             x_type, xalign_left,
             y_type, yalign_top,
             x_per, per, y_per, per);
-        reg->br    = coord(align, alignment(x, n, y, n),
+        reg->br    = coord(align, alignment(x, 1.0f, y, 1.0f),
             x_type, xalign_right,
             y_type, yalign_bottom,
             y_per, per, y_per, per);
@@ -259,16 +261,18 @@ bool qualifier_cast_bool(qualifier q) {
 }
 
 bool style_transition_cast_bool(style_transition a) {
-    return a->dur > 0;
+    return a->duration->scale_v > 0;
 }
 
 style_transition style_transition_with_string(style_transition a, string s) {
+    print("transition: %o", s);
     array sp = split(s, " ");
     sz    ln = len(sp);
     /// syntax:
     /// 500ms [ease [out]]
     /// 0.2s -- will be linear with in (argument meaningless for linear but applies to all others)
-    a->dur    = unit_Duration((string)sp->elements[0]);
+    string dur_string = sp->elements[0];
+    a->duration = unit_with_string(new(tcoord), dur_string);
     a->easing = ln > 1 ? e_val(Ease,      sp->elements[1]) : Ease_linear;
     a->dir    = ln > 2 ? e_val(Direction, sp->elements[2]) : Direction_in;
     return a;
@@ -472,16 +476,22 @@ style_entry style_best_match(style a, ion n, string prop_name, array entries) {
     return match;
 }
 
+void style_block_init(style_block a) {
+    if (!a->entries) a->entries = map(hsize, 16);
+    if (!a->blocks)  a->blocks  = array(alloc, 16);
+}
+
 num style_block_score(style_block a, ion n, bool score_state) {
     f64 best_sc = 0;
     ion   cur     = n;
 
-    each (a->quals, qualifier, q) {
+    for (item i = a->quals->first; i; i = i->next) {
+        qualifier q = instanceof(i->value, qualifier);
         f64 best_this = 0;
         for (;;) {
-            bool    id_match  = q->id &&  q->id == cur->id;
+            bool    id_match  = q->id &&  eq(q->id, cur->id->chars);
             bool   id_reject  = q->id && !id_match;
-            bool  type_match  = q->ty &&  q->ty == isa(cur);
+            bool  type_match  = q->ty &&  A_inherits(isa(cur), q->ty);
             bool type_reject  = q->ty && !type_match;
             bool state_match  = score_state && q->state;
 
@@ -512,14 +522,19 @@ num style_block_score(style_block a, ion n, bool score_state) {
     return best_sc > 0 ? 1.0 : 0.0;
 };
 
-f64 Duration_base_millis(Duration dur) {
-    switch (dur) {
-        case Duration_undefined: return 0;
+f64 Duration_base_millis(Duration duration) {
+    switch (duration) {
         case Duration_ns: return 1.0 / 1000.0;
         case Duration_ms: return 1.0;
         case Duration_s:  return 1000.0;
     }
     return 0.0;
+}
+
+i64 tcoord_get_millis(tcoord a) {
+    Duration u = (Duration)(i32)a->enum_v;
+    f64 base = Duration_base_millis(u);
+    return base * a->scale_v;
 }
 
 bool style_applicable(style s, ion n, string prop_name, array result) {
@@ -528,16 +543,18 @@ bool style_applicable(style s, ion n, string prop_name, array result) {
     bool  ret    = false;
 
     clear(result);
-    each (blocks, style_block, block) {
-        if (!len(block->types) || index_of(block->types, type) >= 0) {
-            item f = lookup(block->entries, prop_name); // this returns the wrong kind of item reference
-            if (f && score(block, n, false) > 0) {
-                AType verify1 = isa(f);
-                push(result, f->value);
-                ret = true;
+    if (blocks)
+        each (blocks, style_block, block) {
+            if (!len(block->types) || index_of(block->types, type) >= 0) {
+                item f = lookup(block->entries, prop_name); // this returns the wrong kind of item reference
+                if (f && score(block, n, false) > 0) {
+                    pair p = f->value; // forgive us!  the lookup come froms from a map, and this item we lookup does not store the value on its item->value 
+                    AType ftype = isa(p->value);
+                    push(result, p->value);
+                    ret = true;
+                }
             }
         }
-    }
     return ret;
 }
 
@@ -590,7 +607,6 @@ none ion_init(ion a) {
 }
 
 
-
 style style_with_path(style a, path css_path) {
     verify(exists(css_path), "css path does not exist");
     string style_str = read(css_path, typeid(string));
@@ -610,18 +626,19 @@ none style_watch_reload(style a, array css, ARef arg) {
 style style_with_object(style a, object app) {
     AType  app_type  = isa(app);
     string root_type = string(app_type->name);
-    path   css_path  = form(path, "style/{0}.css", root_type);
-    a->reloader = watch(
+    path   css_path  = form(path, "style/%o.css", root_type);
+    /*a->reloader = watch(
         res,        css_path,
-        callback,   style_watch_reload);
-    return a;
+        callback,   style_watch_reload); -- todo: implement watch [perfectly good one] */
+    return style_with_path(a, css_path);
 }
 
 bool is_cmt(symbol c) {
     return c[0] == '/' && c[1] == '*';
 }
 
-bool ws(cstr cursor) {
+bool ws(cstr* p_cursor) {
+    cstr cursor = *p_cursor;
     while (isspace(*cursor) || is_cmt(cursor)) {
         while (isspace(*cursor))
             cursor++;
@@ -630,13 +647,15 @@ bool ws(cstr cursor) {
             cursor = f ? &f[2] : &cursor[strlen(cursor) - 1];
         }
     }
+    *p_cursor = cursor;
     return *cursor != 0;
 }
 
-static bool scan_to(cstr cursor, string chars) {
+static bool scan_to(cstr* p_cursor, string chars) {
     bool sl  = false;
     bool qt  = false;
     bool qt2 = false;
+    cstr cursor = *p_cursor;
     for (; *cursor; cursor++) {
         if (!sl) {
             if (*cursor == '"')
@@ -647,10 +666,13 @@ static bool scan_to(cstr cursor, string chars) {
         sl = *cursor == '\\';
         if (!qt && !qt2) {
             char cur[2] = { *cursor, 0 };
-            if (index_of(chars, cur) >= 0)
+            if (index_of(chars, cur) >= 0) {
+                 *p_cursor = cursor;
                  return true;
+            }
         }
     }
+    *p_cursor = null;
     return false;
 }
 
@@ -678,7 +700,7 @@ static list parse_qualifiers(style_block bl, cstr *p) {
     
     ///
     array quals = split(qstr, ",");
-    list result;
+    list result = list();
     
     array ops = array_of_cstr("!=", ">=", "<=", ">", "<", "=", null);
     ///
@@ -703,24 +725,25 @@ static list parse_qualifiers(style_block bl, cstr *p) {
             }
             num idot = index_of(q, ".");
             num icol = index_of(q, ":");
-            string tail;
+            string tail = null;
             ///
             if (idot >= 0) {
                 array sp = split(q, ".");
-                v->type   = first(sp);
+                v->type   = trim((string)first(sp));
                 array sp2 = split((string)sp->elements[1], ":");
                 v->id     = first(sp2);
                 if (icol >= 0)
                     tail  = trim(mid(q, icol + 1, len(q) - (icol + 1))); /// likely fine to use the [1] component of the split
             } else {
                 if (icol  >= 0) {
-                    v->type = mid(q, 0, icol);
+                    v->type = trim(mid(q, 0, icol));
                     tail   = trim(mid(q, icol + 1, len(q) - (icol + 1)));
                 } else
-                    v->type = q;
+                    v->type = trim(q);
             }
+
             if (v->type) { /// todo: verify idata is correctly registered and looked up
-                v->ty = A_find_type(v->type);
+                v->ty = A_find_type(v->type->chars);
                 verify(v->ty, "type must exist");
                 if (index_of(bl->types, v->ty) == -1)
                     push(bl->types, v->ty);
@@ -755,7 +778,8 @@ static list parse_qualifiers(style_block bl, cstr *p) {
 map style_compute(style a, ion n) {
     map avail = map(hsize, 16);
     AType ty = isa(n);
-    while (ty) {
+    verify(instanceof(n, ion), "must inherit ion");
+    while (ty != typeid(ion)) {
         array all = array(alloc, 32);
         for (int m = 0; m < ty->member_count; m++) {
             type_member_t* mem = &ty->members[m];
@@ -773,11 +797,17 @@ map style_compute(style a, ion n) {
 }
 
 static void cache_b(style a, style_block bl) {
-    each (bl->entries, style_entry, e) {
+    pairs (bl->entries, i) {
+        string      key = i->key;
+        style_entry e   = i->value;
         bool  found = false;
         array cache = get(a->members, e->member);
+        if (!cache) {
+             cache = array();
+             set(a->members, e->member, cache);
+        }
         each (cache, style_block, cb)
-                found |= cb == bl;
+            found |= cb == bl;
         ///
         if (!found)
             push(cache, bl);
@@ -788,7 +818,7 @@ static void cache_b(style a, style_block bl) {
 
 void style_cache_members(style a) {
     if (a->base)
-        each (a->base->elements, style_block, b)
+        each (a->base, style_block, b)
             cache_b(a, b);
 }
 
@@ -822,20 +852,22 @@ static string parse_quoted(cstr *cursor, size_t max_len) {
 }
 
 
-none parse_block(style_block bl, cstr sc) {
-    ws(sc);
+none parse_block(style_block bl, cstr* p_sc) {
+    cstr sc = *p_sc;
+    ws(&sc);
     verify(*sc == '.' || isalpha(*sc), "expected Type[.id], or .id");
     bl->quals = parse_qualifiers(bl, &sc);
-    ws(++sc);
+    sc++;
+    ws(&sc);
     ///
     while (*sc && *sc != '}') {
         /// read up to ;, {, or }
-        ws(sc);
+        ws(&sc);
         cstr start = sc;
-        verify(scan_to(sc, ";{}"), "expected member expression or qualifier");
+        verify(scan_to(&sc, string(";{}")), "expected member expression or qualifier");
         if (*sc == '{') {
             ///
-            style_block bl_n = style_block(types, array());
+            style_block bl_n = style_block(types, array(unmanaged, true));
             push(bl->blocks, bl_n);
             bl_n->parent = bl;
 
@@ -843,18 +875,20 @@ none parse_block(style_block bl, cstr sc) {
             sc = start;
             parse_block(bl_n, sc);
             verify(*sc == '}', "expected }");
-            ws(++sc);
+            sc++;
+            ws(&sc);
             ///
         } else if (*sc == ';') {
             /// read member
             cstr cur = start;
-            verify(scan_to(cur, ":") && (cur < sc), "expected [member:]value;");
+            verify(scan_to(&cur, string(":")) && (cur < sc), "expected [member:]value;");
             string  member = string(chars, start, ref_length, distance(start, cur));
-            ws(++cur);
+            cur++;
+            ws(&cur);
 
             /// read value
             cstr vstart = cur;
-            verify(scan_to(cur, ";"), "expected member:[value;]");
+            verify(scan_to(&cur, string(";")), "expected member:[value;]");
             
             /// needs escape sequencing?
             size_t len      = distance(vstart, cur);
@@ -869,7 +903,7 @@ none parse_block(style_block bl, cstr sc) {
             }
 
             num         i = index_of(cb_value, ",");
-            string  param = i >= 0 ? trim(mid(cb_value, i + 1, len(cb_value) - (i + 1))) : string("");
+            string  param = i >= 0 ? trim(mid(cb_value, i + 1, len(cb_value) - (i + 1))) : null;
             string  value = i >= 0 ? trim(mid(cb_value, 0, i))  : cb_value;
             style_transition trans = param ? style_transition(param) : null;
             
@@ -880,18 +914,22 @@ none parse_block(style_block bl, cstr sc) {
                 member, member, value, value, trans, trans, bl, bl);
             set(bl->entries, member, e);
             /// 
-            ws(++sc);
+            sc++;
+            ws(&sc);
         }
     }
     verify(!*sc || *sc == '}', "expected closed-brace");
+    if (*sc == '}')
+        sc++;
+    *p_sc = sc;
 }
 
 void style_process(style a, string code) {
     a->base = array(alloc, 32);
-    for (cstr sc = cstring(code); ws(sc); sc++) {
-        style_block n_block = style_block(types, array());
+    for (cstr sc = cstring(code); sc && *sc; ws(&sc)) {
+        style_block n_block = style_block(types, array(unmanaged, true));
         push(a->base, n_block);
-        parse_block(n_block, sc);
+        parse_block(n_block, &sc);
     }
 }
 
@@ -907,7 +945,7 @@ list composer_apply_args(composer ux, ion i, ion e) {
     list changed = list();
 
     // check the difference between members (not elements within)
-    while (type != typeid(A)) {
+    while (type != typeid(ion) && type != typeid(A)) { 
         for (int m = 0; m < type->member_count; m++) {
             type_member_t* mem = &type->members[m];
             bool is_prop = mem->member_type & A_MEMBER_PROP;
@@ -924,9 +962,11 @@ list composer_apply_args(composer ux, ion i, ion e) {
             } else {
                 object* cur = (object*)((cstr)i + mem->offset);
                 object* nxt = (object*)((cstr)e + mem->offset);
-                if (*cur != *nxt) {
+                if (*nxt && *cur != *nxt) {
                     bool is_same = (*cur && *nxt) ? compare(*cur, *nxt) == 0 : false;
                     if (!is_same) {
+                        object obj_value = A_header(*cur);
+                        print("prop different: %s, prev value: %o", mem->name, *cur);
                         drop(*cur);
                         *cur = hold(*nxt);
                         push(changed, string(mem->name));
@@ -963,33 +1003,62 @@ list composer_apply_style(composer ux, ion i, map style_avail, list exceptions) 
             if (!best)
                 continue;
 
-            style_transition t = best->trans;
-            if (t && !i->transitions)
-                i->transitions = map(hsize, 16);
-            style_transition ct = get(i->transitions, prop);
-            
-            if (!ct) {
-                ct = copy(t);
-                ct->reference = hold(t);
-                set(i->transitions, prop, ct);
-            }
+            // lazily create instance value from string on style entry
+            if (!best->instance)
+                best->instance = A_formatter(
+                    mem->type, null, (object)false,
+                    (symbol)"%s", best->value->chars);
+            verify(best->instance, "instance must be initialized");
 
-            // we know this is a different transition assigned
-            if (ct->reference != t) {
-                object* cur = (object*)((cstr)i + mem->offset);
-                // save the value where it is now
-                ct->from = hold(*cur);
-                // lazily create instance value from string on style entry
-                if (!best->instance)
-                     best->instance = A_formatter(
-                        mem->type, null, (object)false,
-                        (symbol)"%s", best->value->chars);
-                verify(best->instance, "instance must be initialized");
-                ct->to   = best->instance;
-                ct->is_inlay = A_is_inlay(mem);
+            push(changed, best->member);
+            object* cur = (object*)((cstr)i + mem->offset);
+
+            style_transition t  = best->trans;
+            style_transition ct = null;
+            bool should_trans = false;
+            if (t) {
+                if (t && !i->transitions)
+                    i->transitions = map(hsize, 16);
+                ct = i->transitions ? get(i->transitions, prop) : null;
+                if (!ct) {
+                    ct = copy(t);
+                    ct->reference = hold(t);
+                    should_trans = true;
+                    set(i->transitions, prop, ct);
+                } else {
+                    should_trans = ct->reference != t;
+                }
             }
-            type = typeid(A);
-            break;
+            
+            // we know this is a different transition assigned
+            if (ct && should_trans) {
+                // save the value where it is now
+                if (A_is_inlay(mem)) {
+                    ct->from = A_alloc(mem->type, 1, true);
+                    memcpy(ct->from, cur, mem->type->size);
+                } else {
+                    ct->from = *cur ? hold(*cur) : hold(best->instance);
+                }
+                ct->type     = isa(best->instance);
+                ct->location = cur; /// hold onto pointer location
+                ct->to       = hold(best->instance);
+                ct->start    = epoch_millis();
+                ct->is_inlay = A_is_inlay(mem);
+            } else if (!ct) {
+                if (A_is_inlay(mem)) {
+                    print("cur = %p", cur);
+                    f32* f_cur = cur;
+                    element ii = i;
+                    memcpy(cur, best->instance, mem->type->size);
+                    int test2 = 2;
+                    test2 += 2;
+                } else {
+                    drop(*cur);
+                    verify(!A_is_inlay(mem), "support inlay copy from instance");
+                    AType vtype = isa(best->instance);
+                    *cur = hold(best->instance);
+                }
+            }
         }
         type = type->parent_type;
     }
@@ -1000,7 +1069,7 @@ none composer_update(composer ux, ion parent, map rendered_elements) {
     pairs(rendered_elements, ir) {
         string id       = ir->key;
         ion    e        = ir->value;
-        ion    instance = get(parent->elements, id);
+        ion    instance = parent->elements ? get(parent->elements, id) : null;
         AType  type     = isa(e);
         list   changed  = null;
         bool   new_inst = false;
@@ -1012,18 +1081,39 @@ none composer_update(composer ux, ion parent, map rendered_elements) {
             instance         = e;
             instance->id     = hold(id);
             instance->mounts = map (hsize, 32);
-            
+            instance->parent = parent; /// weak reference
             if (!parent->elements)
                  parent->elements = map(hsize, 16);
             set (parent->elements, id, instance);
+            //set (parent->mounts,   id, instance);
         } else {
+            element ee = e;
             changed = apply_args(ux, instance, e);
             restyle = index_of(changed, string("tags")) >= 0; // tags effects style application
         }
+        /*
+        
+        [ ] element event call 
+            think about making callback a base type, 
+            one that could turn into event dispatch.
+            for security and simplicity, singular
+            events is superior and thus why have the
+            engineering if you dont want it?
+
+        [ ] scrollable regions
+            scrollbar should always be tall enough to
+            be comfortable to grab, hwoever it may be
+            a pill shape with essentially the page size
+            as a kind of gem state within it
+
+        [ ] transitions
+            transitions are gathered but not applied
+        */
         if (restyle) {
             map  avail  = compute(ux->style, instance);
             list styled = apply_style(ux, instance, avail, changed);
             
+            element e_inst = instance;
             /// merge unique props changed from style
             if (styled && changed)
                 each(styled, string, prop) {
@@ -1037,23 +1127,61 @@ none composer_update(composer ux, ion parent, map rendered_elements) {
     }
 }
 
-void composer_update_all(composer ux, ion e) {
-    lock(ux->style->mtx);
-    update(ux, ux->root, e); /// 'reloaded' is checked inside the update
+void animate_element(composer ux, element e) {
+    if (e->transitions) {
+        i64 cur_millis = epoch_millis();
+
+        pairs(e->transitions, i) {
+            string prop = i->key;
+            style_transition ct = i->value;
+            i64 dur = tcoord_get_millis(ct->duration);
+            i64 millis = cur_millis - ct->start;
+            f64 cur_pos = style_transition_pos(ct, (f64)millis / (f64)dur);
+            if (ct->type->traits & A_TRAIT_PRIMITIVE) {
+                verify(ct->is_inlay, "unsupported member type (primitive in object form)");
+                /// mix these primitives; lets support i32 / enum, i64, f32, f64
+                AType ct_type = ct->type;
+
+            } else {
+                type_member_t* fmix = A_member(ct->type, A_MEMBER_IMETHOD, "mix", false);
+                verify(fmix, "animate: implement mix for type %s", ct->type->name);
+                typedef object(*mix_fn)(object, object, f32);
+                drop(*ct->location);
+                *ct->location = hold(((mix_fn)fmix->ptr)(ct->from, ct->to, cur_pos));
+                /// call mix dynamically; A_method to look it up
+            }
+        }
+    }
+    pairs(e->elements, i) { // todo: do we need mounts as separate map?
+        element ee = i->value;
+        animate_element(ux, ee);
+    }
+}
+
+void composer_animate(composer ux) {
+    animate_element(ux, ux->root);
+}
+
+void composer_update_all(composer ux, map render) {
+    if (!ux->style)
+         ux->style = style((object)ux->app); // effectively loads style/app.css for type-name app
+    
+    update(ux, ux->root, render); /// 'reloaded' is checked inside the update
     ux->style->reloaded = false;
-    unlock(ux->style->mtx);
+    
 }
 
 void composer_init(composer ux) {
-    ux->root = ion(id, string("root"));
+    ux->root = element(id, string("root"));
 }
 
-define_meta(unit_Duration, unit, Duration)
+define_meta(tcoord, unit, Duration)
 define_enum(Ease)
 define_enum(Direction)
 define_enum(Duration)
 define_enum(xalign)
 define_enum(yalign)
+define_typed_enum(Fill, f32)
 
 define_class(coord)
 define_class(alignment)
@@ -1072,6 +1200,11 @@ define_class(style_entry)
 define_class(style_qualifier)
 define_class(style_transition)
 define_class(style_selection)
-define_class(element)
 
-define_public(ion)
+define_class(ion)
+
+define_mod(element, ion)
+define_mod(button, element)
+define_mod(pane,   element)
+// future plan (actual app server concept on 'system')
+// any classes using ion will have mmap members, as they must be publically accessible on the system
