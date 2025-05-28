@@ -92,8 +92,10 @@ coord coord_mix(coord a, coord b, f32 f) {
 vec2f coord_plot(coord a, rect r, vec2f rel, f32 void_width, f32 void_height) {
     f32 x;
     f32 y;
-    f32 ox = a->x_per ? (a->offset.x / 100.0) * (r->w - void_width)  : a->offset.x;
-    f32 oy = a->y_per ? (a->offset.y / 100.0) * (r->h - void_height) : a->offset.y;
+    f32 sc_x = 1.0f - a->align->x * 2.0f;
+    f32 sc_y = 1.0f - a->align->y * 2.0f;
+    f32 ox = a->x_per ? (a->offset.x * sc_x / 100.0) * (r->w - void_width)  : a->offset.x * sc_x;
+    f32 oy = a->y_per ? (a->offset.y * sc_y / 100.0) * (r->h - void_height) : a->offset.y * sc_y;
 
     if (a->x_type == xalign_width)
         x = rel.x + ox;
@@ -197,7 +199,7 @@ region region_with_rect(region reg, rect r) {
 region region_with_array(region reg, array corners) {
     verify(len(corners) >= 2, "expected 2 coord");
     coord tl = get(corners, 0);
-    coord br = get(corners, 0);
+    coord br = get(corners, 1);
     verify(isa(tl) == typeid(coord), "expected coord");
     verify(isa(br) == typeid(coord), "expected coord");
     reg->tl  = tl;
@@ -933,16 +935,10 @@ void style_process(style a, string code) {
     }
 }
 
-
-
-
-
-
-
-
 list composer_apply_args(composer ux, ion i, ion e) {
-    AType type = isa(e);
-    list changed = list();
+    AType type    = isa(e);
+    list  changed = list();
+    u64   f_user  = A_fbits(e);
 
     // check the difference between members (not elements within)
     while (type != typeid(ion) && type != typeid(A)) { 
@@ -950,12 +946,15 @@ list composer_apply_args(composer ux, ion i, ion e) {
             type_member_t* mem = &type->members[m];
             bool is_prop = mem->member_type & A_MEMBER_PROP;
             if (!is_prop || strcmp(mem->name, "elements") == 0) continue;
+            bool is_set = ((1 << mem->id) & f_user) != 0;
             if (A_is_inlay(mem)) { // works for structs and primitives
                 ARef cur = (ARef)((cstr)i + mem->offset);
                 ARef nxt = (ARef)((cstr)e + mem->offset);
                 bool is_same = (cur == nxt || 
                     memcmp(cur, nxt, mem->type->size) == 0);
-                if (!is_same) {
+                
+                /// primitive memory of zero is effectively unset for args
+                if (!is_same && is_set) {
                     memcpy(cur, nxt, mem->type->size);
                     push(changed, string(mem->name));
                 }
@@ -964,7 +963,7 @@ list composer_apply_args(composer ux, ion i, ion e) {
                 object* nxt = (object*)((cstr)e + mem->offset);
                 if (*nxt && *cur != *nxt) {
                     bool is_same = (*cur && *nxt) ? compare(*cur, *nxt) == 0 : false;
-                    if (!is_same) {
+                    if (!is_same && is_set) {
                         object obj_value = A_header(*cur);
                         print("prop different: %s, prev value: %o", mem->name, *cur);
                         drop(*cur);
@@ -980,9 +979,8 @@ list composer_apply_args(composer ux, ion i, ion e) {
 }
 
 list composer_apply_style(composer ux, ion i, map style_avail, list exceptions) {
-    AType type    = isa(i);
-    list  changed = list();
-
+    AType type = isa(i);
+    list changed = list();
     while (type != typeid(A)) {
         for (int m = 0; m < type->member_count; m++) {
             type_member_t* mem = &type->members[m];
@@ -1010,7 +1008,7 @@ list composer_apply_style(composer ux, ion i, map style_avail, list exceptions) 
                     (symbol)"%s", best->value->chars);
             verify(best->instance, "instance must be initialized");
 
-            push(changed, best->member);
+            push(changed, prop);
             object* cur = (object*)((cstr)i + mem->offset);
 
             style_transition t  = best->trans;
@@ -1040,13 +1038,19 @@ list composer_apply_style(composer ux, ion i, map style_avail, list exceptions) 
                     ct->from = *cur ? hold(*cur) : hold(best->instance);
                 }
                 ct->type     = isa(best->instance);
+                element ii = i;
                 ct->location = cur; /// hold onto pointer location
+                if (eq(prop, "area")) {
+                    int test2 = 2;
+                    test2 += 2;
+                    verify(&ii->area == ct->location, "member not set correctly");
+                }
                 ct->to       = hold(best->instance);
                 ct->start    = epoch_millis();
                 ct->is_inlay = A_is_inlay(mem);
             } else if (!ct) {
                 if (A_is_inlay(mem)) {
-                    print("cur = %p", cur);
+                    print("%s cur = %p", mem->name, cur);
                     f32* f_cur = cur;
                     element ii = i;
                     memcpy(cur, best->instance, mem->type->size);
@@ -1148,6 +1152,9 @@ void animate_element(composer ux, element e) {
                 typedef object(*mix_fn)(object, object, f32);
                 drop(*ct->location);
                 *ct->location = hold(((mix_fn)fmix->ptr)(ct->from, ct->to, cur_pos));
+                if (eq(prop, "area")) {
+                    verify(e->area == *ct->location, "strange");
+                }
                 /// call mix dynamically; A_method to look it up
             }
         }
@@ -1175,7 +1182,7 @@ void composer_init(composer ux) {
     ux->root = element(id, string("root"));
 }
 
-define_meta(tcoord, unit, Duration)
+define_class(tcoord, unit, Duration)
 define_enum(Ease)
 define_enum(Direction)
 define_enum(Duration)
@@ -1183,28 +1190,28 @@ define_enum(xalign)
 define_enum(yalign)
 define_typed_enum(Fill, f32)
 
-define_class(coord)
-define_class(alignment)
-define_class(region)
-define_class(mouse_state)
-define_class(keyboard_state)
-define_class(qualifier)
-define_class(line_info)
-define_class(text_sel)
-define_class(text)
-define_class(composer)
-define_class(arg)
-define_class(style)
-define_class(style_block)
-define_class(style_entry)
-define_class(style_qualifier)
-define_class(style_transition)
-define_class(style_selection)
+define_class(coord,             A)
+define_class(alignment,         A)
+define_class(region,            A)
+define_class(mouse_state,       A)
+define_class(keyboard_state,    A)
+define_class(qualifier,         A)
+define_class(line_info,         A)
+define_class(text_sel,          A)
+define_class(text,              A)
+define_class(composer,          A)
+define_class(arg,               A)
+define_class(style,             A)
+define_class(style_block,       A)
+define_class(style_entry,       A)
+define_class(style_qualifier,   A)
+define_class(style_transition,  A)
+define_class(style_selection,   A)
 
-define_class(ion)
+define_class(ion,               A)
 
-define_mod(element, ion)
-define_mod(button, element)
-define_mod(pane,   element)
+define_class(element,           ion)
+define_class(button,            element)
+define_class(pane,              element)
 // future plan (actual app server concept on 'system')
 // any classes using ion will have mmap members, as they must be publically accessible on the system

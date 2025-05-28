@@ -202,7 +202,7 @@ declare_class(region)
 
 
 #define tcoord_schema(X,Y,...)
-declare_meta(tcoord, unit, Duration)
+declare_class_2(tcoord, unit, Duration)
 
 #define style_transition_schema(X,Y,...) \
     i_prop(X,Y, public,   Ease,                    easing) \
@@ -356,16 +356,16 @@ declare_typed_enum(Fill, f32)
     i_prop(X,Y, intern,   rect,                    fill_bounds) \
     i_prop(X,Y, intern,   rect,                    text_bounds) \
     i_prop(X,Y, intern,   rect,                    border_bounds)
-declare_mod(element, ion)
+declare_class_2(element, ion)
 
 
 #define pane_schema(X,Y,...) \
     i_prop(X,Y, public, bool, silly)
-declare_mod(pane, element, ion)
+declare_class_3(pane, element, ion)
 
 
 #define button_schema(X,Y,...) \
     i_prop(X,Y, public, bool, silly)
-declare_mod(button, element, ion)
+declare_class_3(button, element, ion)
 
 #endif
