@@ -274,7 +274,7 @@ style_transition style_transition_with_string(style_transition a, string s) {
     /// 500ms [ease [out]]
     /// 0.2s -- will be linear with in (argument meaningless for linear but applies to all others)
     string dur_string = sp->elements[0];
-    a->duration = unit_with_string(new(tcoord), dur_string);
+    a->duration = hold(unit_with_string(new(tcoord), dur_string));
     a->easing = ln > 1 ? e_val(Ease,      sp->elements[1]) : Ease_linear;
     a->dir    = ln > 2 ? e_val(Direction, sp->elements[2]) : Direction_in;
     return a;
@@ -601,6 +601,12 @@ int ion_compare(ion a, ion b) {
     return 0;
 }
 
+none ion_mount(ion a, list props) {
+}
+
+none ion_umount(ion a) {
+}
+
 map ion_render(ion a, list changed) {
     return a->elements; /// elements is not allocated for non-container elements, so default behavior is to not host components
 }
@@ -612,8 +618,8 @@ none ion_init(ion a) {
 style style_with_path(style a, path css_path) {
     verify(exists(css_path), "css path does not exist");
     string style_str = read(css_path, typeid(string));
-    a->base    = array(alloc, 32);
-    a->members = map(hsize, 32);
+    a->base    = hold(array(alloc, 32));
+    a->members = hold(map(hsize, 32));
     process(a, style_str);
     cache_members(a);
     a->loaded   = true;
@@ -759,15 +765,15 @@ static list parse_qualifiers(style_block bl, cstr *p) {
                         is_op   = true;
                         array sp = split(tail, cstring(op));
                         string f = first(sp);
-                        v->state = trim(f);
-                        v->oper  = op;
+                        v->state = hold(trim(f));
+                        v->oper  = hold(op);
                         int istart = len(f) + len(op);
-                        v->value = trim(mid(tail, istart, len(tail) - istart));
+                        v->value = hold(trim(mid(tail, istart, len(tail) - istart)));
                         break;
                     }
                 }
                 if (!is_op)
-                    v->state = tail;
+                    v->state = hold(tail);
             }
             processed = v;
         }
@@ -787,7 +793,9 @@ map style_compute(style a, ion n) {
             type_member_t* mem = &ty->members[m];
             if (mem->member_type != A_MEMBER_PROP)
                 continue;
-            string name = string(mem->name);
+            AType sname_type = isa(mem->sname);
+            A sname_header = A_header(mem->sname);
+            string name = mem->sname;
             if (applicable(a, n, name, all)) {
                 set(avail, name, all);
                 all = array(alloc, 32);
@@ -858,7 +866,7 @@ none parse_block(style_block bl, cstr* p_sc) {
     cstr sc = *p_sc;
     ws(&sc);
     verify(*sc == '.' || isalpha(*sc), "expected Type[.id], or .id");
-    bl->quals = parse_qualifiers(bl, &sc);
+    bl->quals = hold(parse_qualifiers(bl, &sc));
     sc++;
     ws(&sc);
     ///
@@ -956,7 +964,7 @@ list composer_apply_args(composer ux, ion i, ion e) {
                 /// primitive memory of zero is effectively unset for args
                 if (!is_same && is_set) {
                     memcpy(cur, nxt, mem->type->size);
-                    push(changed, string(mem->name));
+                    push(changed, mem->sname);
                 }
             } else {
                 object* cur = (object*)((cstr)i + mem->offset);
@@ -964,11 +972,12 @@ list composer_apply_args(composer ux, ion i, ion e) {
                 if (*nxt && *cur != *nxt) {
                     bool is_same = (*cur && *nxt) ? compare(*cur, *nxt) == 0 : false;
                     if (!is_same && is_set) {
-                        object obj_value = A_header(*cur);
-                        print("prop different: %s, prev value: %o", mem->name, *cur);
-                        drop(*cur);
-                        *cur = hold(*nxt);
-                        push(changed, string(mem->name));
+                        if (*cur != *nxt) {
+                            print("prop different: %s, prev value: %o", mem->name, *cur);
+                            drop(*cur);
+                            *cur = hold(*nxt);
+                            push(changed, mem->sname);
+                        }
                     }
                 }
             }
@@ -981,6 +990,7 @@ list composer_apply_args(composer ux, ion i, ion e) {
 list composer_apply_style(composer ux, ion i, map style_avail, list exceptions) {
     AType type = isa(i);
     list changed = list();
+
     while (type != typeid(A)) {
         for (int m = 0; m < type->member_count; m++) {
             type_member_t* mem = &type->members[m];
@@ -988,7 +998,7 @@ list composer_apply_style(composer ux, ion i, map style_avail, list exceptions) 
             if (!is_prop || strcmp(mem->name, "elements") == 0)
                 continue;
             
-            string prop    = string(mem->name);
+            string prop    = mem->sname;
             list   entries = get(style_avail, prop);
             if (!entries)
                 continue;
@@ -1002,10 +1012,14 @@ list composer_apply_style(composer ux, ion i, map style_avail, list exceptions) 
                 continue;
 
             // lazily create instance value from string on style entry
-            if (!best->instance)
-                best->instance = A_formatter(
-                    mem->type, null, (object)false,
-                    (symbol)"%s", best->value->chars);
+            if (!best->instance) {
+                if (mem->type == typeid(object))
+                    best->instance = hold(copy(best->value));
+                else
+                    best->instance = hold(A_formatter(
+                        mem->type, null, (object)false,
+                        (symbol)"%s", best->value->chars));
+            }
             verify(best->instance, "instance must be initialized");
 
             push(changed, prop);
@@ -1016,7 +1030,7 @@ list composer_apply_style(composer ux, ion i, map style_avail, list exceptions) 
             bool should_trans = false;
             if (t) {
                 if (t && !i->transitions)
-                    i->transitions = map(hsize, 16);
+                    i->transitions = hold(map(hsize, 16));
                 ct = i->transitions ? get(i->transitions, prop) : null;
                 if (!ct) {
                     ct = copy(t);
@@ -1038,28 +1052,19 @@ list composer_apply_style(composer ux, ion i, map style_avail, list exceptions) 
                     ct->from = *cur ? hold(*cur) : hold(best->instance);
                 }
                 ct->type     = isa(best->instance);
-                element ii = i;
                 ct->location = cur; /// hold onto pointer location
-                if (eq(prop, "area")) {
-                    int test2 = 2;
-                    test2 += 2;
-                    verify(&ii->area == ct->location, "member not set correctly");
+                if (ct->to != best->instance) {
+                    hold(ct->to);
+                    ct->to = hold(best->instance);
                 }
-                ct->to       = hold(best->instance);
                 ct->start    = epoch_millis();
                 ct->is_inlay = A_is_inlay(mem);
             } else if (!ct) {
                 if (A_is_inlay(mem)) {
                     print("%s cur = %p", mem->name, cur);
-                    f32* f_cur = cur;
-                    element ii = i;
                     memcpy(cur, best->instance, mem->type->size);
-                    int test2 = 2;
-                    test2 += 2;
-                } else {
+                } else if (*cur != best->instance) {
                     drop(*cur);
-                    verify(!A_is_inlay(mem), "support inlay copy from instance");
-                    AType vtype = isa(best->instance);
                     *cur = hold(best->instance);
                 }
             }
@@ -1070,28 +1075,58 @@ list composer_apply_style(composer ux, ion i, map style_avail, list exceptions) 
 }
 
 none composer_update(composer ux, ion parent, map rendered_elements) {
+    /// mark for umount
+    pairs(parent->elements, i) {
+        string id = i->key;
+        ion    e  = i->value;
+        e->mark   = 1;
+    }
+
+    /// iterate through rendered elements
     pairs(rendered_elements, ir) {
         string id       = ir->key;
         ion    e        = ir->value;
         ion    instance = parent->elements ? get(parent->elements, id) : null;
         AType  type     = isa(e);
-        list   changed  = null;
-        bool   new_inst = false;
         bool   restyle  = false;
 
+        if (instance) {
+            e->mark = 0; // instance found (pandora tomorrow...)
+            if (!instance->id) {
+                array mounted_props = array();
+                instance->id = hold(id);
+                instance->parent = parent;
+                instance->elements = hold(instance->elements);
+                AType ty = isa(instance);
+                u128 f = A_fbits(instance);
+                for (num i = 0; i < type->member_count; i++) {
+                    type_member_t* m = &type->members[i];
+                    if (((((u128)1) << m->id) & f) != 0)
+                        push(mounted_props, string(m->name));
+                }
+                restyle = true;
+                mount(instance, mounted_props);
+            }
+        }
+
+        list changed  = null;
+        bool new_inst = false;
         if (!instance) {
             new_inst         = true;
             restyle          = true;
             instance         = e;
+            /// do we hold all members here again?
+            A m_header = null;
+            map m = instance->elements;
+            m_header = A_header(m);
+            A_hold_members(instance);
+
             instance->id     = hold(id);
-            instance->mounts = map (hsize, 32);
             instance->parent = parent; /// weak reference
             if (!parent->elements)
-                 parent->elements = map(hsize, 16);
+                 parent->elements = hold(map(hsize, 44));
             set (parent->elements, id, instance);
-            //set (parent->mounts,   id, instance);
-        } else {
-            element ee = e;
+        } else if (!restyle) {
             changed = apply_args(ux, instance, e);
             restyle = index_of(changed, string("tags")) >= 0; // tags effects style application
         }
@@ -1127,7 +1162,27 @@ none composer_update(composer ux, ion parent, map rendered_elements) {
                 }
         }
         map irender = render(instance, changed);     // first render has a null changed; clear way to perform init/mount logic
-        if (irender)  update(ux, instance, irender); // there is no mount or init on these (please dont override init!)
+        if (irender) {
+            update(ux, instance, irender);
+        }
+    }
+
+    /// perform umount on elements not updated in render
+    bool retry = true;
+    while (retry) {
+        retry = false;
+        pairs(parent->elements, i) {
+            string id = i->key;
+            ion    e  = i->value;
+            if (e->mark == 1) {
+                e->mark = 0;
+                retry = true;
+                umount(e);
+                rm(parent->elements, (object)id);
+                e->parent = null;
+                break;
+            }
+        }
     }
 }
 
@@ -1171,7 +1226,7 @@ void composer_animate(composer ux) {
 
 void composer_update_all(composer ux, map render) {
     if (!ux->style)
-         ux->style = style((object)ux->app); // effectively loads style/app.css for type-name app
+         ux->style = hold(style((object)ux->app)); // effectively loads style/app.css for type-name app
     
     update(ux, ux->root, render); /// 'reloaded' is checked inside the update
     ux->style->reloaded = false;

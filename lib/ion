@@ -68,7 +68,7 @@ declare_enum(Direction)
     i_prop(X,Y, public, string, state) \
     i_prop(X,Y, public, string, oper) \
     i_prop(X,Y, public, string, value) \
-    i_prop(X,Y, public, object, parent) \
+    i_prop(X,Y, opaque, object, parent) \
     i_override(X,Y, cast, bool)
 declare_class(qualifier)
 
@@ -120,7 +120,7 @@ declare_class(style)
 forward(ion)
 
 #define style_block_schema(X,Y,...) \
-    i_prop(X,Y, public,   style_block,             parent) \
+    i_prop(X,Y, opaque,   style_block,             parent) \
     i_prop(X,Y, public,   list,                    quals) \
     i_prop(X,Y, public,   map,                     entries) \
     i_prop(X,Y, public,   list,                    blocks) \
@@ -236,7 +236,7 @@ declare_class(style_entry)
     i_prop(X,Y, public,   string,                  state) \
     i_prop(X,Y, public,   string,                  oper) \
     i_prop(X,Y, public,   string,                  value) \
-    i_prop(X,Y, public,   object,                  parent)
+    i_prop(X,Y, opaque,   object,                  parent)
 declare_class(style_qualifier)
 
 
@@ -283,16 +283,18 @@ declare_class(arg)
     i_prop(X,Y, public,     string,                group) \
     i_prop(X,Y, public,     object,                value) \
     i_prop(X,Y, public,     string,                id) \
+    i_prop(X,Y, public,     i32,                   mark) \
     i_prop(X,Y, public,     map,                   args) \
     i_prop(X,Y, public,     map,                   elements) \
-    i_prop(X,Y, public,     ion,                   parent) \
-    i_prop(X,Y, intern,     map,                   mounts) \
+    i_prop(X,Y, opaque,     ion,                   parent) \
     i_prop(X,Y, intern,     map,                   style_avail) \
     i_prop(X,Y, intern,     map,                   selections) \
     i_prop(X,Y, intern,     composer,              composer) \
     i_prop(X,Y, intern,     map,                   transitions) \
     i_override(X,Y, method, compare) \
-    i_method(X,Y, public, map, render, list)
+    i_method(X,Y, public, map,  render, list) \
+    i_method(X,Y, public, none, mount,  list) \
+    i_method(X,Y, public, none, umount)
 declare_class(ion)
 
 
