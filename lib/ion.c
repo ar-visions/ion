@@ -258,7 +258,7 @@ region region_mix(region data, region b, f32 a) {
     return region(a(m_tl, m_tr));
 }
 
-bool qualifier_cast_bool(qualifier q) {
+bool style_qualifier_cast_bool(style_qualifier q) {
     return len(q->type) || q->id || q->state;
 }
 
@@ -488,7 +488,7 @@ num style_block_score(style_block a, ion n, bool score_state) {
     ion   cur     = n;
 
     for (item i = a->quals->first; i; i = i->next) {
-        qualifier q = instanceof(i->value, qualifier);
+        style_qualifier q = instanceof(i->value, style_qualifier);
         f64 best_this = 0;
         for (;;) {
             bool    id_match  = q->id &&  eq(q->id, cur->id->chars);
@@ -540,7 +540,7 @@ i64 tcoord_get_millis(tcoord a) {
 }
 
 bool style_applicable(style s, ion n, string prop_name, array result) {
-    array blocks = get(s->members, prop_name);
+    array blocks = get(s->members, prop_name); // style free'd?
     AType type   = isa(n);
     bool  ret    = false;
 
@@ -550,9 +550,8 @@ bool style_applicable(style s, ion n, string prop_name, array result) {
             if (!len(block->types) || index_of(block->types, type) >= 0) {
                 item f = lookup(block->entries, prop_name); // this returns the wrong kind of item reference
                 if (f && score(block, n, false) > 0) {
-                    pair p = f->value; // forgive us!  the lookup come froms from a map, and this item we lookup does not store the value on its item->value 
-                    AType ftype = isa(p->value);
-                    push(result, p->value);
+                    AType ftype = isa(f->value);
+                    push(result, f->value);
                     ret = true;
                 }
             }
@@ -689,7 +688,7 @@ static list parse_qualifiers(style_block bl, cstr *p) {
     cstr start = *p;
     cstr end   = null;
     cstr scan  =  start;
-    
+
     /// read ahead to {
     do {
         if (!*scan || *scan == '{') {
@@ -715,48 +714,45 @@ static list parse_qualifiers(style_block bl, cstr *p) {
     each (quals, string, qs) {
         string  qq = trim(qs);
         if (!len(qq)) continue;
-        qualifier vv = qualifier(); /// push new qualifier
-        push(result, vv);
+        style_qualifier v = style_qualifier(); /// push new qualifier
+        push(result, v);
 
         /// we need to scan by >
-
-        qualifier v = vv;
         array parent_to_child = split(qq, "/"); /// we choose not to use > because it interferes with ops
-        qualifier processed = null;
+        style_qualifier processed = null;
 
         /// iterate through reverse
         for (int i = len(parent_to_child) - 1; i >= 0; i--) {
             string q = trim((string)parent_to_child->elements[i]);
             if (processed) {
-                v->parent = qualifier();
-                v = hold(v->parent); /// dont need to cast this
+                v->parent = hold(style_qualifier());
+                v = v->parent; /// dont need to cast this
             }
             num idot = index_of(q, ".");
             num icol = index_of(q, ":");
+
             string tail = null;
             ///
             if (idot >= 0) {
                 array sp = split(q, ".");
-                v->type   = trim((string)first(sp));
+                v->type   = hold(trim((string)first(sp)));
                 array sp2 = split((string)sp->elements[1], ":");
-                v->id     = first(sp2);
+                v->id     = hold(first(sp2));
                 if (icol >= 0)
                     tail  = trim(mid(q, icol + 1, len(q) - (icol + 1))); /// likely fine to use the [1] component of the split
             } else {
                 if (icol  >= 0) {
-                    v->type = trim(mid(q, 0, icol));
+                    v->type = hold(trim(mid(q, 0, icol)));
                     tail   = trim(mid(q, icol + 1, len(q) - (icol + 1)));
                 } else
-                    v->type = trim(q);
+                    v->type = hold(trim(q));
             }
-
             if (v->type) { /// todo: verify idata is correctly registered and looked up
                 v->ty = A_find_type(v->type->chars);
                 verify(v->ty, "type must exist");
                 if (index_of(bl->types, v->ty) == -1)
                     push(bl->types, v->ty);
             }
-            
             if (tail) {
                 // check for ops
                 bool is_op = false;
@@ -880,7 +876,6 @@ none parse_block(style_block bl, cstr* p_sc) {
             style_block bl_n = style_block(types, array(unmanaged, true));
             push(bl->blocks, bl_n);
             bl_n->parent = bl;
-
             /// parse sub-block
             sc = start;
             parse_block(bl_n, sc);
@@ -1084,19 +1079,20 @@ none composer_update(composer ux, ion parent, map rendered_elements) {
 
     /// iterate through rendered elements
     pairs(rendered_elements, ir) {
-        string id       = ir->key;
-        ion    e        = ir->value;
-        ion    instance = parent->elements ? get(parent->elements, id) : null;
-        AType  type     = isa(e);
-        bool   restyle  = false;
+        string  id = ir->key;
+        element e  = ir->value;
+        element instance = parent->elements ? get(parent->elements, id) : null; // needs hook for free on a very specific object
+        AType   type     = isa(e);
+        bool    restyle  = false;
 
         if (instance) {
-            e->mark = 0; // instance found (pandora tomorrow...)
+            instance->mark = 0; // instance found (pandora tomorrow...)
             if (!instance->id) {
                 array mounted_props = array();
                 instance->id = hold(id);
                 instance->parent = parent;
                 instance->elements = hold(instance->elements);
+
                 AType ty = isa(instance);
                 u128 f = A_fbits(instance);
                 for (num i = 0; i < type->member_count; i++) {
@@ -1130,28 +1126,9 @@ none composer_update(composer ux, ion parent, map rendered_elements) {
             changed = apply_args(ux, instance, e);
             restyle = index_of(changed, string("tags")) >= 0; // tags effects style application
         }
-        /*
-        
-        [ ] element event call 
-            think about making callback a base type, 
-            one that could turn into event dispatch.
-            for security and simplicity, singular
-            events is superior and thus why have the
-            engineering if you dont want it?
-
-        [ ] scrollable regions
-            scrollbar should always be tall enough to
-            be comfortable to grab, hwoever it may be
-            a pill shape with essentially the page size
-            as a kind of gem state within it
-
-        [ ] transitions
-            transitions are gathered but not applied
-        */
         if (restyle) {
             map  avail  = compute(ux->style, instance);
             list styled = apply_style(ux, instance, avail, changed);
-            
             element e_inst = instance;
             /// merge unique props changed from style
             if (styled && changed)
@@ -1229,7 +1206,7 @@ void composer_update_all(composer ux, map render) {
          ux->style = hold(style((object)ux->app)); // effectively loads style/app.css for type-name app
     
     update(ux, ux->root, render); /// 'reloaded' is checked inside the update
-    ux->style->reloaded = false;
+    //ux->style->reloaded = false;
     
 }
 
@@ -1250,7 +1227,6 @@ define_class(alignment,         A)
 define_class(region,            A)
 define_class(mouse_state,       A)
 define_class(keyboard_state,    A)
-define_class(qualifier,         A)
 define_class(line_info,         A)
 define_class(text_sel,          A)
 define_class(text,              A)
