@@ -239,6 +239,7 @@ declare_class(style_selection)
 
 #define composer_schema(X,Y,...) \
     i_prop(X,Y,  opaque,    object,                app) \
+    i_prop(X,Y,  public,    map,                   root_styles) \
     i_prop(X,Y,  public,    ion,                   root) \
     i_prop(X,Y,  public,    map,                   args) \
     i_prop(X,Y,  public,    style,                 style) \
@@ -294,11 +295,18 @@ declare_class(ion)
     enum_value(E,T,Y, solid,      1.00f)
 declare_typed_enum(Fill, f32)
 
+#define Canvas_schema(E,T,Y,...) \
+    enum_value(E,T,Y, overlay,       0) \
+    enum_value(E,T,Y, compose,       1) \
+    enum_value(E,T,Y, colorize,      2)
+declare_typed_enum(Canvas, i32)
+
 #define element_schema(X,Y,...) \
     i_prop(X,Y, public,   array,                   tags) \
     i_prop(X,Y, public,   region,                  area) \
     i_prop(X,Y, public,   region,                  text_area) \
     i_prop(X,Y, public,   region,                  border_area) \
+    i_prop(X,Y, public,   region,                  clip_area) \
     i_prop(X,Y, public,   region,                  child_area) \
     i_prop(X,Y, public,   element,                 focused) \
     i_prop(X,Y, public,   element,                 captured) \
@@ -308,12 +316,24 @@ declare_typed_enum(Fill, f32)
     i_prop(X,Y, public,   bool,                    focus) \
     i_prop(X,Y, public,   i32,                     tab_index) \
     i_prop(X,Y, public,   vec2f,                   cursor) \
+    i_prop(X,Y, public,   cap,                     border_cap) \
+    i_prop(X,Y, public,   join,                    border_join) \
+    i_prop(X,Y, public,   Canvas,                  border_canvas) \
+    i_prop(X,Y, public,   Canvas,                  fill_canvas) \
+    i_prop(X,Y, public,   f32,                     border_blur) \
     i_prop(X,Y, public,   f32,                     border_size) \
+    i_prop(X,Y, public,   bool,                    border_clip) \
     i_prop(X,Y, public,   rgba,                    border_color) \
     i_prop(X,Y, public,   f32,                     text_scale) \
     i_prop(X,Y, public,   rgba,                    text_color) \
+    i_prop(X,Y, public,   f32,                     text_shadow_x) \
+    i_prop(X,Y, public,   f32,                     text_shadow_y) \
+    i_prop(X,Y, public,   rgba,                    text_shadow_color) \
+    i_prop(X,Y, public,   xalign,                  text_align_x) \
+    i_prop(X,Y, public,   yalign,                  text_align_y) \
+    i_prop(X,Y, public,   bool,                    text_ellipsis) \
     i_prop(X,Y, public,   rgba,                    fill_color) \
-    i_prop(X,Y, public,   Fill,                    fill) \
+    i_prop(X,Y, public,   f32,                     fill_blur) \
     i_prop(X,Y, public,   hook,                    on_hover) \
     i_prop(X,Y, public,   hook,                    on_out) \
     i_prop(X,Y, public,   hook,                    on_down) \
@@ -343,6 +363,7 @@ declare_typed_enum(Fill, f32)
     i_prop(X,Y, public,   f32,                     fill_radius_y) \
     i_prop(X,Y, intern,   text,                    lines) \
     i_prop(X,Y, intern,   rect,                    bounds) \
+    i_prop(X,Y, intern,   rect,                    clip_bounds) \
     i_prop(X,Y, intern,   rect,                    child_bounds) \
     i_prop(X,Y, intern,   rect,                    fill_bounds) \
     i_prop(X,Y, intern,   rect,                    text_bounds) \

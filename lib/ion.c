@@ -735,8 +735,9 @@ static list parse_qualifiers(style_block bl, cstr *p) {
             ///
             if (idot >= 0) {
                 array sp = split(q, ".");
-                v->type   = hold(trim((string)first(sp)));
-                array sp2 = split((string)sp->elements[1], ":");
+                bool no_type = q->chars[0] == '.';
+                v->type   = no_type ? hold(string("element")) : hold(trim((string)first(sp)));
+                array sp2 = split((string)sp->elements[no_type ? 0 : 1], ":");
                 v->id     = hold(first(sp2));
                 if (icol >= 0)
                     tail  = trim(mid(q, icol + 1, len(q) - (icol + 1))); /// likely fine to use the [1] component of the split
@@ -888,6 +889,8 @@ none parse_block(style_block bl, cstr* p_sc) {
             cstr cur = start;
             verify(scan_to(&cur, string(":")) && (cur < sc), "expected [member:]value;");
             string  member = string(chars, start, ref_length, distance(start, cur));
+            for (int i = 0; i < member->len; i++)
+                if (member->chars[i] == '-') (*(cstr)&member->chars[i]) = '_';
             cur++;
             ws(&cur);
 
@@ -1010,10 +1013,11 @@ list composer_apply_style(composer ux, ion i, map style_avail, list exceptions) 
             if (!best->instance) {
                 if (mem->type == typeid(object))
                     best->instance = hold(copy(best->value));
-                else
+                else {
                     best->instance = hold(A_formatter(
                         mem->type, null, (object)false,
                         (symbol)"%s", best->value->chars));
+                }
             }
             verify(best->instance, "instance must be initialized");
 
@@ -1202,16 +1206,22 @@ void composer_animate(composer ux) {
 }
 
 void composer_update_all(composer ux, map render) {
-    if (!ux->style)
-         ux->style = hold(style((object)ux->app)); // effectively loads style/app.css for type-name app
-    
+    bool restyle = false;
+    if (!ux->style) {
+         ux->root        = hold(element(id, string("root")));
+         ux->style       = hold(style  ((object)ux->app));
+         ux->root_styles = hold(compute(ux->style, ux->root));
+         restyle = true;
+    }
+    if (restyle) {
+        apply_style(ux, ux->root, ux->root_styles, null);
+    }
+    // then only apply tag-states here
     update(ux, ux->root, render); /// 'reloaded' is checked inside the update
     //ux->style->reloaded = false;
-    
 }
 
 void composer_init(composer ux) {
-    ux->root = element(id, string("root"));
 }
 
 define_class(tcoord, unit, Duration)
@@ -1220,6 +1230,7 @@ define_enum(Direction)
 define_enum(Duration)
 define_enum(xalign)
 define_enum(yalign)
+define_enum(Canvas)
 define_typed_enum(Fill, f32)
 
 define_class(coord,             A)
