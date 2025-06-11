@@ -90,6 +90,8 @@ forward(style_entry)
 #define style_schema(X,Y,...) \
     i_prop  (X,Y, intern,   mutex,      mtx) \
     i_prop  (X,Y, intern,   array,      base,            of, style_block) \
+    i_prop  (X,Y, intern,   path,       css_path) \
+    i_prop  (X,Y, intern,   i64,        mod_time) \
     i_prop  (X,Y, intern,   map,        members) \
     i_prop  (X,Y, intern,   watch,      reloader) \
     i_prop  (X,Y, intern,   bool,       reloaded) \
@@ -102,6 +104,7 @@ forward(style_entry)
     i_method(X,Y, public,   style_entry, best_match, \
         ion, string, array) \
     i_method(X,Y, public,   map,        compute, ion) \
+    i_method(X,Y, public,   bool,       check_reload) \
     i_ctr   (X,Y, public,   path) \
     i_ctr   (X,Y, public,   object)
 declare_class(style)
@@ -242,6 +245,7 @@ declare_class(style_selection)
     i_prop(X,Y,  public,    map,                   root_styles) \
     i_prop(X,Y,  public,    ion,                   root) \
     i_prop(X,Y,  public,    map,                   args) \
+    i_prop(X,Y,  public,    bool,                  restyle) \
     i_prop(X,Y,  public,    style,                 style) \
     i_prop(X,Y,  public,    vec2f,                 mouse) \
     i_array(X,Y, public,    i32,    16,            buttons) \

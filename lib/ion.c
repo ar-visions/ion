@@ -618,12 +618,29 @@ style style_with_path(style a, path css_path) {
     verify(exists(css_path), "css path does not exist");
     string style_str = read(css_path, typeid(string));
     a->base    = hold(array(alloc, 32));
+    if (css_path != a->css_path) {
+        a->css_path = hold(css_path);
+    }
+    a->mod_time = modified_time(css_path);
     a->members = hold(map(hsize, 32));
     process(a, style_str);
     cache_members(a);
     a->loaded   = true;
     a->reloaded = true; /// cache validation for composer user
     return a;
+}
+
+bool style_check_reload(style a) {
+    verify(a->css_path, "style not loaded with path");
+    i64 m = modified_time(a->css_path);
+    if (a->mod_time != m) {
+        a->mod_time  = m;
+        //drop(a->members);
+        //drop(a->base);
+        style_with_path(a, a->css_path);
+        return true;
+    }
+    return false;
 }
 
 none style_watch_reload(style a, array css, ARef arg) {
@@ -1087,7 +1104,7 @@ none composer_update(composer ux, ion parent, map rendered_elements) {
         element e  = ir->value;
         element instance = parent->elements ? get(parent->elements, id) : null; // needs hook for free on a very specific object
         AType   type     = isa(e);
-        bool    restyle  = false;
+        bool    restyle  = ux->restyle;
 
         if (instance) {
             instance->mark = 0; // instance found (pandora tomorrow...)
@@ -1206,16 +1223,16 @@ void composer_animate(composer ux) {
 }
 
 void composer_update_all(composer ux, map render) {
-    bool restyle = false;
+    ux->restyle = false;
     if (!ux->style) {
          ux->root        = hold(element(id, string("root")));
          ux->style       = hold(style  ((object)ux->app));
          ux->root_styles = hold(compute(ux->style, ux->root));
-         restyle = true;
+         ux->restyle = true;
     }
-    if (restyle) {
-        apply_style(ux, ux->root, ux->root_styles, null);
-    }
+    if (!ux->restyle) ux->restyle = check_reload(ux->style);
+    if ( ux->restyle) apply_style(ux, ux->root, ux->root_styles, null);
+    
     // then only apply tag-states here
     update(ux, ux->root, render); /// 'reloaded' is checked inside the update
     //ux->style->reloaded = false;
