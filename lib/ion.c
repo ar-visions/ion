@@ -274,7 +274,7 @@ style_transition style_transition_with_string(style_transition a, string s) {
     /// 500ms [ease [out]]
     /// 0.2s -- will be linear with in (argument meaningless for linear but applies to all others)
     string dur_string = sp->elements[0];
-    a->duration = hold(unit_with_string(new(tcoord), dur_string));
+    a->duration = unit_with_string(new(tcoord), dur_string);
     a->easing = ln > 1 ? e_val(Ease,      sp->elements[1]) : Ease_linear;
     a->dir    = ln > 2 ? e_val(Direction, sp->elements[2]) : Direction_in;
     return a;
@@ -617,12 +617,12 @@ none ion_init(ion a) {
 style style_with_path(style a, path css_path) {
     verify(exists(css_path), "css path does not exist");
     string style_str = read(css_path, typeid(string));
-    a->base    = hold(array(alloc, 32));
+    a->base    = array(alloc, 32);
     if (css_path != a->css_path) {
-        a->css_path = hold(css_path);
+        a->css_path = css_path;
     }
     a->mod_time = modified_time(css_path);
-    a->members = hold(map(hsize, 32));
+    a->members = map(hsize, 32);
     process(a, style_str);
     cache_members(a);
     a->loaded   = true;
@@ -742,7 +742,7 @@ static list parse_qualifiers(style_block bl, cstr *p) {
         for (int i = len(parent_to_child) - 1; i >= 0; i--) {
             string q = trim((string)parent_to_child->elements[i]);
             if (processed) {
-                v->parent = hold(style_qualifier());
+                v->parent = style_qualifier();
                 v = v->parent; /// dont need to cast this
             }
             num idot = index_of(q, ".");
@@ -753,17 +753,19 @@ static list parse_qualifiers(style_block bl, cstr *p) {
             if (idot >= 0) {
                 array sp = split(q, ".");
                 bool no_type = q->chars[0] == '.';
-                v->type   = no_type ? hold(string("element")) : hold(trim((string)first(sp)));
+                v->type   = no_type ? string("element") : trim((string)first(sp));
                 array sp2 = split((string)sp->elements[no_type ? 0 : 1], ":");
                 v->id     = hold(first(sp2));
+                drop(sp);
+                drop(sp2);
                 if (icol >= 0)
                     tail  = trim(mid(q, icol + 1, len(q) - (icol + 1))); /// likely fine to use the [1] component of the split
             } else {
                 if (icol  >= 0) {
-                    v->type = hold(trim(mid(q, 0, icol)));
+                    v->type = trim(mid(q, 0, icol));
                     tail   = trim(mid(q, icol + 1, len(q) - (icol + 1)));
                 } else
-                    v->type = hold(trim(q));
+                    v->type = trim(q);
             }
             if (v->type) { /// todo: verify idata is correctly registered and looked up
                 v->ty = A_find_type(v->type->chars);
@@ -779,19 +781,20 @@ static list parse_qualifiers(style_block bl, cstr *p) {
                         is_op   = true;
                         array sp = split(tail, cstring(op));
                         string f = first(sp);
-                        v->state = hold(trim(f));
+                        v->state = trim(f);
                         v->oper  = hold(op);
                         int istart = len(f) + len(op);
-                        v->value = hold(trim(mid(tail, istart, len(tail) - istart)));
+                        v->value = trim(mid(tail, istart, len(tail) - istart));
                         break;
                     }
                 }
                 if (!is_op)
-                    v->state = hold(tail);
+                    v->state = tail;
             }
             processed = v;
         }
     }
+    drop(ops);
     *p = end;
     return result;
 }
@@ -880,7 +883,7 @@ none parse_block(style_block bl, cstr* p_sc) {
     cstr sc = *p_sc;
     ws(&sc);
     verify(*sc == '.' || isalpha(*sc), "expected Type[.id], or .id");
-    bl->quals = hold(parse_qualifiers(bl, &sc));
+    bl->quals = parse_qualifiers(bl, &sc);
     sc++;
     ws(&sc);
     ///
@@ -961,7 +964,7 @@ void style_process(style a, string code) {
 list composer_apply_args(composer ux, ion i, ion e) {
     AType type    = isa(e);
     list  changed = list();
-    u64   f_user  = A_fbits(e);
+    u64   f_user  = AF_bits(e);
 
     // check the difference between members (not elements within)
     while (type != typeid(ion) && type != typeid(A)) { 
@@ -990,7 +993,7 @@ list composer_apply_args(composer ux, ion i, ion e) {
                         if (*cur != *nxt) {
                             print("prop different: %s, prev value: %o", mem->name, *cur);
                             drop(*cur);
-                            *cur = hold(*nxt);
+                            *cur = hold(*nxt); // hold required here, because member dealloc happens on the other object
                             push(changed, mem->sname);
                         }
                     }
@@ -1029,11 +1032,11 @@ list composer_apply_style(composer ux, ion i, map style_avail, list exceptions) 
             // lazily create instance value from string on style entry
             if (!best->instance) {
                 if (mem->type == typeid(object))
-                    best->instance = hold(copy(best->value));
+                    best->instance = copy(best->value);
                 else {
-                    best->instance = hold(A_formatter(
+                    best->instance = A_formatter(
                         mem->type, null, (object)false,
-                        (symbol)"%s", best->value->chars));
+                        (symbol)"%s", best->value->chars);
                 }
             }
             verify(best->instance, "instance must be initialized");
@@ -1046,11 +1049,11 @@ list composer_apply_style(composer ux, ion i, map style_avail, list exceptions) 
             bool should_trans = false;
             if (t) {
                 if (t && !i->transitions)
-                    i->transitions = hold(map(hsize, 16));
+                    i->transitions = map(hsize, 16);
                 ct = i->transitions ? get(i->transitions, prop) : null;
                 if (!ct) {
                     ct = copy(t);
-                    ct->reference = hold(t);
+                    ct->reference = t; // mark as weak, or intern
                     should_trans = true;
                     set(i->transitions, prop, ct);
                 } else {
@@ -1065,14 +1068,12 @@ list composer_apply_style(composer ux, ion i, map style_avail, list exceptions) 
                     ct->from = A_alloc(mem->type, 1, true);
                     memcpy(ct->from, cur, mem->type->size);
                 } else {
-                    ct->from = *cur ? hold(*cur) : hold(best->instance);
+                    ct->from = *cur ? *cur : best->instance;
                 }
                 ct->type     = isa(best->instance);
                 ct->location = cur; /// hold onto pointer location
-                if (ct->to != best->instance) {
-                    hold(ct->to);
-                    ct->to = hold(best->instance);
-                }
+                if (ct->to != best->instance)
+                    ct->to  = best->instance;
                 ct->start    = epoch_millis();
                 ct->is_inlay = A_is_inlay(mem);
             } else if (!ct) {
@@ -1081,7 +1082,7 @@ list composer_apply_style(composer ux, ion i, map style_avail, list exceptions) 
                     memcpy(cur, best->instance, mem->type->size);
                 } else if (*cur != best->instance) {
                     drop(*cur);
-                    *cur = hold(best->instance);
+                    *cur = best->instance;
                 }
             }
         }
@@ -1112,10 +1113,10 @@ none composer_update(composer ux, ion parent, map rendered_elements) {
                 array mounted_props = array();
                 instance->id = hold(id);
                 instance->parent = parent;
-                instance->elements = hold(instance->elements);
+                //instance->elements = hold(instance->elements);
 
                 AType ty = isa(instance);
-                u128 f = A_fbits(instance);
+                u128 f = AF_bits(instance);
                 for (num i = 0; i < type->member_count; i++) {
                     type_member_t* m = &type->members[i];
                     if (((((u128)1) << m->id) & f) != 0)
@@ -1126,22 +1127,22 @@ none composer_update(composer ux, ion parent, map rendered_elements) {
             }
         }
 
-        list changed  = null;
-        bool new_inst = false;
+        list changed   = null;
+        bool new_inst  = false;
         if (!instance) {
-            new_inst         = true;
-            restyle          = true;
-            instance         = e;
+            new_inst   = true;
+            restyle    = true;
+            instance   = hold(e); // we drop e's as we read through them; this increases the ref count to be effectively held in memory
             /// do we hold all members here again?
             A m_header = null;
             map m = instance->elements;
             m_header = A_header(m);
-            A_hold_members(instance);
+            //A_hold_members(instance);
 
             instance->id     = hold(id);
             instance->parent = parent; /// weak reference
             if (!parent->elements)
-                 parent->elements = hold(map(hsize, 44));
+                 parent->elements = map(hsize, 44);
             set (parent->elements, id, instance);
         } else if (!restyle) {
             changed = apply_args(ux, instance, e);
@@ -1204,7 +1205,7 @@ void animate_element(composer ux, element e) {
                 verify(fmix, "animate: implement mix for type %s", ct->type->name);
                 typedef object(*mix_fn)(object, object, f32);
                 drop(*ct->location);
-                *ct->location = hold(((mix_fn)fmix->ptr)(ct->from, ct->to, cur_pos));
+                *ct->location = ((mix_fn)fmix->ptr)(ct->from, ct->to, cur_pos);
                 if (eq(prop, "area")) {
                     verify(e->area == *ct->location, "strange");
                 }
@@ -1225,9 +1226,9 @@ void composer_animate(composer ux) {
 void composer_update_all(composer ux, map render) {
     ux->restyle = false;
     if (!ux->style) {
-         ux->root        = hold(element(id, string("root")));
-         ux->style       = hold(style  ((object)ux->app));
-         ux->root_styles = hold(compute(ux->style, ux->root));
+         ux->root        = element(id, string("root"));
+         ux->style       = style  ((object)ux->app);
+         ux->root_styles = compute(ux->style, ux->root);
          ux->restyle = true;
     }
     if (!ux->restyle) ux->restyle = check_reload(ux->style);
