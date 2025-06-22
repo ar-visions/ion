@@ -1,25 +1,28 @@
 #ifndef _ION_
 #define _ION_
 
+#define Button_schema(E,T,Y,...) \
+    enum_value(E,T,Y, none,     0) \
+    enum_value(E,T,Y, release,  1) \
+    enum_value(E,T,Y, press,    2)
+declare_enum(Button)
+
 #define mouse_state_schema(X,Y,...) \
-    i_prop(X,Y, public, vec2f,  wheel_delta) \
-    i_prop(X,Y, public, vec2f,  pos) \
-    i_prop(X,Y, public, bool,   left) \
-    i_prop(X,Y, public, bool,   right) \
-    i_prop(X,Y, public, bool,   middle) \
-    i_prop(X,Y, public, bool,   aux)
-declare_class(mouse_state)
+    i_struct_prop(X,Y, vec2f,  wheel_delta) \
+    i_struct_prop(X,Y, vec2f,  pos) \
+    i_struct_prop(X,Y, Button, left) \
+    i_struct_prop(X,Y, Button, right)
+declare_struct(mouse_state)
 
 #define keyboard_state_schema(X,Y,...) \
-    i_prop(X,Y, public, u32,    unicode) \
-    i_prop(X,Y, public, u32,    scan_code) \
-    i_prop(X,Y, public, bool,   down) \
-    i_prop(X,Y, public, bool,   up) \
-    i_prop(X,Y, public, bool,   meta) \
-    i_prop(X,Y, public, bool,   shift) \
-    i_prop(X,Y, public, bool,   alt) \
-    i_prop(X,Y, public, string, text)
-declare_class(keyboard_state)
+    i_struct_prop(X,Y, u32,    unicode) \
+    i_struct_prop(X,Y, u32,    scan_code) \
+    i_struct_prop(X,Y, Button, state) \
+    i_struct_prop(X,Y, bool,   meta) \
+    i_struct_prop(X,Y, bool,   shift) \
+    i_struct_prop(X,Y, bool,   alt) \
+    i_struct_prop(X,Y, string, text)
+declare_struct(keyboard_state)
 
 #define event_schema(X,Y,...) \
     i_prop  (X,Y, public, object,         target) \
@@ -30,16 +33,9 @@ declare_class(keyboard_state)
     i_method(X,Y, public, none,  prevent_default) \
     i_method(X,Y, public, bool,  is_default) \
     i_method(X,Y, public, bool,  should_propagate) \
-    i_method(X,Y, public, bool,  stop_propgation) \
-    i_method(X,Y, public, bool,  key_down, num) \
-    i_method(X,Y, public, bool,  key_up,   num) \
-    i_method(X,Y, public, bool,  scan_up,  num) \
-    i_method(X,Y, public, bool,  scan_down,num)
+    i_method(X,Y, public, bool,  stop_propagation) \
+    i_method(X,Y, public, none,  clear)
 declare_class(event)
-
-/// in UI, lets try not to do anything fancy with callback management
-/// a simple event and an optional user arg should be sufficient
-typedef none (*callback)(event, object);
 
 #define Ease_schema(E,T,Y,...) \
     enum_value_v(E,T,Y, linear,  0) \
@@ -89,11 +85,11 @@ forward(style_entry)
 
 #define style_schema(X,Y,...) \
     i_prop  (X,Y, intern,   mutex,      mtx) \
-    i_prop  (X,Y, intern,   array,      base,            of, style_block) \
-    i_prop  (X,Y, intern,   path,       css_path) \
+    i_prop  (X,Y, public,   array,      base,            of, style_block) \
+    i_prop  (X,Y, public,   path,       css_path) \
     i_prop  (X,Y, intern,   i64,        mod_time) \
-    i_prop  (X,Y, intern,   map,        members) \
-    i_prop  (X,Y, intern,   watch,      reloader) \
+    i_prop  (X,Y, public,   map,        members) \
+    i_prop  (X,Y, public,   watch,      reloader) \
     i_prop  (X,Y, intern,   bool,       reloaded) \
     i_prop  (X,Y, intern,   bool,       loaded) \
     i_method(X,Y, public,   bool,       applicable, \
@@ -259,8 +255,7 @@ declare_class(style_selection)
     i_method(X,Y, public,   none,   animate) \
     i_method(X,Y, public,   none,   update,        \
         ion, map) \
-    i_method(X,Y, public,   none,   update_all,    map) \
-    i_override(X,Y, method, init)
+    i_method(X,Y, public,   none,   update_all,    map)
 declare_class(composer)
 
 /// holds onto arg state; its useful to have to facilitate

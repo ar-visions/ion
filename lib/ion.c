@@ -183,6 +183,7 @@ string region_cast_string(region r) {
 
 region region_with_f32(region reg, f32 f) {
     reg->tl  = f(coord, "l%f t%f", f, f);
+    A info = head(reg->tl);
     reg->br  = f(coord, "r%f b%f", f, f);
     reg->set = true;
     return reg;
@@ -559,15 +560,14 @@ bool style_applicable(style s, ion n, string prop_name, array result) {
     return ret;
 }
 
-void  event_prevent_default (event e)        {         e->prevent_default = true; }
-bool  event_is_default      (event e)        { return !e->prevent_default; }
-bool  event_should_propagate(event e)        { return !e->stop_propagation; }
-bool  event_stop_propagation(event e)        { return  e->stop_propagation = true; }
-bool  event_key_down        (event e, num u) { return  e->key->unicode   == u && !e->key->up; }
-bool  event_key_up          (event e, num u) { return  e->key->unicode   == u &&  e->key->up; }
-bool  event_scan_down       (event e, num s) { return  e->key->scan_code == s && !e->key->up; }
-bool  event_scan_up         (event e, num s) { return  e->key->scan_code == s &&  e->key->up; }
-
+void  event_prevent_default (event e) {         e->prevent_default = true; }
+bool  event_is_default      (event e) { return !e->prevent_default; }
+bool  event_should_propagate(event e) { return !e->stop_propagation; }
+bool  event_stop_propagation(event e) { return  e->stop_propagation = true; }
+none  event_clear           (event e) {
+    drop(e->key.text);
+    memset(e, 0, sizeof(struct _event));
+}
 
 int ion_compare(ion a, ion b) {
     AType type = isa(a);
@@ -615,6 +615,10 @@ none ion_init(ion a) {
 
 
 style style_with_path(style a, path css_path) {
+    if (!exists(css_path)) {
+        int test = 0;
+        test++;
+    }
     verify(exists(css_path), "css path does not exist");
     string style_str = read(css_path, typeid(string));
     a->base    = array(alloc, 32);
@@ -755,9 +759,7 @@ static list parse_qualifiers(style_block bl, cstr *p) {
                 bool no_type = q->chars[0] == '.';
                 v->type   = no_type ? string("element") : trim((string)first(sp));
                 array sp2 = split((string)sp->elements[no_type ? 0 : 1], ":");
-                v->id     = hold(first(sp2));
-                drop(sp);
-                drop(sp2);
+                v->id     = first(sp2);
                 if (icol >= 0)
                     tail  = trim(mid(q, icol + 1, len(q) - (icol + 1))); /// likely fine to use the [1] component of the split
             } else {
@@ -782,7 +784,7 @@ static list parse_qualifiers(style_block bl, cstr *p) {
                         array sp = split(tail, cstring(op));
                         string f = first(sp);
                         v->state = trim(f);
-                        v->oper  = hold(op);
+                        v->oper  = op;
                         int istart = len(f) + len(op);
                         v->value = trim(mid(tail, istart, len(tail) - istart));
                         break;
@@ -792,6 +794,7 @@ static list parse_qualifiers(style_block bl, cstr *p) {
                     v->state = tail;
             }
             processed = v;
+            A_hold_members(v);
         }
     }
     drop(ops);
@@ -883,7 +886,7 @@ none parse_block(style_block bl, cstr* p_sc) {
     cstr sc = *p_sc;
     ws(&sc);
     verify(*sc == '.' || isalpha(*sc), "expected Type[.id], or .id");
-    bl->quals = parse_qualifiers(bl, &sc);
+    bl->quals = hold(parse_qualifiers(bl, &sc));
     sc++;
     ws(&sc);
     ///
@@ -1016,7 +1019,12 @@ list composer_apply_style(composer ux, ion i, map style_avail, list exceptions) 
             if (!is_prop || strcmp(mem->name, "elements") == 0)
                 continue;
             
+            A info = head(mem->sname);
             string prop    = mem->sname;
+            if (eq(prop, "area")) {
+                int test2 = 2;
+                test2 += 2;
+            }
             list   entries = get(style_avail, prop);
             if (!entries)
                 continue;
@@ -1032,11 +1040,11 @@ list composer_apply_style(composer ux, ion i, map style_avail, list exceptions) 
             // lazily create instance value from string on style entry
             if (!best->instance) {
                 if (mem->type == typeid(object))
-                    best->instance = copy(best->value);
+                    best->instance = hold(copy(best->value));
                 else {
-                    best->instance = A_formatter(
+                    best->instance = hold(A_formatter(
                         mem->type, null, (object)false,
-                        (symbol)"%s", best->value->chars);
+                        (symbol)"%s", best->value->chars));
                 }
             }
             verify(best->instance, "instance must be initialized");
@@ -1049,7 +1057,7 @@ list composer_apply_style(composer ux, ion i, map style_avail, list exceptions) 
             bool should_trans = false;
             if (t) {
                 if (t && !i->transitions)
-                    i->transitions = map(hsize, 16);
+                    i->transitions = hold(map(hsize, 16));
                 ct = i->transitions ? get(i->transitions, prop) : null;
                 if (!ct) {
                     ct = copy(t);
@@ -1065,7 +1073,7 @@ list composer_apply_style(composer ux, ion i, map style_avail, list exceptions) 
             if (ct && should_trans) {
                 // save the value where it is now
                 if (A_is_inlay(mem)) {
-                    ct->from = A_alloc(mem->type, 1, true);
+                    ct->from = A_alloc(mem->type, 1);
                     memcpy(ct->from, cur, mem->type->size);
                 } else {
                     ct->from = *cur ? *cur : best->instance;
@@ -1124,6 +1132,7 @@ none composer_update(composer ux, ion parent, map rendered_elements) {
                 }
                 restyle = true;
                 mount(instance, mounted_props);
+                drop(mounted_props);
             }
         }
 
@@ -1138,11 +1147,11 @@ none composer_update(composer ux, ion parent, map rendered_elements) {
             map m = instance->elements;
             m_header = A_header(m);
             //A_hold_members(instance);
-
+ 
             instance->id     = hold(id);
             instance->parent = parent; /// weak reference
             if (!parent->elements)
-                 parent->elements = map(hsize, 44);
+                 parent->elements = hold(map(hsize, 44));
             set (parent->elements, id, instance);
         } else if (!restyle) {
             changed = apply_args(ux, instance, e);
@@ -1161,6 +1170,7 @@ none composer_update(composer ux, ion parent, map rendered_elements) {
                 }
         }
         map irender = render(instance, changed);     // first render has a null changed; clear way to perform init/mount logic
+        drop(changed);
         if (irender) {
             update(ux, instance, irender);
         }
@@ -1225,10 +1235,10 @@ void composer_animate(composer ux) {
 
 void composer_update_all(composer ux, map render) {
     ux->restyle = false;
-    if (!ux->style) {
-         ux->root        = element(id, string("root"));
-         ux->style       = style  ((object)ux->app);
-         ux->root_styles = compute(ux->style, ux->root);
+    if (!ux->root) {
+         ux->root        = hold(element(id, string("root")));
+         A info = head(ux->style->css_path);
+         ux->root_styles = hold(compute(ux->style, ux->root));
          ux->restyle = true;
     }
     if (!ux->restyle) ux->restyle = check_reload(ux->style);
@@ -1239,9 +1249,6 @@ void composer_update_all(composer ux, map render) {
     //ux->style->reloaded = false;
 }
 
-void composer_init(composer ux) {
-}
-
 define_class(tcoord, unit, Duration)
 define_enum(Ease)
 define_enum(Direction)
@@ -1249,13 +1256,14 @@ define_enum(Duration)
 define_enum(xalign)
 define_enum(yalign)
 define_enum(Canvas)
+define_enum(Button)
 define_typed_enum(Fill, f32)
 
 define_class(coord,             A)
 define_class(alignment,         A)
 define_class(region,            A)
-define_class(mouse_state,       A)
-define_class(keyboard_state,    A)
+define_struct(mouse_state,       i32)
+define_struct(keyboard_state,    i32)
 define_class(line_info,         A)
 define_class(text_sel,          A)
 define_class(text,              A)
@@ -1269,6 +1277,7 @@ define_class(style_transition,  A)
 define_class(style_selection,   A)
 
 define_class(ion,               A)
+define_class(event,             A)
 
 define_class(element,           ion)
 define_class(button,            element)
