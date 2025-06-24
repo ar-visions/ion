@@ -1099,7 +1099,102 @@ list composer_apply_style(composer ux, ion i, map style_avail, list exceptions) 
     return changed;
 }
 
+none composer_dispatch_element(composer ux, event ev, element instance) {
+    object target = ux->app;
+
+    // if event consumed by interior element, return
+    if (dispatch(ux, ev, instance))
+        return;
+
+    // now process event
+    if (ev->mouse.left) {
+        AType type = isa(instance);
+        if (instance->action) {
+            invoke(instance->action, ev); // needs to avoid this if sub element has processed
+        }
+    }
+}
+
+// 
+bool composer_dispatch(composer ux, event ev, element instance) {
+    object target = ux->app;
+    bool processed = false;
+
+    pairs(instance->elements, i) {
+        string id = i->key;
+        element e = i->value;
+        vec2f pos = ev->mouse.pos;
+        rect    b = e->bounds;
+        if (!b) continue;
+
+        // modify event in flight
+        ev->mouse.pos.x -= b->x;
+        ev->mouse.pos.y -= b->y;
+
+        if ((ev->mouse.pos.x >= 0 && ev->mouse.pos.x < b->w) &&
+            (ev->mouse.pos.y >= 0 && ev->mouse.pos.y < b->h)) {
+            composer_dispatch_element(ux, ev, e);
+            processed = true;
+            break; // only one element is getting this event here (todo; focus and capture logic)
+        }
+
+        // restore
+        ev->mouse.pos = pos;
+    }
+    return processed;
+}
+
+none composer_bind_subs(composer ux, ion instance, ion parent) {
+    object target = ux->app; // app not defined in ion, but we need only care about the A-type bind api
+    string id = instance->id;
+
+    if (!id) return;
+    AType type = isa(instance);
+    while (type != typeid(A)) {
+        for (int m = 0; m < type->member_count; m++) {
+            type_member_t* mem = &type->members[m];
+            bool is_prop = mem->member_type & A_MEMBER_PROP;
+            if (!is_prop || mem->type != typeid(subs))
+                continue;
+
+            subs* field = (subs*)((cstr)instance + mem->offset);
+
+            // we cannot simply try target only; we have to try its parent, 
+            // then its parent, and so on till null, THEN, we try app.
+            // should loop until f is set
+            callback f = null;
+            object   bind_target = parent;
+            object   selected = null;
+            while (!f && bind_target) {
+                f = bind(instance, bind_target, false,
+                    null, typeid(event), id->chars, mem->name);
+                if (!f)
+                    bind_target = ((element)bind_target)->parent;
+                else {
+                    selected = bind_target;
+                    break;
+                }
+            }
+            if (!selected) {
+                f = bind(instance, target, false,
+                    null, typeid(event), id->chars, mem->name);
+                if (f) selected = target;
+            }
+            if (selected) {
+                *field = hold(subs(entries, array(1)));
+                add(*field, selected, f);
+                button btest = instance;
+                int test2 = 2;
+                test2 += 2;
+            }
+        }
+        type = type->parent_type;
+    }
+}
+
 none composer_update(composer ux, ion parent, map rendered_elements) {
+    object target = ux->app; // app not defined in ion, but we need only care about the A-type bind api
+    
     /// mark for umount
     pairs(parent->elements, i) {
         string id = i->key;
@@ -1131,6 +1226,12 @@ none composer_update(composer ux, ion parent, map rendered_elements) {
                         push(mounted_props, string(m->name));
                 }
                 restyle = true;
+                
+                // this is where we bind events between
+                // these components from component, to parent, 
+                // all the way to app controller
+                bind_subs(ux, instance, parent);
+
                 mount(instance, mounted_props);
                 drop(mounted_props);
             }
@@ -1147,7 +1248,7 @@ none composer_update(composer ux, ion parent, map rendered_elements) {
             map m = instance->elements;
             m_header = A_header(m);
             //A_hold_members(instance);
- 
+            AType itype = isa(instance);
             instance->id     = hold(id);
             instance->parent = parent; /// weak reference
             if (!parent->elements)

@@ -236,6 +236,8 @@ declare_class(style_qualifier)
     i_prop(X,Y, public,     style_entry,           entry)
 declare_class(style_selection)
 
+forward(element)
+
 #define composer_schema(X,Y,...) \
     i_prop(X,Y,  opaque,    object,                app) \
     i_prop(X,Y,  public,    map,                   root_styles) \
@@ -253,9 +255,12 @@ declare_class(style_selection)
     i_method(X,Y, public,   list,   apply_style,   \
         ion, map, list) \
     i_method(X,Y, public,   none,   animate) \
+    i_method(X,Y, public,   none,   bind_subs, \
+        ion, ion) \
     i_method(X,Y, public,   none,   update,        \
         ion, map) \
-    i_method(X,Y, public,   none,   update_all,    map)
+    i_method(X,Y, public,   none,   update_all,    map) \
+    i_method(X,Y, public,   bool,   dispatch,      event, element)
 declare_class(composer)
 
 /// holds onto arg state; its useful to have to facilitate
@@ -301,72 +306,73 @@ declare_typed_enum(Fill, f32)
 declare_typed_enum(Canvas, i32)
 
 #define element_schema(X,Y,...) \
-    i_prop(X,Y, public,   array,                   tags) \
-    i_prop(X,Y, public,   region,                  area) \
-    i_prop(X,Y, public,   region,                  text_area) \
-    i_prop(X,Y, public,   region,                  border_area) \
-    i_prop(X,Y, public,   region,                  clip_area) \
-    i_prop(X,Y, public,   region,                  child_area) \
-    i_prop(X,Y, public,   element,                 focused) \
-    i_prop(X,Y, public,   element,                 captured) \
-    i_prop(X,Y, public,   bool,                    capture) \
-    i_prop(X,Y, public,   bool,                    hover) \
-    i_prop(X,Y, public,   bool,                    active) \
-    i_prop(X,Y, public,   bool,                    focus) \
-    i_prop(X,Y, public,   i32,                     tab_index) \
-    i_prop(X,Y, public,   vec2f,                   cursor) \
-    i_prop(X,Y, public,   cap,                     border_cap) \
-    i_prop(X,Y, public,   join,                    border_join) \
-    i_prop(X,Y, public,   Canvas,                  border_canvas) \
-    i_prop(X,Y, public,   Canvas,                  fill_canvas) \
-    i_prop(X,Y, public,   f32,                     border_blur) \
-    i_prop(X,Y, public,   f32,                     border_size) \
-    i_prop(X,Y, public,   bool,                    border_clip) \
-    i_prop(X,Y, public,   rgba,                    border_color) \
-    i_prop(X,Y, public,   f32,                     text_scale) \
-    i_prop(X,Y, public,   rgba,                    text_color) \
-    i_prop(X,Y, public,   f32,                     text_shadow_x) \
-    i_prop(X,Y, public,   f32,                     text_shadow_y) \
-    i_prop(X,Y, public,   rgba,                    text_shadow_color) \
-    i_prop(X,Y, public,   xalign,                  text_align_x) \
-    i_prop(X,Y, public,   yalign,                  text_align_y) \
-    i_prop(X,Y, public,   bool,                    text_ellipsis) \
-    i_prop(X,Y, public,   rgba,                    fill_color) \
-    i_prop(X,Y, public,   f32,                     fill_blur) \
-    i_prop(X,Y, public,   hook,                    on_hover) \
-    i_prop(X,Y, public,   hook,                    on_out) \
-    i_prop(X,Y, public,   hook,                    on_down) \
-    i_prop(X,Y, public,   hook,                    on_click) \
-    i_prop(X,Y, public,   hook,                    on_up) \
-    i_prop(X,Y, public,   hook,                    on_key) \
-    i_prop(X,Y, public,   hook,                    on_focus) \
-    i_prop(X,Y, public,   hook,                    on_blur) \
-    i_prop(X,Y, public,   hook,                    on_cursor) \
-    i_prop(X,Y, public,   hook,                    on_text) \
-    i_prop(X,Y, public,   rgba,                    sel_color) \
-    i_prop(X,Y, public,   rgba,                    sel_background) \
-    i_prop(X,Y, public,   vec2f,                   scroll) \
-    i_prop(X,Y, public,   vec2f,                   text_spacing) \
-    i_prop(X,Y, public,   object,                  content) \
-    i_prop(X,Y, public,   f32,                     opacity) \
-    i_prop(X,Y, public,   font,                    font) \
-    i_prop(X,Y, public,   bool,                    editable) \
-    i_prop(X,Y, public,   bool,                    selectable) \
-    i_prop(X,Y, public,   bool,                    multiline) \
-    i_prop(X,Y, public,   text_sel,                sel_start) \
-    i_prop(X,Y, public,   text_sel,                sel_end) \
-    i_prop(X,Y, public,   bool,                    count_height) \
-    i_prop(X,Y, public,   f32,                     border_radius_x) \
-    i_prop(X,Y, public,   f32,                     border_radius_y) \
-    i_prop(X,Y, public,   f32,                     fill_radius_x) \
-    i_prop(X,Y, public,   f32,                     fill_radius_y) \
-    i_prop(X,Y, intern,   text,                    lines) \
-    i_prop(X,Y, intern,   rect,                    bounds) \
-    i_prop(X,Y, intern,   rect,                    clip_bounds) \
-    i_prop(X,Y, intern,   rect,                    child_bounds) \
-    i_prop(X,Y, intern,   rect,                    fill_bounds) \
-    i_prop(X,Y, intern,   rect,                    text_bounds) \
-    i_prop(X,Y, intern,   rect,                    border_bounds)
+    i_prop(X,Y, public,   array,       tags) \
+    i_prop(X,Y, public,   region,      area) \
+    i_prop(X,Y, public,   region,      text_area) \
+    i_prop(X,Y, public,   region,      border_area) \
+    i_prop(X,Y, public,   region,      clip_area) \
+    i_prop(X,Y, public,   region,      child_area) \
+    i_prop(X,Y, public,   element,     focused) \
+    i_prop(X,Y, public,   element,     captured) \
+    i_prop(X,Y, public,   bool,        capture) \
+    i_prop(X,Y, public,   bool,        hover) \
+    i_prop(X,Y, public,   bool,        active) \
+    i_prop(X,Y, public,   bool,        focus) \
+    i_prop(X,Y, public,   i32,         tab_index) \
+    i_prop(X,Y, public,   vec2f,       cursor) \
+    i_prop(X,Y, public,   cap,         border_cap) \
+    i_prop(X,Y, public,   join,        border_join) \
+    i_prop(X,Y, public,   Canvas,      border_canvas) \
+    i_prop(X,Y, public,   Canvas,      fill_canvas) \
+    i_prop(X,Y, public,   f32,         border_blur) \
+    i_prop(X,Y, public,   f32,         border_size) \
+    i_prop(X,Y, public,   bool,        border_clip) \
+    i_prop(X,Y, public,   rgba,        border_color) \
+    i_prop(X,Y, public,   f32,         text_scale) \
+    i_prop(X,Y, public,   rgba,        text_color) \
+    i_prop(X,Y, public,   f32,         text_shadow_x) \
+    i_prop(X,Y, public,   f32,         text_shadow_y) \
+    i_prop(X,Y, public,   rgba,        text_shadow_color) \
+    i_prop(X,Y, public,   xalign,      text_align_x) \
+    i_prop(X,Y, public,   yalign,      text_align_y) \
+    i_prop(X,Y, public,   bool,        text_ellipsis) \
+    i_prop(X,Y, public,   rgba,        fill_color) \
+    i_prop(X,Y, public,   f32,         fill_blur) \
+    i_prop(X,Y, public,   hook,        on_hover) \
+    i_prop(X,Y, public,   hook,        on_out) \
+    i_prop(X,Y, public,   hook,        on_down) \
+    i_prop(X,Y, public,   hook,        on_click) \
+    i_prop(X,Y, public,   hook,        on_up) \
+    i_prop(X,Y, public,   hook,        on_key) \
+    i_prop(X,Y, public,   hook,        on_focus) \
+    i_prop(X,Y, public,   hook,        on_blur) \
+    i_prop(X,Y, public,   hook,        on_cursor) \
+    i_prop(X,Y, public,   hook,        on_text) \
+    i_prop(X,Y, public,   rgba,        sel_color) \
+    i_prop(X,Y, public,   rgba,        sel_background) \
+    i_prop(X,Y, public,   vec2f,       scroll) \
+    i_prop(X,Y, public,   vec2f,       text_spacing) \
+    i_prop(X,Y, public,   object,      content) \
+    i_prop(X,Y, public,   f32,         opacity) \
+    i_prop(X,Y, public,   font,        font) \
+    i_prop(X,Y, public,   bool,        editable) \
+    i_prop(X,Y, public,   bool,        selectable) \
+    i_prop(X,Y, public,   bool,        multiline) \
+    i_prop(X,Y, public,   text_sel,    sel_start) \
+    i_prop(X,Y, public,   text_sel,    sel_end) \
+    i_prop(X,Y, public,   bool,        count_height) \
+    i_prop(X,Y, public,   f32,         border_radius_x) \
+    i_prop(X,Y, public,   f32,         border_radius_y) \
+    i_prop(X,Y, public,   f32,         fill_radius_x) \
+    i_prop(X,Y, public,   f32,         fill_radius_y) \
+    i_prop(X,Y, intern,   text,        lines) \
+    i_prop(X,Y, intern,   rect,        bounds) \
+    i_prop(X,Y, intern,   rect,        clip_bounds) \
+    i_prop(X,Y, intern,   rect,        child_bounds) \
+    i_prop(X,Y, intern,   rect,        fill_bounds) \
+    i_prop(X,Y, intern,   rect,        text_bounds) \
+    i_prop(X,Y, intern,   rect,        border_bounds) \
+    i_prop(X,Y, public,   subs,  action)
 declare_class_2(element, ion)
 
 
